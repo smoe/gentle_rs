@@ -547,7 +547,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
   gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \

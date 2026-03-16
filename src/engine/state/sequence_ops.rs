@@ -403,7 +403,11 @@ impl GentleEngine {
         tokens
     }
 
-    pub(super) fn save_as_fasta(seq_id: &str, dna: &DNAsequence, path: &str) -> Result<(), EngineError> {
+    pub(super) fn save_as_fasta(
+        seq_id: &str,
+        dna: &DNAsequence,
+        path: &str,
+    ) -> Result<(), EngineError> {
         let mut file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create FASTA file '{path}': {e}"),
@@ -1158,7 +1162,9 @@ impl GentleEngine {
         out
     }
 
-    pub(super) fn prepare_scoring_matrices(matrix_counts: &[[f64; 4]]) -> (Vec<[f64; 4]>, Vec<[f64; 4]>) {
+    pub(super) fn prepare_scoring_matrices(
+        matrix_counts: &[[f64; 4]],
+    ) -> (Vec<[f64; 4]>, Vec<[f64; 4]>) {
         let probabilities = Self::smooth_probability_matrix(matrix_counts);
         let background = [0.25_f64, 0.25_f64, 0.25_f64, 0.25_f64];
         let mut llr = Vec::with_capacity(probabilities.len());
@@ -1429,7 +1435,10 @@ impl GentleEngine {
         false
     }
 
-    pub(super) fn contains_motif_any_strand(sequence: &[u8], motif: &str) -> Result<bool, EngineError> {
+    pub(super) fn contains_motif_any_strand(
+        sequence: &[u8],
+        motif: &str,
+    ) -> Result<bool, EngineError> {
         let motif = Self::normalize_iupac_text(motif)?;
         if motif.is_empty() {
             return Ok(true);
@@ -2765,7 +2774,10 @@ impl GentleEngine {
         (assays, rejection)
     }
 
-    pub(super) fn parse_primer3_coord_pair(raw: &str, key: &str) -> Result<(usize, usize), EngineError> {
+    pub(super) fn parse_primer3_coord_pair(
+        raw: &str,
+        key: &str,
+    ) -> Result<(usize, usize), EngineError> {
         let (left, right) = raw.split_once(',').ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Primer3 output key '{key}' is not in start,len form"),
@@ -3262,5 +3274,4 @@ impl GentleEngine {
         }
         ret
     }
-
 }

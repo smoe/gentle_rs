@@ -158,9 +158,12 @@ impl GentleEngine {
                 seed_feature_id: report.seed_feature_id,
                 scope: report.scope,
                 origin_mode: report.origin_mode,
+                target_gene_count: report.target_gene_ids.len(),
+                roi_seed_capture_enabled: report.roi_seed_capture_enabled,
                 read_count_total: report.read_count_total,
                 read_count_seed_passed: report.read_count_seed_passed,
                 read_count_aligned: report.read_count_aligned,
+                retained_count_msa_eligible: report.retained_count_msa_eligible,
             })
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| {
@@ -175,6 +178,55 @@ impl GentleEngine {
                 )
         });
         rows
+    }
+
+    pub(crate) fn format_rna_read_report_summary_row(
+        row: &RnaReadInterpretationReportSummary,
+    ) -> String {
+        let seed_pass_pct = if row.read_count_total == 0 {
+            0.0
+        } else {
+            (row.read_count_seed_passed as f64 / row.read_count_total as f64) * 100.0
+        };
+        format!(
+            "{} seq={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
+            row.report_id,
+            row.seq_id,
+            row.report_mode.as_str(),
+            row.origin_mode.as_str(),
+            row.target_gene_count,
+            row.roi_seed_capture_enabled,
+            row.read_count_total,
+            row.read_count_seed_passed,
+            seed_pass_pct,
+            row.read_count_aligned,
+            row.retained_count_msa_eligible
+        )
+    }
+
+    pub(crate) fn format_rna_read_report_detail_summary(
+        report: &RnaReadInterpretationReport,
+    ) -> String {
+        let seed_pass_pct = if report.read_count_total == 0 {
+            0.0
+        } else {
+            (report.read_count_seed_passed as f64 / report.read_count_total as f64) * 100.0
+        };
+        format!(
+            "{} seq={} profile={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
+            report.report_id,
+            report.seq_id,
+            report.profile.as_str(),
+            report.report_mode.as_str(),
+            report.origin_mode.as_str(),
+            report.target_gene_ids.len(),
+            report.roi_seed_capture_enabled,
+            report.read_count_total,
+            report.read_count_seed_passed,
+            seed_pass_pct,
+            report.read_count_aligned,
+            report.retained_count_msa_eligible
+        )
     }
 
     pub fn get_rna_read_report(
@@ -237,8 +289,9 @@ impl GentleEngine {
             // human-readable context for quick triage.
             let mapping_header = if let Some(best) = &hit.best_mapping {
                 format!(
-                    "best={} strand={} target={}..{} identity={:.3} coverage={:.3}",
+                    "best={} mode={} strand={} target={}..{} identity={:.3} coverage={:.3}",
                     best.transcript_id,
+                    best.alignment_mode.as_str(),
                     best.strand,
                     best.target_start_1based,
                     best.target_end_1based,
@@ -254,7 +307,7 @@ impl GentleEngine {
                 format!("{:.2}", hit.seed_median_transcript_gap)
             };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
@@ -273,6 +326,8 @@ impl GentleEngine {
                 hit.strand_confidence,
                 hit.perfect_seed_match,
                 hit.reverse_complement_applied,
+                hit.msa_eligible,
+                Self::sanitize_tsv_cell(&hit.msa_eligibility_reason),
                 if hit.exon_path_transcript_id.is_empty() {
                     "none"
                 } else {
@@ -367,7 +422,7 @@ impl GentleEngine {
         let mut writer = BufWriter::new(file);
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
+            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -383,6 +438,7 @@ impl GentleEngine {
             }
             let (
                 best_transcript_id,
+                best_alignment_mode,
                 best_strand,
                 best_target_start_1based,
                 best_target_end_1based,
@@ -391,6 +447,7 @@ impl GentleEngine {
             ) = if let Some(best) = &hit.best_mapping {
                 (
                     best.transcript_id.as_str(),
+                    best.alignment_mode.as_str(),
                     best.strand.as_str(),
                     best.target_start_1based.to_string(),
                     best.target_end_1based.to_string(),
@@ -399,6 +456,7 @@ impl GentleEngine {
                 )
             } else {
                 (
+                    "none",
                     "none",
                     "none",
                     String::new(),
@@ -430,11 +488,14 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(&hit.origin_reason),
                 format!("{:.6}", hit.origin_confidence),
                 format!("{:.6}", hit.strand_confidence),
+                hit.msa_eligible.to_string(),
+                Self::sanitize_tsv_cell(&hit.msa_eligibility_reason),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
                 Self::sanitize_tsv_cell(&hit.exon_path),
                 hit.exon_transitions_confirmed.to_string(),
                 hit.exon_transitions_total.to_string(),
                 Self::sanitize_tsv_cell(best_transcript_id),
+                Self::sanitize_tsv_cell(best_alignment_mode),
                 Self::sanitize_tsv_cell(best_strand),
                 best_target_start_1based,
                 best_target_end_1based,
@@ -856,7 +917,7 @@ impl GentleEngine {
         if !existing_nonempty {
             writeln!(
                 writer,
-                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\texon_support_frequencies_json\tjunction_support_frequencies_json"
+                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -904,9 +965,25 @@ impl GentleEngine {
                         report.report_id
                     ),
                 })?;
+            let target_gene_ids_json =
+                serde_json::to_string(&report.target_gene_ids).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not serialize target_gene_ids for report '{}': {e}",
+                        report.report_id
+                    ),
+                })?;
+            let origin_class_counts_json = serde_json::to_string(&report.origin_class_counts)
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not serialize origin_class_counts for report '{}': {e}",
+                        report.report_id
+                    ),
+                })?;
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&sample_name),
                 Self::sanitize_tsv_cell(&sample_description),
@@ -917,6 +994,11 @@ impl GentleEngine {
                 Self::sanitize_tsv_cell(&report.input_path),
                 report.profile.as_str(),
                 report.scope.as_str(),
+                report.report_mode.as_str(),
+                report.origin_mode.as_str(),
+                report.target_gene_ids.len(),
+                Self::sanitize_tsv_cell(&target_gene_ids_json),
+                report.roi_seed_capture_enabled,
                 report.read_count_total,
                 report.read_count_seed_passed,
                 report.read_count_aligned,
@@ -924,6 +1006,7 @@ impl GentleEngine {
                 aligned_fraction,
                 Self::sanitize_tsv_cell(&exon_json),
                 Self::sanitize_tsv_cell(&junction_json),
+                Self::sanitize_tsv_cell(&origin_class_counts_json),
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -1432,7 +1515,9 @@ impl GentleEngine {
         vec![(0, read_len)]
     }
 
-    pub(super) fn build_rna_read_seed_histogram_bins(seq_len_bp: usize) -> Vec<RnaReadSeedHistogramBin> {
+    pub(super) fn build_rna_read_seed_histogram_bins(
+        seq_len_bp: usize,
+    ) -> Vec<RnaReadSeedHistogramBin> {
         if seq_len_bp == 0 {
             return vec![];
         }
@@ -1714,6 +1799,58 @@ impl GentleEngine {
         let transition_pass =
             Self::transition_gate_passes(confirmed_transitions, total_transitions, seed_filter);
         raw_pass && weighted_pass && unique_pass && chain_pass && gap_pass && transition_pass
+    }
+
+    pub(super) fn compute_msa_eligibility(
+        hit: &RnaReadInterpretationHit,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> (bool, String) {
+        if !hit.passed_seed_filter {
+            return (false, "seed gate failed".to_string());
+        }
+        let Some(mapping) = &hit.best_mapping else {
+            return (false, "no transcript alignment".to_string());
+        };
+        if mapping.query_coverage_fraction + f64::EPSILON < 0.60 {
+            return (
+                false,
+                format!(
+                    "low query coverage {:.3} < 0.600",
+                    mapping.query_coverage_fraction
+                ),
+            );
+        }
+        if hit.seed_transcript_gap_count > 0
+            && hit.seed_median_transcript_gap > seed_filter.max_median_transcript_gap + f64::EPSILON
+        {
+            return (
+                false,
+                format!(
+                    "seed gap median {:.2} > {:.2}",
+                    hit.seed_median_transcript_gap, seed_filter.max_median_transcript_gap
+                ),
+            );
+        }
+        if !Self::transition_gate_passes(
+            hit.exon_transitions_confirmed,
+            hit.exon_transitions_total,
+            seed_filter,
+        ) {
+            return (
+                false,
+                format!(
+                    "transition gate failed ({}/{})",
+                    hit.exon_transitions_confirmed, hit.exon_transitions_total
+                ),
+            );
+        }
+        (
+            true,
+            format!(
+                "seed+alignment support (identity {:.3}, coverage {:.3})",
+                mapping.identity_fraction, mapping.query_coverage_fraction
+            ),
+        )
     }
 
     pub(super) fn classify_rna_read_origin(
@@ -2017,7 +2154,9 @@ impl GentleEngine {
         heap
     }
 
-    pub(super) fn make_rna_read_top_hit_preview(hit: &RnaReadInterpretationHit) -> RnaReadTopHitPreview {
+    pub(super) fn make_rna_read_top_hit_preview(
+        hit: &RnaReadInterpretationHit,
+    ) -> RnaReadTopHitPreview {
         let sequence_preview = hit.sequence.chars().take(80).collect::<String>();
         RnaReadTopHitPreview {
             record_index: hit.record_index,
@@ -2042,6 +2181,8 @@ impl GentleEngine {
             origin_confidence: hit.origin_confidence,
             strand_confidence: hit.strand_confidence,
             origin_candidates: hit.origin_candidates.clone(),
+            msa_eligible: hit.msa_eligible,
+            msa_eligibility_reason: hit.msa_eligibility_reason.clone(),
             read_length_bp: hit.read_length_bp,
             sequence: hit.sequence.clone(),
             sequence_preview,
@@ -2748,6 +2889,47 @@ impl GentleEngine {
         if read.is_empty() || template.sequence.is_empty() {
             return None;
         }
+        let semiglobal = Self::align_read_to_template_with_mode(
+            read,
+            template,
+            config,
+            RnaReadAlignmentMode::Semiglobal,
+        );
+        let local =
+            Self::align_read_to_template_with_mode(read, template, config, RnaReadAlignmentMode::Local);
+        match (semiglobal, local) {
+            (Some(left), Some(right)) => {
+                if Self::compare_mapping_quality(&left, &right) != Ordering::Less {
+                    Some(left)
+                } else {
+                    Some(right)
+                }
+            }
+            (Some(row), None) | (None, Some(row)) => Some(row),
+            (None, None) => None,
+        }
+    }
+
+    fn compare_mapping_quality(left: &RnaReadMappingHit, right: &RnaReadMappingHit) -> Ordering {
+        left.query_coverage_fraction
+            .partial_cmp(&right.query_coverage_fraction)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                left.identity_fraction
+                    .partial_cmp(&right.identity_fraction)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then(left.matches.cmp(&right.matches))
+            .then(right.mismatches.cmp(&left.mismatches))
+            .then(left.score.cmp(&right.score))
+    }
+
+    fn align_read_to_template_with_mode(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        mode: RnaReadAlignmentMode,
+    ) -> Option<RnaReadMappingHit> {
         let mut aligner = bio::alignment::pairwise::Aligner::new(-5, -1, &|a: u8, b: u8| {
             if a.eq_ignore_ascii_case(&b) {
                 2i32
@@ -2755,7 +2937,10 @@ impl GentleEngine {
                 -3i32
             }
         });
-        let alignment = aligner.local(read, &template.sequence);
+        let alignment = match mode {
+            RnaReadAlignmentMode::Local => aligner.local(read, &template.sequence),
+            RnaReadAlignmentMode::Semiglobal => aligner.semiglobal(read, &template.sequence),
+        };
         if alignment.operations.is_empty() {
             return None;
         }
@@ -2781,6 +2966,9 @@ impl GentleEngine {
             return None;
         }
         let query_span = alignment.xend.saturating_sub(alignment.xstart);
+        if query_span == 0 {
+            return None;
+        }
         let query_coverage_fraction = if read.is_empty() {
             0.0
         } else {
@@ -2802,6 +2990,7 @@ impl GentleEngine {
             (target_end_1based, target_start_1based)
         };
         Some(RnaReadMappingHit {
+            alignment_mode: mode,
             transcript_feature_id: template.transcript_feature_id,
             transcript_id: template.transcript_id.clone(),
             transcript_label: template.transcript_label.clone(),
@@ -2911,7 +3100,7 @@ impl GentleEngine {
             .contains_key(report.report_id.as_str());
         self.upsert_rna_read_report(report.clone())?;
         result.messages.push(format!(
-            "{} RNA-read report '{}' (profile={}, origin_mode={}, report_mode={}, targets={}, reads={}, seed_passed={}, aligned={}, {})",
+            "{} RNA-read report '{}' (profile={}, origin_mode={}, report_mode={}, targets={}, reads={}, seed_passed={}, aligned={}, msa_eligible(retained)={}, {})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.profile.as_str(),
@@ -2921,6 +3110,7 @@ impl GentleEngine {
             report.read_count_total,
             report.read_count_seed_passed,
             report.read_count_aligned,
+            report.retained_count_msa_eligible,
             origin_summary
         ));
         Ok(())
@@ -3043,6 +3233,536 @@ impl GentleEngine {
         )
     }
 
+    pub fn align_rna_read_report_with_progress(
+        &self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        align_config_override: Option<RnaReadAlignConfig>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let mut keep_running = || true;
+        self.align_rna_read_report_with_progress_and_cancel(
+            report_id,
+            selection,
+            align_config_override,
+            on_progress,
+            &mut keep_running,
+        )
+    }
+
+    pub fn align_rna_read_report_with_progress_and_cancel(
+        &self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        align_config_override: Option<RnaReadAlignConfig>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        should_continue: &mut dyn FnMut() -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let mut report = self.get_rna_read_report(report_id)?;
+        if !should_continue() {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read alignment phase cancelled before start".to_string(),
+            });
+        }
+        let align_config = align_config_override.unwrap_or_else(|| report.align_config.clone());
+        if align_config.band_width_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "align_band_width_bp must be > 0".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "align_min_identity_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+            })?;
+        let splicing =
+            self.build_splicing_expert_view(&report.seq_id, report.seed_feature_id, report.scope)?;
+        let templates = splicing
+            .transcripts
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, report.seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript templates available for splicing scope '{}' on '{}'",
+                    report.scope.as_str(),
+                    report.seq_id
+                ),
+            });
+        }
+        let mut seed_index: HashSet<u32> = HashSet::new();
+        for template in &templates {
+            seed_index.extend(template.kmer_positions.keys().copied());
+        }
+        if seed_index.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No directional k-mer seeds could be generated from transcript templates"
+                    .to_string(),
+            });
+        }
+        let seed_catalog_rows =
+            Self::collect_rna_seed_hash_catalog_rows(&templates, report.seed_filter.kmer_len);
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        for row in &seed_catalog_rows {
+            *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
+        }
+        let (
+            seed_to_exons,
+            seed_to_transitions,
+            transcript_exon_models,
+            mut transition_support_rows,
+        ) = Self::build_seed_support_indexes(&splicing, &templates, report.seed_filter.kmer_len);
+        let transcript_models_by_id = transcript_exon_models
+            .iter()
+            .map(|model| (model.transcript_id.clone(), model.clone()))
+            .collect::<HashMap<_, _>>();
+        let transition_row_index = transition_support_rows
+            .iter()
+            .enumerate()
+            .map(|(idx, row)| ((row.from_exon_ordinal, row.to_exon_ordinal), idx))
+            .collect::<HashMap<_, _>>();
+        let seed_template_positions = Self::build_seed_template_position_index(&templates);
+        let mut bins = Self::build_rna_read_seed_histogram_bins(dna.len());
+        let histogram_index =
+            Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
+        let selected_indices = report
+            .hits
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, hit)| {
+                Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
+            })
+            .collect::<Vec<_>>();
+        let selected_total = selected_indices.len();
+        let mut cumulative_read_bases_processed = 0u64;
+        let mut read_length_counts = vec![0u64; 1];
+        let mut cumulative_tested_kmers = 0usize;
+        let mut cumulative_matched_kmers = 0usize;
+        let mut cumulative_seed_compute_ms = 0.0f64;
+        let mut cumulative_align_compute_ms = 0.0f64;
+        let mut cumulative_normalize_compute_ms = 0.0f64;
+        let mut cumulative_inference_compute_ms = 0.0f64;
+        let mut cumulative_progress_emit_ms = 0.0f64;
+        let mut reads_processed = 0usize;
+        let mut seed_passed = 0usize;
+        let mut aligned = 0usize;
+        let mut support_aligned_reads = 0usize;
+        let mut support_exon_counts = vec![0usize; splicing.unique_exons.len()];
+        let mut support_junction_counts = vec![0usize; splicing.junctions.len()];
+        let mut reads_with_transition_support = 0usize;
+        let mut transition_confirmations = 0usize;
+        let mut isoform_support_accumulators =
+            Self::build_isoform_support_accumulators(&transcript_exon_models);
+        let junction_crossing_seed_bits_indexed = seed_to_transitions.len();
+        let mut progress_top_hits = Self::retained_rna_read_preview_heap_from_rows(&report.hits);
+        if !on_progress(OperationProgress::RnaReadInterpret(
+            RnaReadInterpretProgress {
+                seq_id: report.seq_id.clone(),
+                reads_processed: 0,
+                reads_total: selected_total,
+                read_bases_processed: 0,
+                mean_read_length_bp: 0.0,
+                median_read_length_bp: 0,
+                p95_read_length_bp: 0,
+                input_bytes_processed: 0,
+                input_bytes_total: 0,
+                seed_passed: 0,
+                aligned: 0,
+                tested_kmers: 0,
+                matched_kmers: 0,
+                seed_compute_ms: 0.0,
+                align_compute_ms: 0.0,
+                io_read_ms: 0.0,
+                fasta_parse_ms: 0.0,
+                normalize_compute_ms: 0.0,
+                inference_compute_ms: 0.0,
+                progress_emit_ms: 0.0,
+                update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                done: false,
+                bins: bins.clone(),
+                score_density_bins: report.score_density_bins.clone(),
+                top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
+                transition_support_rows: transition_support_rows.clone(),
+                isoform_support_rows: Self::collect_isoform_support_rows(
+                    &isoform_support_accumulators,
+                ),
+                reads_with_transition_support,
+                transition_confirmations,
+                junction_crossing_seed_bits_indexed,
+                origin_class_counts: BTreeMap::new(),
+            },
+        )) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read alignment phase cancelled during progress reporting".to_string(),
+            });
+        }
+        let mut last_progress_emit_at = Instant::now();
+        for idx in selected_indices {
+            if !should_continue() {
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "RNA-read alignment phase cancelled during processing".to_string(),
+                });
+            }
+            let Some(hit) = report.hits.get_mut(idx) else {
+                continue;
+            };
+            let normalize_started = Instant::now();
+            let normalized_sequence = hit
+                .sequence
+                .as_bytes()
+                .iter()
+                .map(|base| Self::normalize_nucleotide_base(*base))
+                .collect::<Vec<_>>();
+            cumulative_normalize_compute_ms += normalize_started.elapsed().as_secs_f64() * 1000.0;
+            cumulative_read_bases_processed =
+                cumulative_read_bases_processed.saturating_add(normalized_sequence.len() as u64);
+            Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
+            let seed_started = Instant::now();
+            let windows =
+                Self::sampled_read_windows(normalized_sequence.len(), &report.seed_filter);
+            let mut tested_kmers = 0usize;
+            let mut matched_kmers = 0usize;
+            let mut matched_seed_bits = HashSet::<u32>::new();
+            let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+            for (start, end) in windows {
+                let (tested, matched, matched_bits, matched_observations) =
+                    Self::count_seed_hits_in_window_with_histogram(
+                        &normalized_sequence[start..end],
+                        start,
+                        report.seed_filter.kmer_len,
+                        &seed_index,
+                        &histogram_index,
+                        &mut bins,
+                        &seed_occurrence_counts,
+                    );
+                tested_kmers = tested_kmers.saturating_add(tested);
+                matched_kmers = matched_kmers.saturating_add(matched);
+                matched_seed_bits.extend(matched_bits);
+                matched_seed_observations.extend(matched_observations);
+            }
+            cumulative_seed_compute_ms += seed_started.elapsed().as_secs_f64() * 1000.0;
+            cumulative_tested_kmers = cumulative_tested_kmers.saturating_add(tested_kmers);
+            cumulative_matched_kmers = cumulative_matched_kmers.saturating_add(matched_kmers);
+            let weighted_matched_kmers = Self::weighted_seed_support_from_occurrences(
+                &matched_seed_bits,
+                &seed_occurrence_counts,
+            );
+            let weighted_seed_hit_fraction = if tested_kmers == 0 {
+                0.0
+            } else {
+                weighted_matched_kmers / tested_kmers as f64
+            };
+            let inference_started = Instant::now();
+            let (read_supported_exons, read_supported_transitions) =
+                Self::build_read_seed_support_sets(
+                    &matched_seed_bits,
+                    &seed_to_exons,
+                    &seed_to_transitions,
+                );
+            let spacing_metrics = Self::compute_seed_chain_spacing_metrics(
+                &matched_seed_observations,
+                &seed_template_positions,
+                &templates,
+            );
+            let (seed_hit_fraction, perfect_seed_match, _raw_seed_pass) = Self::seed_hit_metrics(
+                tested_kmers,
+                matched_kmers,
+                report.seed_filter.min_seed_hit_fraction,
+            );
+            let path_inference = Self::infer_read_exon_path(
+                &transcript_exon_models,
+                &read_supported_exons,
+                &read_supported_transitions,
+                &spacing_metrics.transcript_id,
+            );
+            let passed_seed_filter = Self::seed_filter_passes(
+                seed_hit_fraction,
+                weighted_seed_hit_fraction,
+                tested_kmers,
+                matched_seed_bits.len(),
+                spacing_metrics.support_fraction,
+                spacing_metrics.median_transcript_gap,
+                spacing_metrics.transcript_gap_count,
+                path_inference.confirmed_transitions,
+                path_inference.total_transitions,
+                &report.seed_filter,
+            );
+            let target_feature_strand = splicing.strand.as_str();
+            let origin_classification = Self::classify_rna_read_origin(
+                seed_hit_fraction,
+                weighted_seed_hit_fraction,
+                passed_seed_filter,
+                &spacing_metrics,
+                &path_inference,
+                target_feature_strand,
+                &report.seed_filter,
+            );
+            let origin_candidates = Self::build_rna_read_origin_candidates(
+                &path_inference,
+                &spacing_metrics,
+                &transcript_models_by_id,
+            );
+            if passed_seed_filter && !read_supported_transitions.is_empty() {
+                reads_with_transition_support = reads_with_transition_support.saturating_add(1);
+                transition_confirmations =
+                    transition_confirmations.saturating_add(read_supported_transitions.len());
+                for transition in &read_supported_transitions {
+                    let Some(row_idx) = transition_row_index.get(transition).copied() else {
+                        continue;
+                    };
+                    if let Some(row) = transition_support_rows.get_mut(row_idx) {
+                        row.support_read_count = row.support_read_count.saturating_add(1);
+                    }
+                }
+            }
+            if !path_inference.transcript_id.is_empty() {
+                Self::update_isoform_support_accumulator(
+                    &mut isoform_support_accumulators,
+                    &path_inference.transcript_id,
+                    &path_inference.strand,
+                    passed_seed_filter,
+                    spacing_metrics.median_transcript_gap,
+                    path_inference.confirmed_transitions,
+                    path_inference.total_transitions,
+                    seed_hit_fraction,
+                    weighted_seed_hit_fraction,
+                    &path_inference.strand_diagnostics.chain_preferred_strand,
+                    path_inference.strand_diagnostics.competing_opposite_strand,
+                    path_inference.strand_diagnostics.ambiguous_near_tie,
+                    &read_supported_transitions,
+                    &transcript_models_by_id,
+                );
+            }
+            cumulative_inference_compute_ms += inference_started.elapsed().as_secs_f64() * 1000.0;
+            let align_started = Instant::now();
+            let (best_mapping, secondary_mappings) = if passed_seed_filter {
+                Self::align_read_to_templates(&normalized_sequence, &templates, &align_config)
+            } else {
+                (None, vec![])
+            };
+            cumulative_align_compute_ms += align_started.elapsed().as_secs_f64() * 1000.0;
+            if passed_seed_filter {
+                seed_passed = seed_passed.saturating_add(1);
+            }
+            if let Some(mapping) = &best_mapping {
+                aligned = aligned.saturating_add(1);
+                support_aligned_reads = support_aligned_reads.saturating_add(1);
+                Self::accumulate_support_counts_for_mapping(
+                    mapping,
+                    &splicing,
+                    &mut support_exon_counts,
+                    &mut support_junction_counts,
+                );
+            }
+            hit.read_length_bp = normalized_sequence.len();
+            hit.tested_kmers = tested_kmers;
+            hit.matched_kmers = matched_kmers;
+            hit.seed_hit_fraction = seed_hit_fraction;
+            hit.weighted_seed_hit_fraction = weighted_seed_hit_fraction;
+            hit.weighted_matched_kmers = weighted_matched_kmers;
+            hit.seed_chain_transcript_id = spacing_metrics.transcript_id;
+            hit.seed_chain_support_kmers = spacing_metrics.support_kmers;
+            hit.seed_chain_support_fraction = spacing_metrics.support_fraction;
+            hit.seed_median_transcript_gap = spacing_metrics.median_transcript_gap;
+            hit.seed_transcript_gap_count = spacing_metrics.transcript_gap_count;
+            hit.exon_path_transcript_id = path_inference.transcript_id;
+            hit.exon_path = path_inference.path;
+            hit.exon_transitions_confirmed = path_inference.confirmed_transitions;
+            hit.exon_transitions_total = path_inference.total_transitions;
+            hit.strand_diagnostics = path_inference.strand_diagnostics;
+            hit.origin_class = origin_classification.origin_class;
+            hit.origin_reason = origin_classification.reason;
+            hit.origin_confidence = origin_classification.origin_confidence;
+            hit.strand_confidence = origin_classification.strand_confidence;
+            hit.origin_candidates = origin_candidates;
+            hit.perfect_seed_match = perfect_seed_match;
+            hit.passed_seed_filter = passed_seed_filter;
+            hit.best_mapping = best_mapping;
+            hit.secondary_mappings = secondary_mappings;
+            let (msa_eligible, msa_reason) =
+                Self::compute_msa_eligibility(hit, &report.seed_filter);
+            hit.msa_eligible = msa_eligible;
+            hit.msa_eligibility_reason = msa_reason;
+            reads_processed = reads_processed.saturating_add(1);
+            if Self::should_emit_rna_read_progress(reads_processed, last_progress_emit_at.elapsed())
+            {
+                let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
+                    &read_length_counts,
+                    reads_processed,
+                    cumulative_read_bases_processed,
+                );
+                progress_top_hits = Self::retained_rna_read_preview_heap_from_rows(&report.hits);
+                let emit_started = Instant::now();
+                let mut origin_class_counts = BTreeMap::<String, usize>::new();
+                for row in &report.hits {
+                    *origin_class_counts
+                        .entry(row.origin_class.as_str().to_string())
+                        .or_insert(0) += 1;
+                }
+                if !on_progress(OperationProgress::RnaReadInterpret(
+                    RnaReadInterpretProgress {
+                        seq_id: report.seq_id.clone(),
+                        reads_processed,
+                        reads_total: selected_total,
+                        read_bases_processed: cumulative_read_bases_processed,
+                        mean_read_length_bp: mean_len,
+                        median_read_length_bp: median_len,
+                        p95_read_length_bp: p95_len,
+                        input_bytes_processed: 0,
+                        input_bytes_total: 0,
+                        seed_passed,
+                        aligned,
+                        tested_kmers: cumulative_tested_kmers,
+                        matched_kmers: cumulative_matched_kmers,
+                        seed_compute_ms: cumulative_seed_compute_ms,
+                        align_compute_ms: cumulative_align_compute_ms,
+                        io_read_ms: 0.0,
+                        fasta_parse_ms: 0.0,
+                        normalize_compute_ms: cumulative_normalize_compute_ms,
+                        inference_compute_ms: cumulative_inference_compute_ms,
+                        progress_emit_ms: cumulative_progress_emit_ms,
+                        update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                        done: false,
+                        bins: bins.clone(),
+                        score_density_bins: report.score_density_bins.clone(),
+                        top_hits_preview: Self::collect_rna_read_top_hit_previews(
+                            &progress_top_hits,
+                        ),
+                        transition_support_rows: transition_support_rows.clone(),
+                        isoform_support_rows: Self::collect_isoform_support_rows(
+                            &isoform_support_accumulators,
+                        ),
+                        reads_with_transition_support,
+                        transition_confirmations,
+                        junction_crossing_seed_bits_indexed,
+                        origin_class_counts,
+                    },
+                )) {
+                    return Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "RNA-read alignment phase cancelled during progress reporting"
+                            .to_string(),
+                    });
+                }
+                cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
+                last_progress_emit_at = Instant::now();
+            }
+            if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
+                std::thread::yield_now();
+            }
+        }
+        let mut origin_class_counts = BTreeMap::<String, usize>::new();
+        for row in &report.hits {
+            *origin_class_counts
+                .entry(row.origin_class.as_str().to_string())
+                .or_insert(0) += 1;
+        }
+        let (exon_support_frequencies, junction_support_frequencies) =
+            Self::build_rna_read_support_frequencies_from_counts(
+                &splicing,
+                &support_exon_counts,
+                &support_junction_counts,
+                support_aligned_reads,
+            );
+        report.align_config = align_config;
+        report.generated_at_unix_ms = Self::now_unix_ms();
+        report.read_count_aligned = aligned;
+        report.retained_count_msa_eligible =
+            report.hits.iter().filter(|hit| hit.msa_eligible).count();
+        report.exon_support_frequencies = exon_support_frequencies;
+        report.junction_support_frequencies = junction_support_frequencies;
+        report.transition_support_rows = transition_support_rows.clone();
+        report.isoform_support_rows =
+            Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        report.origin_class_counts = origin_class_counts.clone();
+        report
+            .warnings
+            .retain(|warning| !warning.contains("alignment is deferred to a later pass"));
+        report.warnings.push(format!(
+            "alignment phase completed over retained-hit selection '{}' (selected={}, aligned={}, msa_eligible={})",
+            selection.as_str(),
+            selected_total,
+            report.read_count_aligned,
+            report.retained_count_msa_eligible,
+        ));
+        if selected_total == 0 {
+            report.warnings.push(format!(
+                "alignment phase selection '{}' matched no retained hits",
+                selection.as_str()
+            ));
+        }
+        if report.align_config.max_secondary_mappings == 0 {
+            report.warnings.push(
+                "alignment phase ran with max_secondary_mappings=0; only best mapping is retained"
+                    .to_string(),
+            );
+        }
+        progress_top_hits = Self::retained_rna_read_preview_heap_from_rows(&report.hits);
+        let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
+            &read_length_counts,
+            reads_processed,
+            cumulative_read_bases_processed,
+        );
+        if !on_progress(OperationProgress::RnaReadInterpret(
+            RnaReadInterpretProgress {
+                seq_id: report.seq_id.clone(),
+                reads_processed,
+                reads_total: selected_total,
+                read_bases_processed: cumulative_read_bases_processed,
+                mean_read_length_bp: mean_len,
+                median_read_length_bp: median_len,
+                p95_read_length_bp: p95_len,
+                input_bytes_processed: 0,
+                input_bytes_total: 0,
+                seed_passed,
+                aligned,
+                tested_kmers: cumulative_tested_kmers,
+                matched_kmers: cumulative_matched_kmers,
+                seed_compute_ms: cumulative_seed_compute_ms,
+                align_compute_ms: cumulative_align_compute_ms,
+                io_read_ms: 0.0,
+                fasta_parse_ms: 0.0,
+                normalize_compute_ms: cumulative_normalize_compute_ms,
+                inference_compute_ms: cumulative_inference_compute_ms,
+                progress_emit_ms: cumulative_progress_emit_ms,
+                update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                done: true,
+                bins,
+                score_density_bins: report.score_density_bins.clone(),
+                top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
+                transition_support_rows,
+                isoform_support_rows: report.isoform_support_rows.clone(),
+                reads_with_transition_support,
+                transition_confirmations,
+                junction_crossing_seed_bits_indexed,
+                origin_class_counts,
+            },
+        )) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read alignment phase cancelled at completion".to_string(),
+            });
+        }
+        Ok(report)
+    }
+
     pub(super) fn compute_rna_read_report_with_options_and_progress_and_cancel(
         &self,
         seq_id: &str,
@@ -3101,6 +3821,39 @@ impl GentleEngine {
             checkpoint_path: report.checkpoint_path.clone(),
             checkpoint_every_reads: report.checkpoint_every_reads,
             resume_from_checkpoint: report.resumed_from_checkpoint,
+        };
+        let run_id = "interactive".to_string();
+        let checkpoint = self.maybe_capture_checkpoint(&op);
+        let mut result = OpResult {
+            op_id: self.next_op_id(),
+            created_seq_ids: vec![],
+            changed_seq_ids: vec![],
+            warnings: vec![],
+            messages: vec![],
+            genome_annotation_projection: None,
+        };
+        self.push_rna_read_report_result_message(report, &mut result)?;
+        self.journal.push(OperationRecord {
+            run_id,
+            op,
+            result: result.clone(),
+        });
+        if let Some(checkpoint) = checkpoint {
+            self.push_undo_checkpoint(checkpoint);
+        }
+        Ok(result)
+    }
+
+    pub fn commit_aligned_rna_read_report(
+        &mut self,
+        report: RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        align_config_override: Option<RnaReadAlignConfig>,
+    ) -> Result<OpResult, EngineError> {
+        let op = Operation::AlignRnaReadReport {
+            report_id: report.report_id.clone(),
+            selection,
+            align_config_override,
         };
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
@@ -3855,9 +4608,15 @@ impl GentleEngine {
                     origin_candidates,
                     perfect_seed_match,
                     passed_seed_filter,
+                    msa_eligible: false,
+                    msa_eligibility_reason: String::new(),
                     best_mapping,
                     secondary_mappings,
                 };
+                let mut hit = hit;
+                let (msa_eligible, msa_reason) = Self::compute_msa_eligibility(&hit, seed_filter);
+                hit.msa_eligible = msa_eligible;
+                hit.msa_eligibility_reason = msa_reason;
                 Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
                 Self::retain_top_rna_read_hit(&mut retained_hits, hit);
                 reads_processed = reads_processed.saturating_add(1);
@@ -3992,6 +4751,7 @@ impl GentleEngine {
         let retained_hit_count = retained_hits.len();
         let hits = Self::apply_rna_read_report_mode_to_hits(report_mode, retained_hits.clone());
         let report_hit_count = hits.len();
+        let retained_count_msa_eligible = hits.iter().filter(|hit| hit.msa_eligible).count();
         isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
             &read_length_counts,
@@ -4152,6 +4912,7 @@ impl GentleEngine {
             read_count_total: reads_total,
             read_count_seed_passed: seed_passed,
             read_count_aligned: aligned,
+            retained_count_msa_eligible,
             warnings,
             hits,
             exon_support_frequencies,
@@ -4162,5 +4923,4 @@ impl GentleEngine {
             score_density_bins,
         })
     }
-
 }

@@ -1,0 +1,58 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "rna_reads_interpret_cdna_tp73_template",
+  "title": "RNA reads: Interpret Nanopore cDNA (TP73 template)",
+  "summary": "Template workflow for running InterpretRnaReads via the generic workflow path. Edit seq_id, seed_feature_id, and input_path to your project context before execution.",
+  "test_mode": "skip",
+  "required_files": [],
+  "tags": [
+    "rna_reads",
+    "nanopore",
+    "cdna",
+    "workflow",
+    "template",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_rna_reads_interpret_cdna_tp73",
+    "ops": [
+      {
+        "InterpretRnaReads": {
+          "seq_id": "tp73.ncbi",
+          "seed_feature_id": 0,
+          "profile": "nanopore_cdna_v1",
+          "input_path": "test_files/SRR32957124_10000.fasta",
+          "input_format": "fasta",
+          "scope": "all_overlapping_both_strands",
+          "origin_mode": "single_gene",
+          "target_gene_ids": [],
+          "roi_seed_capture_enabled": false,
+          "seed_filter": {
+            "kmer_len": 10,
+            "short_full_hash_max_bp": 420,
+            "long_window_bp": 140,
+            "long_window_count": 3,
+            "min_seed_hit_fraction": 0.3,
+            "min_weighted_seed_hit_fraction": 0.05,
+            "min_unique_matched_kmers": 12,
+            "max_median_transcript_gap": 4.0,
+            "min_chain_consistency_fraction": 0.4,
+            "min_confirmed_exon_transitions": 1,
+            "min_transition_support_fraction": 0.05,
+            "cdna_poly_t_flip_enabled": true,
+            "poly_t_prefix_min_bp": 18
+          },
+          "align_config": {
+            "band_width_bp": 24,
+            "min_identity_fraction": 0.6,
+            "max_secondary_mappings": 0
+          },
+          "report_id": "cdna_srr32957124_10000",
+          "report_mode": "seed_passed_only",
+          "checkpoint_every_reads": 10000,
+          "resume_from_checkpoint": false
+        }
+      }
+    ]
+  }
+}

@@ -419,6 +419,10 @@ pub struct GENtleApp {
     help_agent_interface_markdown: String,
     help_reviewer_preview_markdown: String,
     help_shell_markdown: String,
+    help_tutorial_markdown: String,
+    help_tutorial_title: String,
+    help_tutorial_entries: Vec<HelpTutorialDocEntry>,
+    help_tutorial_selected: usize,
     help_shell_interface: ShellHelpInterface,
     help_search_query: String,
     help_search_matches: Vec<HelpSearchMatch>,
@@ -651,13 +655,21 @@ struct TutorialProjectEntry {
     repo_root: PathBuf,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug)]
+struct HelpTutorialDocEntry {
+    title: String,
+    path: String,
+    summary: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HelpDoc {
     Gui,
     Cli,
     AgentInterface,
     ReviewerPreview,
     Shell,
+    Tutorial,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1224,6 +1236,10 @@ impl Default for GENtleApp {
             help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
             help_reviewer_preview_markdown: REVIEWER_PREVIEW_MD.to_string(),
             help_shell_markdown: Self::generate_shell_help_markdown(),
+            help_tutorial_markdown: String::new(),
+            help_tutorial_title: "Tutorial".to_string(),
+            help_tutorial_entries: vec![],
+            help_tutorial_selected: 0,
             help_shell_interface: ShellHelpInterface::GuiShell,
             help_search_query: String::new(),
             help_search_matches: vec![],
@@ -2028,6 +2044,150 @@ impl GENtleApp {
         fallback.to_string()
     }
 
+    fn load_help_markdown_from_path(path: &Path) -> Option<String> {
+        let text = fs::read_to_string(path).ok()?;
+        if let Some(base_dir) = path.parent() {
+            return Some(Self::rewrite_markdown_relative_image_links(&text, base_dir));
+        }
+        Some(text)
+    }
+
+    fn collect_markdown_paths_recursive(root: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(root) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                Self::collect_markdown_paths_recursive(&path, out);
+                continue;
+            }
+            let Some(ext) = path.extension().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if ext.eq_ignore_ascii_case("md") {
+                out.push(path);
+            }
+        }
+    }
+
+    fn markdown_first_heading(markdown: &str) -> Option<String> {
+        markdown.lines().find_map(|line| {
+            let trimmed = line.trim();
+            let heading = trimmed.strip_prefix('#')?;
+            let title = heading.trim_start_matches('#').trim();
+            if title.is_empty() {
+                return None;
+            }
+            Some(title.to_string())
+        })
+    }
+
+    fn markdown_title_from_path(path: &Path) -> String {
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("tutorial");
+        let cleaned =
+            stem.trim_start_matches(|ch: char| ch.is_ascii_digit() || ch == '_' || ch == '-');
+        let normalized = cleaned
+            .replace(['_', '-'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized.is_empty() {
+            "Tutorial".to_string()
+        } else {
+            normalized
+        }
+    }
+
+    fn discover_help_tutorial_entries() -> Vec<HelpTutorialDocEntry> {
+        let Some(tutorial_root) = Self::resolve_runtime_doc_path("docs/tutorial") else {
+            return vec![];
+        };
+        let mut markdown_paths = Vec::new();
+        Self::collect_markdown_paths_recursive(&tutorial_root, &mut markdown_paths);
+        markdown_paths.sort_by(|left, right| {
+            let left_rel = left.strip_prefix(&tutorial_root).ok();
+            let right_rel = right.strip_prefix(&tutorial_root).ok();
+            let left_depth = left_rel
+                .map(|value| value.components().count())
+                .unwrap_or(usize::MAX);
+            let right_depth = right_rel
+                .map(|value| value.components().count())
+                .unwrap_or(usize::MAX);
+            left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
+        });
+
+        markdown_paths
+            .into_iter()
+            .map(|path| {
+                let markdown = Self::load_help_markdown_from_path(&path).unwrap_or_default();
+                let title = Self::markdown_first_heading(&markdown)
+                    .unwrap_or_else(|| Self::markdown_title_from_path(&path));
+                let relative = path
+                    .strip_prefix(&tutorial_root)
+                    .map(|value| value.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| path.to_string_lossy().to_string());
+                HelpTutorialDocEntry {
+                    title,
+                    path: path.to_string_lossy().to_string(),
+                    summary: format!("docs/tutorial/{relative}"),
+                }
+            })
+            .collect()
+    }
+
+    fn set_help_tutorial_selected(&mut self, tutorial_index: usize) -> bool {
+        if self.help_tutorial_entries.is_empty() {
+            self.help_tutorial_selected = 0;
+            self.help_tutorial_title = "Tutorial".to_string();
+            self.help_tutorial_markdown =
+                "# Tutorials\n\nNo tutorial markdown files were found under `docs/tutorial`."
+                    .to_string();
+            return false;
+        }
+        let clamped_index = tutorial_index.min(self.help_tutorial_entries.len() - 1);
+        let changed = clamped_index != self.help_tutorial_selected;
+        self.help_tutorial_selected = clamped_index;
+        if let Some(entry) = self.help_tutorial_entries.get(clamped_index) {
+            self.help_tutorial_title = entry.title.clone();
+            let tutorial_path = PathBuf::from(&entry.path);
+            self.help_tutorial_markdown = Self::load_help_markdown_from_path(&tutorial_path)
+                .unwrap_or_else(|| {
+                    format!(
+                        "# {}\n\nCould not load tutorial markdown from `{}`.",
+                        entry.title, entry.summary
+                    )
+                });
+        }
+        changed
+    }
+
+    fn open_help_tutorial_doc(&mut self, tutorial_index: usize) {
+        if self.help_tutorial_entries.is_empty() {
+            self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+        }
+        let opening_from_closed_state = !self.show_help_dialog;
+        if !self.show_help_dialog {
+            self.mark_viewport_open_requested(Self::help_viewport_id());
+        }
+        let previous_doc = self.help_doc;
+        let previous_tutorial_index = self.help_tutorial_selected;
+        self.set_help_tutorial_selected(tutorial_index);
+        self.help_doc = HelpDoc::Tutorial;
+        if opening_from_closed_state
+            || previous_doc != HelpDoc::Tutorial
+            || previous_tutorial_index != self.help_tutorial_selected
+        {
+            self.refresh_help_search_matches();
+        }
+        self.help_focus_search_box = true;
+        self.show_help_dialog = true;
+        self.queue_focus_viewport(Self::help_viewport_id());
+    }
+
     fn generate_shell_help_markdown_for(interface: ShellHelpInterface) -> String {
         let interface_filter = interface.glossary_filter();
         if let Some(runtime_path) = Self::resolve_runtime_doc_path("docs/glossary.json") {
@@ -2062,6 +2222,8 @@ Error: `{err}`"
             Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
         self.help_shell_markdown =
             Self::generate_shell_help_markdown_for(self.help_shell_interface);
+        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+        self.set_help_tutorial_selected(self.help_tutorial_selected);
     }
 
     fn ensure_help_docs_loaded(&mut self) {
@@ -2822,6 +2984,10 @@ Error: `{err}`"
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
+        if doc == HelpDoc::Tutorial {
+            self.open_help_tutorial_doc(self.help_tutorial_selected);
+            return;
+        }
         if self.show_help_dialog && self.help_doc == doc {
             self.queue_focus_viewport(Self::help_viewport_id());
             return;
@@ -2843,13 +3009,14 @@ Error: `{err}`"
         self.queue_focus_viewport(Self::help_viewport_id());
     }
 
-    fn active_help_title(&self) -> &'static str {
+    fn active_help_title(&self) -> &str {
         match self.help_doc {
             HelpDoc::Gui => "GUI Manual",
             HelpDoc::Cli => "CLI Manual",
             HelpDoc::AgentInterface => "Agent Interface",
             HelpDoc::ReviewerPreview => "Reviewer Quickstart",
             HelpDoc::Shell => "Shell Commands",
+            HelpDoc::Tutorial => self.help_tutorial_title.as_str(),
         }
     }
 
@@ -2860,6 +3027,7 @@ Error: `{err}`"
             HelpDoc::AgentInterface => &self.help_agent_interface_markdown,
             HelpDoc::ReviewerPreview => &self.help_reviewer_preview_markdown,
             HelpDoc::Shell => &self.help_shell_markdown,
+            HelpDoc::Tutorial => &self.help_tutorial_markdown,
         }
     }
 
@@ -3866,7 +4034,9 @@ Error: `{err}`"
         self.planning_objective_json = Self::pretty_json_or_fallback(&objective);
     }
 
-    fn parse_optional_planning_profile_json(raw_json: &str) -> Result<Option<PlanningProfile>, String> {
+    fn parse_optional_planning_profile_json(
+        raw_json: &str,
+    ) -> Result<Option<PlanningProfile>, String> {
         let trimmed = raw_json.trim();
         if trimmed.is_empty() {
             return Ok(None);
@@ -3899,10 +4069,8 @@ Error: `{err}`"
                 match outcome {
                     Ok(()) => {
                         self.refresh_planning_editor_buffers_from_engine();
-                        self.planning_status = format!(
-                            "Planning profile '{}' updated",
-                            scope.as_str()
-                        );
+                        self.planning_status =
+                            format!("Planning profile '{}' updated", scope.as_str());
                     }
                     Err(e) => {
                         self.planning_status = format!(
@@ -3970,8 +4138,8 @@ Error: `{err}`"
         match outcome {
             Ok(()) => {
                 self.refresh_planning_editor_buffers_from_engine();
-                self.planning_status = "Planning objective cleared (engine defaults active)"
-                    .to_string();
+                self.planning_status =
+                    "Planning objective cleared (engine defaults active)".to_string();
             }
             Err(e) => {
                 self.planning_status = format!("Could not clear planning objective: {}", e.message);
@@ -4040,8 +4208,7 @@ Error: `{err}`"
                 self.refresh_planning_editor_buffers_from_engine();
                 self.planning_status = format!(
                     "Registered planning {} suggestion '{}'",
-                    direction,
-                    suggestion.suggestion_id
+                    direction, suggestion.suggestion_id
                 );
             }
             Err(e) => {
@@ -4083,10 +4250,11 @@ Error: `{err}`"
         } else {
             Some(rejection_reason)
         };
-        let outcome = self.engine.write().unwrap().reject_planning_suggestion(
-            suggestion_id,
-            rejection_reason.as_deref(),
-        );
+        let outcome = self
+            .engine
+            .write()
+            .unwrap()
+            .reject_planning_suggestion(suggestion_id, rejection_reason.as_deref());
         match outcome {
             Ok(suggestion) => {
                 self.refresh_planning_editor_buffers_from_engine();
@@ -7935,6 +8103,9 @@ Error: `{err}`"
                     );
                 });
                 ui.small("Examples: AY738222, NC_000001");
+                ui.small(
+                    "If network fetch is unavailable, use File -> Open Sequence... with a local GenBank file.",
+                );
                 if !self.genbank_status.trim().is_empty() {
                     ui.separator();
                     ui.monospace(self.genbank_status.clone());
@@ -10165,7 +10336,9 @@ Error: `{err}`"
         ui.horizontal(|ui| {
             if ui
                 .button("Apply Agent Overlay")
-                .on_hover_text("Set planning profile scope 'confirmed_agent_overlay' from this JSON")
+                .on_hover_text(
+                    "Set planning profile scope 'confirmed_agent_overlay' from this JSON",
+                )
                 .clicked()
             {
                 let payload = self.planning_profile_overlay_json.clone();
@@ -10260,13 +10433,15 @@ Error: `{err}`"
             );
             ui.label("snapshot");
             ui.add(
-                egui::TextEdit::singleline(&mut self.planning_sync_snapshot_id).desired_width(180.0),
+                egui::TextEdit::singleline(&mut self.planning_sync_snapshot_id)
+                    .desired_width(180.0),
             );
         });
         ui.horizontal(|ui| {
             ui.label("message");
             ui.add(
-                egui::TextEdit::singleline(&mut self.planning_sync_message).desired_width(f32::INFINITY),
+                egui::TextEdit::singleline(&mut self.planning_sync_message)
+                    .desired_width(f32::INFINITY),
             );
         });
         ui.label("sync payload JSON ({ profile_patch?, objective_patch? })");
@@ -10296,7 +10471,9 @@ Error: `{err}`"
         ui.horizontal(|ui| {
             ui.label("suggestion filter");
             egui::ComboBox::from_id_salt("planning_suggestions_filter")
-                .selected_text(Self::planning_filter_label(self.planning_suggestions_filter))
+                .selected_text(Self::planning_filter_label(
+                    self.planning_suggestions_filter,
+                ))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.planning_suggestions_filter, None, "all");
                     ui.selectable_value(
@@ -10317,7 +10494,8 @@ Error: `{err}`"
                 });
             ui.label("reject reason");
             ui.add(
-                egui::TextEdit::singleline(&mut self.planning_rejection_reason).desired_width(260.0),
+                egui::TextEdit::singleline(&mut self.planning_rejection_reason)
+                    .desired_width(260.0),
             );
         });
         let (sync_status, suggestions) = {
@@ -13590,6 +13768,30 @@ Error: `{err}`"
                     self.open_help_doc(HelpDoc::Shell);
                     ui.close();
                 }
+                ui.menu_button("Tutorials", |ui| {
+                    if self.help_tutorial_entries.is_empty() {
+                        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+                        self.set_help_tutorial_selected(self.help_tutorial_selected);
+                    }
+                    if self.help_tutorial_entries.is_empty() {
+                        ui.add_enabled(false, egui::Button::new("No tutorial docs found"));
+                        return;
+                    }
+                    let mut selected_tutorial: Option<usize> = None;
+                    for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
+                        if ui
+                            .button(entry.title.as_str())
+                            .on_hover_text(format!("Open {}\n{}", entry.title, entry.summary))
+                            .clicked()
+                        {
+                            selected_tutorial = Some(index);
+                        }
+                    }
+                    if let Some(index) = selected_tutorial {
+                        self.open_help_tutorial_doc(index);
+                        ui.close();
+                    }
+                });
                 ui.separator();
                 if ui
                     .button("About GENtle")
@@ -14987,32 +15189,6 @@ Error: `{err}`"
         ui.heading("Lineage Graph");
         ui.label(format!("Project: {}", self.current_project_name()));
         ui.label("Project-level sequence lineage (branch and merge aware)");
-        ui.horizontal(|ui| {
-            let prepare_resp = self.track_hover_status(
-                ui.button("Prepare Reference Genome...")
-                    .on_hover_text("Download and index reference genomes"),
-                "Lineage > Prepare Reference Genome",
-            );
-            if prepare_resp.clicked() {
-                self.open_reference_genome_prepare_dialog();
-            }
-            let retrieve_resp = self.track_hover_status(
-                ui.button("Retrieve Genomic Sequence...")
-                    .on_hover_text("Extract sequence regions from prepared genomes"),
-                "Lineage > Retrieve Genomic Sequence",
-            );
-            if retrieve_resp.clicked() {
-                self.open_reference_genome_retrieve_dialog();
-            }
-            let blast_resp = self.track_hover_status(
-                ui.button("BLAST Genome Sequence...")
-                    .on_hover_text("Run BLAST against prepared genome indices"),
-                "Lineage > BLAST Genome Sequence",
-            );
-            if blast_resp.clicked() {
-                self.open_reference_genome_blast_dialog();
-            }
-        });
         ui.horizontal(|ui| {
             let table = self.track_hover_status(
                 ui.selectable_label(!self.lineage_graph_view, "Table")
@@ -19027,6 +19203,18 @@ Error: `{err}`"
                     self.help_doc = HelpDoc::Shell;
                     active_doc_changed = true;
                 }
+                if ui
+                    .selectable_label(self.help_doc == HelpDoc::Tutorial, "Tutorial")
+                    .on_hover_text("Open tutorial markdown docs")
+                    .clicked()
+                {
+                    if self.help_tutorial_entries.is_empty() {
+                        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+                    }
+                    self.set_help_tutorial_selected(self.help_tutorial_selected);
+                    self.help_doc = HelpDoc::Tutorial;
+                    active_doc_changed = true;
+                }
                 if self.help_doc == HelpDoc::Shell {
                     ui.separator();
                     ui.label("Interface:");
@@ -19052,6 +19240,40 @@ Error: `{err}`"
                         self.help_shell_markdown =
                             Self::generate_shell_help_markdown_for(self.help_shell_interface);
                         self.help_markdown_cache = CommonMarkCache::default();
+                        active_doc_changed = true;
+                    }
+                }
+                if self.help_doc == HelpDoc::Tutorial {
+                    if self.help_tutorial_entries.is_empty() {
+                        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+                        self.set_help_tutorial_selected(self.help_tutorial_selected);
+                    }
+                    ui.separator();
+                    ui.label("Topic:");
+                    let selected_tutorial_title = self
+                        .help_tutorial_entries
+                        .get(self.help_tutorial_selected)
+                        .map(|entry| entry.title.as_str())
+                        .unwrap_or("No tutorial docs found");
+                    let mut selected_tutorial_index = None;
+                    egui::ComboBox::from_id_salt("help_tutorial_topic")
+                        .selected_text(selected_tutorial_title)
+                        .show_ui(ui, |ui| {
+                            for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
+                                if ui
+                                    .selectable_label(
+                                        index == self.help_tutorial_selected,
+                                        entry.title.as_str(),
+                                    )
+                                    .on_hover_text(entry.summary.as_str())
+                                    .clicked()
+                                {
+                                    selected_tutorial_index = Some(index);
+                                }
+                            }
+                        });
+                    if let Some(index) = selected_tutorial_index {
+                        self.set_help_tutorial_selected(index);
                         active_doc_changed = true;
                     }
                 }
@@ -19156,6 +19378,7 @@ Error: `{err}`"
                         HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
                         HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
                         HelpDoc::Shell => self.help_shell_markdown.as_str(),
+                        HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
                     };
                     let _ = max_image_width;
                     // Temporary compatibility fallback: render help markdown as wrapped text
@@ -19929,9 +20152,9 @@ mod tests {
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab, EngineError, ErrorCode,
         GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageNodeGroup,
-        RoutineAssistantStage,
+        GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
+        LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS, PersistedConfiguration,
+        PersistedLineageNodeGroup, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -20177,6 +20400,31 @@ mod tests {
 
         assert_eq!(app.help_search_matches.len(), 1);
         assert_eq!(app.help_search_matches[0].line_number, 7);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::help_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_help_tutorial_doc_switches_to_tutorial_view_and_loads_markdown() {
+        let temp = tempdir().expect("tempdir");
+        let tutorial_path = temp.path().join("tutorial.md");
+        fs::write(&tutorial_path, "# Tutorial Test\n\nBody line.\n").expect("write tutorial");
+
+        let mut app = GENtleApp::default();
+        app.help_tutorial_entries = vec![HelpTutorialDocEntry {
+            title: "Tutorial Test".to_string(),
+            path: tutorial_path.to_string_lossy().to_string(),
+            summary: "docs/tutorial/tutorial.md".to_string(),
+        }];
+        app.help_tutorial_selected = 0;
+        app.open_help_tutorial_doc(0);
+
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(app.show_help_dialog);
+        assert_eq!(app.help_tutorial_title, "Tutorial Test");
+        assert!(app.help_tutorial_markdown.contains("Body line."));
         assert!(
             app.pending_focus_viewports
                 .contains(&GENtleApp::help_viewport_id())

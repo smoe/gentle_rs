@@ -1272,8 +1272,8 @@ Ownership/defer boundary:
 
 Goal:
 
-- Add low-latency sequence-self analysis in sequence windows without coupling
-  biological logic to GUI rendering.
+- Add low-latency sequence-self and sequence-vs-sequence analysis in sequence
+  windows without coupling biological logic to GUI rendering.
 - Support promoter-oriented interpretation (repeat structure + local
   flexibility proxies) through engine-owned, exportable view models.
 
@@ -1284,7 +1284,7 @@ Design constraints:
 - GUI/CLI/JS/Lua/SVG must consume the same engine payloads.
 - Feature geometry remains authoritative; analysis overlays are additive.
 
-Status (2026-03-08):
+Status (2026-03-15):
 
 - Implemented baseline:
   - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
@@ -1294,7 +1294,6 @@ Status (2026-03-08):
     - `flex compute|list|show`
 - Pending follow-ups:
   - `RenderDotplotSvg`
-  - dedicated GUI Dotplot mode and linked crosshair controls
   - JS/Lua/Python convenience wrappers beyond generic `apply_operation`
 
 Engine objects and operations:
@@ -1303,9 +1302,11 @@ Engine objects and operations:
   - `gentle.dotplot_view.v1`
   - typed fields:
     - `seq_id`
+    - `reference_seq_id?` (self mode keeps this `null`)
     - `span_start_0based`, `span_end_0based`
-    - `mode` (`self_forward`, `self_reverse_complement`, optional later
-      `seq_vs_seq`)
+    - `reference_span_start_0based`, `reference_span_end_0based`
+    - `mode` (`self_forward`, `self_reverse_complement`, `pair_forward`,
+      `pair_reverse_complement`)
     - `word_size`, `step_bp`, `max_mismatches`
     - sparse/packed match points in deterministic order
     - optional aggregated density tiles (multiresolution)
@@ -1319,7 +1320,7 @@ Engine objects and operations:
     - normalization metadata and min/max ranges
 - Operations:
   - implemented:
-    - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches, tile_bp?, store_as? }`
+    - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches, tile_bp?, store_as? }`
     - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }`
   - planned:
     - `RenderDotplotSvg { seq_id, dotplot_id, flexibility_ids?, path }`
@@ -1340,19 +1341,23 @@ Low-latency strategy (engine-first):
   deterministic progress phases (`index`, `seed-match`, `tile-aggregate`,
   `finalize`).
 
-GUI contract (planned):
+GUI contract (implemented baseline + follow-ups):
 
-- Add a sequence-window `Dotplot` mode (separate from map background by
-  default).
-- Support optional overlay mode with low alpha, but keep dedicated panel mode
-  as primary for readability.
-- Link cursor/crosshair between dotplot and linear map coordinates.
-- Provide compact parameter presets:
+- Implemented:
+  - sequence-window `Dotplot map` mode (separate from map background)
+  - bounded-span compute controls
+  - linked hover/locked crosshair behavior
+  - pair-mode rendering with separate query/reference axis spans
+  - query-axis selection sync in pair mode
+- Follow-ups:
+  - optional overlay mode with low alpha while keeping dedicated panel mode as
+    primary for readability
+  - compact parameter presets:
   - `fast-preview` (large word, coarse step)
   - `balanced`
   - `sensitive` (small word, fine step)
-- Provide promoter-flexibility toggles as separate tracks that can be shown
-  beneath/alongside dotplot (not fused into dotplot colors by default).
+  - promoter-flexibility toggles as separate tracks shown beneath/alongside
+    dotplot (not fused into dotplot colors by default).
 
 Determinism and parity rules:
 

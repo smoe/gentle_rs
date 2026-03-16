@@ -118,13 +118,19 @@ Primary map modes (linear topology):
 - `Splicing map`
   - transcript/exon lane rendering for selected `mRNA`/`exon` features
 - `Dotplot map`
-  - bounded local self-dotplot workflow for promoter-scale inspection
+  - bounded local dotplot workflow for promoter-scale inspection
   - default compute span uses viewport-centered `half_window_bp=500` (±500 bp)
+  - supports:
+    - self modes: `self_forward`, `self_reverse_complement`
+    - pair modes: `pair_forward`, `pair_reverse_complement`
+      - pair modes require `reference_seq_id`
+      - optional `ref_start` / `ref_end` set y-axis reference span
   - optional paired flexibility-track panel (`AT richness` / `AT skew`)
   - linked crosshair:
     - hover for live `x/y` coordinates in the plotted span
-    - click to lock crosshair and sync shared sequence selection to the
-      corresponding interval
+    - click to lock crosshair
+      - self modes: sync selection to x/y interval
+      - pair modes: sync selection from x/query axis (y/reference stays informational)
     - right-click to clear the locked crosshair
 
 Linear map zoom detail:
@@ -310,10 +316,31 @@ Feature tree grouping:
       `raw >= min hit AND weighted >= min weighted AND unique >= min(min unique, tested kmers) AND chain >= min chain AND median transcript gap <= max median gap AND confirmed transitions >= min transitions AND confirmed transition fraction >= min transition frac`
   - legacy short/long window fields are kept for compatibility and currently
     ignored (full-read hashing is always used in phase-1)
-  - alignment fields are kept as phase-2 placeholders and are ignored during
-    phase-1 Nanopore filtering
+  - alignment fields are active for phase-2 retained-read mapping:
+    - `align band`
+    - `min identity`
+    - `max secondary`
+    - `align selection` (`seed_passed|all|aligned`)
+  - `Run alignment phase (retained report)` executes
+    `AlignRnaReadReport` asynchronously for the current `Report ID`
+  - phase-2 alignment updates persisted report counters and support tables:
+    - `aligned`
+    - `msa-eligible(retained)`
+    - seed-confirmed exon-exon transition support table
+    - isoform support ranking table
+    - exon/transition abundance exports derived from refreshed support
+      frequencies
+  - phase-2 alignment strategy is reference-guided pairwise mapping
+    (`semiglobal` preferred with deterministic `local` fallback), and the
+    chosen mode is exported in read/report mapping summaries
   - run executes asynchronously (non-blocking UI) with live read-progress
     indicators
+  - workflow access routes for the same payload are available in the panel:
+    - `Prepare Workflow Op` stages the generated `InterpretRnaReads` operation
+      into `Engine Ops -> Workflow` (`run_id` + `ops` JSON)
+    - `Copy Workflow JSON` copies a complete workflow object
+      (`{"run_id":"...","ops":[...]}`) for `gentle_cli workflow ...` or shell
+      reuse
   - live status now shows seed-pass as count and percentage of reads processed
   - streaming progress includes `ETA:` (uppercase) estimate derived from
     compressed/plain input bytes consumed vs elapsed runtime; ETA refresh is
@@ -494,7 +521,21 @@ Node groups in lineage view:
 
 ## Toolbar buttons
 
-The top toolbar in each DNA window provides these controls (left to right):
+The top toolbar in each DNA window provides these controls (left to right).
+The exact set depends on `Mode`:
+
+- `Genome`
+  - read-focused; hides ROI extraction, sequence-derivation, and Engine Ops/Shell buttons
+- `Chromosomal`
+  - keeps ROI extraction (`Extract Sel`, `PCR ROI`), hides sequence-derivation and Engine Ops/Shell
+- `Region`
+  - full controls (default)
+- `Gene`
+  - full controls
+- `cDNA`
+  - full controls
+
+Controls:
 
 1. Circular/Linear toggle
    - Switches DNA map topology visualization between circular and linear.
@@ -502,7 +543,10 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Shows or hides the sequence text panel.
 3. Show/Hide map panel
    - Shows or hides the graphical DNA map.
-4. Splicing map (linear mode)
+4. Mode
+   - Chooses biological presentation context (`Genome`, `Chromosomal`, `Region`, `Gene`, `cDNA`).
+   - Toolbar groups are shown/hidden according to the selected context.
+5. Splicing map (linear mode)
    - Toggles primary map rendering between standard feature-map mode and a
      read-only transcript/exon splicing-lane mode for the selected
      `mRNA`/`exon` feature.
@@ -510,39 +554,39 @@ The top toolbar in each DNA window provides these controls (left to right):
      Splicing Expert window.
    - Clicking a transcript lane focuses the corresponding transcript feature in
      the sequence view.
-5. CDS
+6. CDS
    - Shows or hides CDS feature rendering.
-6. Gene
+7. Gene
    - Shows or hides gene feature rendering.
-7. mRNA
+8. mRNA
    - Shows or hides mRNA feature rendering.
-8. Show/Hide TFBS
+9. Show/Hide TFBS
    - Toggles computed TFBS annotations.
    - Default is off.
-9. Show/Hide restriction enzymes
+10. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
-10. Show/Hide GC content
+11. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).
-11. Show/Hide ORFs
+12. Show/Hide ORFs
    - Toggles open reading frame overlays.
-12. Show/Hide methylation sites
+13. Show/Hide methylation sites
    - Toggles methylation-site markers.
-13. Extract Sel
+14. Extract Sel
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
-14. PCR ROI
+15. PCR ROI
    - `PCR ROI` menu seeds Primer/qPCR design ROI fields directly from:
      - current map/text selection
      - selected feature bounds
    - opens Engine Ops so the user can run `Design Primer Pairs` or
      `Design qPCR Assays`.
-15. Export Seq
+16. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-16. Export SVG
+17. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-17. Export View SVG
+18. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
    - When linear `Splicing map` mode is active, export uses the same splicing
@@ -554,10 +598,10 @@ The top toolbar in each DNA window provides these controls (left to right):
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
    - Debug builds include adaptive routing-tier diagnostics in the SVG header.
-18. Export RNA SVG (ssRNA only)
+19. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-19. Engine Ops
+20. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
    - Digest quick-fill actions:
      - `Use MCS enzymes`: fills digest enzyme list from MCS feature context
@@ -566,7 +610,7 @@ The top toolbar in each DNA window provides these controls (left to right):
        once in the active sequence.
      - `Single-cutters in CDS`: same single-cutter filter constrained to
        cleavage positions inside CDS features.
-20. Shell
+21. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 
@@ -914,6 +958,8 @@ The `Help` menu now includes:
 - `Reviewer Quickstart`: opens `docs/reviewer_preview.md` (internal preview checklist and known limitations)
 - `Shell Commands`: generated command reference from `docs/glossary.json`
   (usage + task summary per command)
+- `Tutorials`: opens tutorial markdown docs from `docs/tutorial/**` in the same
+  help window (`Topic` selector in the help header)
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - Shell command reference includes an `Interface` selector:
@@ -1747,7 +1793,10 @@ Tutorial projects:
     using Promega AY738222 input, plus per-step GUI/CLI parity mapping.
   - canonical workflow skeleton:
     `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
-    (`test_mode: skip`, external input placeholder by design).
+    (`test_mode: skip`, online GenBank retrieval involved by design).
+  - `docs/tutorial/two_sequence_dotplot_gui.md`
+    - retrieve two GenBank sequences and compare them in `Dotplot map` using
+      pair modes (`pair_forward` / `pair_reverse_complement`).
 
 Shortcut:
 

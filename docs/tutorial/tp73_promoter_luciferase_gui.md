@@ -268,8 +268,7 @@ Meaning:
   GUI/CLI/agent consistency checks.
 - It is maintained in-repository as reference documentation for this
   tutorial scenario.
-- `test_mode: "skip"` indicates external inputs are intentionally involved
-  (for example online fetch/prepared genome assumptions), so default automated
-  tests only
+- `test_mode: "skip"` indicates external dependencies are intentionally involved
+  (for example online GenBank fetch and prepared-genome assumptions), so default automated tests only
   check the JSON structure for this example instead of always executing it
   end-to-end.

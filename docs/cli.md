@@ -165,6 +165,9 @@ Dotplot/flexibility capability status:
   - `dotplot compute|list|show`
   - `flex compute|list|show`
   backed by `ComputeDotplot` and `ComputeFlexibilityTrack`.
+  - `dotplot compute` supports self and pairwise modes via
+    `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
+    with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
   `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
@@ -174,6 +177,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
 - `gentle_cli`: supported via shared-shell/direct commands:
   - `rna-reads interpret`
+  - `rna-reads align-report`
   - `rna-reads list-reports`
   - `rna-reads show-report`
   - `rna-reads export-report`
@@ -182,17 +186,30 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
-  backed by `InterpretRnaReads`, `ListRnaReadReports`, `ShowRnaReadReport`,
-  `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
+  backed by `InterpretRnaReads`, `AlignRnaReadReport`,
+  `ListRnaReadReports`, `ShowRnaReadReport`, `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
   `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`,
   `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadScoreDensitySvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
+  Phase split:
+  - `interpret`: seed-filter pass (Nanopore phase-1)
+  - `align-report`: retained-hit alignment pass (phase-2) that updates
+    mapping fields, MSA-eligibility counters, exon-transition rows, and
+    exon/junction abundance frequencies in the persisted report.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.
 - `gentle_lua`: baseline support via `apply_operation` for the same operation
   family.
+- GUI workflow parity:
+  - Splicing Expert `Nanopore cDNA interpretation` now exposes
+    `Prepare Workflow Op` and `Copy Workflow JSON` so the exact
+    `InterpretRnaReads` payload can be executed via regular workflow routes.
+  - Example:
+    - `gentle_cli workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json`
+    - or paste copied JSON directly:
+      `gentle_cli workflow '{"run_id":"workflow_rna_reads_tp73_ncbi_cdna_srr32957124","ops":[{"InterpretRnaReads":{"seq_id":"tp73.ncbi","seed_feature_id":0,"profile":"nanopore_cdna_v1","input_path":"reads.fa.gz","input_format":"fasta","scope":"all_overlapping_both_strands","seed_filter":{"kmer_len":10,"short_full_hash_max_bp":420,"long_window_bp":140,"long_window_count":3,"min_seed_hit_fraction":0.30,"min_weighted_seed_hit_fraction":0.05,"min_unique_matched_kmers":12,"max_median_transcript_gap":4.0,"min_chain_consistency_fraction":0.40,"min_confirmed_exon_transitions":1,"min_transition_support_fraction":0.05,"cdna_poly_t_flip_enabled":true,"poly_t_prefix_min_bp":18},"align_config":{"band_width_bp":24,"min_identity_fraction":0.60,"max_secondary_mappings":0},"report_id":"cdna_reads"}}]}'`
 
 Feature-expert SVG parity status:
 
@@ -686,6 +703,7 @@ cargo run --bin gentle_cli -- help --format json
 cargo run --bin gentle_cli -- op '<operation-json>'
 cargo run --bin gentle_cli -- workflow '<workflow-json>'
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/rna_reads_interpret_cdna_tp73_template.json
 cargo run --bin gentle_cli -- --progress op '<operation-json>'
 cargo run --bin gentle_cli -- --progress-stdout workflow '<workflow-json>'
 cargo run --bin gentle_cli -- export-state state.json
@@ -908,7 +926,7 @@ Shared shell command:
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
-    - `dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+    - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`
     - `dotplot show DOTPLOT_ID`
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
@@ -952,6 +970,17 @@ Shared shell command:
         the report payload for deterministic follow-up runs
       - phase-1 execution still uses the single-feature baseline index; sparse
         multi-gene/ROI-capture requests are surfaced as report warnings
+    - `rna-reads list-reports` rows expose sparse-origin request provenance:
+      `origin_mode`, `target_gene_count`, and `roi_seed_capture_enabled`
+      - shell/CLI JSON output also includes `summary_rows[]` for quick
+        human-readable triage (`mode`, `origin`, target count, ROI-capture
+        flag, and read counters)
+    - `rna-reads show-report` output includes a `summary` field with the same
+      compact provenance framing
+    - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
+      (`report_mode`, `origin_mode`, `target_gene_count`,
+      `target_gene_ids_json`, `roi_seed_capture_enabled`) and
+      `origin_class_counts_json` alongside exon/junction frequency JSON fields
     - report compaction and checkpoint options:
       - `--report-mode full` (default): persist retained top hits as ranked
       - `--report-mode seed_passed_only`: persist only retained hits that

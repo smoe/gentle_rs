@@ -112,9 +112,10 @@ Current draft operations:
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
-- `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline)
+- `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
-- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA profile implemented in phase-1; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
+- `AlignRnaReadReport { report_id, selection, align_config_override? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
@@ -1333,13 +1334,16 @@ Primer-design shell command family (implemented):
 Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:
-  - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
-  - `mode`: `self_forward | self_reverse_complement`
+  - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `mode`: `self_forward | self_reverse_complement | pair_forward | pair_reverse_complement`
+  - pair modes require `reference_seq_id` and use the optional
+    `reference_span_start_0based` / `reference_span_end_0based` for the
+    y/reference axis.
   - stores payload schema `gentle.dotplot_view.v1`
   - guardrails:
     - `word_size >= 1`
     - `step_bp >= 1`
-    - span must satisfy `0 <= start < end <= sequence_len`
+    - query/reference spans must satisfy `0 <= start < end <= sequence_len`
     - pair-evaluation safety limit is enforced for latency protection
     - point count is capped with deterministic truncation warning
 - Flexibility operation:
@@ -1355,7 +1359,7 @@ Dotplot + flexibility operation contract (implemented baseline):
   - store schema: `gentle.dotplot_analysis_store.v1`
   - both dotplots and flexibility tracks are persisted under this key
 - Shared-shell command family:
-  - `dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+  - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
   - `dotplot list [SEQ_ID]`
   - `dotplot show DOTPLOT_ID`
   - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
@@ -1364,8 +1368,9 @@ Dotplot + flexibility operation contract (implemented baseline):
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 
-- Operation:
+- Operations:
   - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
+  - `AlignRnaReadReport { report_id, selection, align_config_override? }`
   - implemented profile: `nanopore_cdna_v1`
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
@@ -1408,10 +1413,26 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       snapshots (`gentle.rna_read_interpret_checkpoint.v1`) during streaming
     - `resume_from_checkpoint=true` resumes from the checkpoint snapshot and
       fast-forwards already-processed records deterministically
+  - phase-2 alignment behavior:
+    - `AlignRnaReadReport` loads a persisted report and reprocesses a selected
+      retained subset (`all|seed_passed|aligned`)
+    - aligner configuration uses `align_config_override` when supplied,
+      otherwise the report-stored `align_config`
+    - updated report fields include:
+      - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
+      - per-hit `msa_eligible` and `msa_eligibility_reason`
+      - aggregate `read_count_aligned` and `retained_count_msa_eligible`
+      - refreshed transition/isoform support rows and exon/junction abundance
+        frequencies
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
   - metadata key: `rna_read_reports`
+  - `rna-reads list-reports` summary rows include sparse-origin request
+    provenance:
+    - `origin_mode`
+    - `target_gene_count`
+    - `roi_seed_capture_enabled`
   - report payload now includes per-report:
     - `exon_support_frequencies[]`
     - `junction_support_frequencies[]`
@@ -1430,13 +1451,19 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `origin_confidence`
     - `strand_confidence`
     - `origin_candidates[]` (selected/plus/minus/seed-chain candidate hints)
+    - `best_mapping.alignment_mode` (`semiglobal` preferred, with deterministic
+      local fallback when quality is better)
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
-  - output: TSV with run/read metrics and JSON-serialized exon/junction
-    frequency columns for cohort-level downstream analysis.
+  - output: TSV with run/read metrics, sparse-origin request provenance
+    (`report_mode`, `origin_mode`, `target_gene_count`,
+    `target_gene_ids_json`, `roi_seed_capture_enabled`), JSON-serialized
+    exon/junction frequency columns, and `origin_class_counts_json` for
+    cohort-level downstream analysis.
 - Shared-shell command family:
-- `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
@@ -1445,6 +1472,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+  - shell output convenience fields:
+    - `rna-reads list-reports` includes `summary_rows[]` with concise
+      human-readable provenance lines (`mode`, `origin`, target count,
+      ROI-capture flag, read counters)
+    - `rna-reads show-report` includes `summary` with the same provenance
+      framing for one report
 - `rna-reads export-hits-fasta` header extensions:
   - `exon_path_tx=<transcript_id|none>`
   - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
@@ -1512,6 +1545,14 @@ Async BLAST shell contract (agent/MCP-ready baseline):
   "ops": ["Operation", "Operation", "..."]
 }
 ```
+
+Notes:
+
+- Splicing Expert `Nanopore cDNA interpretation` uses this same workflow shape
+  when you click `Copy Workflow JSON`.
+- `Prepare Workflow Op` in the same panel writes `run_id`/`ops` into the GUI
+  workflow runner so the exact `InterpretRnaReads` payload can be rerun through
+  the generic workflow path.
 
 ### OpResult
 

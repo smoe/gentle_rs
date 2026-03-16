@@ -80,6 +80,61 @@ impl PrimaryMapMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum DnaPresentationMode {
+    Genome,
+    Chromosomal,
+    #[default]
+    Region,
+    Gene,
+    Cdna,
+}
+
+impl DnaPresentationMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Genome => "Genome",
+            Self::Chromosomal => "Chromosomal",
+            Self::Region => "Region",
+            Self::Gene => "Gene",
+            Self::Cdna => "cDNA",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Genome => {
+                "Read-focused whole-genome context: hide region editing/cloning/engine-action buttons."
+            }
+            Self::Chromosomal => {
+                "Chromosome-context inspection: allow ROI extraction/primer seeding, hide sequence-derivation and engine-action buttons."
+            }
+            Self::Region => {
+                "General promoter/region workflow: full editing, cloning, and engine/shell controls."
+            }
+            Self::Gene => {
+                "Gene-centric workflow: full editing, cloning, and engine/shell controls."
+            }
+            Self::Cdna => {
+                "cDNA workflow: full editing, cloning, and engine/shell controls for transcript-focused operations."
+            }
+        }
+    }
+
+    fn allows_roi_tools(self) -> bool {
+        !matches!(self, Self::Genome)
+    }
+
+    fn allows_derivation_tools(self) -> bool {
+        matches!(self, Self::Region | Self::Gene | Self::Cdna)
+    }
+
+    fn allows_engine_shell_panels(self) -> bool {
+        matches!(self, Self::Region | Self::Gene | Self::Cdna)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PrimerSideConstraintUiState {
@@ -224,6 +279,9 @@ struct DotplotOpsUiState {
     tile_bp: String,
     mode: DotplotMode,
     dotplot_id: String,
+    reference_seq_id: String,
+    reference_span_start_0based: String,
+    reference_span_end_0based: String,
     show_flexibility_track: bool,
     flex_model: FlexibilityModel,
     flex_bin_bp: String,
@@ -241,6 +299,9 @@ impl Default for DotplotOpsUiState {
             tile_bp: String::new(),
             mode: DotplotMode::SelfReverseComplement,
             dotplot_id: "dotplot_primary".to_string(),
+            reference_seq_id: String::new(),
+            reference_span_start_0based: String::new(),
+            reference_span_end_0based: String::new(),
             show_flexibility_track: true,
             flex_model: FlexibilityModel::AtRichness,
             flex_bin_bp: "25".to_string(),
@@ -291,6 +352,8 @@ struct RnaReadInterpretOpsUiState {
     align_band_width_bp: String,
     align_min_identity_fraction: String,
     align_max_secondary_mappings: String,
+    #[serde(default = "default_rna_align_selection")]
+    align_phase_selection: RnaReadHitSelection,
     #[serde(default = "default_true")]
     score_density_use_log_scale: bool,
     show_advanced: bool,
@@ -327,6 +390,7 @@ impl Default for RnaReadInterpretOpsUiState {
             align_band_width_bp: "24".to_string(),
             align_min_identity_fraction: "0.60".to_string(),
             align_max_secondary_mappings: "0".to_string(),
+            align_phase_selection: RnaReadHitSelection::SeedPassed,
             score_density_use_log_scale: true,
             show_advanced: false,
         }
@@ -361,6 +425,8 @@ struct EngineOpsUiState {
     show_shell: bool,
     #[serde(default)]
     primary_map_mode: PrimaryMapMode,
+    #[serde(default)]
+    dna_presentation_mode: DnaPresentationMode,
     #[serde(default)]
     dotplot_ui: DotplotOpsUiState,
     #[serde(default)]
@@ -678,13 +744,13 @@ struct EngineOpsUiState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
+    use super::{DnaPresentationMode, MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
-            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            SplicingScopePreset,
+            DotplotMode, Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation,
+            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
+            ProjectState, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{IsoformArchitectureExpertView, SplicingExpertView},
@@ -1959,6 +2025,15 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_dna_presentation_mode() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.dna_presentation_mode = DnaPresentationMode::Cdna;
+        let state = area.current_engine_ops_state();
+        assert_eq!(state.dna_presentation_mode, DnaPresentationMode::Cdna);
+    }
+
+    #[test]
     fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -1966,6 +2041,42 @@ mod tests {
         value.as_object_mut().unwrap().remove("primary_map_mode");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.primary_map_mode, PrimaryMapMode::Standard);
+    }
+
+    #[test]
+    fn dna_presentation_mode_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("dna_presentation_mode");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.dna_presentation_mode, DnaPresentationMode::Region);
+    }
+
+    #[test]
+    fn dna_presentation_mode_policy_gates_toolbar_groups() {
+        assert!(!DnaPresentationMode::Genome.allows_roi_tools());
+        assert!(!DnaPresentationMode::Genome.allows_derivation_tools());
+        assert!(!DnaPresentationMode::Genome.allows_engine_shell_panels());
+
+        assert!(DnaPresentationMode::Chromosomal.allows_roi_tools());
+        assert!(!DnaPresentationMode::Chromosomal.allows_derivation_tools());
+        assert!(!DnaPresentationMode::Chromosomal.allows_engine_shell_panels());
+
+        assert!(DnaPresentationMode::Region.allows_roi_tools());
+        assert!(DnaPresentationMode::Region.allows_derivation_tools());
+        assert!(DnaPresentationMode::Region.allows_engine_shell_panels());
+
+        assert!(DnaPresentationMode::Gene.allows_roi_tools());
+        assert!(DnaPresentationMode::Gene.allows_derivation_tools());
+        assert!(DnaPresentationMode::Gene.allows_engine_shell_panels());
+
+        assert!(DnaPresentationMode::Cdna.allows_roi_tools());
+        assert!(DnaPresentationMode::Cdna.allows_derivation_tools());
+        assert!(DnaPresentationMode::Cdna.allows_engine_shell_panels());
     }
 
     #[test]
@@ -2051,6 +2162,78 @@ mod tests {
             genes,
             vec!["TP73".to_string(), "tp53".to_string(), "tp63".to_string()]
         );
+    }
+
+    #[test]
+    fn sanitize_workflow_run_id_component_normalizes_symbols_and_case() {
+        assert_eq!(
+            MainAreaDna::sanitize_workflow_run_id_component("TP73 (tp73.ncbi)/RNA"),
+            "tp73_tp73_ncbi_rna"
+        );
+        assert_eq!(MainAreaDna::sanitize_workflow_run_id_component("___"), "");
+    }
+
+    #[test]
+    fn default_rna_read_workflow_run_id_uses_sanitized_components() {
+        assert_eq!(
+            MainAreaDna::default_rna_read_workflow_run_id("TP73.ncbi", "cdna SRR32957124"),
+            "workflow_rna_reads_tp73_ncbi_cdna_srr32957124"
+        );
+        assert_eq!(
+            MainAreaDna::default_rna_read_workflow_run_id("", ""),
+            "workflow_rna_reads_seq_cdna"
+        );
+    }
+
+    #[test]
+    fn build_splicing_rna_read_workflow_uses_interpret_payload_and_autorunid() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("TP73.ncbi".to_string()), None);
+        area.rna_reads_ui.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
+        area.rna_reads_ui.report_id.clear();
+        area.workflow_run_id.clear();
+        let view = SplicingExpertView {
+            seq_id: "TP73.ncbi".to_string(),
+            target_feature_id: 42,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let workflow = area
+            .build_splicing_rna_read_workflow(&view)
+            .expect("workflow");
+        assert_eq!(
+            workflow.run_id,
+            "workflow_rna_reads_tp73_ncbi_cdna_srr32957124"
+        );
+        assert_eq!(workflow.ops.len(), 1);
+        match &workflow.ops[0] {
+            Operation::InterpretRnaReads {
+                seq_id,
+                seed_feature_id,
+                input_path,
+                report_id,
+                ..
+            } => {
+                assert_eq!(seq_id, "TP73.ncbi");
+                assert_eq!(*seed_feature_id, 42);
+                assert_eq!(input_path, "/tmp/SRR32957124.fasta.gz");
+                assert_eq!(report_id.as_deref(), Some("cdna_srr32957124"));
+            }
+            other => panic!("unexpected workflow op: {other:?}"),
+        }
+        assert_eq!(area.rna_reads_ui.report_id, "cdna_srr32957124");
     }
 
     #[test]
@@ -2191,6 +2374,28 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_crosshair_selection_bounds_for_pair_mode_uses_query_axis() {
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds_for_mode(
+                DotplotMode::PairForward,
+                12,
+                80,
+                100,
+            ),
+            Some((12, 13))
+        );
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds_for_mode(
+                DotplotMode::PairReverseComplement,
+                99,
+                1,
+                100,
+            ),
+            Some((99, 100))
+        );
+    }
+
+    #[test]
     fn splicing_lane_index_at_y_returns_expected_lane() {
         assert_eq!(
             MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
@@ -2261,6 +2466,10 @@ fn default_min_chain_consistency_fraction_text() -> String {
 
 fn default_rna_checkpoint_every_reads_text() -> String {
     "10000".to_string()
+}
+
+fn default_rna_align_selection() -> RnaReadHitSelection {
+    RnaReadHitSelection::SeedPassed
 }
 
 fn default_primer_backend_auto() -> PrimerDesignBackend {
@@ -2521,6 +2730,7 @@ enum RnaReadTaskMessage {
 struct RnaReadTask {
     started: Instant,
     input_path: String,
+    operation_label: String,
     cancel_requested: Arc<AtomicBool>,
     receiver: Arc<Mutex<Receiver<RnaReadTaskMessage>>>,
 }
@@ -2536,6 +2746,7 @@ pub struct MainAreaDna {
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
     primary_map_mode: PrimaryMapMode,
+    dna_presentation_mode: DnaPresentationMode,
     dotplot_ui: DotplotOpsUiState,
     rna_reads_ui: RnaReadInterpretOpsUiState,
     show_engine_ops: bool,
@@ -2811,6 +3022,7 @@ impl MainAreaDna {
             show_sequence: true,
             show_map: true,
             primary_map_mode: PrimaryMapMode::Standard,
+            dna_presentation_mode: DnaPresentationMode::Region,
             dotplot_ui: DotplotOpsUiState::default(),
             rna_reads_ui: RnaReadInterpretOpsUiState::default(),
             show_engine_ops: false,
@@ -3847,6 +4059,9 @@ impl MainAreaDna {
         ui.horizontal_wrapped(|ui| {
             let icon_size = Self::top_panel_icon_size(ui);
             let layer_counts = self.compute_layer_visibility_counts();
+            let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
+            let allow_derivation_tools = self.dna_presentation_mode.allows_derivation_tools();
+            let allow_engine_shell_panels = self.dna_presentation_mode.allows_engine_shell_panels();
             let button = egui::Button::image(
                 ICON_CIRCULAR_LINEAR
                     .clone()
@@ -3916,6 +4131,45 @@ impl MainAreaDna {
                 self.show_map = !self.show_map;
                 self.set_display_visibility(DisplayTarget::MapPanel, self.show_map);
             };
+
+            ui.separator();
+            ui.label("Mode");
+            let mut mode_changed = false;
+            egui::ComboBox::from_id_salt((
+                "dna_presentation_mode",
+                self.seq_id.as_deref().unwrap_or("<no-seq-id>"),
+            ))
+            .selected_text(self.dna_presentation_mode.label())
+            .show_ui(ui, |ui| {
+                for mode in [
+                    DnaPresentationMode::Genome,
+                    DnaPresentationMode::Chromosomal,
+                    DnaPresentationMode::Region,
+                    DnaPresentationMode::Gene,
+                    DnaPresentationMode::Cdna,
+                ] {
+                    let response = ui.selectable_value(
+                        &mut self.dna_presentation_mode,
+                        mode,
+                        mode.label(),
+                    );
+                    if response.changed() {
+                        mode_changed = true;
+                    }
+                    response.on_hover_text(mode.hover_text());
+                }
+            })
+            .response
+            .on_hover_text(
+                "Choose the biological presentation context. The toolbar adapts offered actions to this mode.",
+            );
+            if mode_changed {
+                if !self.dna_presentation_mode.allows_engine_shell_panels() {
+                    self.show_engine_ops = false;
+                    self.show_shell = false;
+                }
+                self.save_engine_ops_state();
+            }
 
             if !self.is_circular() {
                 let mut next_mode = self.primary_map_mode;
@@ -4775,108 +5029,114 @@ impl MainAreaDna {
             };
             ui.small(format!("{methylation_count}"));
 
-            ui.separator();
-            if ui
-                .button("Extract Sel")
-                .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
-                .clicked()
-            {
-                self.extract_current_selection_as_sequence();
+            if allow_roi_tools || allow_derivation_tools {
+                ui.separator();
             }
-            ui.menu_button("PCR ROI", |ui| {
-                let selection_roi = self.current_selection_range_0based();
-                let selection_response = ui.add_enabled(
-                    selection_roi.is_some(),
-                    egui::Button::new("From current selection"),
-                );
-                let selection_response = if selection_roi.is_some() {
-                    selection_response.on_hover_text(
-                        "Seed Primer/qPCR design ROI from current linear selection and open Engine Ops",
-                    )
-                } else {
-                    selection_response.on_hover_text(
-                        "Requires a non-empty linear map/sequence selection",
-                    )
-                };
-                if selection_response.clicked() {
-                    if let Some((start, end_exclusive)) = selection_roi {
-                        self.seed_primer_design_roi_0based(
-                            start,
-                            end_exclusive,
-                            "current sequence selection",
-                        );
-                    }
-                    ui.close();
+            if allow_roi_tools {
+                if ui
+                    .button("Extract Sel")
+                    .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
+                    .clicked()
+                {
+                    self.extract_current_selection_as_sequence();
                 }
+                ui.menu_button("PCR ROI", |ui| {
+                    let selection_roi = self.current_selection_range_0based();
+                    let selection_response = ui.add_enabled(
+                        selection_roi.is_some(),
+                        egui::Button::new("From current selection"),
+                    );
+                    let selection_response = if selection_roi.is_some() {
+                        selection_response.on_hover_text(
+                            "Seed Primer/qPCR design ROI from current linear selection and open Engine Ops",
+                        )
+                    } else {
+                        selection_response.on_hover_text(
+                            "Requires a non-empty linear map/sequence selection",
+                        )
+                    };
+                    if selection_response.clicked() {
+                        if let Some((start, end_exclusive)) = selection_roi {
+                            self.seed_primer_design_roi_0based(
+                                start,
+                                end_exclusive,
+                                "current sequence selection",
+                            );
+                        }
+                        ui.close();
+                    }
 
-                let selected_feature_id = self
-                    .get_selected_feature_id()
-                    .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
-                let feature_roi = selected_feature_id.and_then(|feature_id| {
-                    self.feature_roi_range_0based(feature_id)
-                        .map(|roi| (feature_id, roi))
-                });
-                let feature_response = ui.add_enabled(
-                    feature_roi.is_some(),
-                    egui::Button::new("From selected feature"),
-                );
-                let feature_response = if feature_roi.is_some() {
-                    feature_response.on_hover_text(
-                        "Seed Primer/qPCR design ROI from currently selected feature bounds",
-                    )
-                } else {
-                    feature_response.on_hover_text("Requires one selected feature")
-                };
-                if feature_response.clicked() {
-                    if let Some((feature_id, (start, end_exclusive))) = feature_roi {
-                        self.seed_primer_design_roi_0based(
-                            start,
-                            end_exclusive,
-                            &format!("feature n-{feature_id}"),
-                        );
+                    let selected_feature_id = self
+                        .get_selected_feature_id()
+                        .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+                    let feature_roi = selected_feature_id.and_then(|feature_id| {
+                        self.feature_roi_range_0based(feature_id)
+                            .map(|roi| (feature_id, roi))
+                    });
+                    let feature_response = ui.add_enabled(
+                        feature_roi.is_some(),
+                        egui::Button::new("From selected feature"),
+                    );
+                    let feature_response = if feature_roi.is_some() {
+                        feature_response.on_hover_text(
+                            "Seed Primer/qPCR design ROI from currently selected feature bounds",
+                        )
+                    } else {
+                        feature_response.on_hover_text("Requires one selected feature")
+                    };
+                    if feature_response.clicked() {
+                        if let Some((feature_id, (start, end_exclusive))) = feature_roi {
+                            self.seed_primer_design_roi_0based(
+                                start,
+                                end_exclusive,
+                                &format!("feature n-{feature_id}"),
+                            );
+                        }
+                        ui.close();
                     }
-                    ui.close();
+                });
+            }
+            if allow_derivation_tools {
+                if ui
+                    .button("Rev")
+                    .on_hover_text("Create a reversed branch sequence")
+                    .clicked()
+                {
+                    self.apply_sequence_derivation(Operation::Reverse {
+                        input: self.seq_id.clone().unwrap_or_default(),
+                        output_id: None,
+                    });
                 }
-            });
-            if ui
-                .button("Rev")
-                .on_hover_text("Create a reversed branch sequence")
-                .clicked()
-            {
-                self.apply_sequence_derivation(Operation::Reverse {
-                    input: self.seq_id.clone().unwrap_or_default(),
-                    output_id: None,
-                });
-            }
-            if ui
-                .button("Comp")
-                .on_hover_text("Create a complemented branch sequence")
-                .clicked()
-            {
-                self.apply_sequence_derivation(Operation::Complement {
-                    input: self.seq_id.clone().unwrap_or_default(),
-                    output_id: None,
-                });
-            }
-            if ui
-                .button("RevComp")
-                .on_hover_text("Create a reverse-complement branch sequence")
-                .clicked()
-            {
-                self.apply_sequence_derivation(Operation::ReverseComplement {
-                    input: self.seq_id.clone().unwrap_or_default(),
-                    output_id: None,
-                });
-            }
-            if ui
-                .button("Branch")
-                .on_hover_text("Create an unchanged branch copy for alternative workflows")
-                .clicked()
-            {
-                self.apply_sequence_derivation(Operation::Branch {
-                    input: self.seq_id.clone().unwrap_or_default(),
-                    output_id: None,
-                });
+                if ui
+                    .button("Comp")
+                    .on_hover_text("Create a complemented branch sequence")
+                    .clicked()
+                {
+                    self.apply_sequence_derivation(Operation::Complement {
+                        input: self.seq_id.clone().unwrap_or_default(),
+                        output_id: None,
+                    });
+                }
+                if ui
+                    .button("RevComp")
+                    .on_hover_text("Create a reverse-complement branch sequence")
+                    .clicked()
+                {
+                    self.apply_sequence_derivation(Operation::ReverseComplement {
+                        input: self.seq_id.clone().unwrap_or_default(),
+                        output_id: None,
+                    });
+                }
+                if ui
+                    .button("Branch")
+                    .on_hover_text("Create an unchanged branch copy for alternative workflows")
+                    .clicked()
+                {
+                    self.apply_sequence_derivation(Operation::Branch {
+                        input: self.seq_id.clone().unwrap_or_default(),
+                        output_id: None,
+                    });
+                }
             }
             if ui
                 .button("Export Seq")
@@ -4932,24 +5192,26 @@ impl MainAreaDna {
             {
                 self.export_rna_structure_svg();
             }
-            ui.separator();
-            if ui
-                .button("Engine Ops")
-                .on_hover_text("Open strict engine operation controls")
-                .clicked()
-            {
-                self.show_engine_ops = !self.show_engine_ops;
-                self.save_engine_ops_state();
-            }
-            if ui
-                .button("Shell")
-                .on_hover_text(
-                    "Open GENtle shell (shared command parser/executor with gentle_cli shell)",
-                )
-                .clicked()
-            {
-                self.show_shell = !self.show_shell;
-                self.save_engine_ops_state();
+            if allow_engine_shell_panels {
+                ui.separator();
+                if ui
+                    .button("Engine Ops")
+                    .on_hover_text("Open strict engine operation controls")
+                    .clicked()
+                {
+                    self.show_engine_ops = !self.show_engine_ops;
+                    self.save_engine_ops_state();
+                }
+                if ui
+                    .button("Shell")
+                    .on_hover_text(
+                        "Open GENtle shell (shared command parser/executor with gentle_cli shell)",
+                    )
+                    .clicked()
+                {
+                    self.show_shell = !self.show_shell;
+                    self.save_engine_ops_state();
+                }
             }
         });
         if let Some((anchor_status, is_anchored)) = self.active_sequence_genome_anchor_status() {
@@ -5077,7 +5339,7 @@ impl MainAreaDna {
             self.render_rna_structure_panel(ui);
         }
 
-        if self.show_engine_ops {
+        if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels() {
             ui.separator();
             ui.collapsing("Strict Engine Operations", |ui| {
                 let resize_id = format!(
@@ -6486,7 +6748,7 @@ impl MainAreaDna {
             });
         }
 
-        if self.show_shell {
+        if self.show_shell && self.dna_presentation_mode.allows_engine_shell_panels() {
             ui.separator();
             self.render_shell_panel(ui);
         }
@@ -8276,6 +8538,25 @@ impl MainAreaDna {
             .collect()
     }
 
+    fn dotplot_reference_sequence_ids(&self) -> Vec<String> {
+        let Some(engine) = self.engine.as_ref() else {
+            return vec![];
+        };
+        let Ok(guard) = engine.read() else {
+            return vec![];
+        };
+        let mut ids: Vec<String> = guard.state().sequences.keys().cloned().collect();
+        ids.sort_by_key(|value| value.to_ascii_lowercase());
+        ids
+    }
+
+    fn dotplot_mode_requires_reference(mode: DotplotMode) -> bool {
+        matches!(
+            mode,
+            DotplotMode::PairForward | DotplotMode::PairReverseComplement
+        )
+    }
+
     fn bounded_center_window(
         sequence_len: usize,
         center_0based: usize,
@@ -8472,11 +8753,56 @@ impl MainAreaDna {
         } else {
             self.dotplot_ui.dotplot_id.trim().to_string()
         };
+        let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
+        let reference_seq_id = if requires_reference {
+            let value = self.dotplot_ui.reference_seq_id.trim();
+            if value.is_empty() {
+                self.op_status = format!(
+                    "Dotplot mode '{}' requires a reference sequence id",
+                    self.dotplot_ui.mode.as_str()
+                );
+                return;
+            }
+            Some(value.to_string())
+        } else {
+            None
+        };
+        let reference_span_start_0based = if requires_reference {
+            match Self::parse_optional_usize_text(
+                &self.dotplot_ui.reference_span_start_0based,
+                "dotplot reference_span_start_0based",
+            ) {
+                Ok(value) => value,
+                Err(e) => {
+                    self.op_status = e;
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        let reference_span_end_0based = if requires_reference {
+            match Self::parse_optional_usize_text(
+                &self.dotplot_ui.reference_span_end_0based,
+                "dotplot reference_span_end_0based",
+            ) {
+                Ok(value) => value,
+                Err(e) => {
+                    self.op_status = e;
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         self.dotplot_ui.dotplot_id = store_as.clone();
         self.apply_operation_with_feedback(Operation::ComputeDotplot {
             seq_id,
+            reference_seq_id,
             span_start_0based: Some(span_start_0based),
             span_end_0based: Some(span_end_0based),
+            reference_span_start_0based,
+            reference_span_end_0based,
             mode: self.dotplot_ui.mode,
             word_size,
             step_bp,
@@ -8569,16 +8895,42 @@ impl MainAreaDna {
         Some((from, to))
     }
 
+    fn dotplot_crosshair_selection_bounds_for_mode(
+        mode: DotplotMode,
+        x_0based: usize,
+        y_0based: usize,
+        sequence_length: usize,
+    ) -> Option<(usize, usize)> {
+        if sequence_length == 0 {
+            return None;
+        }
+        match mode {
+            DotplotMode::SelfForward | DotplotMode::SelfReverseComplement => {
+                Self::dotplot_crosshair_selection_bounds(x_0based, y_0based, sequence_length)
+            }
+            DotplotMode::PairForward | DotplotMode::PairReverseComplement => {
+                let max_idx = sequence_length.saturating_sub(1);
+                let from = x_0based.min(max_idx);
+                let to = from.saturating_add(1).min(sequence_length);
+                Some((from, to))
+            }
+        }
+    }
+
     fn sync_selection_to_dotplot_crosshair(
         &mut self,
         x_0based: usize,
         y_0based: usize,
         request_scroll: bool,
+        mode: DotplotMode,
     ) {
         let sequence_length = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
-        let Some((from, to)) =
-            Self::dotplot_crosshair_selection_bounds(x_0based, y_0based, sequence_length)
-        else {
+        let Some((from, to)) = Self::dotplot_crosshair_selection_bounds_for_mode(
+            mode,
+            x_0based,
+            y_0based,
+            sequence_length,
+        ) else {
             return;
         };
         if let Ok(mut display) = self.dna_display.write() {
@@ -8608,10 +8960,10 @@ impl MainAreaDna {
             egui::StrokeKind::Inside,
         );
 
-        let top_margin = 12.0;
-        let left_margin = 16.0;
+        let top_margin = 26.0;
+        let left_margin = 56.0;
         let right_margin = 16.0;
-        let bottom_margin = 16.0;
+        let bottom_margin = 20.0;
         let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
         let gap = if flex_track.is_some() { 10.0 } else { 0.0 };
         let dotplot_rect = egui::Rect::from_min_max(
@@ -8651,16 +9003,31 @@ impl MainAreaDna {
                 egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
             );
         }
-        painter.line_segment(
-            [dotplot_rect.left_top(), dotplot_rect.right_bottom()],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+        let is_self_mode = matches!(
+            view.mode,
+            DotplotMode::SelfForward | DotplotMode::SelfReverseComplement
         );
+        if is_self_mode {
+            painter.line_segment(
+                [dotplot_rect.left_top(), dotplot_rect.right_bottom()],
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+            );
+        }
 
-        let span = view
+        let query_span = view
             .span_end_0based
             .saturating_sub(view.span_start_0based)
             .max(1);
-        let span_max = span.saturating_sub(1).max(1);
+        let query_span_max = query_span.saturating_sub(1).max(1);
+        let reference_span = view
+            .reference_span_end_0based
+            .saturating_sub(view.reference_span_start_0based)
+            .max(1);
+        let reference_span_max = reference_span.saturating_sub(1).max(1);
+        let reference_seq_label = view
+            .reference_seq_id
+            .as_deref()
+            .unwrap_or(view.seq_id.as_str());
         let cols = dotplot_rect.width().max(2.0).round() as i32;
         let rows = dotplot_rect.height().max(2.0).round() as i32;
         let sample_stride = (view.points.len() / DOTPLOT_RENDER_MAX_POINTS).max(1);
@@ -8669,13 +9036,13 @@ impl MainAreaDna {
             let x_local = point
                 .x_0based
                 .saturating_sub(view.span_start_0based)
-                .min(span_max);
+                .min(query_span_max);
             let y_local = point
                 .y_0based
-                .saturating_sub(view.span_start_0based)
-                .min(span_max);
-            let x_frac = (x_local as f32 / span_max as f32).clamp(0.0, 1.0);
-            let y_frac = (y_local as f32 / span_max as f32).clamp(0.0, 1.0);
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max);
+            let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+            let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
             let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
             let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
             let entry = cells
@@ -8709,6 +9076,20 @@ impl MainAreaDna {
         }
 
         painter.text(
+            egui::pos2(dotplot_rect.left(), canvas_rect.top() + 4.0),
+            egui::Align2::LEFT_TOP,
+            format!("x: {}", view.seq_id),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(51, 65, 85),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.right(), canvas_rect.top() + 4.0),
+            egui::Align2::RIGHT_TOP,
+            format!("y: {reference_seq_label}"),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(51, 65, 85),
+        );
+        painter.text(
             egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + 2.0),
             egui::Align2::LEFT_TOP,
             format!("{}", view.span_start_0based.saturating_add(1)),
@@ -8719,6 +9100,20 @@ impl MainAreaDna {
             egui::pos2(dotplot_rect.right(), dotplot_rect.bottom() + 2.0),
             egui::Align2::RIGHT_TOP,
             format!("{}", view.span_end_0based),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.left() - 4.0, dotplot_rect.top()),
+            egui::Align2::RIGHT_TOP,
+            format!("{}", view.reference_span_start_0based.saturating_add(1)),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.left() - 4.0, dotplot_rect.bottom()),
+            egui::Align2::RIGHT_BOTTOM,
+            format!("{}", view.reference_span_end_0based),
             egui::FontId::monospace(10.0),
             egui::Color32::from_rgb(71, 85, 105),
         );
@@ -8744,17 +9139,25 @@ impl MainAreaDna {
         {
             let fx = ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
             let fy = ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
-            let x_bp = view.span_start_0based + (fx * span_max as f32).round() as usize;
-            let y_bp = view.span_start_0based + (fy * span_max as f32).round() as usize;
+            let x_bp = view.span_start_0based + (fx * query_span_max as f32).round() as usize;
+            let y_bp = view.reference_span_start_0based
+                + (fy * reference_span_max as f32).round() as usize;
             hovered_crosshair_bp = Some((x_bp, y_bp));
             let x_cell = ((fx * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
             let y_cell = ((fy * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
             let cell_payload = cells.get(&(x_cell, y_cell)).cloned().unwrap_or((0, 0));
+            let click_hint = if is_self_mode {
+                "Click to lock crosshair + sync sequence selection interval"
+            } else {
+                "Click to lock crosshair + sync query selection from x-axis"
+            };
             response.clone().on_hover_ui_at_pointer(|ui| {
                 ui.label(
                     egui::RichText::new(format!(
-                        "x={} y={} | cell density={} min-mismatches={}",
+                        "x({})={} y({})={} | cell density={} min-mismatches={}",
+                        view.seq_id,
                         x_bp.saturating_add(1),
+                        reference_seq_label,
                         y_bp.saturating_add(1),
                         cell_payload.0,
                         cell_payload.1
@@ -8762,7 +9165,7 @@ impl MainAreaDna {
                     .monospace()
                     .size(self.feature_details_font_size()),
                 );
-                ui.small("Click to lock crosshair + sync sequence selection");
+                ui.small(click_hint);
             });
         }
         self.dotplot_hover_crosshair_bp = hovered_crosshair_bp;
@@ -8772,10 +9175,11 @@ impl MainAreaDna {
         {
             let fx = ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
             let fy = ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
-            let x_bp = view.span_start_0based + (fx * span_max as f32).round() as usize;
-            let y_bp = view.span_start_0based + (fy * span_max as f32).round() as usize;
+            let x_bp = view.span_start_0based + (fx * query_span_max as f32).round() as usize;
+            let y_bp = view.reference_span_start_0based
+                + (fy * reference_span_max as f32).round() as usize;
             self.dotplot_locked_crosshair_bp = Some((x_bp, y_bp));
-            self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true);
+            self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true, view.mode);
         }
         if response.clicked_by(egui::PointerButton::Secondary) {
             self.dotplot_locked_crosshair_bp = None;
@@ -8786,10 +9190,15 @@ impl MainAreaDna {
             .dotplot_locked_crosshair_bp
             .or(self.dotplot_hover_crosshair_bp);
         if let Some((x_bp, y_bp)) = active_crosshair {
-            let x_local = x_bp.saturating_sub(view.span_start_0based).min(span_max) as f32;
-            let y_local = y_bp.saturating_sub(view.span_start_0based).min(span_max) as f32;
-            let x = dotplot_rect.left() + (x_local / span_max as f32) * dotplot_rect.width();
-            let y = dotplot_rect.top() + (y_local / span_max as f32) * dotplot_rect.height();
+            let x_local = x_bp
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max) as f32;
+            let y_local = y_bp
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max) as f32;
+            let x = dotplot_rect.left() + (x_local / query_span_max as f32) * dotplot_rect.width();
+            let y =
+                dotplot_rect.top() + (y_local / reference_span_max as f32) * dotplot_rect.height();
             let is_locked = self.dotplot_locked_crosshair_bp == Some((x_bp, y_bp));
             let crosshair_color = if is_locked {
                 egui::Color32::from_rgb(190, 24, 93)
@@ -8815,17 +9224,29 @@ impl MainAreaDna {
                 if is_locked { 2.8 } else { 2.0 },
                 crosshair_color,
             );
-            let dx = x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp));
-            painter.text(
-                egui::pos2(dotplot_rect.left() + 4.0, dotplot_rect.top() + 14.0),
-                egui::Align2::LEFT_TOP,
+            let crosshair_text = if is_self_mode {
+                let dx = x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp));
                 format!(
                     "{} x={} y={} Δ={} bp",
                     if is_locked { "locked" } else { "hover" },
                     x_bp.saturating_add(1),
                     y_bp.saturating_add(1),
                     dx
-                ),
+                )
+            } else {
+                format!(
+                    "{} x({})={} y({})={}",
+                    if is_locked { "locked" } else { "hover" },
+                    view.seq_id,
+                    x_bp.saturating_add(1),
+                    reference_seq_label,
+                    y_bp.saturating_add(1)
+                )
+            };
+            painter.text(
+                egui::pos2(dotplot_rect.left() + 4.0, dotplot_rect.top() + 14.0),
+                egui::Align2::LEFT_TOP,
+                crosshair_text,
                 egui::FontId::monospace(10.0),
                 crosshair_color,
             );
@@ -8890,6 +9311,22 @@ impl MainAreaDna {
         let mut save_state = false;
         let dotplot_ids = self.dotplot_ids_for_active_sequence();
         let track_ids = self.flexibility_track_ids_for_active_sequence();
+        let reference_seq_ids = self.dotplot_reference_sequence_ids();
+        if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode)
+            && self.dotplot_ui.reference_seq_id.trim().is_empty()
+            && !reference_seq_ids.is_empty()
+        {
+            let current_id = self.seq_id.as_deref();
+            let default_reference = reference_seq_ids
+                .iter()
+                .find(|id| Some(id.as_str()) != current_id)
+                .cloned()
+                .or_else(|| reference_seq_ids.first().cloned());
+            if let Some(reference_id) = default_reference {
+                self.dotplot_ui.reference_seq_id = reference_id;
+                save_state = true;
+            }
+        }
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
@@ -8899,7 +9336,7 @@ impl MainAreaDna {
                 ui.vertical(|ui| {
                     ui.label(egui::RichText::new(self.primary_map_mode.label()).strong())
                         .on_hover_text(
-                            "Promoter-oriented self dotplot and flexibility track view for a bounded local span",
+                            "Promoter-oriented dotplot (self or pairwise) and flexibility track view for a bounded local span",
                         );
                     ui.label(
                         egui::RichText::new(
@@ -8925,6 +9362,16 @@ impl MainAreaDna {
                                 &mut self.dotplot_ui.mode,
                                 DotplotMode::SelfReverseComplement,
                                 DotplotMode::SelfReverseComplement.as_str(),
+                            );
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::PairForward,
+                                DotplotMode::PairForward.as_str(),
+                            );
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::PairReverseComplement,
+                                DotplotMode::PairReverseComplement.as_str(),
                             );
                         });
                         ui.label("half_window_bp");
@@ -8981,6 +9428,46 @@ impl MainAreaDna {
                             self.invalidate_dotplot_cache();
                         }
                     });
+                    if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("reference_seq_id");
+                            ui.text_edit_singleline(&mut self.dotplot_ui.reference_seq_id);
+                            if !reference_seq_ids.is_empty() {
+                                let selected_reference =
+                                    if self.dotplot_ui.reference_seq_id.trim().is_empty() {
+                                        "<select>".to_string()
+                                    } else {
+                                        self.dotplot_ui.reference_seq_id.clone()
+                                    };
+                                egui::ComboBox::from_id_salt(format!(
+                                    "dotplot_reference_select_{}",
+                                    self.seq_id.as_deref().unwrap_or("<none>")
+                                ))
+                                .selected_text(selected_reference)
+                                .show_ui(ui, |ui| {
+                                    for id in &reference_seq_ids {
+                                        if ui
+                                            .selectable_label(
+                                                self.dotplot_ui.reference_seq_id == *id,
+                                                id,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.dotplot_ui.reference_seq_id = id.clone();
+                                            save_state = true;
+                                        }
+                                    }
+                                });
+                            }
+                            ui.label("ref_start");
+                            ui.text_edit_singleline(
+                                &mut self.dotplot_ui.reference_span_start_0based,
+                            );
+                            ui.label("ref_end");
+                            ui.text_edit_singleline(&mut self.dotplot_ui.reference_span_end_0based);
+                            ui.small("Leave ref_start/ref_end empty to use full reference span.");
+                        });
+                    }
 
                     ui.horizontal_wrapped(|ui| {
                         ui.checkbox(
@@ -9058,24 +9545,54 @@ impl MainAreaDna {
 
                     ui.horizontal_wrapped(|ui| {
                         if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
+                            let active_mode = self
+                                .dotplot_cached_view
+                                .as_ref()
+                                .map(|view| view.mode)
+                                .unwrap_or(self.dotplot_ui.mode);
+                            let reference_label = self
+                                .dotplot_cached_view
+                                .as_ref()
+                                .and_then(|view| view.reference_seq_id.clone())
+                                .unwrap_or_else(|| {
+                                    self.seq_id
+                                        .clone()
+                                        .unwrap_or_else(|| "reference".to_string())
+                                });
                             ui.label(
-                                egui::RichText::new(format!(
-                                    "locked crosshair x={} y={} Δ={} bp",
-                                    x_bp.saturating_add(1),
-                                    y_bp.saturating_add(1),
-                                    x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp))
-                                ))
+                                egui::RichText::new(if Self::dotplot_mode_requires_reference(
+                                    active_mode,
+                                ) {
+                                    format!(
+                                        "locked crosshair x(query)={} y(reference:{})={}",
+                                        x_bp.saturating_add(1),
+                                        reference_label,
+                                        y_bp.saturating_add(1)
+                                    )
+                                } else {
+                                    format!(
+                                        "locked crosshair x={} y={} Δ={} bp",
+                                        x_bp.saturating_add(1),
+                                        y_bp.saturating_add(1),
+                                        x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp))
+                                    )
+                                })
                                 .monospace()
                                 .size(self.feature_details_font_size()),
                             );
                             if ui
                                 .small_button("Re-sync selection")
                                 .on_hover_text(
-                                    "Apply locked crosshair interval to shared sequence selection",
+                                    "Apply locked crosshair selection to shared sequence selection (pair mode uses query/x axis)",
                                 )
                                 .clicked()
                             {
-                                self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true);
+                                self.sync_selection_to_dotplot_crosshair(
+                                    x_bp,
+                                    y_bp,
+                                    true,
+                                    active_mode,
+                                );
                             }
                             if ui
                                 .small_button("Clear crosshair")
@@ -9086,7 +9603,7 @@ impl MainAreaDna {
                             }
                         } else {
                             ui.small(
-                                "Hover inside dotplot for live crosshair. Click to lock and sync sequence selection. Right-click to clear.",
+                                "Hover inside dotplot for live crosshair. Click to lock and sync selection from the x/query axis. Right-click to clear.",
                             );
                         }
                     });
@@ -9096,12 +9613,18 @@ impl MainAreaDna {
                     let cached_track = self.dotplot_cached_flex_track.clone();
                     match cached_view.as_ref() {
                         Some(view) => {
+                            let reference_seq_label =
+                                view.reference_seq_id.as_deref().unwrap_or(view.seq_id.as_str());
                             ui.label(
                                 egui::RichText::new(format!(
-                                    "dotplot '{}' span {}..{} | mode={} | word={} step={} mismatches={} | points={}",
+                                    "dotplot '{}' query={} [{}..{}] reference={} [{}..{}] | mode={} | word={} step={} mismatches={} | points={}",
                                     view.dotplot_id,
+                                    view.seq_id,
                                     view.span_start_0based.saturating_add(1),
                                     view.span_end_0based,
+                                    reference_seq_label,
+                                    view.reference_span_start_0based.saturating_add(1),
+                                    view.reference_span_end_0based,
                                     view.mode.as_str(),
                                     view.word_size,
                                     view.step_bp,
@@ -10306,7 +10829,7 @@ impl MainAreaDna {
                     ui.label(
                         egui::RichText::new(
                             format!(
-                                "Profile: nanopore_cdna_v1 | Input: fasta | Origin mode: {} | Target genes: {} | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | alignment deferred to phase-2",
+                                "Profile: nanopore_cdna_v1 | Input: fasta | Origin mode: {} | Target genes: {} | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | use 'Run alignment phase' for retained-hit mapping",
                                 self.rna_reads_ui.origin_mode.as_str(),
                                 Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids).len(),
                                 if self.rna_reads_ui.cdna_poly_t_flip_enabled {
@@ -10493,7 +11016,7 @@ impl MainAreaDna {
                         });
                         ui.horizontal_wrapped(|ui| {
                             ui.label("align band").on_hover_text(
-                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                                "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -10503,11 +11026,11 @@ impl MainAreaDna {
                                     .desired_width(54.0),
                                 )
                                 .on_hover_text(
-                                    "Banded aligner width for future phase-2 mapping.",
+                                    "Banded aligner width used when aligning retained reads in phase 2.",
                                 )
                                 .changed();
                             ui.label("min identity").on_hover_text(
-                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                                "Minimum identity fraction for phase-2 retained-read alignment.",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -10517,11 +11040,11 @@ impl MainAreaDna {
                                     .desired_width(56.0),
                                 )
                                 .on_hover_text(
-                                    "Minimum identity fraction for future phase-2 mapping.",
+                                    "Alignments below this identity are discarded.",
                                 )
                                 .changed();
                             ui.label("max secondary").on_hover_text(
-                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                                "Maximum number of secondary mappings kept per read in phase 2.",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -10531,9 +11054,49 @@ impl MainAreaDna {
                                     .desired_width(42.0),
                                 )
                                 .on_hover_text(
-                                    "Maximum number of secondary mappings kept in future phase-2 mapping.",
+                                    "Set to 0 to keep only the best mapping.",
                                 )
                                 .changed();
+                            ui.label("align selection").on_hover_text(
+                                "Which retained-hit subset is re-aligned in phase 2.",
+                            );
+                            egui::ComboBox::from_id_salt(format!(
+                                "rna_read_align_selection_{}_{}",
+                                view.seq_id, view.target_feature_id
+                            ))
+                            .selected_text(self.rna_reads_ui.align_phase_selection.as_str())
+                            .show_ui(ui, |ui| {
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.align_phase_selection,
+                                        RnaReadHitSelection::SeedPassed,
+                                        "seed_passed",
+                                    )
+                                    .on_hover_text(
+                                        "Recommended: align only retained reads that passed the seed gate.",
+                                    )
+                                    .changed();
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.align_phase_selection,
+                                        RnaReadHitSelection::All,
+                                        "all",
+                                    )
+                                    .on_hover_text(
+                                        "Align all retained reads (including seed-failed rows).",
+                                    )
+                                    .changed();
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.align_phase_selection,
+                                        RnaReadHitSelection::Aligned,
+                                        "aligned",
+                                    )
+                                    .on_hover_text(
+                                        "Re-align only rows that already have a mapping.",
+                                    )
+                                    .changed();
+                            });
                         });
                     }
                 });
@@ -10547,6 +11110,7 @@ impl MainAreaDna {
                 let progress_snapshot = self.rna_read_progress.clone();
                 if let Some(task) = &self.rna_read_task {
                     let compression = Self::rna_reads_input_compression_label(&task.input_path);
+                    let task_label = task.operation_label.as_str();
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
                         if let Some(progress) = progress_snapshot.as_ref() {
@@ -10584,7 +11148,7 @@ impl MainAreaDna {
                                     .clone()
                                     .unwrap_or_else(|| "ETA: n/a".to_string());
                                 ui.label(format!(
-                                    "Nanopore interpretation running: streaming FASTA ({compression}), sequences-read={}, bytes={}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
+                                    "{task_label} running: streaming FASTA ({compression}), sequences-read={}, bytes={}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
                                     progress.reads_processed,
                                     byte_progress,
                                     eta_suffix,
@@ -10600,7 +11164,7 @@ impl MainAreaDna {
                                 ));
                             } else {
                                 ui.label(format!(
-                                    "Nanopore interpretation running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
+                                    "{task_label} running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
                                     progress.reads_processed,
                                     progress.reads_total,
                                     percent,
@@ -10617,7 +11181,7 @@ impl MainAreaDna {
                             }
                         } else {
                             ui.label(format!(
-                                "Nanopore interpretation running: input='{}' ({compression}), {:.1}s elapsed",
+                                "{task_label} running: input='{}' ({compression}), {:.1}s elapsed",
                                 task.input_path,
                                 task.started.elapsed().as_secs_f32()
                             ));
@@ -10631,11 +11195,14 @@ impl MainAreaDna {
                                 egui::RichText::new("Cancel requested... waiting for worker to stop.")
                                     .color(egui::Color32::from_rgb(220, 38, 38)),
                             );
-                        } else if ui.button("Cancel Nanopore interpretation").clicked() {
+                        } else if ui
+                            .button(format!("Cancel {}", task.operation_label))
+                            .clicked()
+                        {
                             task.cancel_requested
                                 .store(true, AtomicOrdering::Relaxed);
-                            self.op_status = "Cancel requested for RNA-read interpretation"
-                                .to_string();
+                            self.op_status =
+                                format!("Cancel requested for {}", task.operation_label);
                         }
                     });
                     if let Some(progress) = progress_snapshot.as_ref() {
@@ -10886,7 +11453,7 @@ impl MainAreaDna {
                                             * 100.0
                                     };
                                     ui.small(format!(
-                                        "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={}",
+                                        "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={} | msa-eligible(retained)={}",
                                         report.report_id,
                                         report.origin_mode.as_str(),
                                         report.target_gene_ids.len(),
@@ -10895,7 +11462,8 @@ impl MainAreaDna {
                                         report.read_count_total,
                                         report.read_count_seed_passed,
                                         report_seed_pass_pct,
-                                        report.read_count_aligned
+                                        report.read_count_aligned,
+                                        report.retained_count_msa_eligible
                                     ));
                                     if !report.target_gene_ids.is_empty() {
                                         let preview = report
@@ -10948,7 +11516,7 @@ impl MainAreaDna {
                                                         .take(48)
                                                         .collect::<String>();
                                                     ui.monospace(format!(
-                                                        "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} seq={}",
+                                                        "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} msa={} seq={}",
                                                         hit.record_index + 1,
                                                         hit.header_id,
                                                         hit.seed_hit_fraction,
@@ -10967,6 +11535,7 @@ impl MainAreaDna {
                                                         hit.matched_kmers,
                                                         hit.tested_kmers,
                                                         hit.passed_seed_filter,
+                                                        hit.msa_eligible,
                                                         seq_preview,
                                                     ));
                                                 }
@@ -10989,6 +11558,44 @@ impl MainAreaDna {
                 {
                     self.run_splicing_rna_read_interpretation(view);
                 }
+                if ui
+                    .add_enabled(
+                        self.rna_read_task.is_none(),
+                        egui::Button::new("Run alignment phase (retained report)"),
+                    )
+                    .on_hover_text(
+                        "Run phase-2 retained-read alignment for the current Report ID and refresh exon-transition/isoform support summaries.",
+                    )
+                    .clicked()
+                {
+                    self.run_splicing_rna_read_alignment_phase();
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.rna_read_task.is_none(),
+                            egui::Button::new("Prepare Workflow Op"),
+                        )
+                        .on_hover_text(
+                            "Build the same InterpretRnaReads payload from this panel and stage it in Engine Ops -> Workflow runner.",
+                        )
+                        .clicked()
+                    {
+                        self.prepare_splicing_rna_read_interpretation_workflow(view);
+                    }
+                    if ui
+                        .add_enabled(
+                            self.rna_read_task.is_none(),
+                            egui::Button::new("Copy Workflow JSON"),
+                        )
+                        .on_hover_text(
+                            "Copy a full workflow JSON object (run_id + ops) for gentle_cli workflow/shell use.",
+                        )
+                        .clicked()
+                    {
+                        self.copy_splicing_rna_read_interpretation_workflow_json(view, ui.ctx());
+                    }
+                });
                 if ui
                     .add_enabled(
                         self.rna_read_task.is_none(),
@@ -11107,6 +11714,34 @@ impl MainAreaDna {
             }
         }
         out
+    }
+
+    fn sanitize_workflow_run_id_component(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
+                out.push(ch.to_ascii_lowercase());
+            } else if !out.ends_with('_') {
+                out.push('_');
+            }
+        }
+        out.trim_matches('_').to_string()
+    }
+
+    fn default_rna_read_workflow_run_id(seq_id: &str, report_id: &str) -> String {
+        let seq = Self::sanitize_workflow_run_id_component(seq_id);
+        let report = Self::sanitize_workflow_run_id_component(report_id);
+        let seq = if seq.is_empty() {
+            "seq".to_string()
+        } else {
+            seq
+        };
+        let report = if report.is_empty() {
+            "cdna".to_string()
+        } else {
+            report
+        };
+        format!("workflow_rna_reads_{}_{}", seq, report)
     }
 
     fn apply_rna_reads_tp73_specificity_preset(&mut self) {
@@ -11413,7 +12048,7 @@ impl MainAreaDna {
             format!("{:.2}", row.seed_median_transcript_gap)
         };
         format!(
-            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={}\n{}",
+            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa_eligible={} msa_reason={} len={}\n{}",
             row.record_index + 1,
             row.seed_hit_fraction,
             row.weighted_seed_hit_fraction,
@@ -11441,6 +12076,8 @@ impl MainAreaDna {
             row.tested_kmers,
             row.passed_seed_filter,
             row.reverse_complement_applied,
+            row.msa_eligible,
+            row.msa_eligibility_reason.trim(),
             row.read_length_bp,
             row.sequence,
         )
@@ -11469,85 +12106,166 @@ impl MainAreaDna {
     }
 
     fn run_splicing_rna_read_interpretation(&mut self, view: &SplicingExpertView) {
-        let Some(seq_id) = self.seq_id.clone() else {
-            self.op_status = "No active sequence selected".to_string();
-            return;
-        };
         if self.rna_read_task.is_some() {
-            self.op_status = "RNA-read interpretation is already running".to_string();
+            self.op_status = "RNA-read task is already running".to_string();
             return;
         }
+        let op = match self.build_splicing_rna_read_interpret_operation(view) {
+            Ok(op) => op,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        if let Operation::InterpretRnaReads {
+            seq_id,
+            scope,
+            seed_filter,
+            ..
+        } = &op
+        {
+            self.save_engine_ops_state();
+            self.refresh_rna_seed_catalog_preview(
+                seq_id,
+                view.target_feature_id,
+                *scope,
+                seed_filter.kmer_len,
+            );
+        }
+        self.start_rna_read_interpretation(op);
+    }
+
+    fn run_splicing_rna_read_alignment_phase(&mut self) {
+        if self.rna_read_task.is_some() {
+            self.op_status = "RNA-read alignment phase is already running".to_string();
+            return;
+        }
+        let op = match self.build_splicing_rna_read_align_operation() {
+            Ok(op) => op,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        self.save_engine_ops_state();
+        self.start_rna_read_interpretation(op);
+    }
+
+    fn prepare_splicing_rna_read_interpretation_workflow(&mut self, view: &SplicingExpertView) {
+        let workflow = match self.build_splicing_rna_read_workflow(view) {
+            Ok(workflow) => workflow,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        self.workflow_run_id = workflow.run_id.clone();
+        match serde_json::to_string_pretty(&workflow.ops) {
+            Ok(ops_json) => {
+                self.workflow_ops_json = ops_json;
+                self.save_engine_ops_state();
+                self.op_status = format!(
+                    "Prepared RNA-read workflow '{}' in Engine Ops workflow runner (1 operation).",
+                    self.workflow_run_id
+                );
+            }
+            Err(e) => {
+                let message = format!("Could not serialize RNA-read workflow ops JSON: {e}");
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+            }
+        }
+    }
+
+    fn copy_splicing_rna_read_interpretation_workflow_json(
+        &mut self,
+        view: &SplicingExpertView,
+        ctx: &egui::Context,
+    ) {
+        let workflow = match self.build_splicing_rna_read_workflow(view) {
+            Ok(workflow) => workflow,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        match serde_json::to_string_pretty(&workflow) {
+            Ok(text) => {
+                ctx.copy_text(text);
+                self.op_status = format!(
+                    "Copied RNA-read workflow JSON for run_id='{}' (1 operation).",
+                    workflow.run_id
+                );
+            }
+            Err(e) => {
+                let message = format!("Could not serialize RNA-read workflow JSON: {e}");
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+            }
+        }
+    }
+
+    fn build_splicing_rna_read_workflow(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Result<Workflow, String> {
+        let op = self.build_splicing_rna_read_interpret_operation(view)?;
+        let (seq_id, report_id) = match &op {
+            Operation::InterpretRnaReads {
+                seq_id, report_id, ..
+            } => (seq_id.as_str(), report_id.as_deref().unwrap_or("cdna")),
+            _ => ("seq", "cdna"),
+        };
+        let run_id = if self.workflow_run_id.trim().is_empty() {
+            Self::default_rna_read_workflow_run_id(seq_id, report_id)
+        } else {
+            self.workflow_run_id.trim().to_string()
+        };
+        Ok(Workflow {
+            run_id,
+            ops: vec![op],
+        })
+    }
+
+    fn build_splicing_rna_read_interpret_operation(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Result<Operation, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence selected".to_string())?;
         let input_path = self.rna_reads_ui.input_path.trim().to_string();
         if input_path.is_empty() {
-            let message = "RNA-read interpretation requires an input FASTA path".to_string();
-            self.op_status = message.clone();
-            self.op_error_popup = Some(message);
-            return;
+            return Err("RNA-read interpretation requires an input FASTA path".to_string());
         }
-        let kmer_len = match Self::parse_positive_usize_text(&self.rna_reads_ui.kmer_len, "k-mer") {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        let kmer_len = Self::parse_positive_usize_text(&self.rna_reads_ui.kmer_len, "k-mer")?;
         if !(1..=16).contains(&kmer_len) {
-            let message = "Invalid k-mer: expected within 1..=16".to_string();
-            self.op_status = message.clone();
-            self.op_error_popup = Some(message);
-            return;
+            return Err("Invalid k-mer: expected within 1..=16".to_string());
         }
-        let short_full_hash_max_bp = match Self::parse_positive_usize_text(
+        let short_full_hash_max_bp = Self::parse_positive_usize_text(
             &self.rna_reads_ui.short_full_hash_max_bp,
             "short_full_hash_max_bp",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
-        let long_window_bp = match Self::parse_positive_usize_text(
-            &self.rna_reads_ui.long_window_bp,
-            "long_window_bp",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
-        let long_window_count = match Self::parse_positive_usize_text(
+        )?;
+        let long_window_bp =
+            Self::parse_positive_usize_text(&self.rna_reads_ui.long_window_bp, "long_window_bp")?;
+        let long_window_count = Self::parse_positive_usize_text(
             &self.rna_reads_ui.long_window_count,
             "long_window_count",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        )?;
         let min_seed_hit_fraction = match Self::parse_required_f64_text(
             &self.rna_reads_ui.min_seed_hit_fraction,
             "min_seed_hit_fraction",
         ) {
             Ok(value) if (0.0..=1.0).contains(&value) => value,
             Ok(_) => {
-                let message =
-                    "Invalid min_seed_hit_fraction: expected within 0.0..=1.0".to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
+                return Err("Invalid min_seed_hit_fraction: expected within 0.0..=1.0".to_string());
             }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
+            Err(message) => return Err(message),
         };
         let min_weighted_seed_hit_fraction = match Self::parse_required_f64_text(
             &self.rna_reads_ui.min_weighted_seed_hit_fraction,
@@ -11555,46 +12273,27 @@ impl MainAreaDna {
         ) {
             Ok(value) if (0.0..=1.0).contains(&value) => value,
             Ok(_) => {
-                let message =
-                    "Invalid min_weighted_seed_hit_fraction: expected within 0.0..=1.0".to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
+                return Err(
+                    "Invalid min_weighted_seed_hit_fraction: expected within 0.0..=1.0".to_string(),
+                );
             }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
+            Err(message) => return Err(message),
         };
-        let min_unique_matched_kmers = match Self::parse_required_usize_text(
+        let min_unique_matched_kmers = Self::parse_required_usize_text(
             &self.rna_reads_ui.min_unique_matched_kmers,
             "min_unique_matched_kmers",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        )?;
         let max_median_transcript_gap = match Self::parse_required_f64_text(
             &self.rna_reads_ui.max_median_transcript_gap,
             "max_median_transcript_gap",
         ) {
             Ok(value) if value.is_finite() && value >= 1.0 => value,
             Ok(_) => {
-                let message =
-                    "Invalid max_median_transcript_gap: expected finite value >= 1.0".to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
+                return Err(
+                    "Invalid max_median_transcript_gap: expected finite value >= 1.0".to_string(),
+                );
             }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
+            Err(message) => return Err(message),
         };
         let min_chain_consistency_fraction = match Self::parse_required_f64_text(
             &self.rna_reads_ui.min_chain_consistency_fraction,
@@ -11602,108 +12301,41 @@ impl MainAreaDna {
         ) {
             Ok(value) if (0.0..=1.0).contains(&value) => value,
             Ok(_) => {
-                let message =
-                    "Invalid min_chain_consistency_fraction: expected within 0.0..=1.0".to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
+                return Err(
+                    "Invalid min_chain_consistency_fraction: expected within 0.0..=1.0".to_string(),
+                );
             }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
+            Err(message) => return Err(message),
         };
-        let min_confirmed_exon_transitions = match Self::parse_required_usize_text(
+        let min_confirmed_exon_transitions = Self::parse_required_usize_text(
             &self.rna_reads_ui.min_confirmed_exon_transitions,
             "min_confirmed_exon_transitions",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        )?;
         let min_transition_support_fraction = match Self::parse_required_f64_text(
             &self.rna_reads_ui.min_transition_support_fraction,
             "min_transition_support_fraction",
         ) {
             Ok(value) if (0.0..=1.0).contains(&value) => value,
             Ok(_) => {
-                let message = "Invalid min_transition_support_fraction: expected within 0.0..=1.0"
-                    .to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
+                return Err(
+                    "Invalid min_transition_support_fraction: expected within 0.0..=1.0"
+                        .to_string(),
+                );
             }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
+            Err(message) => return Err(message),
         };
-        let poly_t_prefix_min_bp = match Self::parse_positive_usize_text(
+        let poly_t_prefix_min_bp = Self::parse_positive_usize_text(
             &self.rna_reads_ui.poly_t_prefix_min_bp,
             "poly_t_prefix_min_bp",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
-        let band_width_bp = match Self::parse_positive_usize_text(
-            &self.rna_reads_ui.align_band_width_bp,
-            "align_band_width_bp",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
-        let min_identity_fraction = match Self::parse_required_f64_text(
-            &self.rna_reads_ui.align_min_identity_fraction,
-            "align_min_identity_fraction",
-        ) {
-            Ok(value) if (0.0..=1.0).contains(&value) => value,
-            Ok(_) => {
-                let message =
-                    "Invalid align_min_identity_fraction: expected within 0.0..=1.0".to_string();
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
-        let parsed_max_secondary_mappings = match Self::parse_required_usize_text(
-            &self.rna_reads_ui.align_max_secondary_mappings,
-            "align_max_secondary_mappings",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        )?;
+        let parsed_align_config = self.parse_rna_align_config_from_ui()?;
         let max_secondary_mappings = if matches!(
             self.rna_reads_ui.profile,
             RnaReadInterpretationProfile::NanoporeCdnaV1
         ) {
-            if self.rna_reads_ui.align_max_secondary_mappings.trim() != "0" {
-                self.rna_reads_ui.align_max_secondary_mappings = "0".to_string();
-            }
             0
         } else {
-            parsed_max_secondary_mappings
+            parsed_align_config.max_secondary_mappings
         };
         let report_id = {
             let raw = self.rna_reads_ui.report_id.trim();
@@ -11715,17 +12347,10 @@ impl MainAreaDna {
                 Some(raw.to_string())
             }
         };
-        let checkpoint_every_reads = match Self::parse_positive_usize_text(
+        let checkpoint_every_reads = Self::parse_positive_usize_text(
             &self.rna_reads_ui.checkpoint_every_reads,
             "checkpoint_every_reads",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message.clone();
-                self.op_error_popup = Some(message);
-                return;
-            }
-        };
+        )?;
         let checkpoint_path = {
             let trimmed = self.rna_reads_ui.checkpoint_path.trim();
             if trimmed.is_empty() {
@@ -11735,25 +12360,16 @@ impl MainAreaDna {
             }
         };
         if self.rna_reads_ui.resume_from_checkpoint && checkpoint_path.is_none() {
-            let message =
-                "resume_from_checkpoint=true requires a non-empty checkpoint_path".to_string();
-            self.op_status = message.clone();
-            self.op_error_popup = Some(message);
-            return;
+            return Err(
+                "resume_from_checkpoint=true requires a non-empty checkpoint_path".to_string(),
+            );
         }
         let target_gene_ids = Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids);
-        self.save_engine_ops_state();
-        self.refresh_rna_seed_catalog_preview(
-            &seq_id,
-            view.target_feature_id,
-            self.rna_reads_ui.scope,
-            kmer_len,
-        );
-        self.start_rna_read_interpretation(Operation::InterpretRnaReads {
+        Ok(Operation::InterpretRnaReads {
             seq_id,
             seed_feature_id: view.target_feature_id,
             profile: self.rna_reads_ui.profile,
-            input_path: input_path.clone(),
+            input_path,
             input_format: self.rna_reads_ui.input_format,
             scope: self.rna_reads_ui.scope,
             origin_mode: self.rna_reads_ui.origin_mode,
@@ -11775,8 +12391,8 @@ impl MainAreaDna {
                 poly_t_prefix_min_bp,
             },
             align_config: RnaReadAlignConfig {
-                band_width_bp,
-                min_identity_fraction,
+                band_width_bp: parsed_align_config.band_width_bp,
+                min_identity_fraction: parsed_align_config.min_identity_fraction,
                 max_secondary_mappings,
             },
             report_id,
@@ -11784,7 +12400,48 @@ impl MainAreaDna {
             checkpoint_path,
             checkpoint_every_reads,
             resume_from_checkpoint: self.rna_reads_ui.resume_from_checkpoint,
-        });
+        })
+    }
+
+    fn parse_rna_align_config_from_ui(&self) -> Result<RnaReadAlignConfig, String> {
+        let band_width_bp = Self::parse_positive_usize_text(
+            &self.rna_reads_ui.align_band_width_bp,
+            "align_band_width_bp",
+        )?;
+        let min_identity_fraction = match Self::parse_required_f64_text(
+            &self.rna_reads_ui.align_min_identity_fraction,
+            "align_min_identity_fraction",
+        ) {
+            Ok(value) if (0.0..=1.0).contains(&value) => value,
+            Ok(_) => {
+                return Err(
+                    "Invalid align_min_identity_fraction: expected within 0.0..=1.0".to_string(),
+                );
+            }
+            Err(message) => return Err(message),
+        };
+        let max_secondary_mappings = Self::parse_required_usize_text(
+            &self.rna_reads_ui.align_max_secondary_mappings,
+            "align_max_secondary_mappings",
+        )?;
+        Ok(RnaReadAlignConfig {
+            band_width_bp,
+            min_identity_fraction,
+            max_secondary_mappings,
+        })
+    }
+
+    fn build_splicing_rna_read_align_operation(&self) -> Result<Operation, String> {
+        let report_id = self.rna_reads_ui.report_id.trim();
+        if report_id.is_empty() {
+            return Err("Set a Report ID first before running alignment phase".to_string());
+        }
+        let align_config = self.parse_rna_align_config_from_ui()?;
+        Ok(Operation::AlignRnaReadReport {
+            report_id: report_id.to_string(),
+            selection: self.rna_reads_ui.align_phase_selection,
+            align_config_override: Some(align_config),
+        })
     }
 
     fn export_splicing_seed_hash_catalog(&mut self, view: &SplicingExpertView) {
@@ -11956,35 +12613,18 @@ impl MainAreaDna {
             return;
         };
         if self.rna_read_task.is_some() {
-            self.op_status = "RNA-read interpretation is already running".to_string();
+            self.op_status = "RNA-read task is already running".to_string();
             return;
         }
-        let read_mode_label = match &op {
-            Operation::InterpretRnaReads { seed_filter, .. } => {
-                if seed_filter.cdna_poly_t_flip_enabled {
-                    "cDNA"
-                } else {
-                    "direct RNA"
-                }
-            }
-            _ => "unknown",
-        };
         let input_path = match &op {
             Operation::InterpretRnaReads { input_path, .. } => input_path.clone(),
+            Operation::AlignRnaReadReport { report_id, .. } => format!("report:{report_id}"),
             _ => "<unknown>".to_string(),
         };
-        let (origin_mode_label, target_gene_count, roi_capture_enabled) = match &op {
-            Operation::InterpretRnaReads {
-                origin_mode,
-                target_gene_ids,
-                roi_seed_capture_enabled,
-                ..
-            } => (
-                origin_mode.as_str(),
-                target_gene_ids.len(),
-                *roi_seed_capture_enabled,
-            ),
-            _ => ("unknown", 0, false),
+        let operation_label = match &op {
+            Operation::InterpretRnaReads { .. } => "Nanopore interpretation".to_string(),
+            Operation::AlignRnaReadReport { .. } => "Nanopore alignment phase".to_string(),
+            _ => "RNA-read task".to_string(),
         };
         let started = Instant::now();
         let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
@@ -11993,40 +12633,68 @@ impl MainAreaDna {
         self.rna_seed_selected_record_indices.clear();
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
-        let (report_mode_label, checkpoint_label, checkpoint_every_reads, resume_checkpoint) =
-            match &op {
-                Operation::InterpretRnaReads {
-                    report_mode,
-                    checkpoint_path,
-                    checkpoint_every_reads,
-                    resume_from_checkpoint,
-                    ..
-                } => (
-                    report_mode.as_str(),
-                    checkpoint_path
-                        .as_deref()
-                        .filter(|path| !path.trim().is_empty())
-                        .unwrap_or("none"),
-                    *checkpoint_every_reads,
-                    *resume_from_checkpoint,
-                ),
-                _ => ("unknown", "none", 0, false),
-            };
-        self.op_status = format!(
-            "RNA-read interpretation started ({} mode, origin={}, targets={}, roi_capture={}, report_mode={}, checkpoint='{}', every={}, resume={}): '{}'",
-            read_mode_label,
-            origin_mode_label,
-            target_gene_count,
-            roi_capture_enabled,
-            report_mode_label,
-            checkpoint_label,
-            checkpoint_every_reads,
-            resume_checkpoint,
-            input_path
-        );
+        self.op_status = match &op {
+            Operation::InterpretRnaReads {
+                seed_filter,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
+                ..
+            } => format!(
+                "{} started ({} mode, origin={}, targets={}, roi_capture={}, report_mode={}, checkpoint='{}', every={}, resume={}): '{}'",
+                operation_label,
+                if seed_filter.cdna_poly_t_flip_enabled {
+                    "cDNA"
+                } else {
+                    "direct RNA"
+                },
+                origin_mode.as_str(),
+                target_gene_ids.len(),
+                roi_seed_capture_enabled,
+                report_mode.as_str(),
+                checkpoint_path
+                    .as_deref()
+                    .filter(|path| !path.trim().is_empty())
+                    .unwrap_or("none"),
+                checkpoint_every_reads,
+                resume_from_checkpoint,
+                input_path
+            ),
+            Operation::AlignRnaReadReport {
+                report_id,
+                selection,
+                align_config_override,
+            } => {
+                let align_note = align_config_override
+                    .as_ref()
+                    .map(|cfg| {
+                        format!(
+                            "band={} min_identity={:.2} max_secondary={}",
+                            cfg.band_width_bp,
+                            cfg.min_identity_fraction,
+                            cfg.max_secondary_mappings
+                        )
+                    })
+                    .unwrap_or_else(|| "report-default".to_string());
+                format!(
+                    "{} started for report '{}' (selection={}, align={}): '{}'",
+                    operation_label,
+                    report_id,
+                    selection.as_str(),
+                    align_note,
+                    input_path
+                )
+            }
+            _ => format!("{} started: '{}'", operation_label, input_path),
+        };
         self.rna_read_task = Some(RnaReadTask {
             started,
             input_path: input_path.clone(),
+            operation_label: operation_label.clone(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             receiver: Arc::new(Mutex::new(rx)),
         });
@@ -12035,24 +12703,7 @@ impl MainAreaDna {
             .as_ref()
             .map(|task| task.cancel_requested.clone())
             .expect("rna-read task just set");
-        let (
-            seq_id,
-            seed_feature_id,
-            profile,
-            input_path,
-            input_format,
-            scope,
-            origin_mode,
-            target_gene_ids,
-            roi_seed_capture_enabled,
-            seed_filter,
-            align_config,
-            report_id,
-            report_mode,
-            checkpoint_path,
-            checkpoint_every_reads,
-            resume_from_checkpoint,
-        ) = match op {
+        match op {
             Operation::InterpretRnaReads {
                 seq_id,
                 seed_feature_id,
@@ -12070,87 +12721,125 @@ impl MainAreaDna {
                 checkpoint_path,
                 checkpoint_every_reads,
                 resume_from_checkpoint,
-            } => (
-                seq_id,
-                seed_feature_id,
-                profile,
-                input_path,
-                input_format,
-                scope,
-                origin_mode,
-                target_gene_ids,
-                roi_seed_capture_enabled,
-                seed_filter,
-                align_config,
+            } => {
+                std::thread::spawn(move || {
+                    let tx_progress = tx.clone();
+                    let cancel_for_progress = Arc::clone(&cancel_requested);
+                    let cancel_for_compute = Arc::clone(&cancel_requested);
+                    let report = match engine.read() {
+                        Ok(guard) => {
+                            let mut should_continue =
+                                move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
+                            guard.compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
+                                &seq_id,
+                                seed_feature_id,
+                                profile,
+                                &input_path,
+                                input_format,
+                                scope,
+                                origin_mode,
+                                &target_gene_ids,
+                                roi_seed_capture_enabled,
+                                &seed_filter,
+                                &align_config,
+                                report_id.as_deref(),
+                                report_mode,
+                                checkpoint_path.as_deref(),
+                                checkpoint_every_reads,
+                                resume_from_checkpoint,
+                                &mut move |progress| {
+                                    if cancel_for_progress.load(AtomicOrdering::Relaxed) {
+                                        return false;
+                                    }
+                                    let OperationProgress::RnaReadInterpret(p) = progress else {
+                                        return true;
+                                    };
+                                    let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
+                                    !cancel_for_progress.load(AtomicOrdering::Relaxed)
+                                },
+                                &mut should_continue,
+                            )
+                        }
+                        Err(_) => Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "Engine lock poisoned while preparing RNA-read interpretation"
+                                .to_string(),
+                        }),
+                    };
+                    let outcome = match report {
+                        Ok(report) => match engine.write() {
+                            Ok(mut guard) => guard.commit_rna_read_report(report),
+                            Err(_) => Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message: "Engine lock poisoned while committing RNA-read report"
+                                    .to_string(),
+                            }),
+                        },
+                        Err(err) => Err(err),
+                    };
+                    let _ = tx.send(RnaReadTaskMessage::Done(outcome));
+                });
+            }
+            Operation::AlignRnaReadReport {
                 report_id,
-                report_mode,
-                checkpoint_path,
-                checkpoint_every_reads,
-                resume_from_checkpoint,
-            ),
+                selection,
+                align_config_override,
+            } => {
+                std::thread::spawn(move || {
+                    let tx_progress = tx.clone();
+                    let cancel_for_progress = Arc::clone(&cancel_requested);
+                    let cancel_for_compute = Arc::clone(&cancel_requested);
+                    let report = match engine.read() {
+                        Ok(guard) => {
+                            let mut should_continue =
+                                move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
+                            guard.align_rna_read_report_with_progress_and_cancel(
+                                &report_id,
+                                selection,
+                                align_config_override.clone(),
+                                &mut move |progress| {
+                                    if cancel_for_progress.load(AtomicOrdering::Relaxed) {
+                                        return false;
+                                    }
+                                    let OperationProgress::RnaReadInterpret(p) = progress else {
+                                        return true;
+                                    };
+                                    let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
+                                    !cancel_for_progress.load(AtomicOrdering::Relaxed)
+                                },
+                                &mut should_continue,
+                            )
+                        }
+                        Err(_) => Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "Engine lock poisoned while preparing RNA-read alignment"
+                                .to_string(),
+                        }),
+                    };
+                    let outcome = match report {
+                        Ok(report) => match engine.write() {
+                            Ok(mut guard) => guard.commit_aligned_rna_read_report(
+                                report,
+                                selection,
+                                align_config_override,
+                            ),
+                            Err(_) => Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message:
+                                    "Engine lock poisoned while committing aligned RNA-read report"
+                                        .to_string(),
+                            }),
+                        },
+                        Err(err) => Err(err),
+                    };
+                    let _ = tx.send(RnaReadTaskMessage::Done(outcome));
+                });
+            }
             other => {
                 self.op_status = format!("Unsupported RNA-read worker operation: {other:?}");
                 self.rna_read_task = None;
-                return;
             }
-        };
-        std::thread::spawn(move || {
-            let tx_progress = tx.clone();
-            let cancel_for_progress = Arc::clone(&cancel_requested);
-            let cancel_for_compute = Arc::clone(&cancel_requested);
-            let report = match engine.read() {
-                Ok(guard) => {
-                    let mut should_continue =
-                        move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                    guard.compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
-                        &seq_id,
-                        seed_feature_id,
-                        profile,
-                        &input_path,
-                        input_format,
-                        scope,
-                        origin_mode,
-                        &target_gene_ids,
-                        roi_seed_capture_enabled,
-                        &seed_filter,
-                        &align_config,
-                        report_id.as_deref(),
-                        report_mode,
-                        checkpoint_path.as_deref(),
-                        checkpoint_every_reads,
-                        resume_from_checkpoint,
-                        &mut move |progress| {
-                            if cancel_for_progress.load(AtomicOrdering::Relaxed) {
-                                return false;
-                            }
-                            let OperationProgress::RnaReadInterpret(p) = progress else {
-                                return true;
-                            };
-                            let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
-                            !cancel_for_progress.load(AtomicOrdering::Relaxed)
-                        },
-                        &mut should_continue,
-                    )
-                }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while preparing RNA-read interpretation"
-                        .to_string(),
-                }),
-            };
-            let outcome = match report {
-                Ok(report) => match engine.write() {
-                    Ok(mut guard) => guard.commit_rna_read_report(report),
-                    Err(_) => Err(EngineError {
-                        code: ErrorCode::Internal,
-                        message: "Engine lock poisoned while committing RNA-read report"
-                            .to_string(),
-                    }),
-                },
-                Err(err) => Err(err),
-            };
-            let _ = tx.send(RnaReadTaskMessage::Done(outcome));
-        });
+        }
     }
 
     fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
@@ -12257,7 +12946,8 @@ impl MainAreaDna {
                                     .clone()
                                     .unwrap_or_else(|| "ETA: n/a".to_string());
                                 format!(
-                                    "RNA-read interpretation scanning input FASTA ({compression}): sequences-read={}, {}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    "{} scanning input FASTA ({compression}): sequences-read={}, {}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    task.operation_label,
                                     progress.reads_processed,
                                     byte_progress,
                                     eta_suffix,
@@ -12274,7 +12964,8 @@ impl MainAreaDna {
                                 )
                             } else {
                                 format!(
-                                    "RNA-read interpretation running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    "{} running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    task.operation_label,
                                     progress.reads_processed,
                                     progress.reads_total,
                                     percent,
@@ -12292,7 +12983,8 @@ impl MainAreaDna {
                             };
                         } else {
                             self.op_status = format!(
-                                "RNA-read interpretation running... input='{}' ({compression}), {:.1}s elapsed",
+                                "{} running... input='{}' ({compression}), {:.1}s elapsed",
+                                task.operation_label,
                                 task.input_path,
                                 task.started.elapsed().as_secs_f32()
                             );
@@ -12309,16 +13001,17 @@ impl MainAreaDna {
         }
 
         if let Some(done) = done {
-            let (started, cancel_requested) = self
+            let (started, cancel_requested, operation_label) = self
                 .rna_read_task
                 .as_ref()
                 .map(|task| {
                     (
                         task.started,
                         task.cancel_requested.load(AtomicOrdering::Relaxed),
+                        task.operation_label.clone(),
                     )
                 })
-                .unwrap_or_else(|| (Instant::now(), false));
+                .unwrap_or_else(|| (Instant::now(), false, "RNA-read task".to_string()));
             self.rna_read_task = None;
             match done {
                 Ok(result) => self.handle_operation_success(result, started),
@@ -12327,7 +13020,8 @@ impl MainAreaDna {
                         cancel_requested && err.message.to_ascii_lowercase().contains("cancel");
                     if cancelled {
                         self.op_status = format!(
-                            "RNA-read interpretation cancelled after {:.1}s",
+                            "{} cancelled after {:.1}s",
+                            operation_label,
                             started.elapsed().as_secs_f32()
                         );
                     } else {
@@ -12421,10 +13115,10 @@ impl MainAreaDna {
                         0.0,
                         egui::Color32::from_rgb(249, 115, 22),
                     );
-                    if (x1 - x0) >= 22.0 && h >= 9.0 {
+                    if (x1 - x0) >= 22.0 && h >= 12.0 {
                         painter.text(
-                            egui::pos2((x0 + x1) * 0.5, y0 + 1.0),
-                            egui::Align2::CENTER_TOP,
+                            egui::pos2((x0 + x1) * 0.5, y1 - 1.0),
+                            egui::Align2::CENTER_BOTTOM,
                             Self::format_count_compact_km(count),
                             egui::FontId::monospace(8.0),
                             egui::Color32::from_rgb(12, 12, 12),
@@ -12441,10 +13135,10 @@ impl MainAreaDna {
                         0.0,
                         egui::Color32::from_rgb(37, 99, 235),
                     );
-                    if (x1 - x0) >= 22.0 && h >= 9.0 {
+                    if (x1 - x0) >= 22.0 && h >= 12.0 {
                         painter.text(
-                            egui::pos2((x0 + x1) * 0.5, y1 - 1.0),
-                            egui::Align2::CENTER_BOTTOM,
+                            egui::pos2((x0 + x1) * 0.5, y0 + 1.0),
+                            egui::Align2::CENTER_TOP,
                             Self::format_count_compact_km(count),
                             egui::FontId::monospace(8.0),
                             egui::Color32::from_rgb(245, 245, 245),
@@ -12808,7 +13502,7 @@ impl MainAreaDna {
             "Seed-hit score density across tested reads ({scale_label})"
         ));
         let desired = Vec2::new(ui.available_width().max(280.0), 120.0);
-        let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
         let painter = ui.painter_at(rect);
         painter.rect_stroke(
             rect,
@@ -12865,6 +13559,26 @@ impl MainAreaDna {
                 egui::pos2(x1, axis_bottom - 0.6),
             );
             painter.rect_filled(bar, 0.0, egui::Color32::from_rgb(16, 185, 129));
+            if (x1 - x0) >= 22.0 {
+                let label = Self::format_count_compact_km(*count);
+                if h >= 12.0 {
+                    painter.text(
+                        egui::pos2((x0 + x1) * 0.5, (axis_bottom - h + 1.0).max(plot_top + 1.0)),
+                        egui::Align2::CENTER_TOP,
+                        label,
+                        egui::FontId::monospace(8.0),
+                        egui::Color32::from_rgb(7, 24, 17),
+                    );
+                } else {
+                    painter.text(
+                        egui::pos2((x0 + x1) * 0.5, (axis_bottom - h - 1.0).max(plot_top + 1.0)),
+                        egui::Align2::CENTER_BOTTOM,
+                        label,
+                        egui::FontId::monospace(8.0),
+                        egui::Color32::from_rgb(18, 18, 18),
+                    );
+                }
+            }
         }
         painter.line_segment(
             [
@@ -12902,6 +13616,28 @@ impl MainAreaDna {
             egui::FontId::monospace(9.0),
             egui::Color32::from_rgb(220, 38, 38),
         );
+        if let Some(pointer) = response.hover_pos() {
+            if pointer.x >= rect.left()
+                && pointer.x <= rect.right()
+                && pointer.y >= plot_top
+                && pointer.y <= axis_bottom
+            {
+                let bin_count = progress.score_density_bins.len().max(1);
+                let mut idx =
+                    ((pointer.x - rect.left()) / rect.width() * bin_count as f32).floor() as usize;
+                if idx >= bin_count {
+                    idx = bin_count.saturating_sub(1);
+                }
+                if let Some(count) = progress.score_density_bins.get(idx) {
+                    let left = idx as f64 / bin_count as f64;
+                    let right = (idx + 1) as f64 / bin_count as f64;
+                    response.clone().on_hover_ui_at_pointer(|ui| {
+                        ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
+                        ui.monospace(format!("count: {count}"));
+                    });
+                }
+            }
+        }
         ui.small(format!(
             "Score bins: {} | max bin count: {}",
             progress.score_density_bins.len(),
@@ -13157,7 +13893,7 @@ impl MainAreaDna {
                                         (row.sequence.as_str(), false)
                                     };
                                     let response = ui.selectable_label(selected, format!(
-                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={} seq={}{}",
+                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} len={} seq={}{}",
                                         row.record_index + 1,
                                         row.header_id,
                                         row.seed_hit_fraction,
@@ -13182,6 +13918,7 @@ impl MainAreaDna {
                                         row.tested_kmers,
                                         row.passed_seed_filter,
                                         row.reverse_complement_applied,
+                                        row.msa_eligible,
                                         row.read_length_bp,
                                         sequence_text,
                                         if truncated { "...[cut@5000]" } else { "" },
@@ -17127,6 +17864,7 @@ impl MainAreaDna {
             show_engine_ops: self.show_engine_ops,
             show_shell: self.show_shell,
             primary_map_mode: self.primary_map_mode,
+            dna_presentation_mode: self.dna_presentation_mode,
             dotplot_ui: self.dotplot_ui.clone(),
             rna_reads_ui: self.rna_reads_ui.clone(),
             shell_command_text: self.shell_command_text.clone(),
@@ -17320,6 +18058,11 @@ impl MainAreaDna {
         self.show_engine_ops = s.show_engine_ops;
         self.show_shell = s.show_shell;
         self.primary_map_mode = s.primary_map_mode;
+        self.dna_presentation_mode = s.dna_presentation_mode;
+        if !self.dna_presentation_mode.allows_engine_shell_panels() {
+            self.show_engine_ops = false;
+            self.show_shell = false;
+        }
         self.dotplot_ui = s.dotplot_ui;
         self.rna_reads_ui = s.rna_reads_ui;
         self.invalidate_dotplot_cache();

@@ -30,6 +30,7 @@ struct FeatureVm {
     to: usize,
     label: String,
     color: &'static str,
+    is_gene: bool,
     is_reverse: bool,
     is_pointy: bool,
     is_regulatory: bool,
@@ -382,6 +383,7 @@ fn collect_features(
             to: to as usize,
             label: feature_name(feature),
             color: feature_color(feature),
+            is_gene: kind == "GENE",
             is_reverse: feature_is_reverse(feature),
             is_pointy: feature_pointy(feature),
             is_regulatory: is_regulatory_feature(feature),
@@ -417,6 +419,25 @@ fn lane_allocate(lanes: &mut Vec<f32>, start: f32, end: f32, padding: f32) -> us
 
 fn estimate_text_width(label: &str) -> f32 {
     (label.chars().count().max(1) as f32) * 6.5
+}
+
+fn truncate_label_to_chars(label: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let total = label.chars().count();
+    if total <= max_chars {
+        return label.to_string();
+    }
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+    let mut out = label
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    out.push('…');
+    out
 }
 
 fn re_color(key: &RestrictionEnzymeKey) -> &'static str {
@@ -707,6 +728,20 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             }
 
             if f.label.trim().is_empty() {
+                continue;
+            }
+            if f.is_gene {
+                let inline_chars = (((x2 - x1) - 4.0).max(0.0) / 6.5).floor() as usize;
+                let inline_label = truncate_label_to_chars(f.label.trim(), inline_chars.max(1));
+                labels.push(
+                    Text::new(inline_label)
+                        .set("x", (x1 + x2) * 0.5)
+                        .set("y", y + 3.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#f8f8f8"),
+                );
                 continue;
             }
             let (text_y, anchor) = if f.is_regulatory {

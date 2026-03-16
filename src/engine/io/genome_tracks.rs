@@ -1276,5 +1276,4 @@ impl GentleEngine {
 
         Ok(report)
     }
-
 }

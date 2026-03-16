@@ -567,7 +567,9 @@ impl GentleEngine {
         sorted.get(idx.min(max_idx)).copied()
     }
 
-    pub(super) fn tokenize_expression(expression: &str) -> Result<Vec<ExpressionToken>, EngineError> {
+    pub(super) fn tokenize_expression(
+        expression: &str,
+    ) -> Result<Vec<ExpressionToken>, EngineError> {
         let bytes = expression.as_bytes();
         let mut idx = 0usize;
         let mut tokens = vec![];
@@ -834,5 +836,4 @@ impl GentleEngine {
             }
         }
     }
-
 }

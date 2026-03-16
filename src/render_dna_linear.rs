@@ -498,6 +498,10 @@ impl RenderDnaLinear {
         }
     }
 
+    fn should_render_feature_label(detail: LinearDetailLevel, kind_upper: &str) -> bool {
+        detail.show_feature_labels || kind_upper.eq_ignore_ascii_case("GENE")
+    }
+
     fn draw_feature(
         feature: &Feature,
         show_cds_features: bool,
@@ -2125,7 +2129,8 @@ impl RenderDnaLinear {
                 }
             }
 
-            if !detail.show_feature_labels {
+            let is_gene_feature = feature.kind_upper.as_str() == "GENE";
+            if !Self::should_render_feature_label(detail, &feature.kind_upper) {
                 continue;
             }
             if feature.label.trim().is_empty() {
@@ -2134,13 +2139,30 @@ impl RenderDnaLinear {
             if matches!(feature.kind_upper.as_str(), "MRNA" | "EXON") {
                 continue;
             }
-            let label = Self::truncate_label(feature.label.trim(), 56);
             let label_rect = feature
                 .exon_rects
                 .iter()
                 .copied()
                 .max_by(|a, b| a.width().total_cmp(&b.width()))
                 .unwrap_or(feature.rect);
+            if is_gene_feature {
+                let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
+                text_painter.text(
+                    label_rect.center(),
+                    Align2::CENTER_CENTER,
+                    Self::truncate_label(feature.label.trim(), 128),
+                    FontId {
+                        size: FEATURE_INLINE_LABEL_FONT_SIZE,
+                        family: FontFamily::Monospace,
+                    },
+                    Self::feature_label_color(feature.color),
+                );
+                continue;
+            }
+            let label = Self::truncate_label(feature.label.trim(), 56);
+            if label.is_empty() {
+                continue;
+            }
             let label_width = Self::estimate_label_width(&label);
             let inline_possible = !feature.is_regulatory
                 && label_rect.height() >= FEATURE_INLINE_LABEL_FONT_SIZE + 2.0
@@ -2150,7 +2172,9 @@ impl RenderDnaLinear {
                 || self
                     .external_labeled_feature_numbers
                     .contains(&feature.feature_number);
-            if inline_possible && !force_external {
+            // Keep gene names visible whenever there is room inside the feature box,
+            // even when generic feature labels are suppressed by zoom/detail heuristics.
+            if inline_possible && (!force_external || is_gene_feature) {
                 let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
                 text_painter.text(
                     label_rect.center(),
@@ -2162,6 +2186,9 @@ impl RenderDnaLinear {
                     },
                     Self::feature_label_color(feature.color),
                 );
+                continue;
+            }
+            if is_gene_feature {
                 continue;
             }
             if !force_external {
@@ -2668,6 +2695,33 @@ mod tests {
         assert!(status.columns_fit().is_finite());
         assert!(status.glyph_width_px().is_finite());
         assert!(!status.decision_reason_text().is_empty());
+    }
+
+    #[test]
+    fn gene_labels_bypass_generic_feature_label_detail_gate() {
+        let detail_labels_hidden = LinearDetailLevel {
+            show_feature_labels: false,
+            show_restriction_sites: true,
+            show_restriction_labels: true,
+            show_methylation_sites: true,
+            show_open_reading_frames: true,
+        };
+        assert!(RenderDnaLinear::should_render_feature_label(
+            detail_labels_hidden,
+            "GENE"
+        ));
+        assert!(!RenderDnaLinear::should_render_feature_label(
+            detail_labels_hidden,
+            "CDS"
+        ));
+        let detail_labels_shown = LinearDetailLevel {
+            show_feature_labels: true,
+            ..detail_labels_hidden
+        };
+        assert!(RenderDnaLinear::should_render_feature_label(
+            detail_labels_shown,
+            "CDS"
+        ));
     }
 
     #[test]

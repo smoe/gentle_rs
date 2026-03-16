@@ -1,6 +1,6 @@
 # RNA Read Origin Classification + Sparse Multi-Gene Seed Index Plan
 
-Status: in progress (phase-1 schema/operation scaffolding landed; multi-gene sparse index + ROI capture still pending)
+Status: in progress (phase-1 schema/operation scaffolding landed; list/sample-sheet sparse-origin provenance surfaced; multi-gene sparse index + ROI capture still pending)
 
 ## Summary
 

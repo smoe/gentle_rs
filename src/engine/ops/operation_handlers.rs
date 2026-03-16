@@ -3727,8 +3727,11 @@ impl GentleEngine {
             }
             Operation::ComputeDotplot {
                 seq_id,
+                reference_seq_id,
                 span_start_0based,
                 span_end_0based,
+                reference_span_start_0based,
+                reference_span_end_0based,
                 mode,
                 word_size,
                 step_bp,
@@ -3744,17 +3747,76 @@ impl GentleEngine {
                         code: ErrorCode::NotFound,
                         message: format!("Sequence '{seq_id}' not found"),
                     })?;
-                let seq_text = dna.get_forward_string().to_ascii_uppercase();
-                let seq_bytes = seq_text.as_bytes();
+                let query_text = dna.get_forward_string().to_ascii_uppercase();
+                let query_bytes = query_text.as_bytes();
                 let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
-                    seq_bytes.len(),
+                    query_bytes.len(),
                     span_start_0based,
                     span_end_0based,
                 )?;
-                let span = &seq_bytes[span_start_0based..span_end_0based];
+                let query_span = &query_bytes[span_start_0based..span_end_0based];
+                let (
+                    reference_label,
+                    reference_seq_id_for_view,
+                    reference_text,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
+                ) = match mode {
+                    DotplotMode::SelfForward | DotplotMode::SelfReverseComplement => (
+                        seq_id.clone(),
+                        None,
+                        query_text.clone(),
+                        span_start_0based,
+                        span_end_0based,
+                    ),
+                    DotplotMode::PairForward | DotplotMode::PairReverseComplement => {
+                        let ref_seq_id = reference_seq_id
+                            .as_ref()
+                            .map(|value| value.trim())
+                            .filter(|value| !value.is_empty())
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "ComputeDotplot mode '{}' requires reference_seq_id",
+                                    mode.as_str()
+                                ),
+                            })?;
+                        let reference_dna =
+                            self.state
+                                .sequences
+                                .get(ref_seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!(
+                                        "Reference sequence '{}' not found",
+                                        ref_seq_id
+                                    ),
+                                })?;
+                        let reference_text =
+                            reference_dna.get_forward_string().to_ascii_uppercase();
+                        let reference_bytes = reference_text.as_bytes();
+                        let (ref_start, ref_end) = Self::resolve_analysis_span(
+                            reference_bytes.len(),
+                            reference_span_start_0based,
+                            reference_span_end_0based,
+                        )?;
+                        (
+                            ref_seq_id.to_string(),
+                            Some(ref_seq_id.to_string()),
+                            reference_text,
+                            ref_start,
+                            ref_end,
+                        )
+                    }
+                };
+                let reference_bytes = reference_text.as_bytes();
+                let reference_span =
+                    &reference_bytes[reference_span_start_0based..reference_span_end_0based];
                 let (points, truncated) = Self::compute_dotplot_points(
-                    span,
+                    query_span,
+                    reference_span,
                     span_start_0based,
+                    reference_span_start_0based,
                     mode,
                     word_size,
                     step_bp,
@@ -3770,9 +3832,12 @@ impl GentleEngine {
                     schema: DOTPLOT_VIEW_SCHEMA.to_string(),
                     dotplot_id: dotplot_id.clone(),
                     seq_id: seq_id.clone(),
+                    reference_seq_id: reference_seq_id_for_view,
                     generated_at_unix_ms: Self::now_unix_ms(),
                     span_start_0based,
                     span_end_0based,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
                     mode,
                     word_size,
                     step_bp,
@@ -3787,13 +3852,16 @@ impl GentleEngine {
                     .contains_key(dotplot_id.as_str());
                 self.upsert_dotplot_view(view.clone())?;
                 result.messages.push(format!(
-                    "{} dotplot '{}' for '{}' (mode={}, span={}..{}, points={})",
+                    "{} dotplot '{}' for '{}' vs '{}' (mode={}, query_span={}..{}, reference_span={}..{}, points={})",
                     if replaced { "Updated" } else { "Created" },
                     dotplot_id,
                     seq_id,
+                    reference_label,
                     mode.as_str(),
                     span_start_0based,
                     span_end_0based,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
                     view.point_count
                 ));
                 if truncated {
@@ -3926,6 +3994,28 @@ impl GentleEngine {
                 )?;
                 self.push_rna_read_report_result_message(report, &mut result)?;
             }
+            Operation::AlignRnaReadReport {
+                report_id,
+                selection,
+                align_config_override,
+            } => {
+                let mut keep_running = || true;
+                let report = self.align_rna_read_report_with_progress_and_cancel(
+                    &report_id,
+                    selection,
+                    align_config_override.clone(),
+                    on_progress,
+                    &mut keep_running,
+                )?;
+                self.push_rna_read_report_result_message(report.clone(), &mut result)?;
+                result.messages.push(format!(
+                    "Alignment phase updated report '{}' (selection={}, aligned={}, msa_eligible(retained)={})",
+                    report.report_id,
+                    selection.as_str(),
+                    report.read_count_aligned,
+                    report.retained_count_msa_eligible
+                ));
+            }
             Operation::ListRnaReadReports { seq_id } => {
                 let rows = self.list_rna_read_reports(seq_id.as_deref());
                 result.messages.push(format!(
@@ -3936,17 +4026,53 @@ impl GentleEngine {
                         .map(|s| format!(" (seq_id='{}')", s))
                         .unwrap_or_default()
                 ));
+                for row in rows.iter().take(8) {
+                    result.messages.push(format!(
+                        "  - {}",
+                        Self::format_rna_read_report_summary_row(row)
+                    ));
+                }
+                if rows.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional report row(s) omitted",
+                        rows.len() - 8
+                    ));
+                }
             }
             Operation::ShowRnaReadReport { report_id } => {
                 let report = self.get_rna_read_report(&report_id)?;
                 result.messages.push(format!(
-                    "RNA-read report '{}' (profile={}, reads={}, seed_passed={}, aligned={})",
-                    report.report_id,
-                    report.profile.as_str(),
-                    report.read_count_total,
-                    report.read_count_seed_passed,
-                    report.read_count_aligned
+                    "RNA-read report summary: {}",
+                    Self::format_rna_read_report_detail_summary(&report)
                 ));
+                if !report.target_gene_ids.is_empty() {
+                    let preview = report
+                        .target_gene_ids
+                        .iter()
+                        .take(8)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let suffix = if report.target_gene_ids.len() > 8 {
+                        format!(" (+{} more)", report.target_gene_ids.len() - 8)
+                    } else {
+                        String::new()
+                    };
+                    result
+                        .messages
+                        .push(format!("  target_genes={}{}", preview, suffix));
+                }
+                if !report.origin_class_counts.is_empty() {
+                    let class_summary = report
+                        .origin_class_counts
+                        .iter()
+                        .map(|(class, count)| format!("{class}:{count}"))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    result
+                        .messages
+                        .push(format!("  origin_classes={class_summary}"));
+                }
             }
             Operation::ExportRnaReadReport { report_id, path } => {
                 let report = self.export_rna_read_report(&report_id, &path)?;

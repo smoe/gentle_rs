@@ -650,6 +650,20 @@ Notes:
      need full pinned-source provenance capture before broader CI adoption
    - follow-up: add a TP53-forward benchmark profile (higher-abundance,
      TP73-family-adjacent) while keeping fixture footprint small
+13. cDNA presentation semantics are not yet fully enforced:
+   - toolbar-level DNA presentation mode gating is now available, but cDNA
+     mode still needs stricter annotation-layer semantics
+   - standalone cDNA display should default to intrinsic cDNA evidence only
+     (for example mapped exon composition for that cDNA) and avoid showing
+     unrelated transcript (`mRNA`) tracks by default
+   - once cDNA-to-genome or cDNA-to-genomic-region mapping is run (current
+     two-step seed-filter + alignment workflow), mapped context should appear
+     as an explicit contextual layer rather than being merged into intrinsic
+     cDNA annotations
+   - dotplot outputs prepared for this workflow should be wired into the same
+     intrinsic-vs-context layer model and visibility controls
+   - follow-up UI contract: keep "all contextual transcripts" as an explicit
+     opt-in toggle, not default
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
@@ -766,6 +780,11 @@ Status:
 - Implemented in current baseline:
   - Splicing Expert `Nanopore cDNA interpretation` run path is now asynchronous
     (non-blocking UI) with live progress updates.
+  - Splicing Expert now exposes a regular workflow access route for the same
+    cDNA mapping payload:
+    `Prepare Workflow Op` stages `run_id + ops` in Engine Ops workflow runner,
+    and `Copy Workflow JSON` exports a complete workflow object for CLI/shell
+    execution.
   - Running seed-confirmation histogram (genomic-position bins) is shown during
     execution and updates every 1000 reads (`+` strand up, `-` strand down).
   - Histogram bars now use sqrt-scaled heights so low-frequency bins remain
@@ -829,8 +848,13 @@ Status:
     axis (merged exons adjacent, introns removed from coordinate span).
   - Empty RNA report IDs now default deterministically from input file names
     (`cdna_<filename_stem>`).
-  - Inline per-read alignment is now disabled for phase-1 Nanopore runs so
-    streaming progress stays responsive; alignment is deferred to phase 2.
+  - Inline per-read alignment is disabled for phase-1 Nanopore runs so
+    streaming progress stays responsive.
+  - Phase-2 retained-read alignment is now implemented via shared operation
+    `AlignRnaReadReport` (shell: `rna-reads align-report`; GUI:
+    `Run alignment phase (retained report)`), refreshing per-hit mappings,
+    `msa_eligible` diagnostics, transition/isoform support, and exon/junction
+    abundance frequencies.
   - Phase-1 seed filtering now hashes full read span for every read (replacing
     prior sampled-window behavior) to improve filtering sensitivity.
   - Runtime panel now reports detailed compute breakdown
@@ -867,13 +891,19 @@ Status:
     tables with per-transition read counts/percentages and indexed
     junction-crossing seed-bit diagnostics.
   - RNA-read reports persist exon-support and exon-exon junction-support
-    frequency schema fields; phase-1 seed-only runs currently populate these as
-    zero-support placeholders until deferred alignment is executed.
+    frequency schema fields; phase-1 seed-only runs populate placeholders until
+    the explicit phase-2 alignment step is run.
   - `rna-reads export-hits-fasta` now includes exon-path annotations in FASTA
     headers (`:` confirmed adjacent transition by seeds, `-` unconfirmed).
   - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV
     cohort summaries with per-report frequency JSON columns for downstream
     annotation workflows.
+  - RNA-read report listing/sample-sheet exports now carry sparse-origin
+    request provenance (`origin_mode`, target-gene counts/IDs, ROI-capture
+    flag) so multi-gene scaffold runs remain auditable in cohort-level tables.
+  - `rna-reads list-reports` / `show-report` shell outputs now include compact
+    human-readable provenance summaries (`summary_rows[]` / `summary`) for
+    faster triage without post-processing report JSON.
 
 Track boundaries:
 
@@ -1625,6 +1655,13 @@ Status (2026-03-09):
   - deterministic tests:
     - engine operation storage/retrieval
     - shell parse + shell execute paths
+  - pairwise extension (2026-03-15):
+    - `ComputeDotplot` supports `pair_forward` and
+      `pair_reverse_complement` with explicit reference sequence/span fields
+    - GUI `Dotplot map` supports query-vs-reference rendering with separate
+      x/y spans and query-axis selection sync
+    - shell/CLI `dotplot compute` supports `--reference-seq`, `--ref-start`,
+      `--ref-end`
 - Remaining:
   - `RenderDotplotSvg`
   - additional overlay controls beyond crosshair baseline
@@ -1726,8 +1763,6 @@ Acceptance gates:
 
 Post-baseline follow-ups:
 
-- Add optional sequence-vs-sequence mode (`seqA` vs `seqB`) for construct vs
-  reference comparison.
 - Evaluate adding additional promoter mechanics models after baseline
   reproducibility is stable.
 

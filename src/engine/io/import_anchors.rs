@@ -72,7 +72,9 @@ impl GentleEngine {
         if block.is_empty() { None } else { Some(block) }
     }
 
-    pub(super) fn parse_genbank_accession_region(path: &str) -> Option<(String, usize, usize, String, char)> {
+    pub(super) fn parse_genbank_accession_region(
+        path: &str,
+    ) -> Option<(String, usize, usize, String, char)> {
         if !Self::is_genbank_like_path(path) {
             return None;
         }
@@ -189,7 +191,9 @@ impl GentleEngine {
         Ok(reference.eq_ignore_ascii_case(&dna.get_forward_string()))
     }
 
-    pub(super) fn genome_anchor_fallback_policy_for_extension(&self) -> PreparedGenomeFallbackPolicy {
+    pub(super) fn genome_anchor_fallback_policy_for_extension(
+        &self,
+    ) -> PreparedGenomeFallbackPolicy {
         match self.state.parameters.genome_anchor_prepared_fallback_policy {
             GenomeAnchorPreparedFallbackPolicy::Off => PreparedGenomeFallbackPolicy::Off,
             GenomeAnchorPreparedFallbackPolicy::SingleCompatible => {
@@ -236,5 +240,4 @@ impl GentleEngine {
 
         SequenceOrigin::ImportedUnknown
     }
-
 }

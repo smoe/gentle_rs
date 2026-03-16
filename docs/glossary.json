@@ -1160,8 +1160,8 @@
             "cli-direct"
          ],
          "path": "dotplot compute",
-         "summary": "Compute and persist one dotplot payload for a sequence span.",
-         "usage": "dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+         "summary": "Compute and persist one dotplot payload for a query sequence span, optionally against a reference sequence span.",
+         "usage": "dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
       },
       {
          "aliases": [],

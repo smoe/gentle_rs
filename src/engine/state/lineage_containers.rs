@@ -341,5 +341,4 @@ impl GentleEngine {
         dna.set_max_restriction_enzyme_sites(Some(2));
         dna.set_methylation_mode(MethylationMode::both());
     }
-
 }

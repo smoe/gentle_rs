@@ -27,22 +27,22 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY, CandidateFeatureBoundaryMode,
-        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
-        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState, RenderSvgMode,
-        RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile,
-        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale,
-        RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
+        DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
+        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
+        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
+        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
+        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+        RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1040,8 +1040,11 @@ pub enum ShellCommand {
     },
     DotplotCompute {
         seq_id: String,
+        reference_seq_id: Option<String>,
         span_start_0based: Option<usize>,
         span_end_0based: Option<usize>,
+        reference_span_start_0based: Option<usize>,
+        reference_span_end_0based: Option<usize>,
         mode: DotplotMode,
         word_size: usize,
         step_bp: usize,
@@ -1087,6 +1090,11 @@ pub enum ShellCommand {
         checkpoint_path: Option<String>,
         checkpoint_every_reads: usize,
         resume_from_checkpoint: bool,
+    },
+    RnaReadsAlignReport {
+        report_id: String,
+        selection: RnaReadHitSelection,
+        align_config_override: Option<RnaReadAlignConfig>,
     },
     RnaReadsListReports {
         seq_id: Option<String>,
@@ -2182,7 +2190,8 @@ fn estimate_routine_planning(
             }
         }
     }
-    estimated_time_hours += planning_business_days_to_elapsed_hours(procurement_delay_business_days);
+    estimated_time_hours +=
+        planning_business_days_to_elapsed_hours(procurement_delay_business_days);
 
     let capability_set = profile
         .capabilities
@@ -5488,8 +5497,11 @@ impl ShellCommand {
             ),
             Self::DotplotCompute {
                 seq_id,
+                reference_seq_id,
                 span_start_0based,
                 span_end_0based,
+                reference_span_start_0based,
+                reference_span_end_0based,
                 mode,
                 word_size,
                 step_bp,
@@ -5497,14 +5509,24 @@ impl ShellCommand {
                 tile_bp,
                 dotplot_id,
             } => format!(
-                "compute dotplot for '{}' (span={}..{}, mode={}, word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}')",
+                "compute dotplot for '{}' vs '{}' (query_span={}..{}, reference_span={}..{}, mode={}, word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}')",
                 seq_id,
+                reference_seq_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or(seq_id.as_str()),
                 span_start_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "0".to_string()),
                 span_end_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "seq_end".to_string()),
+                reference_span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                reference_span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "ref_end".to_string()),
                 mode.as_str(),
                 word_size,
                 step_bp,
@@ -5620,6 +5642,29 @@ impl ShellCommand {
                 checkpoint_every_reads,
                 resume_from_checkpoint
             ),
+            Self::RnaReadsAlignReport {
+                report_id,
+                selection,
+                align_config_override,
+            } => {
+                let align_note = align_config_override
+                    .as_ref()
+                    .map(|cfg| {
+                        format!(
+                            "override(band={}, min_identity={:.2}, max_secondary={})",
+                            cfg.band_width_bp,
+                            cfg.min_identity_fraction,
+                            cfg.max_secondary_mappings
+                        )
+                    })
+                    .unwrap_or_else(|| "report-default".to_string());
+                format!(
+                    "run RNA-read alignment phase for report '{}' (selection={}, align={})",
+                    report_id,
+                    selection.as_str(),
+                    align_note
+                )
+            }
             Self::RnaReadsListReports { seq_id } => format!(
                 "list stored RNA-read reports{}",
                 seq_id
@@ -5822,6 +5867,7 @@ impl ShellCommand {
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
                 | Self::RnaReadsInterpret { .. }
+                | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -13553,8 +13599,11 @@ pub fn execute_shell_command_with_options(
         }
         ShellCommand::DotplotCompute {
             seq_id,
+            reference_seq_id,
             span_start_0based,
             span_end_0based,
+            reference_span_start_0based,
+            reference_span_end_0based,
             mode,
             word_size,
             step_bp,
@@ -13570,8 +13619,11 @@ pub fn execute_shell_command_with_options(
             let op_result = engine
                 .apply(Operation::ComputeDotplot {
                     seq_id: seq_id.clone(),
+                    reference_seq_id: reference_seq_id.clone(),
                     span_start_0based: *span_start_0based,
                     span_end_0based: *span_end_0based,
+                    reference_span_start_0based: *reference_span_start_0based,
+                    reference_span_end_0based: *reference_span_end_0based,
                     mode: *mode,
                     word_size: *word_size,
                     step_bp: *step_bp,
@@ -13760,14 +13812,42 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::RnaReadsAlignReport {
+            report_id,
+            selection,
+            align_config_override,
+        } => {
+            let op_result = engine
+                .apply(Operation::AlignRnaReadReport {
+                    report_id: report_id.clone(),
+                    selection: *selection,
+                    align_config_override: align_config_override.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = engine
+                .get_rna_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            }
+        }
         ShellCommand::RnaReadsListReports { seq_id } => {
             let rows = engine.list_rna_read_reports(seq_id.as_deref());
+            let summary_rows = rows
+                .iter()
+                .map(GentleEngine::format_rna_read_report_summary_row)
+                .collect::<Vec<_>>();
             ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "schema": "gentle.rna_read_report_list.v1",
                     "report_count": rows.len(),
                     "reports": rows,
+                    "summary_rows": summary_rows,
                 }),
             }
         }
@@ -13775,10 +13855,12 @@ pub fn execute_shell_command_with_options(
             let report = engine
                 .get_rna_read_report(report_id)
                 .map_err(|e| e.to_string())?;
+            let summary = GentleEngine::format_rna_read_report_detail_summary(&report);
             ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
+                    "summary": summary,
                 }),
             }
         }
@@ -13965,4 +14047,3 @@ pub fn execute_shell_command_with_options(
 
 #[cfg(test)]
 mod tests;
-

@@ -199,7 +199,6 @@ mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
 mod sequence_ops;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
 ///
@@ -2824,6 +2823,8 @@ pub enum DotplotMode {
     #[default]
     SelfForward,
     SelfReverseComplement,
+    PairForward,
+    PairReverseComplement,
 }
 
 impl DotplotMode {
@@ -2831,6 +2832,8 @@ impl DotplotMode {
         match self {
             Self::SelfForward => "self_forward",
             Self::SelfReverseComplement => "self_reverse_complement",
+            Self::PairForward => "pair_forward",
+            Self::PairReverseComplement => "pair_reverse_complement",
         }
     }
 }
@@ -2938,6 +2941,10 @@ impl RnaReadHitSelection {
             Self::Aligned => "aligned",
         }
     }
+}
+
+fn default_rna_align_report_selection() -> RnaReadHitSelection {
+    RnaReadHitSelection::SeedPassed
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -3057,9 +3064,28 @@ impl Default for RnaReadAlignConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadAlignmentMode {
+    #[default]
+    Local,
+    Semiglobal,
+}
+
+impl RnaReadAlignmentMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Semiglobal => "semiglobal",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadMappingHit {
+    #[serde(default)]
+    pub alignment_mode: RnaReadAlignmentMode,
     pub transcript_feature_id: usize,
     pub transcript_id: String,
     pub transcript_label: String,
@@ -3177,6 +3203,10 @@ pub struct RnaReadInterpretationHit {
     pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
     pub perfect_seed_match: bool,
     pub passed_seed_filter: bool,
+    #[serde(default)]
+    pub msa_eligible: bool,
+    #[serde(default)]
+    pub msa_eligibility_reason: String,
     pub best_mapping: Option<RnaReadMappingHit>,
     pub secondary_mappings: Vec<RnaReadMappingHit>,
 }
@@ -3325,6 +3355,8 @@ pub struct RnaReadInterpretationReport {
     pub read_count_seed_passed: usize,
     pub read_count_aligned: usize,
     #[serde(default)]
+    pub retained_count_msa_eligible: usize,
+    #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]
     pub hits: Vec<RnaReadInterpretationHit>,
@@ -3356,9 +3388,15 @@ pub struct RnaReadInterpretationReportSummary {
     pub scope: SplicingScopePreset,
     #[serde(default)]
     pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub target_gene_count: usize,
+    #[serde(default)]
+    pub roi_seed_capture_enabled: bool,
     pub read_count_total: usize,
     pub read_count_seed_passed: usize,
     pub read_count_aligned: usize,
+    #[serde(default)]
+    pub retained_count_msa_eligible: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3673,9 +3711,12 @@ pub struct DotplotView {
     pub schema: String,
     pub dotplot_id: String,
     pub seq_id: String,
+    pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
+    pub reference_span_start_0based: usize,
+    pub reference_span_end_0based: usize,
     pub mode: DotplotMode,
     pub word_size: usize,
     pub step_bp: usize,
@@ -3689,9 +3730,12 @@ pub struct DotplotView {
 pub struct DotplotViewSummary {
     pub dotplot_id: String,
     pub seq_id: String,
+    pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
     pub span_start_0based: usize,
     pub span_end_0based: usize,
+    pub reference_span_start_0based: usize,
+    pub reference_span_end_0based: usize,
     pub mode: DotplotMode,
     pub word_size: usize,
     pub step_bp: usize,
@@ -4033,9 +4077,15 @@ pub enum Operation {
     ComputeDotplot {
         seq_id: SeqId,
         #[serde(default)]
+        reference_seq_id: Option<SeqId>,
+        #[serde(default)]
         span_start_0based: Option<usize>,
         #[serde(default)]
         span_end_0based: Option<usize>,
+        #[serde(default)]
+        reference_span_start_0based: Option<usize>,
+        #[serde(default)]
+        reference_span_end_0based: Option<usize>,
         #[serde(default)]
         mode: DotplotMode,
         word_size: usize,
@@ -4091,6 +4141,13 @@ pub enum Operation {
         checkpoint_every_reads: usize,
         #[serde(default)]
         resume_from_checkpoint: bool,
+    },
+    AlignRnaReadReport {
+        report_id: String,
+        #[serde(default = "default_rna_align_report_selection")]
+        selection: RnaReadHitSelection,
+        #[serde(default)]
+        align_config_override: Option<RnaReadAlignConfig>,
     },
     ListRnaReadReports {
         #[serde(default)]
@@ -5035,6 +5092,10 @@ pub struct RnaReadTopHitPreview {
     pub strand_confidence: f64,
     #[serde(default)]
     pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
+    #[serde(default)]
+    pub msa_eligible: bool,
+    #[serde(default)]
+    pub msa_eligibility_reason: String,
     pub read_length_bp: usize,
     pub sequence: String,
     pub sequence_preview: String,
@@ -5544,6 +5605,7 @@ impl GentleEngine {
                 "ComputeDotplot".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
                 "InterpretRnaReads".to_string(),
+                "AlignRnaReadReport".to_string(),
                 "ListRnaReadReports".to_string(),
                 "ShowRnaReadReport".to_string(),
                 "ExportRnaReadReport".to_string(),
@@ -8715,8 +8777,10 @@ impl GentleEngine {
     }
 
     fn compute_dotplot_points(
-        sequence: &[u8],
-        span_start_0based: usize,
+        query_sequence: &[u8],
+        reference_sequence: &[u8],
+        query_span_start_0based: usize,
+        reference_span_start_0based: usize,
         mode: DotplotMode,
         word_size: usize,
         step_bp: usize,
@@ -8735,20 +8799,34 @@ impl GentleEngine {
                 message: "ComputeDotplot requires step_bp >= 1".to_string(),
             });
         }
-        if sequence.len() < word_size {
+        if query_sequence.len() < word_size {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "ComputeDotplot word_size ({word_size}) exceeds selected span length ({})",
-                    sequence.len()
+                    "ComputeDotplot word_size ({word_size}) exceeds selected query span length ({})",
+                    query_sequence.len()
                 ),
             });
         }
-        let positions: Vec<usize> = (0..=sequence.len() - word_size).step_by(step_bp).collect();
-        let pair_evaluations = positions
+        if reference_sequence.len() < word_size {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "ComputeDotplot word_size ({word_size}) exceeds selected reference span length ({})",
+                    reference_sequence.len()
+                ),
+            });
+        }
+        let query_positions: Vec<usize> = (0..=query_sequence.len() - word_size)
+            .step_by(step_bp)
+            .collect();
+        let reference_positions: Vec<usize> = (0..=reference_sequence.len() - word_size)
+            .step_by(step_bp)
+            .collect();
+        let pair_evaluations = query_positions
             .len()
-            .saturating_mul(positions.len())
-            .max(positions.len());
+            .saturating_mul(reference_positions.len())
+            .max(query_positions.len());
         if pair_evaluations > MAX_DOTPLOT_PAIR_EVALUATIONS {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -8760,11 +8838,14 @@ impl GentleEngine {
         }
 
         let mut reverse_words: Vec<Vec<u8>> = vec![];
-        if matches!(mode, DotplotMode::SelfReverseComplement) {
-            reverse_words = positions
+        if matches!(
+            mode,
+            DotplotMode::SelfReverseComplement | DotplotMode::PairReverseComplement
+        ) {
+            reverse_words = reference_positions
                 .iter()
                 .map(|start| {
-                    Self::reverse_complement_bytes(&sequence[*start..*start + word_size])
+                    Self::reverse_complement_bytes(&reference_sequence[*start..*start + word_size])
                         .into_iter()
                         .map(|b| b.to_ascii_uppercase())
                         .collect::<Vec<_>>()
@@ -8774,23 +8855,25 @@ impl GentleEngine {
 
         let mut points: Vec<DotplotMatchPoint> = vec![];
         let mut truncated = false;
-        for (x_idx, x_start) in positions.iter().enumerate() {
-            let left = &sequence[*x_start..*x_start + word_size];
-            for (y_idx, y_start) in positions.iter().enumerate() {
+        for (x_idx, x_start) in query_positions.iter().enumerate() {
+            let left = &query_sequence[*x_start..*x_start + word_size];
+            for (y_idx, y_start) in reference_positions.iter().enumerate() {
                 let mismatches = match mode {
-                    DotplotMode::SelfForward => Self::count_mismatches_capped(
-                        left,
-                        &sequence[*y_start..*y_start + word_size],
-                        max_mismatches,
-                    ),
-                    DotplotMode::SelfReverseComplement => {
+                    DotplotMode::SelfForward | DotplotMode::PairForward => {
+                        Self::count_mismatches_capped(
+                            left,
+                            &reference_sequence[*y_start..*y_start + word_size],
+                            max_mismatches,
+                        )
+                    }
+                    DotplotMode::SelfReverseComplement | DotplotMode::PairReverseComplement => {
                         Self::count_mismatches_capped(left, &reverse_words[y_idx], max_mismatches)
                     }
                 };
                 if mismatches <= max_mismatches {
                     points.push(DotplotMatchPoint {
-                        x_0based: span_start_0based + positions[x_idx],
-                        y_0based: span_start_0based + positions[y_idx],
+                        x_0based: query_span_start_0based + query_positions[x_idx],
+                        y_0based: reference_span_start_0based + reference_positions[y_idx],
                         mismatches,
                     });
                     if points.len() >= max_points {
@@ -8912,9 +8995,12 @@ impl GentleEngine {
             .map(|view| DotplotViewSummary {
                 dotplot_id: view.dotplot_id.clone(),
                 seq_id: view.seq_id.clone(),
+                reference_seq_id: view.reference_seq_id.clone(),
                 generated_at_unix_ms: view.generated_at_unix_ms,
                 span_start_0based: view.span_start_0based,
                 span_end_0based: view.span_end_0based,
+                reference_span_start_0based: view.reference_span_start_0based,
+                reference_span_end_0based: view.reference_span_end_0based,
                 mode: view.mode,
                 word_size: view.word_size,
                 step_bp: view.step_bp,
@@ -10125,7 +10211,6 @@ impl GentleEngine {
             report.skipped_wrong_chromosome, source_label, anchor_chromosome, seen
         ));
     }
-
 }
 
 impl Engine for GentleEngine {
@@ -10171,4 +10256,3 @@ impl Engine for GentleEngine {
 
 #[cfg(test)]
 mod tests;
-

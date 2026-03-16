@@ -1,0 +1,3389 @@
+//! Extracted command parser helpers for candidate/guide/macro/routine/planning families.
+
+use super::*;
+
+pub(super) fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "candidates requires a subcommand: list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, score-weighted, top-k, pareto, filter, set-op, macro, template-list, template-show, template-put, template-delete, template-run"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("candidates list takes no options".to_string());
+            }
+            Ok(ShellCommand::CandidatesList)
+        }
+        "delete" => {
+            if tokens.len() != 3 {
+                return Err("candidates delete requires SET_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesDelete {
+                set_name: tokens[2].clone(),
+            })
+        }
+        "generate" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates generate requires SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry MODE] [--feature-boundary MODE] [--strand-relation MODE] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let seq_id = tokens[3].clone();
+            let mut length_bp: Option<usize> = None;
+            let mut step_bp: usize = 1;
+            let mut feature_kinds: Vec<String> = vec![];
+            let mut feature_label_regex: Option<String> = None;
+            let mut max_distance_bp: Option<usize> = None;
+            let mut feature_geometry_mode: Option<CandidateFeatureGeometryMode> = None;
+            let mut feature_boundary_mode: Option<CandidateFeatureBoundaryMode> = None;
+            let mut feature_strand_relation: Option<CandidateFeatureStrandRelation> = None;
+            let mut limit: usize = DEFAULT_CANDIDATE_SET_LIMIT;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--length" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--length", "candidates generate")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --length value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--length must be >= 1".to_string());
+                        }
+                        length_bp = Some(parsed);
+                    }
+                    "--step" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--step", "candidates generate")?;
+                        step_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --step value '{raw}': {e}"))?;
+                        if step_bp == 0 {
+                            return Err("--step must be >= 1".to_string());
+                        }
+                    }
+                    "--feature-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-kind",
+                            "candidates generate",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            feature_kinds.push(trimmed.to_string());
+                        }
+                    }
+                    "--feature-label-regex" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-label-regex",
+                            "candidates generate",
+                        )?;
+                        if raw.trim().is_empty() {
+                            feature_label_regex = None;
+                        } else {
+                            feature_label_regex = Some(raw);
+                        }
+                    }
+                    "--max-distance" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-distance",
+                            "candidates generate",
+                        )?;
+                        max_distance_bp =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --max-distance value '{raw}': {e}")
+                            })?);
+                    }
+                    "--feature-geometry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-geometry",
+                            "candidates generate",
+                        )?;
+                        feature_geometry_mode = Some(parse_candidate_feature_geometry_mode(&raw)?);
+                    }
+                    "--feature-boundary" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-boundary",
+                            "candidates generate",
+                        )?;
+                        feature_boundary_mode = Some(parse_candidate_feature_boundary_mode(&raw)?);
+                    }
+                    "--strand-relation" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--strand-relation",
+                            "candidates generate",
+                        )?;
+                        feature_strand_relation =
+                            Some(parse_candidate_feature_strand_relation(&raw)?);
+                    }
+                    "--limit" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "candidates generate")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for candidates generate"));
+                    }
+                }
+            }
+            let Some(length_bp) = length_bp else {
+                return Err("candidates generate requires --length N".to_string());
+            };
+            Ok(ShellCommand::CandidatesGenerate {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
+                limit,
+            })
+        }
+        "generate-between-anchors" | "generate-between" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates generate-between-anchors requires SET_NAME SEQ_ID --length N (--anchor-a-pos N | --anchor-a-json JSON) (--anchor-b-pos N | --anchor-b-json JSON) [--step N] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let seq_id = tokens[3].clone();
+            let mut length_bp: Option<usize> = None;
+            let mut step_bp: usize = 1;
+            let mut limit: usize = DEFAULT_CANDIDATE_SET_LIMIT;
+            let mut anchor_a: Option<SequenceAnchor> = None;
+            let mut anchor_b: Option<SequenceAnchor> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--length" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--length",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --length value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--length must be >= 1".to_string());
+                        }
+                        length_bp = Some(parsed);
+                    }
+                    "--step" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--step",
+                            "candidates generate-between-anchors",
+                        )?;
+                        step_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --step value '{raw}': {e}"))?;
+                        if step_bp == 0 {
+                            return Err("--step must be >= 1".to_string());
+                        }
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "candidates generate-between-anchors",
+                        )?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--anchor-a-pos" => {
+                        if anchor_a.is_some() {
+                            return Err("Anchor A was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-a-pos",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --anchor-a-pos value '{raw}': {e}"))?;
+                        anchor_a = Some(SequenceAnchor::Position { zero_based: parsed });
+                    }
+                    "--anchor-b-pos" => {
+                        if anchor_b.is_some() {
+                            return Err("Anchor B was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-b-pos",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --anchor-b-pos value '{raw}': {e}"))?;
+                        anchor_b = Some(SequenceAnchor::Position { zero_based: parsed });
+                    }
+                    "--anchor-a-json" => {
+                        if anchor_a.is_some() {
+                            return Err("Anchor A was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-a-json",
+                            "candidates generate-between-anchors",
+                        )?;
+                        anchor_a = Some(parse_sequence_anchor_json(&raw, "--anchor-a-json")?);
+                    }
+                    "--anchor-b-json" => {
+                        if anchor_b.is_some() {
+                            return Err("Anchor B was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-b-json",
+                            "candidates generate-between-anchors",
+                        )?;
+                        anchor_b = Some(parse_sequence_anchor_json(&raw, "--anchor-b-json")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates generate-between-anchors"
+                        ));
+                    }
+                }
+            }
+            let Some(length_bp) = length_bp else {
+                return Err("candidates generate-between-anchors requires --length N".to_string());
+            };
+            let anchor_a = anchor_a.ok_or_else(|| {
+                "candidates generate-between-anchors requires --anchor-a-pos N or --anchor-a-json JSON"
+                    .to_string()
+            })?;
+            let anchor_b = anchor_b.ok_or_else(|| {
+                "candidates generate-between-anchors requires --anchor-b-pos N or --anchor-b-json JSON"
+                    .to_string()
+            })?;
+            Ok(ShellCommand::CandidatesGenerateBetweenAnchors {
+                set_name,
+                seq_id,
+                anchor_a,
+                anchor_b,
+                length_bp,
+                step_bp,
+                limit,
+            })
+        }
+        "show" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "candidates show requires SET_NAME [--limit N] [--offset N]".to_string()
+                );
+            }
+            let set_name = tokens[2].clone();
+            let mut limit = DEFAULT_CANDIDATE_PAGE_SIZE;
+            let mut offset = 0usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--limit" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "candidates show")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--offset" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--offset", "candidates show")?;
+                        offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for candidates show"));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesShow {
+                set_name,
+                limit,
+                offset,
+            })
+        }
+        "metrics" => {
+            if tokens.len() != 3 {
+                return Err("candidates metrics requires SET_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesMetrics {
+                set_name: tokens[2].clone(),
+            })
+        }
+        "score" => {
+            if tokens.len() < 5 {
+                return Err("candidates score requires SET_NAME METRIC_NAME EXPRESSION".to_string());
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let expression = tokens[4..].join(" ");
+            if expression.trim().is_empty() {
+                return Err("candidates score requires non-empty EXPRESSION".to_string());
+            }
+            Ok(ShellCommand::CandidatesScoreExpression {
+                set_name,
+                metric,
+                expression,
+            })
+        }
+        "score-distance" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates score-distance requires SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry MODE] [--feature-boundary MODE] [--strand-relation MODE]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let mut feature_kinds: Vec<String> = vec![];
+            let mut feature_label_regex: Option<String> = None;
+            let mut feature_geometry_mode: Option<CandidateFeatureGeometryMode> = None;
+            let mut feature_boundary_mode: Option<CandidateFeatureBoundaryMode> = None;
+            let mut feature_strand_relation: Option<CandidateFeatureStrandRelation> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-kind",
+                            "candidates score-distance",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            feature_kinds.push(trimmed.to_string());
+                        }
+                    }
+                    "--feature-label-regex" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-label-regex",
+                            "candidates score-distance",
+                        )?;
+                        feature_label_regex = Some(raw);
+                    }
+                    "--feature-geometry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-geometry",
+                            "candidates score-distance",
+                        )?;
+                        feature_geometry_mode = Some(parse_candidate_feature_geometry_mode(&raw)?);
+                    }
+                    "--feature-boundary" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-boundary",
+                            "candidates score-distance",
+                        )?;
+                        feature_boundary_mode = Some(parse_candidate_feature_boundary_mode(&raw)?);
+                    }
+                    "--strand-relation" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--strand-relation",
+                            "candidates score-distance",
+                        )?;
+                        feature_strand_relation =
+                            Some(parse_candidate_feature_strand_relation(&raw)?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates score-distance"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesScoreDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
+            })
+        }
+        "score-weighted" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "candidates score-weighted requires SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let mut objectives: Vec<CandidateWeightedObjectiveTerm> = vec![];
+            let mut normalize_metrics = true;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--term" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--term",
+                            "candidates score-weighted",
+                        )?;
+                        objectives.push(parse_weighted_objective_term(&raw)?);
+                    }
+                    "--normalize" => {
+                        normalize_metrics = true;
+                        idx += 1;
+                    }
+                    "--no-normalize" => {
+                        normalize_metrics = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates score-weighted"
+                        ));
+                    }
+                }
+            }
+            if objectives.is_empty() {
+                return Err(
+                    "candidates score-weighted requires at least one --term METRIC:WEIGHT[:max|min]"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesScoreWeightedObjective {
+                set_name,
+                metric,
+                objectives,
+                normalize_metrics,
+            })
+        }
+        "top-k" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates top-k requires INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break POLICY]"
+                        .to_string(),
+                );
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut metric: Option<String> = None;
+            let mut k: Option<usize> = None;
+            let mut direction = CandidateObjectiveDirection::Maximize;
+            let mut tie_break = CandidateTieBreakPolicy::SeqStartEnd;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--metric" => {
+                        metric = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--metric",
+                            "candidates top-k",
+                        )?);
+                    }
+                    "--k" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--k", "candidates top-k")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --k value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--k must be >= 1".to_string());
+                        }
+                        k = Some(parsed);
+                    }
+                    "--direction" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--direction", "candidates top-k")?;
+                        direction = parse_candidate_objective_direction(&raw)?;
+                    }
+                    "--tie-break" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--tie-break", "candidates top-k")?;
+                        tie_break = parse_candidate_tie_break_policy(&raw)?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for candidates top-k")),
+                }
+            }
+            let metric = metric.ok_or_else(|| "candidates top-k requires --metric".to_string())?;
+            let k = k.ok_or_else(|| "candidates top-k requires --k N".to_string())?;
+            Ok(ShellCommand::CandidatesTopK {
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction,
+                tie_break,
+            })
+        }
+        "pareto" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates pareto requires INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break POLICY]"
+                        .to_string(),
+                );
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut objectives: Vec<CandidateObjectiveSpec> = vec![];
+            let mut max_candidates: Option<usize> = None;
+            let mut tie_break = CandidateTieBreakPolicy::SeqStartEnd;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--objective" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--objective",
+                            "candidates pareto",
+                        )?;
+                        objectives.push(parse_pareto_objective(&raw)?);
+                    }
+                    "--max-candidates" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-candidates",
+                            "candidates pareto",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-candidates value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--max-candidates must be >= 1".to_string());
+                        }
+                        max_candidates = Some(parsed);
+                    }
+                    "--tie-break" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tie-break",
+                            "candidates pareto",
+                        )?;
+                        tie_break = parse_candidate_tie_break_policy(&raw)?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for candidates pareto")),
+                }
+            }
+            if objectives.is_empty() {
+                return Err(
+                    "candidates pareto requires at least one --objective METRIC[:max|min]"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesParetoFrontier {
+                input_set,
+                output_set,
+                objectives,
+                max_candidates,
+                tie_break,
+            })
+        }
+        "filter" => {
+            if tokens.len() < 5 {
+                return Err("candidates filter requires INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]".to_string());
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut metric: Option<String> = None;
+            let mut min: Option<f64> = None;
+            let mut max: Option<f64> = None;
+            let mut min_quantile: Option<f64> = None;
+            let mut max_quantile: Option<f64> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--metric" => {
+                        metric = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--metric",
+                            "candidates filter",
+                        )?);
+                    }
+                    "--min" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--min", "candidates filter")?;
+                        min = Some(
+                            raw.parse::<f64>()
+                                .map_err(|e| format!("Invalid --min value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--max" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max", "candidates filter")?;
+                        max = Some(
+                            raw.parse::<f64>()
+                                .map_err(|e| format!("Invalid --max value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--min-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-quantile",
+                            "candidates filter",
+                        )?;
+                        min_quantile =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!("Invalid --min-quantile value '{raw}': {e}")
+                            })?);
+                    }
+                    "--max-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-quantile",
+                            "candidates filter",
+                        )?;
+                        max_quantile =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!("Invalid --max-quantile value '{raw}': {e}")
+                            })?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for candidates filter"));
+                    }
+                }
+            }
+            let metric = metric.ok_or_else(|| "candidates filter requires --metric".to_string())?;
+            if min.zip(max).map(|(lo, hi)| lo > hi).unwrap_or(false) {
+                return Err("--min must be <= --max".to_string());
+            }
+            if min_quantile
+                .zip(max_quantile)
+                .map(|(lo, hi)| lo > hi)
+                .unwrap_or(false)
+            {
+                return Err("--min-quantile must be <= --max-quantile".to_string());
+            }
+            for (name, value) in [
+                ("min-quantile", min_quantile),
+                ("max-quantile", max_quantile),
+            ] {
+                if let Some(q) = value {
+                    if !(0.0..=1.0).contains(&q) {
+                        return Err(format!("--{name} must be between 0 and 1"));
+                    }
+                }
+            }
+            if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
+                return Err(
+                    "candidates filter requires at least one of --min/--max/--min-quantile/--max-quantile"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesFilter {
+                input_set,
+                output_set,
+                metric,
+                min,
+                max,
+                min_quantile,
+                max_quantile,
+            })
+        }
+        "set-op" => {
+            if tokens.len() != 6 {
+                return Err(
+                    "candidates set-op requires union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET"
+                        .to_string(),
+                );
+            }
+            let op = CandidateSetOperator::parse(&tokens[2]).ok_or_else(|| {
+                format!(
+                    "Unsupported candidates set-op '{}'; expected union|intersect|subtract",
+                    tokens[2]
+                )
+            })?;
+            Ok(ShellCommand::CandidatesSetOp {
+                op,
+                left_set: tokens[3].clone(),
+                right_set: tokens[4].clone(),
+                output_set: tokens[5].clone(),
+            })
+        }
+        "macro" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "candidates macro requires SCRIPT_OR_@FILE (or --file PATH), optionally with --transactional".to_string(),
+                );
+            }
+            let mut idx = 2usize;
+            let mut transactional = false;
+            let mut script_file: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    "--file" => {
+                        if script_file.is_some() {
+                            return Err(
+                                "candidates macro --file may only be specified once".to_string()
+                            );
+                        }
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err("candidates macro --file requires PATH".to_string());
+                        }
+                        script_file = Some(tokens[idx].trim().to_string());
+                        idx += 1;
+                    }
+                    _ => break,
+                }
+            }
+            let script = if let Some(path) = script_file {
+                if idx != tokens.len() {
+                    return Err(
+                        "candidates macro does not accept inline script after --file PATH"
+                            .to_string(),
+                    );
+                }
+                format!("@{path}")
+            } else {
+                if idx >= tokens.len() {
+                    return Err("candidates macro requires SCRIPT_OR_@FILE".to_string());
+                }
+                tokens[idx..].join(" ")
+            };
+            if script.trim().is_empty() {
+                return Err("candidates macro requires non-empty script".to_string());
+            }
+            Ok(ShellCommand::CandidatesMacro {
+                script,
+                transactional,
+            })
+        }
+        "template-list" => {
+            if tokens.len() != 2 {
+                return Err("candidates template-list takes no options".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateList)
+        }
+        "template-show" => {
+            if tokens.len() != 3 {
+                return Err("candidates template-show requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateShow {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-put" | "template-upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut description: Option<String> = None;
+            let mut details_url: Option<String> = None;
+            let mut parameters: Vec<CandidateMacroTemplateParam> = vec![];
+            let mut script: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--description" => {
+                        description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--description",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--details-url" | "--url" => {
+                        if details_url.is_some() {
+                            return Err(
+                                "candidates template-put details URL was already specified"
+                                    .to_string(),
+                            );
+                        }
+                        details_url = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--details-url",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--param" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--param",
+                            "candidates template-put",
+                        )?;
+                        parameters.push(parse_candidate_template_param_spec(&raw)?);
+                    }
+                    "--script" => {
+                        if script.is_some() {
+                            return Err(
+                                "candidates template-put script was already specified".to_string()
+                            );
+                        }
+                        script = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--script",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--file" => {
+                        if script.is_some() {
+                            return Err(
+                                "candidates template-put script was already specified".to_string()
+                            );
+                        }
+                        let path = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--file",
+                            "candidates template-put",
+                        )?;
+                        script = Some(format!("@{path}"));
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates template-put"
+                        ));
+                    }
+                }
+            }
+            let script = script.ok_or_else(|| {
+                "candidates template-put requires --script SCRIPT_OR_@FILE or --file PATH"
+                    .to_string()
+            })?;
+            Ok(ShellCommand::CandidatesTemplateUpsert {
+                name,
+                description,
+                details_url,
+                parameters,
+                script,
+            })
+        }
+        "template-delete" => {
+            if tokens.len() != 3 {
+                return Err("candidates template-delete requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateDelete {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "candidates template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut bindings: HashMap<String, String> = HashMap::new();
+            let mut transactional = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--bind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--bind",
+                            "candidates template-run",
+                        )?;
+                        let (key, value) = parse_template_binding(&raw)?;
+                        if bindings.insert(key.clone(), value).is_some() {
+                            return Err(format!(
+                                "Duplicate --bind key '{}' in candidates template-run",
+                                key
+                            ));
+                        }
+                    }
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates template-run"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesTemplateRun {
+                name,
+                bindings,
+                transactional,
+            })
+        }
+        other => Err(format!(
+            "Unknown candidates subcommand '{other}' (expected list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, score-weighted, top-k, pareto, filter, set-op, macro, template-list, template-show, template-put, template-delete, template-run)"
+        )),
+    }
+}
+
+pub(super) fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "guides requires a subcommand: list, show, put, delete, filter, filter-show, oligos-generate, oligos-list, oligos-show, oligos-export, protocol-export"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("guides list takes no options".to_string());
+            }
+            Ok(ShellCommand::GuidesList)
+        }
+        "show" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "guides show requires GUIDE_SET_ID [--limit N] [--offset N]".to_string()
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut limit = DEFAULT_GUIDE_PAGE_SIZE;
+            let mut offset = 0usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--limit" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", "guides show")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--offset" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--offset", "guides show")?;
+                        offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides show")),
+                }
+            }
+            Ok(ShellCommand::GuidesShow {
+                guide_set_id,
+                limit,
+                offset,
+            })
+        }
+        "put" | "upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides put requires GUIDE_SET_ID (--json JSON|@FILE | --file PATH)"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut guides_json: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--json" => {
+                        if guides_json.is_some() {
+                            return Err("guides put JSON payload was already specified".to_string());
+                        }
+                        guides_json =
+                            Some(parse_option_path(tokens, &mut idx, "--json", "guides put")?);
+                    }
+                    "--file" => {
+                        if guides_json.is_some() {
+                            return Err("guides put JSON payload was already specified".to_string());
+                        }
+                        let path = parse_option_path(tokens, &mut idx, "--file", "guides put")?;
+                        guides_json = Some(format!("@{path}"));
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides put")),
+                }
+            }
+            let guides_json = guides_json.ok_or_else(|| {
+                "guides put requires --json JSON|@FILE or --file PATH".to_string()
+            })?;
+            Ok(ShellCommand::GuidesPut {
+                guide_set_id,
+                guides_json,
+            })
+        }
+        "delete" => {
+            if tokens.len() != 3 {
+                return Err("guides delete requires GUIDE_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesDelete {
+                guide_set_id: tokens[2].clone(),
+            })
+        }
+        "filter" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "guides filter requires GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut config_json: Option<String> = None;
+            let mut output_guide_set_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--config" => {
+                        if config_json.is_some() {
+                            return Err("guides filter config was already specified".to_string());
+                        }
+                        config_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--config",
+                            "guides filter",
+                        )?);
+                    }
+                    "--config-file" => {
+                        if config_json.is_some() {
+                            return Err("guides filter config was already specified".to_string());
+                        }
+                        let path =
+                            parse_option_path(tokens, &mut idx, "--config-file", "guides filter")?;
+                        config_json = Some(format!("@{path}"));
+                    }
+                    "--output-set" => {
+                        output_guide_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-set",
+                            "guides filter",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides filter")),
+                }
+            }
+            Ok(ShellCommand::GuidesFilter {
+                guide_set_id,
+                config_json,
+                output_guide_set_id,
+            })
+        }
+        "filter-show" => {
+            if tokens.len() != 3 {
+                return Err("guides filter-show requires GUIDE_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesFilterShow {
+                guide_set_id: tokens[2].clone(),
+            })
+        }
+        "oligos-generate" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides oligos-generate requires GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let template_id = tokens[3].clone();
+            let mut apply_5prime_g_extension = false;
+            let mut output_oligo_set_id: Option<String> = None;
+            let mut passed_only = false;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--apply-5prime-g-extension" => {
+                        apply_5prime_g_extension = true;
+                        idx += 1;
+                    }
+                    "--output-oligo-set" => {
+                        output_oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-oligo-set",
+                            "guides oligos-generate",
+                        )?);
+                    }
+                    "--passed-only" => {
+                        passed_only = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for guides oligos-generate"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesOligosGenerate {
+                guide_set_id,
+                template_id,
+                apply_5prime_g_extension,
+                output_oligo_set_id,
+                passed_only,
+            })
+        }
+        "oligos-list" => {
+            let mut guide_set_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--guide-set" => {
+                        guide_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--guide-set",
+                            "guides oligos-list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for guides oligos-list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesOligosList { guide_set_id })
+        }
+        "oligos-show" => {
+            if tokens.len() != 3 {
+                return Err("guides oligos-show requires OLIGO_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesOligosShow {
+                oligo_set_id: tokens[2].clone(),
+            })
+        }
+        "oligos-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides oligos-export requires GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut format = GuideOligoExportFormat::CsvTable;
+            let mut plate_format: Option<GuideOligoPlateFormat> = None;
+            let mut oligo_set_id: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--format" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "guides oligos-export",
+                        )?;
+                        format = parse_guide_export_format(&raw)?;
+                    }
+                    "--plate" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--plate", "guides oligos-export")?;
+                        plate_format = Some(parse_guide_plate_format(&raw)?);
+                    }
+                    "--oligo-set" => {
+                        oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--oligo-set",
+                            "guides oligos-export",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for guides oligos-export"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesOligosExport {
+                guide_set_id,
+                oligo_set_id,
+                format,
+                path,
+                plate_format,
+            })
+        }
+        "protocol-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides protocol-export requires GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut oligo_set_id: Option<String> = None;
+            let mut include_qc_checklist = true;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--oligo-set" => {
+                        oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--oligo-set",
+                            "guides protocol-export",
+                        )?);
+                    }
+                    "--no-qc" => {
+                        include_qc_checklist = false;
+                        idx += 1;
+                    }
+                    "--with-qc" => {
+                        include_qc_checklist = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for guides protocol-export"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesProtocolExport {
+                guide_set_id,
+                oligo_set_id,
+                path,
+                include_qc_checklist,
+            })
+        }
+        other => Err(format!(
+            "Unknown guides subcommand '{other}' (expected list, show, put, delete, filter, filter-show, oligos-generate, oligos-list, oligos-show, oligos-export, protocol-export)"
+        )),
+    }
+}
+
+pub(super) fn sequence_feature_roi_range_0based(
+    dna: &DNAsequence,
+    feature_id: usize,
+) -> Result<(usize, usize), String> {
+    let feature = dna
+        .features()
+        .get(feature_id)
+        .ok_or_else(|| format!("Feature id {feature_id} is out of range"))?;
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    if ranges.is_empty() {
+        let (from, to) = feature
+            .location
+            .find_bounds()
+            .map_err(|e| format!("Could not read bounds for feature id {feature_id}: {e}"))?;
+        if from < 0 || to < 0 {
+            return Err(format!("Feature id {feature_id} has negative bounds"));
+        }
+        ranges.push((from as usize, to as usize));
+    }
+    let seq_len = dna.len();
+    if seq_len == 0 {
+        return Err("Template sequence is empty".to_string());
+    }
+    let start = ranges
+        .iter()
+        .map(|(start, _)| *start)
+        .min()
+        .ok_or_else(|| format!("Feature id {feature_id} has no usable ranges"))?;
+    if start >= seq_len {
+        return Err(format!(
+            "Feature id {feature_id} starts outside sequence length {seq_len}"
+        ));
+    }
+    let end_exclusive = ranges
+        .iter()
+        .map(|(_, end)| *end)
+        .max()
+        .ok_or_else(|| format!("Feature id {feature_id} has no usable ranges"))?
+        .min(seq_len);
+    if end_exclusive <= start {
+        return Err(format!(
+            "Feature id {feature_id} has invalid range {}..{} for sequence length {seq_len}",
+            start, end_exclusive
+        ));
+    }
+    Ok((start, end_exclusive))
+}
+
+pub(super) fn build_seeded_primer_pair_operation(
+    template: &str,
+    roi_start_0based: usize,
+    roi_end_0based_exclusive: usize,
+) -> Operation {
+    Operation::DesignPrimerPairs {
+        template: template.to_string(),
+        roi_start_0based,
+        roi_end_0based: roi_end_0based_exclusive,
+        forward: PrimerDesignSideConstraint::default(),
+        reverse: PrimerDesignSideConstraint::default(),
+        min_amplicon_bp: 120,
+        max_amplicon_bp: 1200,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(2.0),
+        max_pairs: Some(200),
+        report_id: None,
+    }
+}
+
+pub(super) fn build_seeded_qpcr_operation(
+    template: &str,
+    roi_start_0based: usize,
+    roi_end_0based_exclusive: usize,
+) -> Operation {
+    Operation::DesignQpcrAssays {
+        template: template.to_string(),
+        roi_start_0based,
+        roi_end_0based: roi_end_0based_exclusive,
+        forward: PrimerDesignSideConstraint::default(),
+        reverse: PrimerDesignSideConstraint::default(),
+        probe: PrimerDesignSideConstraint::default(),
+        min_amplicon_bp: 120,
+        max_amplicon_bp: 1200,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(2.0),
+        max_probe_tm_delta_c: Some(10.0),
+        max_assays: Some(200),
+        report_id: None,
+    }
+}
+
+pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "primers requires a subcommand: design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "design" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "primers design requires REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                        .to_string(),
+                );
+            }
+            let request_json = tokens[2].clone();
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--backend", "primers design")?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers design",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers design"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersDesign {
+                request_json,
+                backend,
+                primer3_executable,
+            })
+        }
+        "design-qpcr" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "primers design-qpcr requires REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                        .to_string(),
+                );
+            }
+            let request_json = tokens[2].clone();
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--backend",
+                            "primers design-qpcr",
+                        )?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers design-qpcr",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers design-qpcr"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersDesignQpcr {
+                request_json,
+                backend,
+                primer3_executable,
+            })
+        }
+        "preflight" => {
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--backend", "primers preflight")?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers preflight",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers preflight"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersPreflight {
+                backend,
+                primer3_executable,
+            })
+        }
+        "seed-from-feature" => {
+            if tokens.len() != 4 {
+                return Err("primers seed-from-feature requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-from-feature: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedFromFeature { seq_id, feature_id })
+        }
+        "seed-from-splicing" => {
+            if tokens.len() != 4 {
+                return Err("primers seed-from-splicing requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-from-splicing: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id })
+        }
+        "list-reports" => {
+            if tokens.len() != 2 {
+                return Err("primers list-reports takes no options".to_string());
+            }
+            Ok(ShellCommand::PrimersListReports)
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("primers show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersShowReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err("primers export-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersExportReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        "list-qpcr-reports" => {
+            if tokens.len() != 2 {
+                return Err("primers list-qpcr-reports takes no options".to_string());
+            }
+            Ok(ShellCommand::PrimersListQpcrReports)
+        }
+        "show-qpcr-report" => {
+            if tokens.len() != 3 {
+                return Err("primers show-qpcr-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersShowQpcrReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-qpcr-report" => {
+            if tokens.len() != 4 {
+                return Err("primers export-qpcr-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersExportQpcrReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+        )),
+    }
+}
+
+pub(super) fn parse_dotplot_mode(raw: &str) -> Result<DotplotMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "self_forward" | "self-forward" | "forward" | "self" => Ok(DotplotMode::SelfForward),
+        "self_reverse_complement"
+        | "self-reverse-complement"
+        | "self_revcomp"
+        | "self-revcomp"
+        | "revcomp"
+        | "reverse_complement"
+        | "reverse-complement" => Ok(DotplotMode::SelfReverseComplement),
+        "pair_forward" | "pair-forward" | "pair" => Ok(DotplotMode::PairForward),
+        "pair_reverse_complement" | "pair-reverse-complement" | "pair_revcomp" | "pair-revcomp" => {
+            Ok(DotplotMode::PairReverseComplement)
+        }
+        other => Err(format!(
+            "Unsupported dotplot mode '{other}', expected self_forward|self_reverse_complement|pair_forward|pair_reverse_complement"
+        )),
+    }
+}
+
+pub(super) fn parse_flexibility_model(raw: &str) -> Result<FlexibilityModel, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "at_richness" | "at-richness" | "at" | "at_content" | "at-content" => {
+            Ok(FlexibilityModel::AtRichness)
+        }
+        "at_skew" | "at-skew" | "skew" => Ok(FlexibilityModel::AtSkew),
+        other => Err(format!(
+            "Unsupported flexibility model '{other}', expected at_richness or at_skew"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_profile(raw: &str) -> Result<RnaReadInterpretationProfile, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "nanopore_cdna_v1" | "nanopore" | "nanopore_cdna" => {
+            Ok(RnaReadInterpretationProfile::NanoporeCdnaV1)
+        }
+        "short_read_v1" | "shortread" | "short_read" => {
+            Ok(RnaReadInterpretationProfile::ShortReadV1)
+        }
+        "transposon_v1" | "transposon" => Ok(RnaReadInterpretationProfile::TransposonV1),
+        other => Err(format!(
+            "Unsupported RNA-read profile '{other}', expected nanopore_cdna_v1|short_read_v1|transposon_v1"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_input_format(raw: &str) -> Result<RnaReadInputFormat, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fasta" | "fa" => Ok(RnaReadInputFormat::Fasta),
+        other => Err(format!(
+            "Unsupported RNA-read input format '{other}', expected fasta"
+        )),
+    }
+}
+
+pub(super) fn parse_splicing_scope_preset(raw: &str) -> Result<SplicingScopePreset, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all_overlapping_both_strands" | "all" | "broad" => {
+            Ok(SplicingScopePreset::AllOverlappingBothStrands)
+        }
+        "target_group_any_strand" | "target_group" | "group" => {
+            Ok(SplicingScopePreset::TargetGroupAnyStrand)
+        }
+        "all_overlapping_target_strand" | "target_strand" | "strand" => {
+            Ok(SplicingScopePreset::AllOverlappingTargetStrand)
+        }
+        "target_group_target_strand" | "group_strand" | "legacy" => {
+            Ok(SplicingScopePreset::TargetGroupTargetStrand)
+        }
+        other => Err(format!(
+            "Unsupported scope preset '{other}', expected all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_origin_mode(raw: &str) -> Result<RnaReadOriginMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "single_gene" | "single-gene" | "single" | "legacy" => Ok(RnaReadOriginMode::SingleGene),
+        "multi_gene_sparse" | "multi-gene-sparse" | "multi_sparse" | "multi" => {
+            Ok(RnaReadOriginMode::MultiGeneSparse)
+        }
+        other => Err(format!(
+            "Unsupported origin mode '{other}', expected single_gene|multi_gene_sparse"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_report_mode(raw: &str) -> Result<RnaReadReportMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "full" => Ok(RnaReadReportMode::Full),
+        "seed_passed_only" | "seed-passed-only" | "seed_passed" | "seed-only" => {
+            Ok(RnaReadReportMode::SeedPassedOnly)
+        }
+        other => Err(format!(
+            "Unsupported report mode '{other}', expected full|seed_passed_only"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelection, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all" => Ok(RnaReadHitSelection::All),
+        "seed_passed" | "seed" => Ok(RnaReadHitSelection::SeedPassed),
+        "aligned" => Ok(RnaReadHitSelection::Aligned),
+        other => Err(format!(
+            "Unsupported hit selection '{other}', expected all|seed_passed|aligned"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_score_density_scale(
+    raw: &str,
+) -> Result<RnaReadScoreDensityScale, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "linear" | "lin" => Ok(RnaReadScoreDensityScale::Linear),
+        "log" | "log1p" => Ok(RnaReadScoreDensityScale::Log),
+        other => Err(format!(
+            "Unsupported score-density scale '{other}', expected linear|log"
+        )),
+    }
+}
+
+pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("dotplot requires a subcommand: compute, list, show".to_string());
+    }
+    match tokens[1].as_str() {
+        "compute" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "dotplot compute requires SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode MODE] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("dotplot compute SEQ_ID must not be empty".to_string());
+            }
+            let mut reference_seq_id: Option<String> = None;
+            let mut span_start_0based: Option<usize> = None;
+            let mut span_end_0based: Option<usize> = None;
+            let mut reference_span_start_0based: Option<usize> = None;
+            let mut reference_span_end_0based: Option<usize> = None;
+            let mut mode = DotplotMode::SelfForward;
+            let mut word_size = 12usize;
+            let mut step_bp = 2usize;
+            let mut max_mismatches = 0usize;
+            let mut tile_bp: Option<usize> = None;
+            let mut dotplot_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--reference-seq" | "--ref-seq" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "dotplot compute")?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{flag} requires a non-empty sequence id"));
+                        }
+                        reference_seq_id = Some(trimmed.to_string());
+                    }
+                    "--start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--start", "dotplot compute")?;
+                        span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --start value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--end", "dotplot compute")?;
+                        span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --end value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--ref-start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--ref-start", "dotplot compute")?;
+                        reference_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --ref-start value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--ref-end" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--ref-end", "dotplot compute")?;
+                        reference_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --ref-end value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--mode" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--mode", "dotplot compute")?;
+                        mode = parse_dotplot_mode(&raw)?;
+                    }
+                    "--word-size" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--word-size", "dotplot compute")?;
+                        word_size = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --word-size value '{raw}' for dotplot compute: {e}")
+                        })?;
+                    }
+                    "--step" | "--step-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "dotplot compute")?;
+                        step_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for dotplot compute: {e}")
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "dotplot compute",
+                        )?;
+                        max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for dotplot compute: {e}"
+                            )
+                        })?;
+                    }
+                    "--tile-bp" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--tile-bp", "dotplot compute")?;
+                        tile_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --tile-bp value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--id" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--id", "dotplot compute")?;
+                        dotplot_id = Some(raw);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for dotplot compute"));
+                    }
+                }
+            }
+            Ok(ShellCommand::DotplotCompute {
+                seq_id,
+                reference_seq_id,
+                span_start_0based,
+                span_end_0based,
+                reference_span_start_0based,
+                reference_span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            })
+        }
+        "list" => {
+            if tokens.len() > 3 {
+                return Err("dotplot list expects at most one optional SEQ_ID".to_string());
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::DotplotList { seq_id })
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("dotplot show requires DOTPLOT_ID".to_string());
+            }
+            Ok(ShellCommand::DotplotShow {
+                dotplot_id: tokens[2].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown dotplot subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
+pub(super) fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("flex requires a subcommand: compute, list, show".to_string());
+    }
+    match tokens[1].as_str() {
+        "compute" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "flex compute requires SEQ_ID [--start N] [--end N] [--model MODEL] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("flex compute SEQ_ID must not be empty".to_string());
+            }
+            let mut span_start_0based: Option<usize> = None;
+            let mut span_end_0based: Option<usize> = None;
+            let mut model = FlexibilityModel::AtRichness;
+            let mut bin_bp = 25usize;
+            let mut smoothing_bp: Option<usize> = None;
+            let mut track_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--start" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--start", "flex compute")?;
+                        span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --start value '{raw}' for flex compute: {e}")
+                        })?);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--end", "flex compute")?;
+                        span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --end value '{raw}' for flex compute: {e}")
+                        })?);
+                    }
+                    "--model" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--model", "flex compute")?;
+                        model = parse_flexibility_model(&raw)?;
+                    }
+                    "--bin-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--bin-bp", "flex compute")?;
+                        bin_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --bin-bp value '{raw}' for flex compute: {e}")
+                        })?;
+                    }
+                    "--smoothing-bp" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--smoothing-bp", "flex compute")?;
+                        smoothing_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --smoothing-bp value '{raw}' for flex compute: {e}")
+                        })?);
+                    }
+                    "--id" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--id", "flex compute")?;
+                        track_id = Some(raw);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for flex compute")),
+                }
+            }
+            Ok(ShellCommand::FlexCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                track_id,
+            })
+        }
+        "list" => {
+            if tokens.len() > 3 {
+                return Err("flex list expects at most one optional SEQ_ID".to_string());
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::FlexList { seq_id })
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("flex show requires TRACK_ID".to_string());
+            }
+            Ok(ShellCommand::FlexShow {
+                track_id: tokens[2].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown flex subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "interpret" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("rna-reads interpret SEQ_ID must not be empty".to_string());
+            }
+            let seed_feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid FEATURE_ID '{}' for rna-reads interpret: {e}",
+                    tokens[3]
+                )
+            })?;
+            let input_path = tokens[4].trim().to_string();
+            if input_path.is_empty() {
+                return Err("rna-reads interpret INPUT.fa[.gz] must not be empty".to_string());
+            }
+            let mut profile = RnaReadInterpretationProfile::NanoporeCdnaV1;
+            let mut input_format = RnaReadInputFormat::Fasta;
+            let mut scope = SplicingScopePreset::AllOverlappingBothStrands;
+            let mut origin_mode = RnaReadOriginMode::SingleGene;
+            let mut target_gene_ids: Vec<String> = vec![];
+            let mut roi_seed_capture_enabled = false;
+            let mut seed_filter = RnaReadSeedFilterConfig::default();
+            let mut align_config = RnaReadAlignConfig::default();
+            let mut report_id: Option<String> = None;
+            let mut report_mode = RnaReadReportMode::Full;
+            let mut checkpoint_path: Option<String> = None;
+            let mut checkpoint_every_reads = 10_000usize;
+            let mut resume_from_checkpoint = false;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "rna-reads interpret",
+                        )?);
+                    }
+                    "--profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--profile",
+                            "rna-reads interpret",
+                        )?;
+                        profile = parse_rna_read_profile(&raw)?;
+                    }
+                    "--report-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-mode",
+                            "rna-reads interpret",
+                        )?;
+                        report_mode = parse_rna_read_report_mode(&raw)?;
+                    }
+                    "--checkpoint-path" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-path",
+                            "rna-reads interpret",
+                        )?;
+                        checkpoint_path = Some(raw);
+                    }
+                    "--checkpoint-every-reads" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-every-reads",
+                            "rna-reads interpret",
+                        )?;
+                        checkpoint_every_reads = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --checkpoint-every-reads value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--resume-from-checkpoint" => {
+                        resume_from_checkpoint = true;
+                        idx += 1;
+                    }
+                    "--no-resume-from-checkpoint" => {
+                        resume_from_checkpoint = false;
+                        idx += 1;
+                    }
+                    "--format" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--format", "rna-reads interpret")?;
+                        input_format = parse_rna_read_input_format(&raw)?;
+                    }
+                    "--scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--scope", "rna-reads interpret")?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--origin-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--origin-mode",
+                            "rna-reads interpret",
+                        )?;
+                        origin_mode = parse_rna_read_origin_mode(&raw)?;
+                    }
+                    "--target-gene" | "--target-gene-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-gene",
+                            "rna-reads interpret",
+                        )?;
+                        let gene_id = raw.trim();
+                        if gene_id.is_empty() {
+                            return Err(
+                                "--target-gene requires a non-empty gene identifier".to_string()
+                            );
+                        }
+                        target_gene_ids.push(gene_id.to_string());
+                    }
+                    "--roi-seed-capture" => {
+                        roi_seed_capture_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-roi-seed-capture" => {
+                        roi_seed_capture_enabled = false;
+                        idx += 1;
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --kmer-len value '{raw}' for rna-reads interpret: {e}")
+                        })?;
+                    }
+                    "--short-max-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--short-max-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.short_full_hash_max_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --short-max-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--long-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--long-window-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.long_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --long-window-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--long-window-count" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--long-window-count",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.long_window_count = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --long-window-count value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-hit-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-weighted-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-weighted-seed-hit-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_weighted_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-weighted-seed-hit-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-unique-matched-kmers" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-matched-kmers",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_unique_matched_kmers =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-unique-matched-kmers value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-median-transcript-gap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-median-transcript-gap",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.max_median_transcript_gap =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-median-transcript-gap value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-chain-consistency-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-chain-consistency-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_chain_consistency_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-chain-consistency-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-confirmed-transitions" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transitions",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_confirmed_exon_transitions =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transitions value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-transition-support-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-transition-support-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_transition_support_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-transition-support-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = false;
+                        idx += 1;
+                    }
+                    "--poly-t-prefix-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--poly-t-prefix-min-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.poly_t_prefix_min_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --poly-t-prefix-min-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-band-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-band-bp",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.band_width_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --align-band-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-min-identity",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --align-min-identity value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.max_secondary_mappings =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-secondary-mappings value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for rna-reads interpret"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsInterpret {
+                seq_id,
+                seed_feature_id,
+                input_path,
+                profile,
+                input_format,
+                scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                seed_filter,
+                align_config,
+                report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
+            })
+        }
+        "align-report" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads align-report requires REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads align-report REPORT_ID must not be empty".to_string());
+            }
+            let mut selection = RnaReadHitSelection::SeedPassed;
+            let mut align_config_override: Option<RnaReadAlignConfig> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads align-report",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--align-band-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-band-bp",
+                            "rna-reads align-report",
+                        )?;
+                        let cfg =
+                            align_config_override.get_or_insert_with(RnaReadAlignConfig::default);
+                        cfg.band_width_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --align-band-bp value '{raw}' for rna-reads align-report: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-min-identity",
+                            "rna-reads align-report",
+                        )?;
+                        let cfg =
+                            align_config_override.get_or_insert_with(RnaReadAlignConfig::default);
+                        cfg.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --align-min-identity value '{raw}' for rna-reads align-report: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads align-report",
+                        )?;
+                        let cfg =
+                            align_config_override.get_or_insert_with(RnaReadAlignConfig::default);
+                        cfg.max_secondary_mappings = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-secondary-mappings value '{raw}' for rna-reads align-report: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads align-report"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsAlignReport {
+                report_id,
+                selection,
+                align_config_override,
+            })
+        }
+        "list-reports" => {
+            if tokens.len() > 3 {
+                return Err(
+                    "rna-reads list-reports expects at most one optional SEQ_ID".to_string()
+                );
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::RnaReadsListReports { seq_id })
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("rna-reads show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::RnaReadsShowReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err("rna-reads export-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::RnaReadsExportReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        "export-hits-fasta" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-hits-fasta requires REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-hits-fasta",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-hits-fasta"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportHitsFasta {
+                report_id,
+                path,
+                selection,
+            })
+        }
+        "export-sample-sheet" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads export-sample-sheet requires OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]"
+                        .to_string(),
+                );
+            }
+            let path = tokens[2].clone();
+            let mut seq_id: Option<String> = None;
+            let mut report_ids: Vec<String> = vec![];
+            let mut append = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "rna-reads export-sample-sheet",
+                        )?;
+                        seq_id = Some(raw);
+                    }
+                    "--report-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "rna-reads export-sample-sheet",
+                        )?;
+                        report_ids.push(raw);
+                    }
+                    "--append" => {
+                        append = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-sample-sheet"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportSampleSheet {
+                path,
+                seq_id,
+                report_ids,
+                append,
+            })
+        }
+        "export-paths-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-paths-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-paths-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-paths-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportExonPathsTsv {
+                report_id,
+                path,
+                selection,
+            })
+        }
+        "export-abundance-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-abundance-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-abundance-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-abundance-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportExonAbundanceTsv {
+                report_id,
+                path,
+                selection,
+            })
+        }
+        "export-score-density-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-score-density-svg requires REPORT_ID OUTPUT.svg [--scale linear|log]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut scale = RnaReadScoreDensityScale::Log;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--scale" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "rna-reads export-score-density-svg",
+                        )?;
+                        scale = parse_rna_read_score_density_scale(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-score-density-svg"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportScoreDensitySvg {
+                report_id,
+                path,
+                scale,
+            })
+        }
+        other => Err(format!(
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg)"
+        )),
+    }
+}
+
+pub(super) fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "macros requires a subcommand: run, instance-list, instance-show, template-list, template-show, template-put, template-delete, template-import, template-run"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "macros run requires SCRIPT_OR_@FILE (or --file PATH), optionally with --transactional".to_string(),
+                );
+            }
+            let mut idx = 2usize;
+            let mut transactional = false;
+            let mut script_file: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    "--file" => {
+                        if script_file.is_some() {
+                            return Err("macros run --file may only be specified once".to_string());
+                        }
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err("macros run --file requires PATH".to_string());
+                        }
+                        script_file = Some(tokens[idx].trim().to_string());
+                        idx += 1;
+                    }
+                    _ => break,
+                }
+            }
+            let script = if let Some(path) = script_file {
+                if idx != tokens.len() {
+                    return Err(
+                        "macros run does not accept inline script after --file PATH".to_string()
+                    );
+                }
+                format!("@{path}")
+            } else {
+                if idx >= tokens.len() {
+                    return Err("macros run requires SCRIPT_OR_@FILE".to_string());
+                }
+                tokens[idx..].join(" ")
+            };
+            if script.trim().is_empty() {
+                return Err("macros run requires non-empty script".to_string());
+            }
+            Ok(ShellCommand::MacrosRun {
+                script,
+                transactional,
+            })
+        }
+        "instance-list" => {
+            if tokens.len() != 2 {
+                return Err("macros instance-list takes no options".to_string());
+            }
+            Ok(ShellCommand::MacrosInstanceList)
+        }
+        "instance-show" => {
+            if tokens.len() != 3 {
+                return Err("macros instance-show requires MACRO_INSTANCE_ID".to_string());
+            }
+            Ok(ShellCommand::MacrosInstanceShow {
+                macro_instance_id: tokens[2].clone(),
+            })
+        }
+        "template-list" => {
+            if tokens.len() != 2 {
+                return Err("macros template-list takes no options".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateList)
+        }
+        "template-show" => {
+            if tokens.len() != 3 {
+                return Err("macros template-show requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateShow {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-put" | "template-upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port ...]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut description: Option<String> = None;
+            let mut details_url: Option<String> = None;
+            let mut parameters: Vec<WorkflowMacroTemplateParam> = vec![];
+            let mut input_ports: Vec<WorkflowMacroTemplatePort> = vec![];
+            let mut output_ports: Vec<WorkflowMacroTemplatePort> = vec![];
+            let mut script: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--description" => {
+                        description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--description",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--details-url" | "--url" => {
+                        if details_url.is_some() {
+                            return Err(
+                                "macros template-put details URL was already specified".to_string()
+                            );
+                        }
+                        details_url = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--details-url",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--param" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--param", "macros template-put")?;
+                        parameters.push(parse_workflow_template_param_spec(&raw)?);
+                    }
+                    "--input-port" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--input-port",
+                            "macros template-put",
+                        )?;
+                        input_ports.push(parse_workflow_template_port_spec(&raw)?);
+                    }
+                    "--output-port" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-port",
+                            "macros template-put",
+                        )?;
+                        output_ports.push(parse_workflow_template_port_spec(&raw)?);
+                    }
+                    "--script" => {
+                        if script.is_some() {
+                            return Err(
+                                "macros template-put script was already specified".to_string()
+                            );
+                        }
+                        script = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--script",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--file" => {
+                        if script.is_some() {
+                            return Err(
+                                "macros template-put script was already specified".to_string()
+                            );
+                        }
+                        let path =
+                            parse_option_path(tokens, &mut idx, "--file", "macros template-put")?;
+                        script = Some(format!("@{path}"));
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for macros template-put"));
+                    }
+                }
+            }
+            let script = script.ok_or_else(|| {
+                "macros template-put requires --script SCRIPT_OR_@FILE or --file PATH".to_string()
+            })?;
+            Ok(ShellCommand::MacrosTemplateUpsert {
+                name,
+                description,
+                details_url,
+                parameters,
+                input_ports,
+                output_ports,
+                script,
+            })
+        }
+        "template-delete" => {
+            if tokens.len() != 3 {
+                return Err("macros template-delete requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateDelete {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-import" => {
+            if tokens.len() != 3 {
+                return Err("macros template-import requires PATH".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateImport {
+                path: tokens[2].clone(),
+            })
+        }
+        "template-run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "macros template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut bindings: HashMap<String, String> = HashMap::new();
+            let mut transactional = false;
+            let mut validate_only = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--bind" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--bind", "macros template-run")?;
+                        let (key, value) = parse_template_binding(&raw)?;
+                        if bindings.insert(key.clone(), value).is_some() {
+                            return Err(format!(
+                                "Duplicate --bind key '{}' in macros template-run",
+                                key
+                            ));
+                        }
+                    }
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    "--validate-only" | "--dry-run" => {
+                        validate_only = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for macros template-run"));
+                    }
+                }
+            }
+            Ok(ShellCommand::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+                validate_only,
+            })
+        }
+        other => Err(format!(
+            "Unknown macros subcommand '{other}' (expected run, instance-list, instance-show, template-list, template-show, template-put, template-delete, template-import, template-run)"
+        )),
+    }
+}
+
+pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("routines requires a subcommand: list, explain, compare".to_string());
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut family: Option<String> = None;
+            let mut status: Option<String> = None;
+            let mut tag: Option<String> = None;
+            let mut query: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines list",
+                        )?);
+                    }
+                    "--family" => {
+                        family = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--family",
+                            "routines list",
+                        )?);
+                    }
+                    "--status" => {
+                        status = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--status",
+                            "routines list",
+                        )?);
+                    }
+                    "--tag" => {
+                        tag = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tag",
+                            "routines list",
+                        )?);
+                    }
+                    "--query" => {
+                        query = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query",
+                            "routines list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesList {
+                catalog_path,
+                family,
+                status,
+                tag,
+                query,
+            })
+        }
+        "explain" => {
+            if tokens.len() < 3 {
+                return Err("routines explain requires ROUTINE_ID [--catalog PATH]".to_string());
+            }
+            let routine_id = tokens[2].trim().to_string();
+            if routine_id.is_empty() {
+                return Err("routines explain ROUTINE_ID cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines explain",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines explain"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesExplain {
+                catalog_path,
+                routine_id,
+            })
+        }
+        "compare" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "routines compare requires ROUTINE_A ROUTINE_B [--catalog PATH]".to_string(),
+                );
+            }
+            let left_routine_id = tokens[2].trim().to_string();
+            let right_routine_id = tokens[3].trim().to_string();
+            if left_routine_id.is_empty() || right_routine_id.is_empty() {
+                return Err("routines compare routine ids cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines compare",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines compare"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesCompare {
+                catalog_path,
+                left_routine_id,
+                right_routine_id,
+            })
+        }
+        other => Err(format!(
+            "Unknown routines subcommand '{other}' (expected list, explain, compare)"
+        )),
+    }
+}
+
+pub(super) fn parse_planning_profile_scope(raw: &str) -> Result<PlanningProfileScope, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "global" => Ok(PlanningProfileScope::Global),
+        "project" | "project_override" | "project-override" => {
+            Ok(PlanningProfileScope::ProjectOverride)
+        }
+        "agent" | "agent_overlay" | "confirmed_agent_overlay" | "confirmed-agent-overlay" => {
+            Ok(PlanningProfileScope::ConfirmedAgentOverlay)
+        }
+        "effective" => Ok(PlanningProfileScope::Effective),
+        other => Err(format!(
+            "Unsupported planning profile scope '{other}' (expected global|project_override|confirmed_agent_overlay|effective)"
+        )),
+    }
+}
+
+pub(super) fn parse_planning_suggestion_status(
+    raw: &str,
+) -> Result<PlanningSuggestionStatus, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "pending" => Ok(PlanningSuggestionStatus::Pending),
+        "accepted" => Ok(PlanningSuggestionStatus::Accepted),
+        "rejected" => Ok(PlanningSuggestionStatus::Rejected),
+        other => Err(format!(
+            "Unsupported planning suggestion status '{other}' (expected pending|accepted|rejected)"
+        )),
+    }
+}
+
+pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "planning requires a subcommand: profile, objective, suggestions, sync".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "profile" => {
+            if tokens.len() < 3 {
+                return Err("planning profile requires a subcommand: show, set, clear".to_string());
+            }
+            match tokens[2].as_str() {
+                "show" => {
+                    let mut scope = PlanningProfileScope::Effective;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile show",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile show"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningProfileShow { scope })
+                }
+                "set" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "planning profile set requires JSON_OR_@FILE [--scope SCOPE]"
+                                .to_string(),
+                        );
+                    }
+                    let mut scope = PlanningProfileScope::ProjectOverride;
+                    let payload_json = tokens[3].clone();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile set",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile set"
+                                ));
+                            }
+                        }
+                    }
+                    if scope == PlanningProfileScope::Effective {
+                        return Err(
+                            "planning profile set does not support --scope effective".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningProfileSet {
+                        scope,
+                        payload_json,
+                    })
+                }
+                "clear" => {
+                    let mut scope = PlanningProfileScope::ProjectOverride;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile clear",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile clear"
+                                ));
+                            }
+                        }
+                    }
+                    if scope == PlanningProfileScope::Effective {
+                        return Err(
+                            "planning profile clear does not support --scope effective".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningProfileSet {
+                        scope,
+                        payload_json: "null".to_string(),
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning profile subcommand '{other}' (expected show, set, clear)"
+                )),
+            }
+        }
+        "objective" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "planning objective requires a subcommand: show, set, clear".to_string()
+                );
+            }
+            match tokens[2].as_str() {
+                "show" => {
+                    if tokens.len() > 3 {
+                        return Err("planning objective show takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveShow)
+                }
+                "set" => {
+                    if tokens.len() != 4 {
+                        return Err("planning objective set requires JSON_OR_@FILE".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveSet {
+                        payload_json: tokens[3].clone(),
+                    })
+                }
+                "clear" => {
+                    if tokens.len() > 3 {
+                        return Err("planning objective clear takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveSet {
+                        payload_json: "null".to_string(),
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning objective subcommand '{other}' (expected show, set, clear)"
+                )),
+            }
+        }
+        "suggestions" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "planning suggestions requires a subcommand: list, accept, reject".to_string(),
+                );
+            }
+            match tokens[2].as_str() {
+                "list" => {
+                    let mut status: Option<PlanningSuggestionStatus> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--status" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--status",
+                                    "planning suggestions list",
+                                )?;
+                                status = Some(parse_planning_suggestion_status(&raw)?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning suggestions list"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningSuggestionsList { status })
+                }
+                "accept" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "planning suggestions accept requires SUGGESTION_ID".to_string()
+                        );
+                    }
+                    let suggestion_id = tokens[3].trim().to_string();
+                    if suggestion_id.is_empty() {
+                        return Err(
+                            "planning suggestions accept SUGGESTION_ID cannot be empty".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningSuggestionAccept { suggestion_id })
+                }
+                "reject" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "planning suggestions reject requires SUGGESTION_ID [--reason TEXT]"
+                                .to_string(),
+                        );
+                    }
+                    let suggestion_id = tokens[3].trim().to_string();
+                    if suggestion_id.is_empty() {
+                        return Err(
+                            "planning suggestions reject SUGGESTION_ID cannot be empty".to_string()
+                        );
+                    }
+                    let mut reason: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--reason" => {
+                                reason = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--reason",
+                                    "planning suggestions reject",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning suggestions reject"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningSuggestionReject {
+                        suggestion_id,
+                        reason,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning suggestions subcommand '{other}' (expected list, accept, reject)"
+                )),
+            }
+        }
+        "sync" => {
+            if tokens.len() < 3 {
+                return Err("planning sync requires a subcommand: status, pull, push".to_string());
+            }
+            match tokens[2].as_str() {
+                "status" => {
+                    if tokens.len() > 3 {
+                        return Err("planning sync status takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningSyncStatus)
+                }
+                "pull" | "push" => {
+                    if tokens.len() < 4 {
+                        return Err(format!(
+                            "planning sync {} requires JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]",
+                            tokens[2]
+                        ));
+                    }
+                    let payload_json = tokens[3].clone();
+                    let mut source: Option<String> = None;
+                    let mut confidence: Option<f64> = None;
+                    let mut snapshot_id: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--source" => {
+                                source = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--source",
+                                    "planning sync",
+                                )?);
+                            }
+                            "--confidence" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--confidence",
+                                    "planning sync",
+                                )?;
+                                let parsed = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --confidence value '{raw}': {e}")
+                                })?;
+                                confidence = Some(parsed);
+                            }
+                            "--snapshot-id" => {
+                                snapshot_id = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--snapshot-id",
+                                    "planning sync",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!("Unknown option '{other}' for planning sync"));
+                            }
+                        }
+                    }
+                    if tokens[2].eq_ignore_ascii_case("pull") {
+                        Ok(ShellCommand::PlanningSyncPull {
+                            payload_json,
+                            source,
+                            confidence,
+                            snapshot_id,
+                        })
+                    } else {
+                        Ok(ShellCommand::PlanningSyncPush {
+                            payload_json,
+                            source,
+                            confidence,
+                            snapshot_id,
+                        })
+                    }
+                }
+                other => Err(format!(
+                    "Unknown planning sync subcommand '{other}' (expected status, pull, push)"
+                )),
+            }
+        }
+        other => Err(format!(
+            "Unknown planning subcommand '{other}' (expected profile, objective, suggestions, sync)"
+        )),
+    }
+}

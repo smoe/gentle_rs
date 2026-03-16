@@ -3,7 +3,10 @@
 use super::*;
 
 impl GentleEngine {
-    pub(super) fn feature_qualifier_text(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+    pub(super) fn feature_qualifier_text(
+        feature: &gb_io::seq::Feature,
+        key: &str,
+    ) -> Option<String> {
         feature
             .qualifier_values(key.into())
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -91,7 +94,10 @@ impl GentleEngine {
         )
     }
 
-    pub(super) fn feature_display_label(feature: &gb_io::seq::Feature, feature_id: usize) -> String {
+    pub(super) fn feature_display_label(
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+    ) -> String {
         let fallback = format!("{} #{}", feature.kind.to_string(), feature_id + 1);
         let label = Self::first_nonempty_feature_qualifier(
             feature,
@@ -755,7 +761,10 @@ impl GentleEngine {
         Ok(())
     }
 
-    pub(super) fn upsert_uniprot_entry(&mut self, mut entry: UniprotEntry) -> Result<(), EngineError> {
+    pub(super) fn upsert_uniprot_entry(
+        &mut self,
+        mut entry: UniprotEntry,
+    ) -> Result<(), EngineError> {
         let normalized = normalize_uniprot_entry_id(&entry.entry_id);
         if normalized.is_empty() {
             return Err(EngineError {
@@ -889,7 +898,9 @@ impl GentleEngine {
         rows
     }
 
-    pub(super) fn fetch_uniprot_swiss_prot_text(query: &str) -> Result<(String, String), EngineError> {
+    pub(super) fn fetch_uniprot_swiss_prot_text(
+        query: &str,
+    ) -> Result<(String, String), EngineError> {
         let query = query.trim();
         if query.is_empty() {
             return Err(EngineError {
@@ -935,7 +946,9 @@ impl GentleEngine {
         Ok((url, text))
     }
 
-    pub(super) fn fetch_genbank_accession_text(accession: &str) -> Result<(String, String), EngineError> {
+    pub(super) fn fetch_genbank_accession_text(
+        accession: &str,
+    ) -> Result<(String, String), EngineError> {
         let accession = validate_genbank_accession(accession).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
@@ -2781,5 +2794,4 @@ impl GentleEngine {
             }),
         }
     }
-
 }
