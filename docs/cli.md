@@ -963,13 +963,15 @@ Shared shell command:
       - all reads are hashed across their full span (no 3-window sampling)
       - `--short-max-bp`, `--long-window-bp`, and `--long-window-count` are
         compatibility options and currently have no effect
-    - sparse-origin scaffolding options:
+    - sparse-origin options:
       - `--origin-mode` accepts `single_gene` (default) and
         `multi_gene_sparse`
       - `--target-gene` (repeatable) and `--roi-seed-capture` are persisted in
         the report payload for deterministic follow-up runs
-      - phase-1 execution still uses the single-feature baseline index; sparse
-        multi-gene/ROI-capture requests are surfaced as report warnings
+      - `multi_gene_sparse` expands template indexing with local-annotation
+        matches from `--target-gene`
+      - `--roi-seed-capture` remains planned and is surfaced as a deterministic
+        warning until implemented
     - `rna-reads list-reports` rows expose sparse-origin request provenance:
       `origin_mode`, `target_gene_count`, and `roi_seed_capture_enabled`
       - shell/CLI JSON output also includes `summary_rows[]` for quick

@@ -3157,7 +3157,21 @@ T [ 0 0 0 10 ]
             execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
 
         assert_eq!(forwarded_changed, shared_changed);
-        assert_eq!(forwarded_output, shared_output);
+        let mut forwarded_output_normalized = forwarded_output.clone();
+        let mut shared_output_normalized = shared_output.clone();
+        if let Some(preflight) = forwarded_output_normalized
+            .get_mut("preflight")
+            .and_then(|value| value.as_object_mut())
+        {
+            preflight.remove("probe_time_ms");
+        }
+        if let Some(preflight) = shared_output_normalized
+            .get_mut("preflight")
+            .and_then(|value| value.as_object_mut())
+        {
+            preflight.remove("probe_time_ms");
+        }
+        assert_eq!(forwarded_output_normalized, shared_output_normalized);
         assert_eq!(
             forwarded_output["preflight"]["reachable"].as_bool(),
             Some(false)

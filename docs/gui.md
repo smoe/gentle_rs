@@ -277,15 +277,15 @@ Feature tree grouping:
     (`target-group / target-strand`) for focused pilot filtering runs
   - default splicing scope is broad (`all overlapping / both strands`) with
     optional narrowing presets
-  - advanced `Origin mode` controls are available (phase-1 scaffolding):
+  - advanced `Origin mode` controls are available:
     - `single_gene` (baseline; current execution path)
-    - `multi_gene_sparse` (planned sparse multi-gene index mode; currently
-      persisted as request metadata with explicit fallback warnings)
+    - `multi_gene_sparse` (expands transcript templates with local-annotation
+      matches from `Target genes` for the current run)
   - advanced `Target genes` field (comma/space/semicolon separated IDs) is
-    persisted in report metadata for follow-up sparse-index runs
+    used by `multi_gene_sparse` and persisted in report metadata
   - advanced `ROI seed capture` toggle is persisted in report metadata as a
-    planned annotation-independent capture-layer request (phase-1 fallback
-    warning emitted)
+    planned annotation-independent capture-layer request (warning emitted until
+    this layer is implemented)
   - scope presets are explicit:
     - `all-overlap / both-strands`: all overlapping transcripts, `+` and `-`
     - `target-group / any-strand`: target group only, but both strands allowed
@@ -395,6 +395,9 @@ Feature tree grouping:
   - compute breakdown is shown during run
     (`seed`, `align`, `io`, `parse`, `norm`, `infer`, `emit`, `other`) for
     bottleneck inspection (`align` stays near zero in phase-1 seed-only mode)
+  - alignment debug/status line is shown during and after runs:
+    backend (`pairwise::banded` + dense fallback), mode priority
+    (`semiglobal>local`), requested/effective `k`, and active/idle state
   - best-read rows now show full sequences in a horizontally scrollable pane
     (no forced line wrapping)
   - a `Seed hash preview` panel lists representative seed rows in-window and

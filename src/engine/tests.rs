@@ -110,6 +110,59 @@ fn splicing_test_sequence() -> DNAsequence {
     dna
 }
 
+fn splicing_multi_gene_test_sequence() -> DNAsequence {
+    let mut bases = vec![b'A'; 120];
+    let mut fill_range = |start_0: usize, end_0: usize, pattern: &[u8]| {
+        for idx in start_0..end_0 {
+            bases[idx] = pattern[(idx - start_0) % pattern.len()];
+        }
+    };
+    fill_range(4, 20, b"ACGTCAGGTA");
+    fill_range(30, 45, b"CCTAGGTACA");
+    fill_range(35, 45, b"GGATCCGTTA");
+    fill_range(60, 75, b"TTAACCGGCT");
+    fill_range(85, 100, b"GGCCATTAGC");
+    let sequence = String::from_utf8(bases).expect("valid DNA sequence");
+    let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(5, 20),
+            gb_io::seq::Location::simple_range(31, 45),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("NM_GENE1_1".to_string())),
+            ("label".into(), Some("NM_GENE1_1".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(5, 20),
+            gb_io::seq::Location::simple_range(36, 45),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("NM_GENE1_2".to_string())),
+            ("label".into(), Some("NM_GENE1_2".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(61, 75),
+            gb_io::seq::Location::simple_range(86, 100),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE2".to_string())),
+            ("transcript_id".into(), Some("NM_GENE2_1".to_string())),
+            ("label".into(), Some("NM_GENE2_1".to_string())),
+        ],
+    });
+    dna
+}
+
 fn synth_oligo(desc: &str, sequence: &[u8]) -> DNAsequence {
     let record = fasta::Record::with_attrs("synthetic", Some(desc), sequence);
     DNAsequence::from_fasta_record(&record)
@@ -9585,7 +9638,7 @@ fn test_poly_t_cdna_flip_accepts_disrupted_t_rich_heads() {
 }
 
 #[test]
-fn test_interpret_rna_reads_sparse_origin_scaffolding_persists_and_warns() {
+fn test_interpret_rna_reads_multi_gene_sparse_persists_and_warns_for_missing_targets() {
     let mut state = ProjectState::default();
     state
         .sequences
@@ -9655,13 +9708,13 @@ fn test_interpret_rna_reads_sparse_origin_scaffolding_persists_and_warns() {
         report
             .warnings
             .iter()
-            .any(|warning| { warning.contains("origin_mode=multi_gene_sparse requested") })
+            .any(|warning| warning.contains("origin_mode=multi_gene_sparse active"))
     );
     assert!(
         report
             .warnings
             .iter()
-            .any(|warning| warning.contains("target_gene_ids provided (2)"))
+            .any(|warning| warning.contains("target genes not found in local annotation"))
     );
     assert!(
         report
@@ -9676,6 +9729,118 @@ fn test_interpret_rna_reads_sparse_origin_scaffolding_persists_and_warns() {
     assert_eq!(summary.origin_mode, RnaReadOriginMode::MultiGeneSparse);
     assert_eq!(summary.target_gene_count, 2);
     assert!(summary.roi_seed_capture_enabled);
+}
+
+#[test]
+fn test_interpret_rna_reads_multi_gene_sparse_adds_target_gene_templates() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_multi_gene_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let features = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features();
+    let seed_feature_id = features
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE1")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE1 seed feature");
+    let gene2_feature_id = features
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE2")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE2 feature");
+    let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+    let read_sequence = {
+        let splicing = engine
+            .build_splicing_expert_view(
+                "seq_a",
+                gene2_feature_id,
+                SplicingScopePreset::TargetGroupTargetStrand,
+            )
+            .expect("GENE2 splicing view");
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence for template");
+        let template =
+            GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+        String::from_utf8(template.sequence).expect("template sequence")
+    };
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("reads_gene2.fa");
+    fs::write(&input_path, format!(">read_gene2\n{read_sequence}\n")).expect("write reads");
+
+    engine
+        .apply(Operation::InterpretRnaReads {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path: input_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec!["GENE2".to_string()],
+            roi_seed_capture_enabled: false,
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("rna_reads_single_gene2".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        })
+        .expect("single-gene baseline run");
+    let baseline = engine
+        .get_rna_read_report("rna_reads_single_gene2")
+        .expect("baseline report");
+    assert_eq!(baseline.read_count_total, 1);
+    assert_eq!(baseline.read_count_seed_passed, 0);
+
+    engine
+        .apply(Operation::InterpretRnaReads {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path: input_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            origin_mode: RnaReadOriginMode::MultiGeneSparse,
+            target_gene_ids: vec!["GENE2".to_string()],
+            roi_seed_capture_enabled: false,
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("rna_reads_multi_gene2".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        })
+        .expect("multi-gene sparse run");
+    let multi = engine
+        .get_rna_read_report("rna_reads_multi_gene2")
+        .expect("multi report");
+    assert_eq!(multi.read_count_total, 1);
+    assert_eq!(multi.read_count_seed_passed, 1);
+    assert!(
+        multi
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("added 1 transcript lane(s)"))
+    );
 }
 
 #[test]
@@ -10514,8 +10679,13 @@ fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
         *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
     }
     let seed_template_positions = GentleEngine::build_seed_template_position_index(&templates);
+    let seed_support_exons = GentleEngine::collect_seed_support_exon_summaries(&splicing.transcripts);
     let (seed_to_exons, seed_to_transitions, transcript_models, _transition_rows) =
-        GentleEngine::build_seed_support_indexes(&splicing, &templates, seed_filter.kmer_len);
+        GentleEngine::build_seed_support_indexes(
+            &seed_support_exons,
+            &templates,
+            seed_filter.kmer_len,
+        );
     let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(dna_len);
     let histogram = GentleEngine::build_rna_read_seed_histogram_index(&templates, dna_len, &bins);
 
@@ -11170,6 +11340,13 @@ fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
         fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
     }
     fs::write(&input_path, fasta).expect("write reads");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
 
     engine
         .apply(Operation::InterpretRnaReads {
@@ -11182,7 +11359,7 @@ fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
-            seed_filter: RnaReadSeedFilterConfig::default(),
+            seed_filter,
             align_config: RnaReadAlignConfig::default(),
             report_id: Some("rna_reads_top5000".to_string()),
             report_mode: RnaReadReportMode::Full,

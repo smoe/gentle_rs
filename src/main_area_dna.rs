@@ -10641,7 +10641,7 @@ impl MainAreaDna {
                     if self.rna_reads_ui.show_advanced {
                         ui.horizontal_wrapped(|ui| {
                             ui.label("Origin mode").on_hover_text(
-                                "Scaffolding for upcoming read-origin sparse index logic. Phase-1 still executes single-feature baseline scoring.",
+                                "Controls whether RNA-read seeding uses only the current splicing scope (single_gene) or expands templates from target-gene IDs (multi_gene_sparse).",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_origin_mode_{}_{}",
@@ -10665,15 +10665,15 @@ impl MainAreaDna {
                                     .selectable_value(
                                         &mut self.rna_reads_ui.origin_mode,
                                         RnaReadOriginMode::MultiGeneSparse,
-                                        "multi_gene_sparse (scaffold)",
+                                        "multi_gene_sparse",
                                     )
                                     .on_hover_text(
-                                        "Planned sparse multi-gene mode; persisted now, currently falls back to baseline scoring with explicit warnings.",
+                                        "Expand transcript templates from target_gene_ids (local annotation, deterministic). ROI seed-capture remains a planned follow-up.",
                                     )
                                     .changed();
                             });
                             ui.label("Target genes").on_hover_text(
-                                "Optional gene IDs for future sparse multi-gene indexing. Comma/space/semicolon separated.",
+                                "Optional gene IDs for multi-gene sparse mode. Comma/space/semicolon separated.",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -10683,22 +10683,22 @@ impl MainAreaDna {
                                     .desired_width(280.0),
                                 )
                                 .on_hover_text(
-                                    "Example: TP73, TP53. Persisted in report payload for deterministic follow-up runs.",
+                                    "Example: TP73, TP53. Applied when origin mode is multi_gene_sparse and persisted in the report payload.",
                                 )
                                 .changed();
                             persist_ui_state |= ui
                                 .checkbox(
                                     &mut self.rna_reads_ui.roi_seed_capture_enabled,
-                                    "ROI seed capture (scaffold)",
+                                    "ROI seed capture (planned)",
                                 )
                                 .on_hover_text(
-                                    "Planned annotation-independent ROI seed-capture layer. Persisted now; phase-1 emits fallback warning.",
+                                    "Planned annotation-independent ROI seed-capture layer. Persisted now; engine emits a deterministic warning until implemented.",
                                 )
                                 .changed();
                         });
                         ui.small(
                             egui::RichText::new(
-                                "Sparse-origin settings are persisted in report metadata in phase-1; multi-gene sparse indexing and ROI capture are planned follow-up behavior.",
+                                "Sparse-origin settings are persisted in report metadata. multi_gene_sparse actively expands local transcript templates; ROI seed capture remains a planned follow-up.",
                             )
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
@@ -11303,6 +11303,7 @@ impl MainAreaDna {
                             emit_ms / 1000.0,
                             overhead_ms / 1000.0
                         ));
+                        ui.small(self.rna_alignment_debug_line(progress));
                         ui.horizontal(|ui| {
                             ui.small("Overlay guides:");
                             ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
@@ -11385,6 +11386,7 @@ impl MainAreaDna {
                         progress.inference_compute_ms.max(0.0) / 1000.0,
                         progress.progress_emit_ms.max(0.0) / 1000.0,
                     ));
+                    ui.small(self.rna_alignment_debug_line(progress));
                     ui.horizontal(|ui| {
                         ui.small("Overlay guides:");
                         ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
@@ -11696,7 +11698,7 @@ impl MainAreaDna {
     fn rna_read_origin_mode_label(mode: RnaReadOriginMode) -> &'static str {
         match mode {
             RnaReadOriginMode::SingleGene => "single_gene / baseline",
-            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse / scaffold",
+            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse / expanded",
         }
     }
 
@@ -12429,6 +12431,39 @@ impl MainAreaDna {
             min_identity_fraction,
             max_secondary_mappings,
         })
+    }
+
+    fn rna_alignment_debug_line(&self, progress: &RnaReadInterpretProgress) -> String {
+        let requested_k = self
+            .rna_reads_ui
+            .kmer_len
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or(RnaReadSeedFilterConfig::default().kmer_len);
+        let requested_w = self
+            .rna_reads_ui
+            .align_band_width_bp
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or(RnaReadAlignConfig::default().band_width_bp);
+        let read_len = progress.median_read_length_bp.max(1);
+        let effective_k = if read_len <= 2 {
+            1
+        } else {
+            requested_k.clamp(3, read_len)
+        };
+        let active_note = if progress.align_compute_ms > 0.0 {
+            "active"
+        } else {
+            "idle (seed-only phase or no aligned hits yet)"
+        };
+        format!(
+            "ALIGN DEBUG: backend=pairwise::banded (dense fallback on empty band hit) | mode=semiglobal>local | k(req/eff~median-read)={requested_k}/{effective_k} | w={requested_w} | status={active_note}"
+        )
     }
 
     fn build_splicing_rna_read_align_operation(&self) -> Result<Operation, String> {

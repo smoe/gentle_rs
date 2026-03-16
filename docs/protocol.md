@@ -114,7 +114,7 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
-- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
@@ -1397,14 +1397,16 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - full-read hashing is always used for every read
     - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
       remain compatibility fields and currently have no runtime effect
-  - phase-1 sparse-origin scaffolding behavior:
+  - sparse-origin behavior:
     - `origin_mode` accepts `single_gene|multi_gene_sparse` (default
       `single_gene`)
     - `target_gene_ids[]` and `roi_seed_capture_enabled` are persisted in the
       report payload for deterministic follow-up runs
-    - current phase still executes the single-feature baseline index path;
-      requests for sparse multi-gene/ROI capture are surfaced as deterministic
-      warnings in report `warnings[]`
+    - `multi_gene_sparse` expands local transcript-template indexing with
+      transcripts matched from `target_gene_ids[]`
+    - `roi_seed_capture_enabled=true` is currently a deterministic no-op with
+      explicit warning in report `warnings[]` until the ROI capture layer is
+      implemented
   - report compaction and resume behavior:
     - `report_mode=full` keeps retained top hits exactly as ranked
     - `report_mode=seed_passed_only` keeps only retained hits that passed the

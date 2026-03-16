@@ -818,11 +818,13 @@ Status:
   - Added origin-classification schema scaffolding (non-breaking):
     per-read origin class/reason/confidence fields, candidate-contribution
     hints, and running/final origin-class count summaries in reports/progress.
-  - Added non-breaking sparse-origin operation scaffolding:
-    `InterpretRnaReads` and shared-shell `rna-reads interpret` now accept
-    `origin_mode`, `target_gene_ids[]`, and `roi_seed_capture_enabled` with
-    deterministic report persistence plus explicit phase-1 fallback warnings
-    when sparse multi-gene/ROI capture is requested before phase-2 index work.
+  - Activated sparse multi-gene template expansion in engine runtime:
+    `InterpretRnaReads` with `origin_mode=multi_gene_sparse` now expands
+    transcript-template indexing using local-annotation matches from
+    `target_gene_ids[]` (deterministic, shared across GUI/CLI/shell/agent
+    routes).
+  - `roi_seed_capture_enabled` remains a documented deterministic no-op with
+    explicit warning until the ROI capture layer is implemented.
   - Added non-breaking report-compaction controls:
     `InterpretRnaReads` and `rna-reads interpret` now accept `report_mode`
     (`full|seed_passed_only`) so persisted retained-hit payloads can be
@@ -833,9 +835,9 @@ Status:
     checkpoint snapshots are serialized to
     `gentle.rna_read_interpret_checkpoint.v1` and resume restores counters,
     support tables, retained hits, and score-density bins.
-  - Splicing Expert advanced Nanopore controls now expose the same sparse-origin
-    scaffold settings (`origin mode`, `target genes`, `ROI seed capture`) and
-    pass them through unchanged to engine/shell contracts.
+  - Splicing Expert advanced Nanopore controls expose active sparse-origin
+    settings (`origin mode`, `target genes`, `ROI seed capture`) and pass them
+    through unchanged to engine/shell contracts.
   - Deterministic TP73 seed-filter tests now use compact committed mapping
     fixtures (`test_files/fixtures/mapping/`) and cover:
     - expected TP73 positive behavior (TP73-derived reads with 30% deletions

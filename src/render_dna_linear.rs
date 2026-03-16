@@ -1301,6 +1301,9 @@ impl RenderDnaLinear {
         if status.active_mode == SequenceBaseRenderMode::Condensed10Row {
             return false;
         }
+        if status.hide_backbone_when_letters_visible && status.bases_visible() {
+            return false;
+        }
         true
     }
 

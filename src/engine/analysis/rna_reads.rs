@@ -2370,10 +2370,10 @@ impl GentleEngine {
     }
 
     pub(super) fn build_exon_position_ordinal_map(
-        splicing: &SplicingExpertView,
+        exon_summaries: &[SplicingExonSummary],
     ) -> HashMap<usize, (usize, usize, usize)> {
         let mut map = HashMap::<usize, (usize, usize, usize)>::new();
-        for (idx, exon) in splicing.unique_exons.iter().enumerate() {
+        for (idx, exon) in exon_summaries.iter().enumerate() {
             let ordinal = idx + 1;
             for pos in exon.start_1based..=exon.end_1based {
                 map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
@@ -2382,8 +2382,38 @@ impl GentleEngine {
         map
     }
 
+    pub(super) fn collect_seed_support_exon_summaries(
+        transcript_lanes: &[SplicingTranscriptLane],
+    ) -> Vec<SplicingExonSummary> {
+        let mut exon_support = HashMap::<(usize, usize), HashSet<usize>>::new();
+        for lane in transcript_lanes {
+            for exon in &lane.exons {
+                exon_support
+                    .entry((exon.start_1based, exon.end_1based))
+                    .or_default()
+                    .insert(lane.transcript_feature_id);
+            }
+        }
+        let transcript_count = transcript_lanes.len().max(1);
+        let mut exons = exon_support
+            .into_iter()
+            .map(|((start_1based, end_1based), supporting_transcripts)| SplicingExonSummary {
+                start_1based,
+                end_1based,
+                support_transcript_count: supporting_transcripts.len(),
+                constitutive: supporting_transcripts.len() == transcript_count,
+            })
+            .collect::<Vec<_>>();
+        exons.sort_by(|left, right| {
+            left.start_1based
+                .cmp(&right.start_1based)
+                .then(left.end_1based.cmp(&right.end_1based))
+        });
+        exons
+    }
+
     pub(super) fn build_seed_support_indexes(
-        splicing: &SplicingExpertView,
+        exon_summaries: &[SplicingExonSummary],
         templates: &[SplicingTranscriptTemplate],
         kmer_len: usize,
     ) -> (
@@ -2395,7 +2425,7 @@ impl GentleEngine {
         if kmer_len == 0 {
             return (HashMap::new(), HashMap::new(), vec![], vec![]);
         }
-        let exon_position_ordinal = Self::build_exon_position_ordinal_map(splicing);
+        let exon_position_ordinal = Self::build_exon_position_ordinal_map(exon_summaries);
         let mut seed_to_exons = HashMap::<u32, HashSet<usize>>::new();
         let mut seed_to_transitions = HashMap::<u32, HashSet<(usize, usize)>>::new();
         let mut transcript_models = Vec::<TranscriptExonPathModel>::new();
@@ -2503,8 +2533,8 @@ impl GentleEngine {
         let transition_support_rows = transition_catalog
             .into_iter()
             .map(|(from_ord, to_ord)| {
-                let from_exon = splicing.unique_exons.get(from_ord.saturating_sub(1));
-                let to_exon = splicing.unique_exons.get(to_ord.saturating_sub(1));
+                let from_exon = exon_summaries.get(from_ord.saturating_sub(1));
+                let to_exon = exon_summaries.get(to_ord.saturating_sub(1));
                 RnaReadTransitionSupportRow {
                     from_exon_ordinal: from_ord,
                     to_exon_ordinal: to_ord,
@@ -2523,6 +2553,122 @@ impl GentleEngine {
             transcript_models,
             transition_support_rows,
         )
+    }
+
+    pub(super) fn collect_sparse_target_transcript_lanes(
+        dna: &DNAsequence,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        target_feature_strand: &str,
+        target_gene_ids: &[String],
+        already_present_feature_ids: &HashSet<usize>,
+    ) -> Result<(Vec<SplicingTranscriptLane>, Vec<String>, Vec<String>), EngineError> {
+        if target_gene_ids.is_empty() {
+            return Ok((vec![], vec![], vec![]));
+        }
+        let features = dna.features();
+        let target_feature = features.get(seed_feature_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Feature id '{}' was not found in sequence", seed_feature_id),
+        })?;
+        let target_is_reverse = feature_is_reverse(target_feature);
+        let restrict_to_target_strand = scope.restrict_to_target_strand();
+
+        let mut requested = target_gene_ids
+            .iter()
+            .map(|raw| raw.trim())
+            .filter(|raw| !raw.is_empty())
+            .map(|raw| raw.to_string())
+            .collect::<Vec<_>>();
+        requested.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        requested.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        let requested_lower = requested
+            .iter()
+            .map(|gene| gene.to_ascii_lowercase())
+            .collect::<HashSet<_>>();
+
+        let mut matched_requested = HashSet::<String>::new();
+        let mut lanes = Vec::<SplicingTranscriptLane>::new();
+        for (idx, feature) in features.iter().enumerate() {
+            if !Self::is_mrna_feature(feature) {
+                continue;
+            }
+            let group = Self::splicing_group_label(feature, idx);
+            if !requested_lower.contains(&group.to_ascii_lowercase()) {
+                continue;
+            }
+            matched_requested.insert(group.to_ascii_lowercase());
+            if already_present_feature_ids.contains(&idx) {
+                continue;
+            }
+            let is_reverse = feature_is_reverse(feature);
+            if restrict_to_target_strand && is_reverse != target_is_reverse {
+                continue;
+            }
+            let mut exon_ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+            if exon_ranges.is_empty() {
+                let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse transcript range: {e}"),
+                })?;
+                if from >= 0 && to >= 0 {
+                    exon_ranges.push((from as usize, to as usize));
+                }
+            }
+            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            exon_ranges.retain(|(start, end)| end > start);
+            if exon_ranges.is_empty() {
+                continue;
+            }
+            let mut introns = Vec::<(usize, usize)>::new();
+            for pair in exon_ranges.windows(2) {
+                let left = pair[0];
+                let right = pair[1];
+                if right.0 > left.1 {
+                    introns.push((left.1, right.0));
+                }
+            }
+            let exon_cds_phases =
+                Self::exon_cds_phases_for_transcript(feature, &exon_ranges, is_reverse);
+            lanes.push(SplicingTranscriptLane {
+                transcript_feature_id: idx,
+                transcript_id: Self::feature_transcript_id(feature, idx),
+                label: Self::feature_display_label(feature, idx),
+                strand: if is_reverse {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                exons: Self::range_vec_to_splicing(exon_ranges),
+                exon_cds_phases,
+                introns: Self::range_vec_to_splicing(introns),
+                has_target_feature: idx == seed_feature_id,
+            });
+        }
+        lanes.sort_by(|left, right| {
+            left.transcript_id
+                .cmp(&right.transcript_id)
+                .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+        });
+        let mut matched_gene_ids = requested
+            .iter()
+            .filter(|gene| matched_requested.contains(&gene.to_ascii_lowercase()))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut missing_gene_ids = requested
+            .iter()
+            .filter(|gene| !matched_requested.contains(&gene.to_ascii_lowercase()))
+            .cloned()
+            .collect::<Vec<_>>();
+        matched_gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        missing_gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        if restrict_to_target_strand && target_feature_strand.trim().is_empty() {
+            missing_gene_ids = requested;
+            lanes.clear();
+            matched_gene_ids.clear();
+        }
+        Ok((lanes, matched_gene_ids, missing_gene_ids))
     }
 
     pub(super) fn build_isoform_support_accumulators(
@@ -3362,8 +3508,31 @@ impl GentleEngine {
             })?;
         let splicing =
             self.build_splicing_expert_view(&report.seq_id, report.seed_feature_id, report.scope)?;
-        let templates = splicing
-            .transcripts
+        let mut transcript_lanes = splicing.transcripts.clone();
+        if matches!(report.origin_mode, RnaReadOriginMode::MultiGeneSparse) {
+            let existing_feature_ids = transcript_lanes
+                .iter()
+                .map(|lane| lane.transcript_feature_id)
+                .collect::<HashSet<_>>();
+            let (extra_lanes, _matched_genes, _missing_genes) =
+                Self::collect_sparse_target_transcript_lanes(
+                    dna,
+                    report.seed_feature_id,
+                    report.scope,
+                    splicing.strand.as_str(),
+                    &report.target_gene_ids,
+                    &existing_feature_ids,
+                )?;
+            if !extra_lanes.is_empty() {
+                transcript_lanes.extend(extra_lanes);
+                transcript_lanes.sort_by(|left, right| {
+                    left.transcript_id
+                        .cmp(&right.transcript_id)
+                        .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                });
+            }
+        }
+        let templates = transcript_lanes
             .iter()
             .map(|lane| Self::make_transcript_template(dna, lane, report.seed_filter.kmer_len))
             .filter(|template| !template.sequence.is_empty())
@@ -3395,12 +3564,17 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
+        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
         let (
             seed_to_exons,
             seed_to_transitions,
             transcript_exon_models,
             mut transition_support_rows,
-        ) = Self::build_seed_support_indexes(&splicing, &templates, report.seed_filter.kmer_len);
+        ) = Self::build_seed_support_indexes(
+            &seed_support_exons,
+            &templates,
+            report.seed_filter.kmer_len,
+        );
         let transcript_models_by_id = transcript_exon_models
             .iter()
             .map(|model| (model.transcript_id.clone(), model.clone()))
@@ -4021,30 +4195,11 @@ impl GentleEngine {
             .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
         normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let mut origin_mode_warnings = Vec::<String>::new();
-        if matches!(origin_mode, RnaReadOriginMode::MultiGeneSparse) {
+        if matches!(origin_mode, RnaReadOriginMode::SingleGene) && !normalized_target_gene_ids.is_empty() {
             origin_mode_warnings.push(
-                "origin_mode=multi_gene_sparse requested; phase-1 engine path currently runs single-gene baseline indexing (request is persisted for follow-up implementation)"
+                "target_gene_ids were provided but origin_mode=single_gene; extra target genes are ignored unless origin_mode=multi_gene_sparse"
                     .to_string(),
             );
-        }
-        if !normalized_target_gene_ids.is_empty() {
-            let preview = normalized_target_gene_ids
-                .iter()
-                .take(8)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(",");
-            let suffix = if normalized_target_gene_ids.len() > 8 {
-                format!(" (+{} more)", normalized_target_gene_ids.len() - 8)
-            } else {
-                String::new()
-            };
-            origin_mode_warnings.push(format!(
-                "target_gene_ids provided ({}): {}{}; phase-1 scoring keeps single-seed-feature transcript scope",
-                normalized_target_gene_ids.len(),
-                preview,
-                suffix
-            ));
         }
         if roi_seed_capture_enabled {
             origin_mode_warnings.push(
@@ -4126,8 +4281,59 @@ impl GentleEngine {
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let target_feature_strand = splicing.strand.clone();
-        let templates = splicing
-            .transcripts
+        let mut transcript_lanes = splicing.transcripts.clone();
+        if matches!(origin_mode, RnaReadOriginMode::MultiGeneSparse) {
+            let existing_feature_ids = transcript_lanes
+                .iter()
+                .map(|lane| lane.transcript_feature_id)
+                .collect::<HashSet<_>>();
+            let (extra_lanes, matched_genes, missing_genes) =
+                Self::collect_sparse_target_transcript_lanes(
+                    dna,
+                    seed_feature_id,
+                    scope,
+                    target_feature_strand.as_str(),
+                    &normalized_target_gene_ids,
+                    &existing_feature_ids,
+                )?;
+            if !extra_lanes.is_empty() {
+                let added = extra_lanes.len();
+                transcript_lanes.extend(extra_lanes);
+                transcript_lanes.sort_by(|left, right| {
+                    left.transcript_id
+                        .cmp(&right.transcript_id)
+                        .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                });
+                origin_mode_warnings.push(format!(
+                    "origin_mode=multi_gene_sparse active: added {} transcript lane(s) from target_gene_ids; total indexed transcript lanes={}",
+                    added,
+                    transcript_lanes.len()
+                ));
+            } else if normalized_target_gene_ids.is_empty() {
+                origin_mode_warnings.push(
+                    "origin_mode=multi_gene_sparse active with empty target_gene_ids; using baseline transcript scope only"
+                        .to_string(),
+                );
+            } else {
+                origin_mode_warnings.push(
+                    "origin_mode=multi_gene_sparse active: no additional transcript lanes were added from target_gene_ids (baseline scope already covered requested genes or none matched)"
+                        .to_string(),
+                );
+            }
+            if !matched_genes.is_empty() {
+                origin_mode_warnings.push(format!(
+                    "multi_gene_sparse matched target genes: {}",
+                    matched_genes.join(",")
+                ));
+            }
+            if !missing_genes.is_empty() {
+                origin_mode_warnings.push(format!(
+                    "multi_gene_sparse target genes not found in local annotation: {}",
+                    missing_genes.join(",")
+                ));
+            }
+        }
+        let templates = transcript_lanes
             .iter()
             .map(|lane| Self::make_transcript_template(dna, lane, seed_filter.kmer_len))
             .filter(|template| !template.sequence.is_empty())
@@ -4159,12 +4365,17 @@ impl GentleEngine {
         for row in &seed_catalog_rows {
             *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
         }
+        let seed_support_exons = Self::collect_seed_support_exon_summaries(&transcript_lanes);
         let (
             seed_to_exons,
             seed_to_transitions,
             transcript_exon_models,
             mut transition_support_rows,
-        ) = Self::build_seed_support_indexes(&splicing, &templates, seed_filter.kmer_len);
+        ) = Self::build_seed_support_indexes(
+            &seed_support_exons,
+            &templates,
+            seed_filter.kmer_len,
+        );
         let transcript_models_by_id = transcript_exon_models
             .iter()
             .map(|model| (model.transcript_id.clone(), model.clone()))
