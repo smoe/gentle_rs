@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 11,
+  "chapter_count": 12,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -19,23 +19,25 @@
     "chapters/09_prepare_reference_genome_online.md",
     "chapters/10_tp53_isoform_architecture_online.md",
     "chapters/11_tp63_anchor_extension_online.md",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "97c44dca9d1d83dcf7165c53bce2628522ee538e",
+    "README.md": "da7516cd5bd8e8aab2374a0196863d02aad32d2e",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "8fb86d121b3d16a897bdcad5b112d2212ce58d16",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "fbacafe7b0e630fe526dee566aa8a1b4f4377bc3",
-    "chapters/03_load_and_digest_pgex.md": "4b60fe5a37833d1d4feb8ff9e5ef14846efd2506",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "f51ef89cce223e04ced2c6a17cd03e5cdd302e10",
-    "chapters/05_guides_filter_and_generate_oligos.md": "b9c131926affc75053cfb6dbbac81ad22d965713",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "1ed27b117870004a610a67657cb387478ce462d7",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "719718f09ac94cae3d1372c5cd911e5b4ce63c68",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "30a5fd936165b7bfa1fb9ff1b7da7d414f13dd40",
+    "chapters/03_load_and_digest_pgex.md": "95e5d81bb5a902641af58f7f2d2d303ed1fc7067",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "e622f2e24ccbcfb8408eada536aa61e9915b1057",
+    "chapters/05_guides_filter_and_generate_oligos.md": "248a93083c0997301407688174ef24d0bf950b45",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "b7af38fb8f4ce4a12a08d7caa89baea326d827ed",
     "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "3a2a1b6d66e2b0a4d19c195bc5fe3130ec6c5f47",
-    "chapters/09_prepare_reference_genome_online.md": "632cda32b0331661fdd977805230de557f066c3c",
-    "chapters/10_tp53_isoform_architecture_online.md": "b9634e65d3b9e20b3b110e50620a6d7eac845e28",
-    "chapters/11_tp63_anchor_extension_online.md": "94725810a36ec292aa08af6559fc846c197098e4"
+    "chapters/08_contribute_to_gentle_development.md": "dcb2d2fcd968a77e5c6fb08841b4b334c2ed9c1e",
+    "chapters/09_prepare_reference_genome_online.md": "28b22133850348cb3652c79bfae8b8af130d0ed0",
+    "chapters/10_tp53_isoform_architecture_online.md": "21d60006475a6bd5cf586d6fbcbac02fa7a3dafc",
+    "chapters/11_tp63_anchor_extension_online.md": "30d6300a9459990cf3fcd35d936b6090990f0765",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "536c2057e7c551048508f2b65a39c6e2e22b7c92"
   },
   "chapters": [
     {
@@ -201,6 +203,22 @@
         "shared_engine_contract",
         "genome_catalog_targeting",
         "sequence_lineage",
+        "online_opt_in"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_multi_gene_sparse_mapping_online",
+      "order": 12,
+      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "tier": "online",
+      "example_id": "tp53_multi_gene_sparse_mapping_online",
+      "example_source": "docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
         "online_opt_in"
       ],
       "executed": false,

@@ -4,19 +4,55 @@ Release baseline: changes since tag `v0.1.0-internal.1`.
 
 Commit-range reference (`v0.1.0-internal.1..HEAD`):
 
-- `52bf3bf` Implemented mapping of isoforms as show case
-- `897b858` Uniprot import. More towards primer design.
-- `fb4a909` More hardening, more tutorials, also on Gibson
-- `f92e60b` Fixed genomes::tests::
-- `6870f2f` Scrolling in splicing expert window
-- `d2a91bd` Improvements to Splicing Expert window - coloring
-- `2fafee1` Hardening blast searches
-- `e0a391e` More consistent export.
+- `e895bf2` Multi-index for gene similarity
+- `a156e88` Preparation of sequence alignments - bio::alignment::pairwise::banded
+- `5737c5a` Code reorganisations, modularisation of indices, tutorials
+- `c7970a9` Code restructuring
+- `7c4bdd1` Progress indicator triggered every two seconds
+- `0f3b0eb` Fixed CPU usage in Expert Splicing Window
+- `213aeba` Improvements to cDNA mapping, Preparing for priorisation of alternative cloning paths
+- `6b42736` cDNA mapping defaults to 10mers (from 9mers)
+- `6f09fad` DNA feature grouping activated by default
+- `0d45084` Adding test data to the archive
+- `676b8a0` Splicing cDNA filter, layout fixes
+- `70a557b` RNA-seq mapping initiated, removed translations
+- `5df59f6` Removed some sqlite cruft from original GENtle
+- `ebcd0f5` Fixes
+- `bb06fca` ClawBio, hardening
 - `6d46246` More towards cloning patterns
+- `e0a391e` More consistent export
+- `2fafee1` Hardening blast searches
+- `d2a91bd` Improvements to Splicing Expert window - coloring
+- `6870f2f` Scrolling in splicing expert window
+- `f92e60b` Fixed genomes::tests::
+- `fb4a909` More hardening, more tutorials, also on Gibson
+- `897b858` Uniprot import. More towards primer design
+- `52bf3bf` Implemented mapping of isoforms as show case
 
 This internal release focuses on deterministic agent integration, cloning
 workflow standardization, expert-view improvements, and release-readiness
 hardening.
+
+## Final Cut Additions (latest bits before `v0.1.0-internal.2`)
+
+- RNA-read interpretation and sparse-origin work moved forward substantially:
+  - default seed length moved to 10-mers
+  - multi-index/similarity and alignment-preparation groundwork landed
+  - cDNA mapping responsiveness improved (progress cadence and CPU behavior)
+- GUI defaults and clarity improved:
+  - feature grouping now defaults to active
+  - splicing/cDNA layout and expert window behavior hardened
+- Tutorial screenshots were added for upcoming visual docs integration:
+  - TP73/luciferase and genomic retrieval-related captures:
+    - `docs/screenshots/screenshot_GUI_main_with_TP73_retrieved.png`
+    - `docs/screenshots/screenshot_GUI_DNA_sequence_with_TP73_retrieved.png`
+    - `docs/screenshots/screenshot_GUI_prepare_reference_genome.png`
+    - `docs/screenshots/screenshot_GUI_retrieve_genome_sequence.png`
+    - `docs/screenshots/screenshot_GUI_retrieve_genomic_sequence_2.png`
+  - Dotplot/cDNA-vs-genomic tutorial captures:
+    - `docs/screenshots/tutorial_cdna_genomic_01_main_start.png`
+    - `docs/screenshots/tutorial_cdna_genomic_02_fetch_cdna_dialog.png`
+    - `docs/screenshots/tutorial_cdna_genomic_06_cdna_sequence_window.png`
 
 ## Highlights
 
@@ -140,6 +176,12 @@ hardening.
 
 - Expanded tutorial manifest and generated chapters.
 - Added TP73 promoter luciferase planning skeleton and GUI-focused walkthrough.
+- Added two dedicated GUI tutorials:
+  - `docs/tutorial/tp73_promoter_luciferase_gui.md`
+  - `docs/tutorial/two_sequence_dotplot_gui.md`
+- Added screenshot assets for these tutorial tracks (for release/docs embedding):
+  - TP73/luciferase and genomic retrieval screenshots under `docs/screenshots/`
+  - cDNA vs genomic dotplot screenshots under `docs/screenshots/tutorial_cdna_genomic_*.png`
 
 ## Developer Notes
 
@@ -168,6 +210,7 @@ remain on the same schema family (`v1` contracts).
 ## Validated Commands (this release candidate)
 
 - `cargo check -q`
+- `cargo test -q`
 - `cargo test -q test_extract_genome_region_include_annotation_attaches_features_and_sets_name`
 - `cargo test -q test_extract_genome_region_full_scope_feature_cap_falls_back_to_core`
 - `cargo test -q parse_genomes_extract_region_with_annotation_flag`

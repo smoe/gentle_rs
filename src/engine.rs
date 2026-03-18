@@ -3956,6 +3956,13 @@ pub enum Operation {
         accession: String,
         as_id: Option<SeqId>,
     },
+    FetchUniprotLinkedGenBank {
+        entry_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accession: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        as_id: Option<SeqId>,
+    },
     ImportUniprotEntrySequence {
         entry_id: String,
         output_id: Option<SeqId>,
@@ -5587,6 +5594,7 @@ impl GentleEngine {
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
                 "FetchGenBankAccession".to_string(),
+                "FetchUniprotLinkedGenBank".to_string(),
                 "ImportUniprotEntrySequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
                 "ImportBlastHitsTrack".to_string(),

@@ -2397,12 +2397,14 @@ impl GentleEngine {
         let transcript_count = transcript_lanes.len().max(1);
         let mut exons = exon_support
             .into_iter()
-            .map(|((start_1based, end_1based), supporting_transcripts)| SplicingExonSummary {
-                start_1based,
-                end_1based,
-                support_transcript_count: supporting_transcripts.len(),
-                constitutive: supporting_transcripts.len() == transcript_count,
-            })
+            .map(
+                |((start_1based, end_1based), supporting_transcripts)| SplicingExonSummary {
+                    start_1based,
+                    end_1based,
+                    support_transcript_count: supporting_transcripts.len(),
+                    constitutive: supporting_transcripts.len() == transcript_count,
+                },
+            )
             .collect::<Vec<_>>();
         exons.sort_by(|left, right| {
             left.start_1based
@@ -2661,8 +2663,10 @@ impl GentleEngine {
             .filter(|gene| !matched_requested.contains(&gene.to_ascii_lowercase()))
             .cloned()
             .collect::<Vec<_>>();
-        matched_gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
-        missing_gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        matched_gene_ids
+            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        missing_gene_ids
+            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
         if restrict_to_target_strand && target_feature_strand.trim().is_empty() {
             missing_gene_ids = requested;
             lanes.clear();
@@ -3234,7 +3238,9 @@ impl GentleEngine {
     ) -> (Option<RnaReadMappingHit>, Vec<RnaReadMappingHit>) {
         let mut mappings = templates
             .iter()
-            .filter_map(|template| Self::align_read_to_template(read, template, config, seed_kmer_len))
+            .filter_map(|template| {
+                Self::align_read_to_template(read, template, config, seed_kmer_len)
+            })
             .collect::<Vec<_>>();
         mappings.sort_by(|left, right| {
             right
@@ -4195,7 +4201,9 @@ impl GentleEngine {
             .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
         normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let mut origin_mode_warnings = Vec::<String>::new();
-        if matches!(origin_mode, RnaReadOriginMode::SingleGene) && !normalized_target_gene_ids.is_empty() {
+        if matches!(origin_mode, RnaReadOriginMode::SingleGene)
+            && !normalized_target_gene_ids.is_empty()
+        {
             origin_mode_warnings.push(
                 "target_gene_ids were provided but origin_mode=single_gene; extra target genes are ignored unless origin_mode=multi_gene_sparse"
                     .to_string(),
@@ -4371,11 +4379,7 @@ impl GentleEngine {
             seed_to_transitions,
             transcript_exon_models,
             mut transition_support_rows,
-        ) = Self::build_seed_support_indexes(
-            &seed_support_exons,
-            &templates,
-            seed_filter.kmer_len,
-        );
+        ) = Self::build_seed_support_indexes(&seed_support_exons, &templates, seed_filter.kmer_len);
         let transcript_models_by_id = transcript_exon_models
             .iter()
             .map(|model| (model.transcript_id.clone(), model.clone()))

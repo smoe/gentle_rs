@@ -1,8 +1,222 @@
 //! Core operation dispatch handler for Engine::apply_internal.
 
 use super::*;
+use crate::uniprot::UniprotNucleotideXref;
 
 impl GentleEngine {
+    fn choose_uniprot_nucleotide_xref(
+        entry: &UniprotEntry,
+        accession_override: Option<&str>,
+    ) -> Result<UniprotNucleotideXref, EngineError> {
+        if entry.nucleotide_xrefs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt entry '{}' has no EMBL/GenBank nucleotide cross-reference",
+                    entry.entry_id
+                ),
+            });
+        }
+
+        if let Some(accession_override) = accession_override
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Some(found) = entry
+                .nucleotide_xrefs
+                .iter()
+                .find(|xref| xref.accession.eq_ignore_ascii_case(accession_override))
+            {
+                return Ok(found.clone());
+            }
+            let available = entry
+                .nucleotide_xrefs
+                .iter()
+                .map(|xref| xref.accession.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt entry '{}' does not contain nucleotide accession '{}' (available: {})",
+                    entry.entry_id, accession_override, available
+                ),
+            });
+        }
+
+        entry
+            .nucleotide_xrefs
+            .iter()
+            .find(|xref| {
+                xref.molecule_type
+                    .as_deref()
+                    .map(|value| value.eq_ignore_ascii_case("mRNA"))
+                    .unwrap_or(false)
+            })
+            .or_else(|| {
+                entry.nucleotide_xrefs.iter().find(|xref| {
+                    xref.molecule_type
+                        .as_deref()
+                        .map(|value| value.eq_ignore_ascii_case("Genomic_DNA"))
+                        .unwrap_or(false)
+                })
+            })
+            .or_else(|| entry.nucleotide_xrefs.first())
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt entry '{}' has no usable EMBL/GenBank nucleotide cross-reference",
+                    entry.entry_id
+                ),
+            })
+    }
+
+    fn fetch_genbank_accession_into_state(
+        &mut self,
+        result: &mut OpResult,
+        accession_trimmed: &str,
+        as_id: Option<SeqId>,
+        provenance_operation: &str,
+        source_note: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        let (source_url, text) = Self::fetch_genbank_accession_text(accession_trimmed)?;
+        let mut tmp = tempfile::Builder::new()
+            .prefix("gentle_genbank_fetch_")
+            .suffix(".gb")
+            .tempfile()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create temporary GenBank file for '{}': {e}",
+                    accession_trimmed
+                ),
+            })?;
+        tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write temporary GenBank file for '{}': {e}",
+                accession_trimmed
+            ),
+        })?;
+        let path = tmp.path().to_string_lossy().to_string();
+        let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not parse fetched GenBank accession '{}' from '{}': {e}",
+                accession_trimmed, source_url
+            ),
+        })?;
+        Self::prepare_sequence(&mut dna);
+        let base = as_id.unwrap_or_else(|| accession_trimmed.to_string());
+        let seq_id = self.unique_seq_id(&base);
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(
+            &seq_id,
+            SequenceOrigin::ImportedGenomic,
+            Some(&result.op_id),
+        );
+
+        let imported_anchor = self
+            .state
+            .sequences
+            .get(&seq_id)
+            .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
+        if let Some(anchor) = imported_anchor {
+            let mut anchor_verified: Option<bool> = None;
+            if let Some(loaded) = self.state.sequences.get(&seq_id) {
+                match Self::verify_anchor_sequence_against_catalog(
+                    loaded,
+                    &anchor,
+                    DEFAULT_GENOME_CATALOG_PATH,
+                    None,
+                ) {
+                    Ok(is_match) => {
+                        anchor_verified = Some(is_match);
+                        if is_match {
+                            result.messages.push(format!(
+                                "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
+                                seq_id,
+                                DEFAULT_GENOME_CATALOG_PATH,
+                                anchor.genome_id,
+                                anchor.chromosome,
+                                anchor.start_1based
+                            ));
+                        } else {
+                            result.warnings.push(format!(
+                                "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
+                                seq_id,
+                                anchor.genome_id,
+                                anchor.chromosome,
+                                anchor.start_1based,
+                                anchor.end_1based,
+                                DEFAULT_GENOME_CATALOG_PATH
+                            ));
+                        }
+                    }
+                    Err(err) => {
+                        result.warnings.push(format!(
+                            "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
+                            seq_id, DEFAULT_GENOME_CATALOG_PATH, err
+                        ));
+                    }
+                }
+            }
+            self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                seq_id: seq_id.clone(),
+                recorded_at_unix_ms: Self::now_unix_ms(),
+                operation: provenance_operation.to_string(),
+                genome_id: anchor.genome_id.clone(),
+                catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
+                cache_dir: None,
+                chromosome: Some(anchor.chromosome.clone()),
+                start_1based: Some(anchor.start_1based),
+                end_1based: Some(anchor.end_1based),
+                gene_query: None,
+                occurrence: None,
+                gene_id: None,
+                gene_name: None,
+                strand: None,
+                anchor_strand: anchor.strand,
+                anchor_verified,
+                sequence_source_type: Some("genbank_accession".to_string()),
+                annotation_source_type: Some("genbank_accession".to_string()),
+                sequence_source: Some(source_url.clone()),
+                annotation_source: Some(source_url.clone()),
+                sequence_sha1: None,
+                annotation_sha1: None,
+            });
+            let strand = anchor.strand.unwrap_or('+');
+            let verification_label = match anchor_verified {
+                Some(true) => "verified",
+                Some(false) => "unverified",
+                None => "verification n/a",
+            };
+            result.messages.push(format!(
+                "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
+                seq_id,
+                anchor.chromosome,
+                anchor.start_1based,
+                anchor.end_1based,
+                anchor.genome_id,
+                strand,
+                verification_label
+            ));
+        }
+
+        result.created_seq_ids.push(seq_id.clone());
+        result.messages.push(format!(
+            "Fetched GenBank accession '{}' from '{}' as '{}'",
+            accession_trimmed, source_url, seq_id
+        ));
+        if let Some(source_note) = source_note.map(str::trim).filter(|value| !value.is_empty()) {
+            result
+                .messages
+                .push(format!("Nucleotide source chain: {}", source_note));
+        }
+        Ok(seq_id)
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -1896,135 +2110,47 @@ impl GentleEngine {
                         message: "FetchGenBankAccession requires a non-empty accession".to_string(),
                     });
                 }
-                let (source_url, text) = Self::fetch_genbank_accession_text(accession_trimmed)?;
-                let mut tmp = tempfile::Builder::new()
-                    .prefix("gentle_genbank_fetch_")
-                    .suffix(".gb")
-                    .tempfile()
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!(
-                            "Could not create temporary GenBank file for '{}': {e}",
-                            accession_trimmed
-                        ),
-                    })?;
-                tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!(
-                        "Could not write temporary GenBank file for '{}': {e}",
-                        accession_trimmed
-                    ),
-                })?;
-                let path = tmp.path().to_string_lossy().to_string();
-                let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not parse fetched GenBank accession '{}' from '{}': {e}",
-                        accession_trimmed, source_url
-                    ),
-                })?;
-                Self::prepare_sequence(&mut dna);
-                let base = as_id.unwrap_or_else(|| accession_trimmed.to_string());
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(
-                    &seq_id,
-                    SequenceOrigin::ImportedGenomic,
-                    Some(&result.op_id),
-                );
-
-                let imported_anchor = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
-                if let Some(anchor) = imported_anchor {
-                    let mut anchor_verified: Option<bool> = None;
-                    if let Some(loaded) = self.state.sequences.get(&seq_id) {
-                        match Self::verify_anchor_sequence_against_catalog(
-                            loaded,
-                            &anchor,
-                            DEFAULT_GENOME_CATALOG_PATH,
-                            None,
-                        ) {
-                            Ok(is_match) => {
-                                anchor_verified = Some(is_match);
-                                if is_match {
-                                    result.messages.push(format!(
-                                        "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
-                                        seq_id,
-                                        DEFAULT_GENOME_CATALOG_PATH,
-                                        anchor.genome_id,
-                                        anchor.chromosome,
-                                        anchor.start_1based
-                                    ));
-                                } else {
-                                    result.warnings.push(format!(
-                                        "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
-                                        seq_id,
-                                        anchor.genome_id,
-                                        anchor.chromosome,
-                                        anchor.start_1based,
-                                        anchor.end_1based,
-                                        DEFAULT_GENOME_CATALOG_PATH
-                                    ));
-                                }
-                            }
-                            Err(err) => {
-                                result.warnings.push(format!(
-                                    "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
-                                    seq_id, DEFAULT_GENOME_CATALOG_PATH, err
-                                ));
-                            }
-                        }
-                    }
-                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                        seq_id: seq_id.clone(),
-                        recorded_at_unix_ms: Self::now_unix_ms(),
-                        operation: "FetchGenBankAccession".to_string(),
-                        genome_id: anchor.genome_id.clone(),
-                        catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
-                        cache_dir: None,
-                        chromosome: Some(anchor.chromosome.clone()),
-                        start_1based: Some(anchor.start_1based),
-                        end_1based: Some(anchor.end_1based),
-                        gene_query: None,
-                        occurrence: None,
-                        gene_id: None,
-                        gene_name: None,
-                        strand: None,
-                        anchor_strand: anchor.strand,
-                        anchor_verified,
-                        sequence_source_type: Some("genbank_accession".to_string()),
-                        annotation_source_type: Some("genbank_accession".to_string()),
-                        sequence_source: Some(source_url.clone()),
-                        annotation_source: Some(source_url.clone()),
-                        sequence_sha1: None,
-                        annotation_sha1: None,
+                let _ = self.fetch_genbank_accession_into_state(
+                    &mut result,
+                    accession_trimmed,
+                    as_id,
+                    "FetchGenBankAccession",
+                    None,
+                )?;
+            }
+            Operation::FetchUniprotLinkedGenBank {
+                entry_id,
+                accession,
+                as_id,
+            } => {
+                let entry_id_trimmed = entry_id.trim();
+                if entry_id_trimmed.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "FetchUniprotLinkedGenBank requires a non-empty entry_id"
+                            .to_string(),
                     });
-                    let strand = anchor.strand.unwrap_or('+');
-                    let verification_label = match anchor_verified {
-                        Some(true) => "verified",
-                        Some(false) => "unverified",
-                        None => "verification n/a",
-                    };
-                    result.messages.push(format!(
-                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
-                        seq_id,
-                        anchor.chromosome,
-                        anchor.start_1based,
-                        anchor.end_1based,
-                        anchor.genome_id,
-                        strand,
-                        verification_label
-                    ));
                 }
-
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Fetched GenBank accession '{}' from '{}' as '{}'",
-                    accession_trimmed, source_url, seq_id
-                ));
+                let entry = self.get_uniprot_entry(entry_id_trimmed)?;
+                let selected = Self::choose_uniprot_nucleotide_xref(&entry, accession.as_deref())?;
+                let source_note = format!(
+                    "UniProt '{}' -> {} accession '{}'{}",
+                    entry.entry_id,
+                    selected.database,
+                    selected.accession,
+                    selected
+                        .molecule_type
+                        .as_deref()
+                        .map(|kind| format!(" ({})", kind))
+                        .unwrap_or_default()
+                );
+                let _ = self.fetch_genbank_accession_into_state(
+                    &mut result,
+                    &selected.accession,
+                    as_id,
+                    "FetchUniprotLinkedGenBank",
+                    Some(&source_note),
+                )?;
             }
             Operation::ImportUniprotEntrySequence {
                 entry_id,

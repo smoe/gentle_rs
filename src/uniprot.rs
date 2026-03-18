@@ -39,6 +39,17 @@ pub struct UniprotEnsemblXref {
     pub isoform_id: Option<String>,
 }
 
+/// Parsed `DR   EMBL; ...` / `DR   GenBank; ...` nucleotide cross-reference.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotNucleotideXref {
+    pub database: String,
+    pub accession: String,
+    pub protein_id: Option<String>,
+    pub status: Option<String>,
+    pub molecule_type: Option<String>,
+}
+
 /// Canonical parsed UniProt entry persisted in project metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -55,6 +66,7 @@ pub struct UniprotEntry {
     pub sequence_length: usize,
     pub features: Vec<UniprotFeature>,
     pub ensembl_xrefs: Vec<UniprotEnsemblXref>,
+    pub nucleotide_xrefs: Vec<UniprotNucleotideXref>,
     pub aliases: Vec<String>,
     pub source: String,
     pub source_query: Option<String>,
@@ -72,6 +84,7 @@ pub struct UniprotEntrySummary {
     pub sequence_length: usize,
     pub feature_count: usize,
     pub ensembl_xref_count: usize,
+    pub nucleotide_xref_count: usize,
     pub imported_at_unix_ms: u128,
     pub source: String,
 }
@@ -216,6 +229,45 @@ fn parse_ensembl_xref(line: &str) -> Option<UniprotEnsemblXref> {
     })
 }
 
+fn parse_nucleotide_xref(line: &str) -> Option<UniprotNucleotideXref> {
+    let (database, prefix) = if line.starts_with("DR   EMBL;") {
+        ("EMBL", "DR   EMBL;")
+    } else if line.starts_with("DR   GenBank;") {
+        ("GenBank", "DR   GenBank;")
+    } else {
+        return None;
+    };
+    let body = line.trim_start_matches(prefix).trim();
+    let parts = body
+        .split(';')
+        .map(|value| value.trim().trim_end_matches('.').to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    let accession = parts.first().cloned().unwrap_or_default();
+    if accession.is_empty() {
+        return None;
+    }
+    let protein_id = parts
+        .get(1)
+        .cloned()
+        .filter(|value| value != "-" && !value.is_empty());
+    let status = parts
+        .get(2)
+        .cloned()
+        .filter(|value| value != "-" && !value.is_empty());
+    let molecule_type = parts
+        .get(3)
+        .cloned()
+        .filter(|value| value != "-" && !value.is_empty());
+    Some(UniprotNucleotideXref {
+        database: database.to_string(),
+        accession,
+        protein_id,
+        status,
+        molecule_type,
+    })
+}
+
 fn strip_wrapped_quotes(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() >= 2 && trimmed.starts_with('\"') && trimmed.ends_with('\"') {
@@ -281,6 +333,7 @@ pub fn parse_swiss_prot_text(
     let mut gene_names: Vec<String> = vec![];
     let mut sequence = String::new();
     let mut ensembl_xrefs: Vec<UniprotEnsemblXref> = vec![];
+    let mut nucleotide_xrefs: Vec<UniprotNucleotideXref> = vec![];
     let mut features: Vec<UniprotFeature> = vec![];
     let mut current_feature: Option<FeatureBuilder> = None;
     let mut in_sequence_block = false;
@@ -380,11 +433,33 @@ pub fn parse_swiss_prot_text(
             }
             continue;
         }
+        if line.starts_with("DR   EMBL;") || line.starts_with("DR   GenBank;") {
+            if let Some(xref) = parse_nucleotide_xref(line) {
+                nucleotide_xrefs.push(xref);
+            }
+            continue;
+        }
         if line.starts_with("FT   ") {
             let body = line.get(5..).unwrap_or_default();
             let trimmed = body.trim_end();
             let trimmed_start = trimmed.trim_start();
             if trimmed_start.is_empty() {
+                continue;
+            }
+            if let Some(builder) = current_feature.as_mut()
+                && let Some(name) = builder.pending_qualifier.clone()
+                && !trimmed_start.starts_with('/')
+                && let Some(stored) = builder.qualifiers.get_mut(&name)
+            {
+                if !stored.is_empty() {
+                    stored.push(' ');
+                }
+                stored.push_str(trimmed_start);
+                if stored.ends_with('\"') {
+                    let cleaned = strip_wrapped_quotes(stored);
+                    *stored = cleaned;
+                    builder.pending_qualifier = None;
+                }
                 continue;
             }
             if trimmed_start.starts_with('/') {
@@ -498,6 +573,7 @@ pub fn parse_swiss_prot_text(
         sequence,
         features,
         ensembl_xrefs,
+        nucleotide_xrefs,
         aliases,
         source: source.to_string(),
         source_query: source_query
@@ -544,6 +620,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             entry.ensembl_xrefs[0].transcript_id.as_deref(),
             Some("ENST000001.2")
         );
+        assert!(entry.nucleotide_xrefs.is_empty());
     }
 
     #[test]
@@ -556,5 +633,51 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         )
         .expect_err("expected parse error");
         assert!(err.contains("missing terminal '//'"));
+    }
+
+    #[test]
+    fn parses_wrapped_qualifier_without_creating_fake_feature_keys() {
+        let swiss = r#"ID   WRAP_HUMAN              Reviewed;         12 AA.
+AC   PWRAP1;
+DE   RecName: Full=Wrapped evidence toy;
+GN   Name=WRAP;
+OS   Homo sapiens (Human).
+FT   REGION          3..10
+FT                   /evidence="ECO:0000269|PubMed:11780489,
+FT                   ECO:0000269|PubMed:11780126"
+SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEP
+//
+"#;
+        let entry = parse_swiss_prot_text(swiss, "unit-test", None, None).expect("parse");
+        assert_eq!(entry.features.len(), 1);
+        assert_eq!(entry.features[0].key, "REGION");
+        let evidence = entry.features[0]
+            .qualifiers
+            .get("evidence")
+            .expect("evidence qualifier");
+        assert!(evidence.contains("ECO:0000269|PubMed:11780489"));
+        assert!(evidence.contains("ECO:0000269|PubMed:11780126"));
+    }
+
+    #[test]
+    fn parses_embl_nucleotide_cross_reference() {
+        let swiss = r#"ID   EMBL_HUMAN              Reviewed;         12 AA.
+AC   PEMBL1;
+DE   RecName: Full=EMBL xref toy;
+GN   Name=EMBL1;
+OS   Homo sapiens (Human).
+DR   EMBL; NC_000001; NP_000001.1; -; Genomic_DNA.
+SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEP
+//
+"#;
+        let entry = parse_swiss_prot_text(swiss, "unit-test", None, None).expect("parse");
+        assert_eq!(entry.nucleotide_xrefs.len(), 1);
+        let xref = &entry.nucleotide_xrefs[0];
+        assert_eq!(xref.database, "EMBL");
+        assert_eq!(xref.accession, "NC_000001");
+        assert_eq!(xref.protein_id.as_deref(), Some("NP_000001.1"));
+        assert_eq!(xref.molecule_type.as_deref(), Some("Genomic_DNA"));
     }
 }

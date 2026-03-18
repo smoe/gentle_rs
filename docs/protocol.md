@@ -151,6 +151,9 @@ Current draft operations:
 - `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
 - `ImportUniprotSwissProt { path, entry_id? }`
 - `FetchUniprotSwissProt { query, entry_id? }`
+- `ImportUniprotEntrySequence { entry_id, output_id? }`
+  - currently returns `Unsupported`: protein sequence windows are deferred; use
+    UniProt entries as metadata/projection sources in this release.
 - `FetchGenBankAccession { accession, as_id? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`

@@ -73,6 +73,10 @@ order. Durable architecture constraints and decisions remain in
 - Reference-genome preparation and extraction (`PrepareGenome`,
   `ExtractGenomeRegion`, `ExtractGenomeGene`, `ExtendGenomeAnchor`) including
   catalog-backed helper flows and BLAST integration.
+- Genome-menu specialist dialogs now preserve independent Reference vs Helper
+  setup state (`catalog`/`cache_dir`) and use scope-specific window titles +
+  BLAST target messaging so helper actions no longer inherit reference
+  interface/context labels.
 - `ExtractGenomeRegion` now supports explicit annotation projection scopes
   (`annotation_scope=none|core|full`), defaulting to `core` when unset so
   extracted coordinate slices include overlapping gene/transcript features by
@@ -295,6 +299,9 @@ order. Durable architecture constraints and decisions remain in
     - `FetchUniprotSwissProt` (online accession/id fetch)
     - `ProjectUniprotToGenome` (feature-to-genome mapping via transcript/CDS)
     - `FetchGenBankAccession` (online GenBank accession fetch + direct import)
+    - `ImportUniprotEntrySequence` remains present for protocol compatibility
+      but is intentionally disabled (`Unsupported`) until first-class
+      protein-sequence windows are implemented.
   - persisted metadata stores:
     - `gentle.uniprot_entries.v1`
     - `gentle.uniprot_genome_projections.v1`
@@ -355,6 +362,8 @@ order. Durable architecture constraints and decisions remain in
 - Main lineage page with table/graph/container views.
 - Main lineage page content is vertically scrollable so graph height does not
   hide container/arrangement sections.
+- Main lineage pane now supports a draggable split between the
+  `Table`/`Graph` area and the `Containers`/`Arrangements` area.
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows
@@ -602,10 +611,10 @@ Notes:
 7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
 8. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
-  - genome-extract failure diagnostics now include alias-aware guidance
-    (`17` vs `chr17`) plus prepared-contig previews/suggestions from the
-    active reference; a dedicated "apply suggested contig" one-click GUI
-    action remains pending
+   - genome-extract failure diagnostics now include alias-aware guidance
+     (`17` vs `chr17`) plus prepared-contig previews/suggestions from the
+     active reference; retrieval status now exposes a dedicated
+     one-click `Apply suggested contig` action
    - GUI-driven feature editing is not yet first-class:
      - no explicit edit workflow yet for exon/intron/transcript boundary curation
        informed by RNA-seq interpretation
@@ -1139,6 +1148,9 @@ Current baseline:
   input/output edge rendering.
 - GUI lineage now includes a persistent selected-macro detail pane with
   inputs/outputs and emitted operation drill-down.
+- GUI lineage node context menus now include `Rename (leaf only)` and
+  `Remove (leaf only)` for sequence nodes, with strict leaf guards to avoid
+  downstream-edge/container breakage in this first iteration.
 - routine-family coverage and deeper semantic validation are still incomplete
   beyond current Gibson + restriction baselines.
 
@@ -1642,7 +1654,7 @@ Planned upgrades:
 
 #### D) Dotplot + promoter-flexibility view track (new, high value)
 
-Status (2026-03-09):
+Status (2026-03-18):
 
 - Implemented baseline:
   - engine operations:
@@ -1672,6 +1684,9 @@ Status (2026-03-09):
 Latest GUI baseline (2026-03-09):
 
 - Sequence windows now include a primary `Dotplot map` mode.
+- Sequence-window `Dotplot map` now acts as a compact launcher/compute panel
+  and opens a dedicated standalone `Dotplot` workspace window for full
+  parameter editing and plot inspection.
 - Dotplot compute defaults to a viewport-centered bounded span with
   `half_window_bp` (default `500` => ±500 bp), reducing compute load on large
   loci.
@@ -1941,6 +1956,12 @@ Post-baseline follow-ups:
 - Add cross-application clipboard interoperability through versioned contracts.
 - Keep screenshot re-enable work as the final item and only after explicit
   endpoint-security exception/approval.
+- Keep first-class protein-sequence support deferred:
+  - UniProt remains metadata/projection input (fetch/import/list/show/map).
+  - do not reopen protein sequence-window import until a dedicated protein
+    window model exists (layout, feature toggles, exports, provenance UX).
+  - when resumed, ship as a separate export/analysis channel rather than a
+    DNA-window fallback.
 - Keep auto-updated documentation with embedded graphics postponed until above
   safety/contract priorities are complete.
 - Add deferred documentation track: **GUI screenshot atlas automation (blocked

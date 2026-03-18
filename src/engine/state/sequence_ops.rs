@@ -648,7 +648,8 @@ impl GentleEngine {
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
-            Operation::FetchGenBankAccession { .. } => {}
+            Operation::FetchGenBankAccession { .. }
+            | Operation::FetchUniprotLinkedGenBank { .. } => {}
             Operation::DigestContainer { container_id, .. }
             | Operation::LigationContainer { container_id, .. }
             | Operation::FilterContainerByMolecularWeight { container_id, .. } => {

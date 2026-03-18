@@ -86,9 +86,11 @@ const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
+const DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION: f32 = 420.0 / (420.0 + 220.0);
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
 const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
+const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
@@ -402,6 +404,64 @@ impl GenomeTrackSourceSelection {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum GenomeDialogScope {
+    #[default]
+    Reference,
+    Helper,
+}
+
+impl GenomeDialogScope {
+    fn prepare_title(self) -> &'static str {
+        match self {
+            Self::Reference => "Prepare Reference Genome",
+            Self::Helper => "Prepare Helper Genome",
+        }
+    }
+
+    fn retrieve_title(self) -> &'static str {
+        match self {
+            Self::Reference => "Retrieve Genomic Sequence",
+            Self::Helper => "Retrieve Helper Sequence",
+        }
+    }
+
+    fn blast_title(self) -> &'static str {
+        match self {
+            Self::Reference => "BLAST Genome Sequence",
+            Self::Helper => "BLAST Helper Sequence",
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Self::Reference => "reference genome",
+            Self::Helper => "helper genome",
+        }
+    }
+
+    fn default_catalog_path(self) -> &'static str {
+        match self {
+            Self::Reference => DEFAULT_GENOME_CATALOG_PATH,
+            Self::Helper => DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        }
+    }
+
+    fn default_cache_dir(self) -> &'static str {
+        match self {
+            Self::Reference => DEFAULT_GENOME_CACHE_DIR,
+            Self::Helper => DEFAULT_HELPER_GENOME_CACHE_DIR,
+        }
+    }
+
+    fn empty_prepared_hint(self) -> String {
+        format!(
+            "No prepared genomes are available in this catalog/cache. Use '{}...' first.",
+            self.prepare_title()
+        )
+    }
+}
+
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
@@ -448,6 +508,7 @@ pub struct GENtleApp {
     current_project_path: Option<String>,
     recent_project_paths: Vec<String>,
     lineage_graph_view: bool,
+    lineage_main_split_fraction: f32,
     lineage_graph_zoom: f32,
     lineage_graph_area_height: f32,
     lineage_container_area_height: f32,
@@ -470,6 +531,9 @@ pub struct GENtleApp {
     lineage_group_form_editing_id: Option<String>,
     lineage_group_status: String,
     lineage_group_marked_nodes: HashSet<String>,
+    lineage_node_rename_target_id: Option<String>,
+    lineage_node_rename_text: String,
+    lineage_node_remove_target_id: Option<String>,
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
     clean_state_fingerprint: u64,
@@ -492,6 +556,11 @@ pub struct GENtleApp {
     show_reference_genome_inspector_dialog: bool,
     show_uniprot_dialog: bool,
     show_genbank_dialog: bool,
+    genome_dialog_scope: GenomeDialogScope,
+    reference_genome_catalog_path: String,
+    reference_genome_cache_dir: String,
+    helper_genome_catalog_path: String,
+    helper_genome_cache_dir: String,
     genome_catalog_path: String,
     genome_cache_dir: String,
     genome_id: String,
@@ -517,9 +586,12 @@ pub struct GENtleApp {
     genome_max_annotation_features: String,
     genome_include_genomic_annotation: bool,
     genome_retrieve_status: String,
+    genome_retrieve_contig_suggestions: Vec<String>,
     uniprot_query: String,
     uniprot_entry_id: String,
     uniprot_swiss_path: String,
+    uniprot_linked_accession: String,
+    uniprot_linked_as_id: String,
     uniprot_map_seq_id: String,
     uniprot_map_projection_id: String,
     uniprot_map_transcript_id: String,
@@ -965,6 +1037,31 @@ enum LineageNodeKind {
     Macro,
 }
 
+#[derive(Clone, Debug)]
+enum LineageRetrievalDescriptor {
+    GenomeGene {
+        scope: GenomeDialogScope,
+        genome_id: String,
+        gene_query: String,
+        occurrence: Option<usize>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    GenomeRegion {
+        scope: GenomeDialogScope,
+        genome_id: String,
+        chromosome: String,
+        start_1based: usize,
+        end_1based: usize,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    GenBankAccession {
+        accession: String,
+        as_id: Option<String>,
+    },
+}
+
 #[derive(Clone)]
 struct LineageRow {
     kind: LineageNodeKind,
@@ -986,6 +1083,7 @@ struct LineageRow {
     genome_anchor_summary: Option<SequenceGenomeAnchorSummary>,
     genome_anchor_display: Option<String>,
     is_full_genome_sequence: bool,
+    retrieval_descriptor: Option<LineageRetrievalDescriptor>,
     macro_instance_id: Option<String>,
     macro_routine_id: Option<String>,
     macro_template_name: Option<String>,
@@ -1194,6 +1292,7 @@ struct CommandPaletteEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedLineageGraphWorkspace {
+    main_split_fraction: Option<f32>,
     zoom: f32,
     graph_area_height: f32,
     container_area_height: f32,
@@ -1206,6 +1305,7 @@ struct PersistedLineageGraphWorkspace {
 impl Default for PersistedLineageGraphWorkspace {
     fn default() -> Self {
         Self {
+            main_split_fraction: Some(DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION),
             zoom: 1.0,
             graph_area_height: 420.0,
             container_area_height: 220.0,
@@ -1266,6 +1366,7 @@ impl Default for GENtleApp {
             current_project_path: None,
             recent_project_paths: vec![],
             lineage_graph_view: false,
+            lineage_main_split_fraction: DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION,
             lineage_graph_zoom: 1.0,
             lineage_graph_area_height: 420.0,
             lineage_container_area_height: 220.0,
@@ -1288,6 +1389,9 @@ impl Default for GENtleApp {
             lineage_group_form_editing_id: None,
             lineage_group_status: String::new(),
             lineage_group_marked_nodes: HashSet::new(),
+            lineage_node_rename_target_id: None,
+            lineage_node_rename_text: String::new(),
+            lineage_node_remove_target_id: None,
             lineage_containers: vec![],
             lineage_arrangements: vec![],
             clean_state_fingerprint: 0,
@@ -1310,6 +1414,11 @@ impl Default for GENtleApp {
             show_reference_genome_inspector_dialog: false,
             show_uniprot_dialog: false,
             show_genbank_dialog: false,
+            genome_dialog_scope: GenomeDialogScope::Reference,
+            reference_genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
+            reference_genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
+            helper_genome_catalog_path: DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string(),
+            helper_genome_cache_dir: DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
             genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
             genome_id: "Human GRCh38 Ensembl 113".to_string(),
@@ -1335,9 +1444,12 @@ impl Default for GENtleApp {
             genome_max_annotation_features: String::new(),
             genome_include_genomic_annotation: true,
             genome_retrieve_status: String::new(),
+            genome_retrieve_contig_suggestions: vec![],
             uniprot_query: String::new(),
             uniprot_entry_id: String::new(),
             uniprot_swiss_path: String::new(),
+            uniprot_linked_accession: String::new(),
+            uniprot_linked_as_id: String::new(),
             uniprot_map_seq_id: String::new(),
             uniprot_map_projection_id: String::new(),
             uniprot_map_transcript_id: String::new(),
@@ -1462,6 +1574,10 @@ impl GENtleApp {
 
     fn prepare_genome_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Prepare Genome Viewport")
+    }
+
+    fn retrieve_genome_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Retrieve Genome Viewport")
     }
 
     fn blast_genome_viewport_id() -> ViewportId {
@@ -3197,6 +3313,8 @@ Error: `{err}`"
             "History focus acquisition"
         } else if viewport_id == Self::prepare_genome_viewport_id() {
             "Prepare Genome focus acquisition"
+        } else if viewport_id == Self::retrieve_genome_viewport_id() {
+            "Retrieve Genome focus acquisition"
         } else if viewport_id == Self::blast_genome_viewport_id() {
             "BLAST Genome focus acquisition"
         } else if viewport_id == Self::bed_track_viewport_id() {
@@ -3582,6 +3700,7 @@ Error: `{err}`"
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
+        self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
@@ -3592,6 +3711,9 @@ Error: `{err}`"
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
+        self.lineage_node_rename_target_id = None;
+        self.lineage_node_rename_text.clear();
+        self.lineage_node_remove_target_id = None;
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -3933,22 +4055,99 @@ Error: `{err}`"
         }
     }
 
-    fn open_reference_genome_prepare_dialog(&mut self) {
+    fn set_scope_genome_paths(&mut self, scope: GenomeDialogScope, catalog: String, cache: String) {
+        match scope {
+            GenomeDialogScope::Reference => {
+                self.reference_genome_catalog_path = catalog;
+                self.reference_genome_cache_dir = cache;
+            }
+            GenomeDialogScope::Helper => {
+                self.helper_genome_catalog_path = catalog;
+                self.helper_genome_cache_dir = cache;
+            }
+        }
+    }
+
+    fn scope_genome_paths_resolved(&self, scope: GenomeDialogScope) -> (String, String) {
+        let (catalog, cache) = match scope {
+            GenomeDialogScope::Reference => (
+                self.reference_genome_catalog_path.trim(),
+                self.reference_genome_cache_dir.trim(),
+            ),
+            GenomeDialogScope::Helper => (
+                self.helper_genome_catalog_path.trim(),
+                self.helper_genome_cache_dir.trim(),
+            ),
+        };
+        let resolved_catalog = if catalog.is_empty() {
+            scope.default_catalog_path().to_string()
+        } else {
+            catalog.to_string()
+        };
+        let resolved_cache = if cache.is_empty() {
+            scope.default_cache_dir().to_string()
+        } else {
+            cache.to_string()
+        };
+        (resolved_catalog, resolved_cache)
+    }
+
+    fn sync_active_genome_scope_paths_from_fields(&mut self) {
+        self.set_scope_genome_paths(
+            self.genome_dialog_scope,
+            self.genome_catalog_path.clone(),
+            self.genome_cache_dir.clone(),
+        );
+    }
+
+    fn set_genome_dialog_scope(&mut self, scope: GenomeDialogScope) {
+        self.sync_active_genome_scope_paths_from_fields();
+        self.genome_dialog_scope = scope;
+        let (next_catalog, next_cache) = self.scope_genome_paths_resolved(scope);
+        let catalog_changed = self.genome_catalog_path != next_catalog;
+        let cache_changed = self.genome_cache_dir != next_cache;
+        self.genome_catalog_path = next_catalog;
+        self.genome_cache_dir = next_cache;
+        if catalog_changed || cache_changed {
+            self.invalidate_genome_genes();
+        }
+    }
+
+    fn open_prepare_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
+        self.set_genome_dialog_scope(scope);
         if self.show_reference_genome_prepare_dialog {
             self.queue_focus_viewport(Self::prepare_genome_viewport_id());
         }
         self.show_reference_genome_prepare_dialog = true;
     }
 
-    fn open_reference_genome_retrieve_dialog(&mut self) {
+    fn open_retrieve_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
+        self.set_genome_dialog_scope(scope);
+        if self.show_reference_genome_retrieve_dialog {
+            self.queue_focus_viewport(Self::retrieve_genome_viewport_id());
+            return;
+        }
         self.show_reference_genome_retrieve_dialog = true;
     }
 
-    fn open_reference_genome_blast_dialog(&mut self) {
+    fn open_blast_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
+        self.set_genome_dialog_scope(scope);
         if self.show_reference_genome_blast_dialog {
             self.queue_focus_viewport(Self::blast_genome_viewport_id());
         }
         self.show_reference_genome_blast_dialog = true;
+    }
+
+    fn open_reference_genome_prepare_dialog(&mut self) {
+        self.open_prepare_genome_dialog_for_scope(GenomeDialogScope::Reference);
+    }
+
+    fn open_reference_genome_retrieve_dialog(&mut self) {
+        self.open_retrieve_genome_dialog_for_scope(GenomeDialogScope::Reference);
+    }
+
+    fn open_reference_genome_blast_dialog(&mut self) {
+        self.open_blast_genome_dialog_for_scope(GenomeDialogScope::Reference);
     }
 
     fn open_reference_genome_inspector_dialog(&mut self) {
@@ -4003,6 +4202,247 @@ Error: `{err}`"
             return;
         }
         self.show_genbank_dialog = true;
+    }
+
+    fn infer_genome_dialog_scope_from_paths(
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> GenomeDialogScope {
+        let catalog = catalog_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+        let cache = cache_dir
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+        if catalog.eq_ignore_ascii_case(DEFAULT_HELPER_GENOME_CATALOG_PATH)
+            || cache.eq_ignore_ascii_case(DEFAULT_HELPER_GENOME_CACHE_DIR)
+        {
+            GenomeDialogScope::Helper
+        } else {
+            GenomeDialogScope::Reference
+        }
+    }
+
+    fn lineage_retrieval_descriptor_from_operation(
+        op: &Operation,
+    ) -> Option<LineageRetrievalDescriptor> {
+        match op {
+            Operation::ExtractGenomeGene {
+                genome_id,
+                gene_query,
+                occurrence,
+                catalog_path,
+                cache_dir,
+                ..
+            } => Some(LineageRetrievalDescriptor::GenomeGene {
+                scope: Self::infer_genome_dialog_scope_from_paths(
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                ),
+                genome_id: genome_id.clone(),
+                gene_query: gene_query.clone(),
+                occurrence: *occurrence,
+                catalog_path: catalog_path.clone(),
+                cache_dir: cache_dir.clone(),
+            }),
+            Operation::ExtractGenomeRegion {
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                catalog_path,
+                cache_dir,
+                ..
+            } => Some(LineageRetrievalDescriptor::GenomeRegion {
+                scope: Self::infer_genome_dialog_scope_from_paths(
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                ),
+                genome_id: genome_id.clone(),
+                chromosome: chromosome.clone(),
+                start_1based: *start_1based,
+                end_1based: *end_1based,
+                catalog_path: catalog_path.clone(),
+                cache_dir: cache_dir.clone(),
+            }),
+            Operation::FetchGenBankAccession { accession, as_id } => {
+                Some(LineageRetrievalDescriptor::GenBankAccession {
+                    accession: accession.clone(),
+                    as_id: as_id.clone(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn lineage_retrieval_pattern_label(descriptor: &LineageRetrievalDescriptor) -> &'static str {
+        match descriptor {
+            LineageRetrievalDescriptor::GenomeGene { .. } => "GENE",
+            LineageRetrievalDescriptor::GenomeRegion { .. } => "REGION",
+            LineageRetrievalDescriptor::GenBankAccession { .. } => "GB",
+        }
+    }
+
+    fn lineage_retrieval_pattern_tooltip(
+        descriptor: &LineageRetrievalDescriptor,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> String {
+        let mut lines: Vec<String> = Vec::with_capacity(4);
+        match descriptor {
+            LineageRetrievalDescriptor::GenomeGene {
+                scope,
+                genome_id,
+                gene_query,
+                occurrence,
+                ..
+            } => {
+                let route = match scope {
+                    GenomeDialogScope::Reference => "genome catalog",
+                    GenomeDialogScope::Helper => "helper catalog",
+                };
+                lines.push(format!(
+                    "Retrieval pattern: gene query '{}' on '{}' ({route})",
+                    gene_query, genome_id
+                ));
+                if let Some(idx) = occurrence {
+                    lines.push(format!("Occurrence: {}", idx));
+                }
+            }
+            LineageRetrievalDescriptor::GenomeRegion {
+                scope,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                ..
+            } => {
+                let route = match scope {
+                    GenomeDialogScope::Reference => "genome catalog",
+                    GenomeDialogScope::Helper => "helper catalog",
+                };
+                lines.push(format!(
+                    "Retrieval pattern: region {}:{}-{} on '{}' ({route})",
+                    chromosome, start_1based, end_1based, genome_id
+                ));
+            }
+            LineageRetrievalDescriptor::GenBankAccession { accession, .. } => {
+                lines.push(format!(
+                    "Retrieval pattern: GenBank accession '{}'",
+                    accession
+                ));
+                lines.push(
+                    "GenBank retrieval and genome anchoring are complementary (no source conflict)"
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(anchor) = anchor {
+            let strand = anchor.strand.unwrap_or('+');
+            lines.push(format!(
+                "Genome anchor: {}:{}-{} (strand {})",
+                anchor.chromosome, anchor.start_1based, anchor.end_1based, strand
+            ));
+        }
+        lines.push("Click to reopen the matching retrieval dialog".to_string());
+        lines.join("\n")
+    }
+
+    fn open_lineage_retrieval_descriptor(&mut self, descriptor: &LineageRetrievalDescriptor) {
+        match descriptor {
+            LineageRetrievalDescriptor::GenomeGene {
+                scope,
+                genome_id,
+                gene_query,
+                occurrence,
+                catalog_path,
+                cache_dir,
+            } => {
+                self.set_genome_dialog_scope(*scope);
+                if let Some(path) = catalog_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.genome_catalog_path = path.to_string();
+                }
+                if let Some(path) = cache_dir
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.genome_cache_dir = path.to_string();
+                }
+                self.sync_active_genome_scope_paths_from_fields();
+                if self.genome_id != *genome_id {
+                    self.genome_id = genome_id.clone();
+                    self.invalidate_genome_genes();
+                }
+                self.genome_gene_filter = gene_query.clone();
+                self.genome_gene_filter_page = 0;
+                self.open_retrieve_genome_dialog_for_scope(*scope);
+                self.genome_retrieve_status = match occurrence {
+                    Some(value) => format!(
+                        "Reopened retrieval pattern: gene '{}' (occurrence {}) on '{}'",
+                        gene_query, value, genome_id
+                    ),
+                    None => format!(
+                        "Reopened retrieval pattern: gene '{}' on '{}'",
+                        gene_query, genome_id
+                    ),
+                };
+                self.genome_retrieve_contig_suggestions.clear();
+            }
+            LineageRetrievalDescriptor::GenomeRegion {
+                scope,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                catalog_path,
+                cache_dir,
+            } => {
+                self.set_genome_dialog_scope(*scope);
+                if let Some(path) = catalog_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.genome_catalog_path = path.to_string();
+                }
+                if let Some(path) = cache_dir
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.genome_cache_dir = path.to_string();
+                }
+                self.sync_active_genome_scope_paths_from_fields();
+                if self.genome_id != *genome_id {
+                    self.genome_id = genome_id.clone();
+                    self.invalidate_genome_genes();
+                }
+                self.genome_chromosome = chromosome.clone();
+                self.genome_start_1based = start_1based.to_string();
+                self.genome_end_1based = end_1based.to_string();
+                self.open_retrieve_genome_dialog_for_scope(*scope);
+                self.genome_retrieve_status = format!(
+                    "Reopened retrieval pattern: {}:{}-{} on '{}'",
+                    chromosome, start_1based, end_1based, genome_id
+                );
+                self.genome_retrieve_contig_suggestions.clear();
+            }
+            LineageRetrievalDescriptor::GenBankAccession { accession, as_id } => {
+                self.genbank_accession = accession.clone();
+                self.genbank_as_id = as_id.clone().unwrap_or_default();
+                self.open_genbank_dialog();
+                self.genbank_status = format!(
+                    "Reopened retrieval pattern: GenBank accession '{}'",
+                    accession
+                );
+            }
+        }
     }
 
     fn pretty_json_or_fallback<T: Serialize>(value: &T) -> String {
@@ -4371,23 +4811,15 @@ Error: `{err}`"
     }
 
     fn open_helper_genome_prepare_dialog(&mut self) {
-        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
-        self.genome_cache_dir = "data/helper_genomes".to_string();
-        self.invalidate_genome_genes();
-        self.open_reference_genome_prepare_dialog();
+        self.open_prepare_genome_dialog_for_scope(GenomeDialogScope::Helper);
     }
 
     fn open_helper_genome_retrieve_dialog(&mut self) {
-        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
-        self.genome_cache_dir = "data/helper_genomes".to_string();
-        self.invalidate_genome_genes();
-        self.show_reference_genome_retrieve_dialog = true;
+        self.open_retrieve_genome_dialog_for_scope(GenomeDialogScope::Helper);
     }
 
     fn open_helper_genome_blast_dialog(&mut self) {
-        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
-        self.genome_cache_dir = "data/helper_genomes".to_string();
-        self.open_reference_genome_blast_dialog();
+        self.open_blast_genome_dialog_for_scope(GenomeDialogScope::Helper);
     }
 
     fn genome_catalog_path_opt(&self) -> Option<String> {
@@ -4401,7 +4833,7 @@ Error: `{err}`"
 
     fn genome_catalog_path_resolved(&self) -> String {
         self.genome_catalog_path_opt()
-            .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string())
+            .unwrap_or_else(|| self.genome_dialog_scope.default_catalog_path().to_string())
     }
 
     fn genome_cache_dir_opt(&self) -> Option<String> {
@@ -4506,8 +4938,99 @@ Error: `{err}`"
         core.to_string()
     }
 
+    fn suggest_chromosome_names(query: &str, available: &[String], limit: usize) -> Vec<String> {
+        if limit == 0 {
+            return vec![];
+        }
+        let query_trimmed = query.trim();
+        if query_trimmed.is_empty() {
+            return vec![];
+        }
+        let query_lower = query_trimmed.to_ascii_lowercase();
+        let query_normalized = Self::normalize_chromosome_alias(query_trimmed);
+        let mut scored: Vec<(u8, String)> = available
+            .iter()
+            .filter_map(|candidate| {
+                let candidate_trimmed = candidate.trim();
+                if candidate_trimmed.is_empty() {
+                    return None;
+                }
+                let candidate_lower = candidate_trimmed.to_ascii_lowercase();
+                let candidate_normalized = Self::normalize_chromosome_alias(candidate_trimmed);
+                let score =
+                    if !query_normalized.is_empty() && candidate_normalized == query_normalized {
+                        0u8
+                    } else if !query_normalized.is_empty()
+                        && (candidate_normalized.starts_with(&query_normalized)
+                            || query_normalized.starts_with(&candidate_normalized))
+                    {
+                        1u8
+                    } else if !query_lower.is_empty()
+                        && (candidate_lower.contains(&query_lower)
+                            || query_lower.contains(&candidate_lower))
+                    {
+                        2u8
+                    } else {
+                        return None;
+                    };
+                Some((score, candidate_trimmed.to_string()))
+            })
+            .collect();
+        scored.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then(left.1.len().cmp(&right.1.len()))
+                .then(left.1.cmp(&right.1))
+        });
+        let mut out: Vec<String> = vec![];
+        for (_, candidate) in scored {
+            if out.iter().any(|existing| existing == &candidate) {
+                continue;
+            }
+            out.push(candidate);
+            if out.len() >= limit {
+                break;
+            }
+        }
+        out
+    }
+
     fn chromosome_aliases_match(left: &str, right: &str) -> bool {
         Self::normalize_chromosome_alias(left) == Self::normalize_chromosome_alias(right)
+    }
+
+    fn refresh_retrieve_contig_suggestions(&mut self, query_chromosome: &str) {
+        self.genome_retrieve_contig_suggestions.clear();
+        let genome_id = self.genome_id.trim();
+        if genome_id.is_empty() {
+            return;
+        }
+        let query = query_chromosome.trim();
+        if query.is_empty() {
+            return;
+        }
+        let available = match self.prepared_genome_chromosome_records(genome_id) {
+            Ok(records) => records
+                .into_iter()
+                .map(|record| record.chromosome)
+                .collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        self.genome_retrieve_contig_suggestions =
+            Self::suggest_chromosome_names(query, &available, 8);
+    }
+
+    fn update_retrieve_contig_suggestions_from_error(
+        &mut self,
+        query_chromosome: &str,
+        error_message: &str,
+    ) {
+        self.genome_retrieve_contig_suggestions.clear();
+        if error_message.contains("Chromosome/contig")
+            && error_message.contains("not found in genome")
+        {
+            self.refresh_retrieve_contig_suggestions(query_chromosome);
+        }
     }
 
     fn format_genome_anchor_summary(anchor: &SequenceGenomeAnchorSummary) -> String {
@@ -5767,6 +6290,11 @@ Error: `{err}`"
         catalog_path: &Option<String>,
         cache_dir: &Option<String>,
     ) {
+        let scope = if helper_mode {
+            GenomeDialogScope::Helper
+        } else {
+            GenomeDialogScope::Reference
+        };
         let normalized_catalog = catalog_path
             .as_deref()
             .map(str::trim)
@@ -5777,24 +6305,16 @@ Error: `{err}`"
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
-        let next_catalog = if helper_mode {
-            normalized_catalog.unwrap_or_else(|| DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string())
-        } else {
-            normalized_catalog.unwrap_or_else(|| self.genome_catalog_path.clone())
-        };
-        let next_cache = if helper_mode {
-            normalized_cache.unwrap_or_else(|| "data/helper_genomes".to_string())
-        } else {
-            normalized_cache.unwrap_or_else(|| self.genome_cache_dir.clone())
-        };
+        self.sync_active_genome_scope_paths_from_fields();
+        self.genome_dialog_scope = scope;
+        let (scope_catalog, scope_cache) = self.scope_genome_paths_resolved(scope);
+        let next_catalog = normalized_catalog.unwrap_or(scope_catalog);
+        let next_cache = normalized_cache.unwrap_or(scope_cache);
         let catalog_changed = self.genome_catalog_path != next_catalog;
         let cache_changed = self.genome_cache_dir != next_cache;
-        if catalog_changed {
-            self.genome_catalog_path = next_catalog;
-        }
-        if cache_changed {
-            self.genome_cache_dir = next_cache;
-        }
+        self.genome_catalog_path = next_catalog.clone();
+        self.genome_cache_dir = next_cache.clone();
+        self.set_scope_genome_paths(scope, next_catalog, next_cache);
         if catalog_changed || cache_changed {
             self.invalidate_genome_genes();
         }
@@ -5966,6 +6486,7 @@ Error: `{err}`"
         self.genome_selected_gene = None;
         self.genome_gene_filter_page = 0;
         self.genome_biotype_filter.clear();
+        self.genome_retrieve_contig_suggestions.clear();
     }
 
     fn genome_genes_loaded_key(&self) -> String {
@@ -7550,6 +8071,7 @@ Error: `{err}`"
         self.genome_chromosome = gene.chromosome.clone();
         self.genome_start_1based = gene.start_1based.to_string();
         self.genome_end_1based = gene.end_1based.to_string();
+        self.genome_retrieve_contig_suggestions.clear();
         if self.genome_output_id.trim().is_empty() {
             self.genome_output_id = Self::default_retrieve_genome_output_id(&self.genome_id, gene);
         }
@@ -7737,11 +8259,13 @@ Error: `{err}`"
         let genome_id = self.genome_id.trim().to_string();
         if genome_id.is_empty() {
             self.genome_retrieve_status = "Select a genome first".to_string();
+            self.genome_retrieve_contig_suggestions.clear();
             return;
         }
         let Some((gene_query, occurrence)) = self.selected_gene_query_and_occurrence() else {
             self.genome_retrieve_status =
                 "Select a gene with a gene_id or gene_name first".to_string();
+            self.genome_retrieve_contig_suggestions.clear();
             return;
         };
         let output_id = if self.genome_output_id.trim().is_empty() {
@@ -7758,6 +8282,7 @@ Error: `{err}`"
                 Ok(parsed) => Some(parsed),
                 Err(_) => {
                     self.genome_retrieve_status = "max annotation features must be a non-negative integer (empty = unlimited)".to_string();
+                    self.genome_retrieve_contig_suggestions.clear();
                     return;
                 }
             }
@@ -7773,6 +8298,7 @@ Error: `{err}`"
             catalog_path: self.genome_catalog_path_opt(),
             cache_dir: self.genome_cache_dir_opt(),
         };
+        let chromosome_for_suggestions = self.genome_chromosome.trim().to_string();
         let result = { self.engine.write().unwrap().apply(op) };
         match result {
             Ok(r) => {
@@ -7785,9 +8311,14 @@ Error: `{err}`"
                     &r.warnings,
                     &r.messages,
                 );
+                self.genome_retrieve_contig_suggestions.clear();
             }
             Err(e) => {
                 self.genome_retrieve_status = format!("Extract gene failed: {}", e.message);
+                self.update_retrieve_contig_suggestions_from_error(
+                    &chromosome_for_suggestions,
+                    &e.message,
+                );
             }
         }
     }
@@ -7796,11 +8327,13 @@ Error: `{err}`"
         let genome_id = self.genome_id.trim().to_string();
         if genome_id.is_empty() {
             self.genome_retrieve_status = "Select a genome first".to_string();
+            self.genome_retrieve_contig_suggestions.clear();
             return;
         }
         let chromosome = self.genome_chromosome.trim().to_string();
         if chromosome.is_empty() {
             self.genome_retrieve_status = "Chromosome cannot be empty".to_string();
+            self.genome_retrieve_contig_suggestions.clear();
             return;
         }
         let (start_1based, end_1based) = match (
@@ -7811,6 +8344,7 @@ Error: `{err}`"
             _ => {
                 self.genome_retrieve_status =
                     "Invalid interval; require start >= 1 and end >= start".to_string();
+                self.genome_retrieve_contig_suggestions.clear();
                 return;
             }
         };
@@ -7828,6 +8362,7 @@ Error: `{err}`"
                 Ok(parsed) => Some(parsed),
                 Err(_) => {
                     self.genome_retrieve_status = "max annotation features must be a non-negative integer (empty = unlimited)".to_string();
+                    self.genome_retrieve_contig_suggestions.clear();
                     return;
                 }
             }
@@ -7835,7 +8370,7 @@ Error: `{err}`"
         let catalog_path = self.genome_catalog_path_opt();
         let extract_op = Operation::ExtractGenomeRegion {
             genome_id: genome_id.clone(),
-            chromosome,
+            chromosome: chromosome.clone(),
             start_1based,
             end_1based,
             output_id,
@@ -7852,9 +8387,11 @@ Error: `{err}`"
                     self.open_sequence_window(seq_id);
                 }
                 self.genome_retrieve_status = Self::format_extract_region_status(&r);
+                self.genome_retrieve_contig_suggestions.clear();
             }
             Err(e) => {
                 self.genome_retrieve_status = format!("Extract region failed: {}", e.message);
+                self.update_retrieve_contig_suggestions_from_error(&chromosome, &e.message);
             }
         }
     }
@@ -7973,6 +8510,40 @@ Error: `{err}`"
         }
     }
 
+    fn fetch_uniprot_linked_genbank_from_dialog(&mut self) {
+        let entry_id = self.uniprot_entry_id.trim().to_string();
+        if entry_id.is_empty() {
+            self.uniprot_status = "entry_id is required for linked GenBank fetch".to_string();
+            return;
+        }
+        let op = Operation::FetchUniprotLinkedGenBank {
+            entry_id,
+            accession: Self::uniprot_optional_trimmed(&self.uniprot_linked_accession),
+            as_id: Self::uniprot_optional_trimmed(&self.uniprot_linked_as_id),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                if let Some(seq_id) = result.created_seq_ids.first() {
+                    self.uniprot_map_seq_id = seq_id.clone();
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt linked GenBank fetch: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status =
+                    format!("UniProt linked GenBank fetch failed: {}", err.message);
+            }
+        }
+    }
+
     fn project_uniprot_entry_from_dialog(&mut self) {
         let entry_id = self.uniprot_entry_id.trim().to_string();
         if entry_id.is_empty() {
@@ -8015,38 +8586,6 @@ Error: `{err}`"
             }
             Err(err) => {
                 self.uniprot_status = format!("UniProt projection failed: {}", err.message);
-            }
-        }
-    }
-
-    fn use_uniprot_entry_from_dialog(&mut self, entry_id: &str) {
-        let entry_id = entry_id.trim().to_string();
-        if entry_id.is_empty() {
-            self.uniprot_status = "UniProt entry_id cannot be empty".to_string();
-            return;
-        }
-        let op = Operation::ImportUniprotEntrySequence {
-            entry_id: entry_id.clone(),
-            output_id: None,
-        };
-        let result = { self.engine.write().unwrap().apply(op) };
-        match result {
-            Ok(result) => {
-                for seq_id in &result.created_seq_ids {
-                    self.open_sequence_window(seq_id);
-                }
-                if let Some(seq_id) = result.created_seq_ids.first() {
-                    self.uniprot_map_seq_id = seq_id.clone();
-                }
-                self.uniprot_status = Self::format_op_result_status(
-                    "UniProt use: ok",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
-            }
-            Err(err) => {
-                self.uniprot_status = format!("UniProt use failed: {}", err.message);
             }
         }
     }
@@ -8120,10 +8659,7 @@ Error: `{err}`"
         self.show_genbank_dialog = open;
     }
 
-    fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
-        if !self.show_uniprot_dialog {
-            return;
-        }
+    fn render_uniprot_dialog_contents(&mut self, ui: &mut Ui) {
         let seq_ids = self.project_sequence_ids_for_blast();
         if !seq_ids.is_empty() {
             let selected = self.uniprot_map_seq_id.trim();
@@ -8131,204 +8667,244 @@ Error: `{err}`"
                 self.uniprot_map_seq_id = seq_ids[0].clone();
             }
         }
-        let mut open = self.show_uniprot_dialog;
-        let mut close_requested = false;
-        egui::Window::new("UniProt Mapping")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(940.0, 520.0))
-            .min_size(Vec2::new(780.0, 420.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Help")
-                        .on_hover_text("Open GUI help and bring it to the front")
-                        .clicked()
-                    {
-                        self.open_help_doc(HelpDoc::Gui);
-                    }
-                    if ui
-                        .button("Close")
-                        .on_hover_text("Close this UniProt window (Cmd/Ctrl+W)")
-                        .clicked()
-                    {
-                        close_requested = true;
-                    }
-                });
-                ui.separator();
-                ui.label(
-                    "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
+
+        ui.horizontal(|ui| {
+            if ui
+                .button("Help")
+                .on_hover_text("Open GUI help and bring it to the front")
+                .clicked()
+            {
+                self.open_help_doc(HelpDoc::Gui);
+            }
+            if ui
+                .button("Close")
+                .on_hover_text("Close this UniProt window (Cmd/Ctrl+W)")
+                .clicked()
+            {
+                self.show_uniprot_dialog = false;
+            }
+        });
+        ui.separator();
+        ui.label(
+            "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("entry_id");
+            ui.text_edit_singleline(&mut self.uniprot_entry_id)
+                .on_hover_text("Stable entry identifier in this project (used by projection)");
+        });
+        ui.small(
+            "Optional override for fetch/import. Required for projection; if empty after fetch, query is used.",
+        );
+        ui.small(
+            "Protein sequence import into DNA windows is intentionally disabled in this release.",
+        );
+        ui.separator();
+        ui.label("Online fetch");
+        ui.horizontal(|ui| {
+            ui.label("query");
+            ui.text_edit_singleline(&mut self.uniprot_query)
+                .on_hover_text(
+                    "UniProt accession or entry ID to fetch (for example P04637 or TP53_HUMAN)",
                 );
-                ui.horizontal(|ui| {
-                    ui.label("entry_id");
-                    ui.text_edit_singleline(&mut self.uniprot_entry_id).on_hover_text(
-                        "Stable entry identifier in this project (used by projection and Use)",
-                    );
-                });
-                ui.small(
-                    "Optional override for fetch/import. Required for projection; if empty after fetch, query is used.",
-                );
-                ui.separator();
-                ui.label("Online fetch");
-                ui.horizontal(|ui| {
-                    ui.label("query");
-                    ui.text_edit_singleline(&mut self.uniprot_query).on_hover_text(
-                        "UniProt accession or entry ID to fetch (for example P04637 or TP53_HUMAN)",
-                    );
-                    if ui
-                        .button("Fetch")
-                        .on_hover_text(
-                            "Fetch UniProt SWISS-PROT text by accession or UniProt entry ID",
-                        )
-                        .clicked()
-                    {
-                        self.fetch_uniprot_entry_from_dialog();
-                    }
-                });
-                ui.small("Examples: P04637, TP53_HUMAN");
-                ui.separator();
-                ui.label("Offline import (SWISS-PROT text)");
-                ui.horizontal(|ui| {
-                    ui.label("path");
-                    ui.text_edit_singleline(&mut self.uniprot_swiss_path).on_hover_text(
-                        "Local path to a SWISS-PROT text file (.txt/.dat)",
-                    );
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Pick a local SWISS-PROT text file")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("SWISS-PROT text", &["txt", "dat"])
-                            .add_filter("Text", &["txt"])
-                            .pick_file()
-                        {
-                            self.uniprot_swiss_path = path.display().to_string();
-                        }
-                    }
-                    if ui
-                        .button("Import")
-                        .on_hover_text("Import local SWISS-PROT text into project metadata")
-                        .clicked()
-                    {
-                        self.import_uniprot_swiss_prot_from_dialog();
-                    }
-                });
-                ui.separator();
-                ui.label("Project entry to sequence");
-                if seq_ids.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(190, 70, 70),
-                        "No project sequence available. Load/import one first.",
-                    );
-                    ui.horizontal(|ui| {
-                        ui.label("seq_id");
-                        ui.text_edit_singleline(&mut self.uniprot_map_seq_id).on_hover_text(
-                            "Target sequence ID for projection (must exist in project)",
-                        );
-                    });
-                } else {
-                    egui::ComboBox::from_label("seq_id")
-                        .selected_text(self.uniprot_map_seq_id.clone())
-                        .show_ui(ui, |ui| {
-                            for seq_id in &seq_ids {
-                                ui.selectable_value(
-                                    &mut self.uniprot_map_seq_id,
-                                    seq_id.clone(),
-                                    seq_id,
-                                );
-                            }
-                        })
-                        .response
-                        .on_hover_text("Select the target sequence for UniProt projection");
-                }
-                ui.horizontal(|ui| {
-                    ui.label("projection_id");
-                    ui.text_edit_singleline(&mut self.uniprot_map_projection_id)
-                        .on_hover_text("Optional projection record ID (auto-generated when empty)");
-                    ui.label("transcript");
-                    ui.text_edit_singleline(&mut self.uniprot_map_transcript_id)
-                        .on_hover_text("Optional transcript filter (for example ENST... )");
-                });
-                if ui
-                    .button("Project To Sequence")
-                    .on_hover_text(
-                        "Map UniProt feature intervals through transcript/CDS onto genomic coordinates",
-                    )
-                    .clicked()
+            if ui
+                .button("Fetch")
+                .on_hover_text("Fetch UniProt SWISS-PROT text by accession or UniProt entry ID")
+                .clicked()
+            {
+                self.fetch_uniprot_entry_from_dialog();
+            }
+        });
+        ui.small("Examples: P04637, TP53_HUMAN");
+        ui.separator();
+        ui.label("Offline import (SWISS-PROT text)");
+        ui.horizontal(|ui| {
+            ui.label("path");
+            ui.text_edit_singleline(&mut self.uniprot_swiss_path)
+                .on_hover_text("Local path to a SWISS-PROT text file (.txt/.dat)");
+            if ui
+                .button("Browse...")
+                .on_hover_text("Pick a local SWISS-PROT text file")
+                .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("SWISS-PROT text", &["txt", "dat"])
+                    .add_filter("Text", &["txt"])
+                    .pick_file()
                 {
-                    self.project_uniprot_entry_from_dialog();
+                    self.uniprot_swiss_path = path.display().to_string();
                 }
-                ui.separator();
-                let recent_entries = self.recent_uniprot_entries_for_dialog(12);
-                ui.label(format!("Recent imported entries ({})", recent_entries.len()));
-                if recent_entries.is_empty() {
-                    ui.small("No UniProt entries imported in this project yet.");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .max_height(180.0)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            egui::Grid::new("uniprot_recent_entries_grid")
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    ui.strong("entry_id");
-                                    ui.strong("accession");
-                                    ui.strong("primary_id");
-                                    ui.strong("AA");
-                                    ui.strong("imported_ms");
-                                    ui.strong("source");
-                                    ui.strong("action");
-                                    ui.end_row();
-                                    for row in recent_entries.iter() {
-                                        ui.monospace(&row.entry_id);
-                                        ui.monospace(&row.accession);
-                                        ui.label(&row.primary_id);
-                                        ui.label(row.sequence_length.to_string());
-                                        ui.label(row.imported_at_unix_ms.to_string());
-                                        ui.label(&row.source);
-                                        if ui
-                                            .small_button("Use")
-                                            .on_hover_text(
-                                                "Import this UniProt sequence into the project and open it",
-                                            )
-                                            .clicked()
-                                        {
-                                            self.uniprot_entry_id = row.entry_id.clone();
-                                            if self.uniprot_query.trim().is_empty()
-                                                && !row.accession.trim().is_empty()
-                                            {
-                                                self.uniprot_query = row.accession.clone();
-                                            }
-                                            self.use_uniprot_entry_from_dialog(&row.entry_id);
-                                        }
-                                        ui.end_row();
-                                    }
-                                });
-                        });
-                }
-                if !self.uniprot_status.trim().is_empty() {
-                    ui.separator();
-                    ui.monospace(self.uniprot_status.clone());
-                }
+            }
+            if ui
+                .button("Import")
+                .on_hover_text("Import local SWISS-PROT text into project metadata")
+                .clicked()
+            {
+                self.import_uniprot_swiss_prot_from_dialog();
+            }
+        });
+        ui.separator();
+        ui.label("Project entry to sequence");
+        if seq_ids.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                "No project sequence available. Load/import one first.",
+            );
+            ui.horizontal(|ui| {
+                ui.label("seq_id");
+                ui.text_edit_singleline(&mut self.uniprot_map_seq_id)
+                    .on_hover_text("Target sequence ID for projection (must exist in project)");
             });
-        if close_requested {
-            open = false;
+        } else {
+            egui::ComboBox::from_label("seq_id")
+                .selected_text(self.uniprot_map_seq_id.clone())
+                .show_ui(ui, |ui| {
+                    for seq_id in &seq_ids {
+                        ui.selectable_value(&mut self.uniprot_map_seq_id, seq_id.clone(), seq_id);
+                    }
+                })
+                .response
+                .on_hover_text("Select the target sequence for UniProt projection");
         }
-        if Self::viewport_close_requested_or_shortcut(ctx) {
-            open = false;
+        ui.horizontal(|ui| {
+            ui.label("projection_id");
+            ui.text_edit_singleline(&mut self.uniprot_map_projection_id)
+                .on_hover_text("Optional projection record ID (auto-generated when empty)");
+            ui.label("transcript");
+            ui.text_edit_singleline(&mut self.uniprot_map_transcript_id)
+                .on_hover_text("Optional transcript filter (for example ENST... )");
+        });
+        if ui
+            .button("Project To Sequence")
+            .on_hover_text(
+                "Map UniProt feature intervals through transcript/CDS onto genomic coordinates",
+            )
+            .clicked()
+        {
+            self.project_uniprot_entry_from_dialog();
         }
-        self.show_uniprot_dialog = open;
+        ui.separator();
+        ui.label("Linked nucleotide retrieval (EMBL/GenBank crossref)");
+        ui.horizontal(|ui| {
+            ui.label("accession");
+            ui.text_edit_singleline(&mut self.uniprot_linked_accession)
+                .on_hover_text(
+                    "Optional accession override (empty = auto from UniProt DR EMBL/GenBank)",
+                );
+            ui.label("as_id");
+            ui.text_edit_singleline(&mut self.uniprot_linked_as_id)
+                .on_hover_text("Optional project sequence id override");
+            if ui
+                .button("Fetch Linked GenBank")
+                .on_hover_text("Fetch nucleotide entry linked from UniProt and import as sequence")
+                .clicked()
+            {
+                self.fetch_uniprot_linked_genbank_from_dialog();
+            }
+        });
+        ui.separator();
+        let recent_entries = self.recent_uniprot_entries_for_dialog(12);
+        ui.label(format!(
+            "Recent imported entries ({})",
+            recent_entries.len()
+        ));
+        if recent_entries.is_empty() {
+            ui.small("No UniProt entries imported in this project yet.");
+        } else {
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    egui::Grid::new("uniprot_recent_entries_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("entry_id");
+                            ui.strong("accession");
+                            ui.strong("primary_id");
+                            ui.strong("AA");
+                            ui.strong("imported_ms");
+                            ui.strong("source");
+                            ui.strong("action");
+                            ui.end_row();
+                            for row in recent_entries.iter() {
+                                ui.monospace(&row.entry_id);
+                                ui.monospace(&row.accession);
+                                ui.label(&row.primary_id);
+                                ui.label(row.sequence_length.to_string());
+                                ui.label(row.imported_at_unix_ms.to_string());
+                                ui.label(&row.source);
+                                if ui
+                                    .small_button("Select")
+                                    .on_hover_text(
+                                        "Use this row as the active entry_id for projection",
+                                    )
+                                    .clicked()
+                                {
+                                    self.uniprot_entry_id = row.entry_id.clone();
+                                    if self.uniprot_query.trim().is_empty()
+                                        && !row.accession.trim().is_empty()
+                                    {
+                                        self.uniprot_query = row.accession.clone();
+                                    }
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+        if !self.uniprot_status.trim().is_empty() {
+            ui.separator();
+            ui.monospace(self.uniprot_status.clone());
+        }
+    }
+
+    fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_uniprot_dialog {
+            return;
+        }
+
+        let builder = egui::ViewportBuilder::default()
+            .with_title("UniProt Mapping")
+            .with_inner_size([940.0, 520.0])
+            .with_min_inner_size([780.0, 420.0]);
+        ctx.show_viewport_immediate(Self::uniprot_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::uniprot_viewport_id());
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_uniprot_dialog;
+                egui::Window::new("UniProt Mapping")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(940.0, 520.0))
+                    .min_size(Vec2::new(780.0, 420.0))
+                    .show(ctx, |ui| {
+                        self.render_uniprot_dialog_contents(ui);
+                    });
+                self.show_uniprot_dialog = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.render_uniprot_dialog_contents(ui);
+            });
+
+            if Self::viewport_close_requested_or_shortcut(ctx) {
+                self.show_uniprot_dialog = false;
+            }
+        });
     }
 
     fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) {
         self.refresh_genome_catalog_list();
         self.render_specialist_window_nav(ui);
-        ui.label("Download and index a reference genome once.");
+        let scope = self.genome_dialog_scope;
+        ui.label(format!(
+            "Download and index a {} once.",
+            scope.description()
+        ));
         ui.horizontal(|ui| {
             ui.label("catalog");
             ui.text_edit_singleline(&mut self.genome_catalog_path);
@@ -8457,7 +9033,10 @@ Error: `{err}`"
                     !running && selected_preparable,
                     egui::Button::new("Prepare Genome"),
                 )
-                .on_hover_text("Download and index the selected reference genome")
+                .on_hover_text(format!(
+                    "Download and index the selected {}",
+                    scope.description()
+                ))
                 .clicked()
             {
                 self.start_prepare_reference_genome();
@@ -8514,16 +9093,17 @@ Error: `{err}`"
         if !self.show_reference_genome_prepare_dialog {
             return;
         }
+        let title = self.genome_dialog_scope.prepare_title();
 
         let builder = egui::ViewportBuilder::default()
-            .with_title("Prepare Reference Genome")
+            .with_title(title)
             .with_inner_size([760.0, 560.0])
             .with_min_inner_size([520.0, 360.0]);
         ctx.show_viewport_immediate(Self::prepare_genome_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::prepare_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_prepare_dialog;
-                egui::Window::new("Prepare Reference Genome")
+                egui::Window::new(title)
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
@@ -8545,365 +9125,426 @@ Error: `{err}`"
         });
     }
 
-    fn render_reference_genome_retrieve_dialog(&mut self, ctx: &egui::Context) {
-        if !self.show_reference_genome_retrieve_dialog {
-            return;
-        }
-        self.refresh_genome_catalog_list();
-        let mut open = self.show_reference_genome_retrieve_dialog;
-        egui::Window::new("Retrieve Genomic Sequence")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(980.0, 760.0))
-            .min_size(Vec2::new(860.0, 520.0))
-            .show(ctx, |ui| {
-                self.render_specialist_window_nav(ui);
-                ui.label("Retrieve region sequences from a prepared genome.");
-                ui.horizontal(|ui| {
-                    ui.label("catalog");
-                    ui.text_edit_singleline(&mut self.genome_catalog_path);
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
-                        .clicked()
+    fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) {
+        ui.push_id("retrieve_genome_dialog_contents", |ui| {
+            let scope = self.genome_dialog_scope;
+            self.render_specialist_window_nav(ui);
+            ui.label(format!(
+                "Retrieve region sequences from a prepared {}.",
+                scope.description()
+            ));
+            ui.horizontal(|ui| {
+                ui.label("catalog");
+                ui.text_edit_singleline(&mut self.genome_catalog_path);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
                     {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .pick_file()
-                        {
-                            self.genome_catalog_path = path.display().to_string();
-                        }
+                        self.genome_catalog_path = path.display().to_string();
                     }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("cache_dir");
-                    ui.text_edit_singleline(&mut self.genome_cache_dir);
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.genome_cache_dir = path.display().to_string();
-                        }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("cache_dir");
+                ui.text_edit_singleline(&mut self.genome_cache_dir);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.genome_cache_dir = path.display().to_string();
                     }
-                });
-                if !self.genome_catalog_error.is_empty() {
+                }
+            });
+            if !self.genome_catalog_error.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Catalog error: {}", self.genome_catalog_error),
+                );
+            }
+            let prepared_genomes = match self.prepared_genomes_for_retrieve_dialog() {
+                Ok(names) => names,
+                Err(e) => {
                     ui.colored_label(
                         egui::Color32::from_rgb(190, 70, 70),
-                        format!("Catalog error: {}", self.genome_catalog_error),
+                        format!("Prepared-state check error: {e}"),
+                    );
+                    vec![]
+                }
+            };
+            if !prepared_genomes.is_empty() && !prepared_genomes.contains(&self.genome_id) {
+                self.genome_id = prepared_genomes[0].clone();
+                self.invalidate_genome_genes();
+            }
+            let selection_changed =
+                Self::choose_genome_from_catalog(ui, &mut self.genome_id, &prepared_genomes);
+            if selection_changed {
+                self.invalidate_genome_genes();
+            }
+            match self.selected_genome_source_plan() {
+                Ok(Some(plan)) => {
+                    ui.small(Self::format_genome_source_plan_summary(&plan));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Source-plan error: {e}"),
                     );
                 }
-                let prepared_genomes = match self.prepared_genomes_for_retrieve_dialog() {
-                    Ok(names) => names,
-                    Err(e) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Prepared-state check error: {e}"),
-                        );
-                        vec![]
-                    }
-                };
-                if !prepared_genomes.is_empty() && !prepared_genomes.contains(&self.genome_id) {
-                    self.genome_id = prepared_genomes[0].clone();
-                    self.invalidate_genome_genes();
-                }
-                let selection_changed =
-                    Self::choose_genome_from_catalog(ui, &mut self.genome_id, &prepared_genomes);
-                if selection_changed {
-                    self.invalidate_genome_genes();
-                }
-                match self.selected_genome_source_plan() {
-                    Ok(Some(plan)) => {
-                        ui.small(Self::format_genome_source_plan_summary(&plan));
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Source-plan error: {e}"),
-                        );
-                    }
-                }
-                if prepared_genomes.is_empty() {
-                    ui.label(
-                        "No prepared genomes are available in this catalog/cache. Use 'Prepare Reference Genome...' first.",
+            }
+            if prepared_genomes.is_empty() {
+                ui.label(scope.empty_prepared_hint());
+            } else {
+                self.ensure_genome_genes_loaded();
+                if !self.genome_genes_error.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Gene index error: {}", self.genome_genes_error),
                     );
-                } else {
-                    self.ensure_genome_genes_loaded();
-                    if !self.genome_genes_error.is_empty() {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Gene index error: {}", self.genome_genes_error),
-                        );
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("Gene filter");
+                    let response = ui.text_edit_singleline(&mut self.genome_gene_filter);
+                    if response.changed() {
+                        self.genome_gene_filter_page = 0;
                     }
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.label("Gene filter");
-                        let response = ui.text_edit_singleline(&mut self.genome_gene_filter);
-                        if response.changed() {
-                            self.genome_gene_filter_page = 0;
-                        }
-                        if ui
-                            .button("Clear")
-                            .on_hover_text("Clear the gene filter text")
-                            .clicked()
-                        {
-                            self.genome_gene_filter.clear();
-                            self.genome_gene_filter_page = 0;
-                        }
-                    });
-                    ui.small("Supports case-insensitive regex (for example: ^TP53$).");
-                    ui.horizontal(|ui| {
-                        ui.label("Top matches");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut self.genome_gene_filter_limit)
-                                    .speed(100.0)
-                                    .range(100..=100_000),
-                            )
-                            .changed()
-                        {
-                            self.genome_gene_filter_page = 0;
-                        }
-                    });
-                    if !self.genome_biotype_filter.is_empty() {
-                        ui.separator();
-                        ui.label("Biotype filter");
-                        ui.horizontal(|ui| {
-                            if ui
-                                .button("All")
-                                .on_hover_text("Enable all biotypes")
-                                .clicked()
-                            {
-                                for enabled in self.genome_biotype_filter.values_mut() {
-                                    *enabled = true;
-                                }
-                                self.genome_gene_filter_page = 0;
-                            }
-                            if ui
-                                .button("None")
-                                .on_hover_text("Disable all biotypes")
-                                .clicked()
-                            {
-                                for enabled in self.genome_biotype_filter.values_mut() {
-                                    *enabled = false;
-                                }
-                                self.genome_gene_filter_page = 0;
-                            }
-                        });
-                        let mut biotypes: Vec<String> =
-                            self.genome_biotype_filter.keys().cloned().collect();
-                        biotypes.sort();
-                        egui::ScrollArea::vertical()
-                            .max_height(120.0)
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                for biotype in biotypes {
-                                    if let Some(enabled) =
-                                        self.genome_biotype_filter.get_mut(&biotype)
-                                    {
-                                        if ui.checkbox(enabled, &biotype).changed() {
-                                            self.genome_gene_filter_page = 0;
-                                        }
-                                    }
-                                }
-                            });
+                    if ui
+                        .button("Clear")
+                        .on_hover_text("Clear the gene filter text")
+                        .clicked()
+                    {
+                        self.genome_gene_filter.clear();
+                        self.genome_gene_filter_page = 0;
                     }
-                    let (filtered_indices, overflow, regex_error) =
-                        self.filtered_gene_candidate_indices();
-                    if let Some(error) = regex_error {
-                        ui.colored_label(egui::Color32::from_rgb(190, 70, 70), error);
-                    }
-                    const GENE_PAGE_SIZE: usize = 100;
-                    let page_count =
-                        ((filtered_indices.len() + GENE_PAGE_SIZE - 1) / GENE_PAGE_SIZE).max(1);
-                    if self.genome_gene_filter_page >= page_count {
-                        self.genome_gene_filter_page = page_count.saturating_sub(1);
-                    }
-                    let page_start = self.genome_gene_filter_page * GENE_PAGE_SIZE;
-                    let page_end = (page_start + GENE_PAGE_SIZE).min(filtered_indices.len());
-                    let shown_note = if overflow {
-                        format!(
-                            " (limited to top {} matches)",
-                            self.genome_gene_filter_limit
+                });
+                ui.small("Supports case-insensitive regex (for example: ^TP53$).");
+                ui.horizontal(|ui| {
+                    ui.label("Top matches");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut self.genome_gene_filter_limit)
+                                .speed(100.0)
+                                .range(100..=100_000),
                         )
-                    } else {
-                        String::new()
-                    };
-                    ui.label(format!(
-                        "Genes: {} candidate{} / {} total",
-                        filtered_indices.len(),
-                        shown_note,
-                        self.genome_genes.len()
-                    ));
+                        .changed()
+                    {
+                        self.genome_gene_filter_page = 0;
+                    }
+                });
+                if !self.genome_biotype_filter.is_empty() {
+                    ui.separator();
+                    ui.label("Biotype filter");
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(
-                                self.genome_gene_filter_page > 0,
-                                egui::Button::new("Prev"),
-                            )
-                            .on_hover_text("Show previous page of gene matches")
+                            .button("All")
+                            .on_hover_text("Enable all biotypes")
                             .clicked()
                         {
-                            self.genome_gene_filter_page -= 1;
+                            for enabled in self.genome_biotype_filter.values_mut() {
+                                *enabled = true;
+                            }
+                            self.genome_gene_filter_page = 0;
                         }
-                        ui.label(format!(
-                            "Page {}/{}",
-                            self.genome_gene_filter_page + 1,
-                            page_count
-                        ));
                         if ui
-                            .add_enabled(
-                                self.genome_gene_filter_page + 1 < page_count,
-                                egui::Button::new("Next"),
-                            )
-                            .on_hover_text("Show next page of gene matches")
+                            .button("None")
+                            .on_hover_text("Disable all biotypes")
                             .clicked()
                         {
-                            self.genome_gene_filter_page += 1;
+                            for enabled in self.genome_biotype_filter.values_mut() {
+                                *enabled = false;
+                            }
+                            self.genome_gene_filter_page = 0;
                         }
                     });
+                    let mut biotypes: Vec<String> =
+                        self.genome_biotype_filter.keys().cloned().collect();
+                    biotypes.sort();
                     egui::ScrollArea::vertical()
-                        .max_height(220.0)
+                        .id_salt("retrieve_genome_biotype_scroll")
+                        .max_height(120.0)
                         .show(ui, |ui| {
                             scroll_input_policy::apply_scrollarea_keyboard_navigation(
                                 ui,
                                 scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                             );
-                            for idx in filtered_indices
-                                .iter()
-                                .copied()
-                                .skip(page_start)
-                                .take(page_end.saturating_sub(page_start))
-                            {
-                                let label = Self::gene_record_label(&self.genome_genes[idx]);
-                                let selected = self.genome_selected_gene == Some(idx);
-                                if ui.selectable_label(selected, label).clicked() {
-                                    self.select_gene_record(idx);
+                            for biotype in biotypes {
+                                if let Some(enabled) = self.genome_biotype_filter.get_mut(&biotype)
+                                {
+                                    if ui.checkbox(enabled, &biotype).changed() {
+                                        self.genome_gene_filter_page = 0;
+                                    }
                                 }
                             }
                         });
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.label("chr");
-                        ui.text_edit_singleline(&mut self.genome_chromosome);
-                        ui.label("start_1based");
-                        let start_changed = ui
-                            .add(
-                                egui::TextEdit::singleline(&mut self.genome_start_1based)
-                                    .desired_width(120.0)
-                                    .char_limit(10),
-                            )
-                            .changed();
-                        if start_changed {
-                            Self::normalize_coordinate_field(&mut self.genome_start_1based);
-                        }
-                        ui.label("end_1based");
-                        let end_changed = ui
-                            .add(
-                                egui::TextEdit::singleline(&mut self.genome_end_1based)
-                                    .desired_width(120.0)
-                                    .char_limit(10),
-                            )
-                            .changed();
-                        if end_changed {
-                            Self::normalize_coordinate_field(&mut self.genome_end_1based);
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("output_id");
-                        ui.text_edit_singleline(&mut self.genome_output_id);
-                        if ui
-                            .checkbox(
-                                &mut self.genome_include_genomic_annotation,
-                                "include genomic annotation",
-                            )
-                            .on_hover_text(
-                                "Attach overlapping genomic annotation when extracting selected genes or explicit regions",
-                            )
-                            .changed()
-                        {
-                            self.sync_genome_annotation_scope_controls();
-                        }
-                        if ui
-                            .add_enabled(
-                                self.genome_selected_gene.is_some(),
-                                egui::Button::new("Extract Selected Gene"),
-                            )
-                            .on_hover_text(
-                                "Extract the currently selected gene from the prepared reference",
-                            )
-                            .clicked()
-                        {
-                            self.extract_reference_genome_gene();
-                        }
-                        if ui
-                            .button("Extract Region")
-                            .on_hover_text("Extract the explicit chromosome start/end interval")
-                            .clicked()
-                        {
-                            self.extract_reference_genome_region();
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("annotation scope");
-                        let previous_scope = self.genome_annotation_scope;
-                        let scope_combo = egui::ComboBox::from_id_salt(
-                            "retrieve_genome_annotation_scope",
+                }
+                let (filtered_indices, overflow, regex_error) = self.filtered_gene_candidate_indices();
+                if let Some(error) = regex_error {
+                    ui.colored_label(egui::Color32::from_rgb(190, 70, 70), error);
+                }
+                const GENE_PAGE_SIZE: usize = 100;
+                let page_count =
+                    ((filtered_indices.len() + GENE_PAGE_SIZE - 1) / GENE_PAGE_SIZE).max(1);
+                if self.genome_gene_filter_page >= page_count {
+                    self.genome_gene_filter_page = page_count.saturating_sub(1);
+                }
+                let page_start = self.genome_gene_filter_page * GENE_PAGE_SIZE;
+                let page_end = (page_start + GENE_PAGE_SIZE).min(filtered_indices.len());
+                let shown_note = if overflow {
+                    format!(" (limited to top {} matches)", self.genome_gene_filter_limit)
+                } else {
+                    String::new()
+                };
+                ui.label(format!(
+                    "Genes: {} candidate{} / {} total",
+                    filtered_indices.len(),
+                    shown_note,
+                    self.genome_genes.len()
+                ));
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.genome_gene_filter_page > 0,
+                            egui::Button::new("Prev"),
                         )
-                        .selected_text(self.genome_annotation_scope.as_str())
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.genome_annotation_scope,
-                                GenomeAnnotationScope::None,
-                                "none",
-                            );
-                            ui.selectable_value(
-                                &mut self.genome_annotation_scope,
-                                GenomeAnnotationScope::Core,
-                                "core",
-                            );
-                            ui.selectable_value(
-                                &mut self.genome_annotation_scope,
-                                GenomeAnnotationScope::Full,
-                                "full",
-                            );
-                        });
-                        scope_combo.response.on_hover_text(
-                            "Projection policy for annotation transfer: none, core gene/transcript context, or full",
+                        .on_hover_text("Show previous page of gene matches")
+                        .clicked()
+                    {
+                        self.genome_gene_filter_page -= 1;
+                    }
+                    ui.label(format!(
+                        "Page {}/{}",
+                        self.genome_gene_filter_page + 1,
+                        page_count
+                    ));
+                    if ui
+                        .add_enabled(
+                            self.genome_gene_filter_page + 1 < page_count,
+                            egui::Button::new("Next"),
+                        )
+                        .on_hover_text("Show next page of gene matches")
+                        .clicked()
+                    {
+                        self.genome_gene_filter_page += 1;
+                    }
+                });
+                egui::ScrollArea::vertical()
+                    .id_salt("retrieve_genome_gene_list_scroll")
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
-                        if self.genome_annotation_scope != previous_scope {
-                            self.genome_include_genomic_annotation =
-                                !matches!(self.genome_annotation_scope, GenomeAnnotationScope::None);
+                        for idx in filtered_indices
+                            .iter()
+                            .copied()
+                            .skip(page_start)
+                            .take(page_end.saturating_sub(page_start))
+                        {
+                            let label = Self::gene_record_label(&self.genome_genes[idx]);
+                            let selected = self.genome_selected_gene == Some(idx);
+                            if ui.selectable_label(selected, label).clicked() {
+                                self.select_gene_record(idx);
+                            }
                         }
-                        ui.label("max annotation features");
-                        let cap_changed = ui
-                            .add(
-                                egui::TextEdit::singleline(&mut self.genome_max_annotation_features)
-                                    .desired_width(120.0)
-                                    .hint_text("empty = unlimited"),
-                            )
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("chr");
+                    if ui
+                        .text_edit_singleline(&mut self.genome_chromosome)
+                        .changed()
+                    {
+                        self.genome_retrieve_contig_suggestions.clear();
+                    }
+                    ui.label("start_1based");
+                    let start_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_start_1based)
+                                .id_salt("retrieve_genome_start_1based_field")
+                                .desired_width(120.0)
+                                .char_limit(10),
+                        )
+                        .changed();
+                    if start_changed {
+                        Self::normalize_coordinate_field(&mut self.genome_start_1based);
+                    }
+                    ui.label("end_1based");
+                    let end_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_end_1based)
+                                .id_salt("retrieve_genome_end_1based_field")
+                                .desired_width(120.0)
+                                .char_limit(10),
+                        )
+                        .changed();
+                    if end_changed {
+                        Self::normalize_coordinate_field(&mut self.genome_end_1based);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("output_id");
+                    ui.text_edit_singleline(&mut self.genome_output_id);
+                    if ui
+                        .checkbox(
+                            &mut self.genome_include_genomic_annotation,
+                            "include genomic annotation",
+                        )
+                        .on_hover_text(
+                            "Attach overlapping genomic annotation when extracting selected genes or explicit regions",
+                        )
+                        .changed()
+                    {
+                        self.sync_genome_annotation_scope_controls();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.genome_selected_gene.is_some(),
+                            egui::Button::new("Extract Selected Gene"),
+                        )
+                        .on_hover_text(
+                            "Extract the currently selected gene from the prepared reference",
+                        )
+                        .clicked()
+                    {
+                        self.extract_reference_genome_gene();
+                    }
+                    if ui
+                        .button("Extract Region")
+                        .on_hover_text("Extract the explicit chromosome start/end interval")
+                        .clicked()
+                    {
+                        self.extract_reference_genome_region();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("annotation scope");
+                    let previous_scope = self.genome_annotation_scope;
+                    let scope_combo =
+                        egui::ComboBox::from_id_salt("retrieve_genome_annotation_scope")
+                            .selected_text(self.genome_annotation_scope.as_str())
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.genome_annotation_scope,
+                                    GenomeAnnotationScope::None,
+                                    "none",
+                                );
+                                ui.selectable_value(
+                                    &mut self.genome_annotation_scope,
+                                    GenomeAnnotationScope::Core,
+                                    "core",
+                                );
+                                ui.selectable_value(
+                                    &mut self.genome_annotation_scope,
+                                    GenomeAnnotationScope::Full,
+                                    "full",
+                                );
+                            });
+                    scope_combo.response.on_hover_text(
+                        "Projection policy for annotation transfer: none, core gene/transcript context, or full",
+                    );
+                    if self.genome_annotation_scope != previous_scope {
+                        self.genome_include_genomic_annotation =
+                            !matches!(self.genome_annotation_scope, GenomeAnnotationScope::None);
+                    }
+                    ui.label("max annotation features");
+                    let cap_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_max_annotation_features)
+                                .desired_width(120.0)
+                                .hint_text("empty = unlimited"),
+                        )
+                        .on_hover_text("Optional safety cap. 0 means unlimited explicit cap.")
+                        .changed();
+                    if cap_changed {
+                        self.genome_max_annotation_features
+                            .retain(|ch| ch.is_ascii_digit());
+                    }
+                });
+            }
+            if !self.genome_retrieve_status.is_empty() {
+                ui.separator();
+                ui.monospace(&self.genome_retrieve_status);
+                if let Some(suggested) = self.genome_retrieve_contig_suggestions.first().cloned() {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(format!("Apply suggested contig '{}'", suggested))
                             .on_hover_text(
-                                "Optional safety cap. 0 means unlimited explicit cap.",
+                                "Copy the best matching prepared contig/chromosome into the chr field",
                             )
-                            .changed();
-                        if cap_changed {
-                            self.genome_max_annotation_features
-                                .retain(|ch| ch.is_ascii_digit());
+                            .clicked()
+                        {
+                            self.genome_chromosome = suggested.clone();
+                            self.genome_retrieve_status = format!(
+                                "Applied suggested contig '{}' to chr field. Re-run extraction.",
+                                suggested
+                            );
+                            self.genome_retrieve_contig_suggestions.clear();
+                        }
+                        let alternatives = self
+                            .genome_retrieve_contig_suggestions
+                            .iter()
+                            .skip(1)
+                            .take(4)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        if !alternatives.is_empty() {
+                            ui.small(format!("alternatives: {}", alternatives.join(", ")));
                         }
                     });
                 }
-                if !self.genome_retrieve_status.is_empty() {
-                    ui.separator();
-                    ui.monospace(&self.genome_retrieve_status);
+            }
+        });
+    }
+
+    fn render_reference_genome_retrieve_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_reference_genome_retrieve_dialog {
+            return;
+        }
+        self.refresh_genome_catalog_list();
+        let title = self.genome_dialog_scope.retrieve_title();
+
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title)
+            .with_inner_size([980.0, 760.0])
+            .with_min_inner_size([860.0, 520.0]);
+        ctx.show_viewport_immediate(
+            Self::retrieve_genome_viewport_id(),
+            builder,
+            |ctx, class| {
+                self.note_viewport_focus_if_active(ctx, Self::retrieve_genome_viewport_id());
+                if class == egui::ViewportClass::Embedded {
+                    let mut open = self.show_reference_genome_retrieve_dialog;
+                    egui::Window::new(title)
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(980.0, 760.0))
+                        .min_size(Vec2::new(860.0, 520.0))
+                        .show(ctx, |ui| {
+                            self.render_reference_genome_retrieve_contents(ui);
+                        });
+                    self.show_reference_genome_retrieve_dialog = open;
+                    return;
                 }
-            });
-        self.show_reference_genome_retrieve_dialog = open;
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.render_reference_genome_retrieve_contents(ui);
+                });
+
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    self.show_reference_genome_retrieve_dialog = false;
+                }
+            },
+        );
     }
 
     fn format_blast_command_line(executable: &str, args: &[String]) -> String {
@@ -9005,6 +9646,7 @@ Error: `{err}`"
 
     fn render_reference_genome_blast_contents(&mut self, ui: &mut Ui) {
         self.refresh_genome_catalog_list();
+        let scope = self.genome_dialog_scope;
         self.render_specialist_window_nav(ui);
         let sequence_ids = self.project_sequence_ids_for_blast();
         if !sequence_ids.is_empty() && !sequence_ids.contains(&self.genome_blast_query_seq_id) {
@@ -9021,7 +9663,10 @@ Error: `{err}`"
                 .unwrap_or_default();
         }
 
-        ui.label("Run BLAST against a prepared genome index.");
+        ui.label(format!(
+            "Run BLAST against a prepared {} index.",
+            scope.description()
+        ));
         ui.separator();
         ui.strong("1. Target");
         ui.horizontal(|ui| {
@@ -9092,9 +9737,7 @@ Error: `{err}`"
             }
         }
         if prepared_genomes.is_empty() {
-            ui.label(
-                "No prepared genomes are available in this catalog/cache. Use 'Prepare Reference Genome...' first.",
-            );
+            ui.label(scope.empty_prepared_hint());
         }
 
         ui.separator();
@@ -9525,16 +10168,17 @@ Error: `{err}`"
         if !self.show_reference_genome_blast_dialog {
             return;
         }
+        let title = self.genome_dialog_scope.blast_title();
 
         let builder = egui::ViewportBuilder::default()
-            .with_title("BLAST Genome Sequence")
+            .with_title(title)
             .with_inner_size([980.0, 700.0])
             .with_min_inner_size([640.0, 420.0]);
         ctx.show_viewport_immediate(Self::blast_genome_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::blast_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_blast_dialog;
-                egui::Window::new("BLAST Genome Sequence")
+                egui::Window::new(title)
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
@@ -9561,14 +10205,23 @@ Error: `{err}`"
             return;
         }
         self.refresh_genome_catalog_list();
+        let scope = self.genome_dialog_scope;
+        let title = if matches!(scope, GenomeDialogScope::Helper) {
+            "Prepared Helper Genomes"
+        } else {
+            "Prepared Genome References"
+        };
         let mut open = self.show_reference_genome_inspector_dialog;
-        egui::Window::new("Prepared Genome References")
+        egui::Window::new(title)
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
                 self.render_specialist_window_nav(ui);
-                ui.label("Inspect prepared references and installation integrity metadata.");
+                ui.label(format!(
+                    "Inspect prepared {} installations and integrity metadata.",
+                    scope.description()
+                ));
                 ui.horizontal(|ui| {
                     ui.label("catalog");
                     ui.text_edit_singleline(&mut self.genome_catalog_path);
@@ -9695,7 +10348,9 @@ Error: `{err}`"
                                                 {
                                                     self.genome_id = inspection.genome_id.clone();
                                                     self.invalidate_genome_genes();
-                                                    self.open_reference_genome_retrieve_dialog();
+                                                    self.open_retrieve_genome_dialog_for_scope(
+                                                        self.genome_dialog_scope,
+                                                    );
                                                 }
                                                 ui.end_row();
                                             }
@@ -9736,7 +10391,9 @@ Error: `{err}`"
                                     .clicked()
                                 {
                                     self.invalidate_genome_genes();
-                                    self.open_reference_genome_retrieve_dialog();
+                                    self.open_retrieve_genome_dialog_for_scope(
+                                        self.genome_dialog_scope,
+                                    );
                                 }
                             });
                             if !self.genome_id.trim().is_empty() {
@@ -12715,6 +13372,7 @@ Error: `{err}`"
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
+        self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
@@ -12785,6 +13443,7 @@ Error: `{err}`"
         };
 
         self.lineage_graph_zoom = 1.0;
+        self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
         self.lineage_graph_scroll_offset = Vec2::ZERO;
@@ -12800,6 +13459,10 @@ Error: `{err}`"
                 if workspace.zoom.is_finite() {
                     self.lineage_graph_zoom = workspace.zoom.clamp(0.35, 4.0);
                 }
+                let mut loaded_main_split_fraction = workspace
+                    .main_split_fraction
+                    .filter(|value| value.is_finite())
+                    .map(|value| value.clamp(0.2, 0.9));
                 if workspace.graph_area_height.is_finite() {
                     self.lineage_graph_area_height =
                         workspace.graph_area_height.clamp(220.0, 2400.0);
@@ -12807,6 +13470,18 @@ Error: `{err}`"
                 if workspace.container_area_height.is_finite() {
                     self.lineage_container_area_height =
                         workspace.container_area_height.clamp(120.0, 1600.0);
+                }
+                if loaded_main_split_fraction.is_none() {
+                    let combined_height =
+                        self.lineage_graph_area_height + self.lineage_container_area_height;
+                    if combined_height.is_finite() && combined_height > 1.0 {
+                        loaded_main_split_fraction = Some(
+                            (self.lineage_graph_area_height / combined_height).clamp(0.2, 0.9),
+                        );
+                    }
+                }
+                if let Some(main_split_fraction) = loaded_main_split_fraction {
+                    self.lineage_main_split_fraction = main_split_fraction;
                 }
                 if workspace.scroll_offset[0].is_finite() && workspace.scroll_offset[1].is_finite()
                 {
@@ -12851,6 +13526,9 @@ Error: `{err}`"
         self.lineage_group_form_representative.clear();
         self.lineage_group_status.clear();
         self.lineage_group_marked_nodes.clear();
+        self.lineage_node_rename_target_id = None;
+        self.lineage_node_rename_text.clear();
+        self.lineage_node_remove_target_id = None;
     }
 
     fn persist_lineage_graph_workspace_to_state(&mut self) {
@@ -12862,6 +13540,7 @@ Error: `{err}`"
         }
 
         let workspace = PersistedLineageGraphWorkspace {
+            main_split_fraction: Some(self.lineage_main_split_fraction.clamp(0.2, 0.9)),
             zoom: self.lineage_graph_zoom.clamp(0.35, 4.0),
             graph_area_height: self.lineage_graph_area_height.clamp(220.0, 2400.0),
             container_area_height: self.lineage_container_area_height.clamp(120.0, 1600.0),
@@ -12875,6 +13554,12 @@ Error: `{err}`"
         };
 
         let workspace_is_default = (workspace.zoom - 1.0).abs() <= 0.0001
+            && (workspace
+                .main_split_fraction
+                .unwrap_or(DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION)
+                - DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION)
+                .abs()
+                <= 0.0001
             && (workspace.graph_area_height - 420.0).abs() <= 0.0001
             && (workspace.container_area_height - 220.0).abs() <= 0.0001
             && workspace.scroll_offset[0].abs() <= 0.0001
@@ -12960,23 +13645,39 @@ Error: `{err}`"
             });
         }
         if self.show_reference_genome_prepare_dialog {
+            let scope = self.genome_dialog_scope;
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(
                     Self::prepare_genome_viewport_id(),
                 ),
                 viewport_id: Self::prepare_genome_viewport_id(),
-                title: "Prepare Reference Genome".to_string(),
-                detail: "Reference/helper genome preparation".to_string(),
+                title: scope.prepare_title().to_string(),
+                detail: format!("{} preparation", scope.description()),
+            });
+        }
+        if self.show_reference_genome_retrieve_dialog {
+            let scope = self.genome_dialog_scope;
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::retrieve_genome_viewport_id(),
+                ),
+                viewport_id: Self::retrieve_genome_viewport_id(),
+                title: scope.retrieve_title().to_string(),
+                detail: format!(
+                    "Gene/region extraction from prepared {} indices",
+                    scope.description()
+                ),
             });
         }
         if self.show_reference_genome_blast_dialog {
+            let scope = self.genome_dialog_scope;
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(
                     Self::blast_genome_viewport_id(),
                 ),
                 viewport_id: Self::blast_genome_viewport_id(),
-                title: "BLAST Genome Sequence".to_string(),
-                detail: "BLAST against prepared genomes/helpers".to_string(),
+                title: scope.blast_title().to_string(),
+                detail: format!("BLAST against prepared {} indices", scope.description()),
             });
         }
         if self.show_genome_bed_track_dialog {
@@ -13087,6 +13788,8 @@ Error: `{err}`"
             self.show_history_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {
             self.show_reference_genome_prepare_dialog = true;
+        } else if viewport_id == Self::retrieve_genome_viewport_id() {
+            self.show_reference_genome_retrieve_dialog = true;
         } else if viewport_id == Self::blast_genome_viewport_id() {
             self.show_reference_genome_blast_dialog = true;
         } else if viewport_id == Self::bed_track_viewport_id() {
@@ -13888,10 +14591,16 @@ Error: `{err}`"
             let mut op_created_count: HashMap<String, usize> = HashMap::new();
             let mut op_created_ids: HashMap<String, Vec<String>> = HashMap::new();
             let mut op_label_by_id: HashMap<String, String> = HashMap::new();
+            let mut op_retrieval_by_id: HashMap<String, LineageRetrievalDescriptor> =
+                HashMap::new();
             for rec in engine.operation_log() {
                 op_created_count.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.len());
                 op_created_ids.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.clone());
                 op_label_by_id.insert(rec.result.op_id.clone(), Self::summarize_operation(&rec.op));
+                if let Some(descriptor) = Self::lineage_retrieval_descriptor_from_operation(&rec.op)
+                {
+                    op_retrieval_by_id.insert(rec.result.op_id.clone(), descriptor);
+                }
             }
 
             let mut parents_by_node: HashMap<String, Vec<String>> = HashMap::new();
@@ -13952,6 +14661,11 @@ Error: `{err}`"
                             )
                         })
                         .unwrap_or(false);
+                    let retrieval_descriptor = node
+                        .created_by_op
+                        .as_ref()
+                        .and_then(|op_id| op_retrieval_by_id.get(op_id))
+                        .cloned();
                     LineageRow {
                         kind: LineageNodeKind::Sequence,
                         node_id: node.node_id.clone(),
@@ -13975,6 +14689,7 @@ Error: `{err}`"
                         genome_anchor_summary,
                         genome_anchor_display,
                         is_full_genome_sequence,
+                        retrieval_descriptor,
                         macro_instance_id: None,
                         macro_routine_id: None,
                         macro_template_name: None,
@@ -14120,6 +14835,7 @@ Error: `{err}`"
                     genome_anchor_summary: None,
                     genome_anchor_display: None,
                     is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
                     macro_instance_id: Some(instance.macro_instance_id.clone()),
                     macro_routine_id: instance.routine_id.clone(),
                     macro_template_name: instance.template_name.clone(),
@@ -15119,6 +15835,8 @@ Error: `{err}`"
         &mut self,
         ui: &mut Ui,
         node_id: &str,
+        context_row: Option<&LineageRow>,
+        leaf_node_ids: &HashSet<String>,
         valid_node_ids: &HashSet<String>,
         persist_workspace_after_frame: &mut bool,
     ) {
@@ -15181,6 +15899,406 @@ Error: `{err}`"
             self.lineage_group_status = status;
             ui.close();
         }
+
+        ui.separator();
+        let is_sequence_node = context_row
+            .map(|row| matches!(row.kind, LineageNodeKind::Sequence))
+            .unwrap_or(false);
+        let is_leaf = leaf_node_ids.contains(node_id);
+        if is_sequence_node {
+            if ui
+                .add_enabled(is_leaf, egui::Button::new("Rename (leaf only)"))
+                .on_hover_text(if is_leaf {
+                    "Rename this leaf node (display name only)"
+                } else {
+                    "Rename is allowed only for leaf nodes in this first implementation"
+                })
+                .clicked()
+            {
+                self.lineage_node_rename_target_id = Some(node_id.to_string());
+                self.lineage_node_rename_text = context_row
+                    .map(|row| row.display_name.clone())
+                    .unwrap_or_default();
+                ui.close();
+            }
+            if ui
+                .add_enabled(is_leaf, egui::Button::new("Remove (leaf only)"))
+                .on_hover_text(if is_leaf {
+                    "Remove this leaf node and its sequence from project state"
+                } else {
+                    "Remove is allowed only for leaf nodes in this first implementation"
+                })
+                .clicked()
+            {
+                self.lineage_group_status = match self.request_remove_leaf_lineage_node(node_id) {
+                    Ok(status) => status,
+                    Err(err) => err,
+                };
+                ui.close();
+            }
+        } else {
+            ui.label("Rename/remove is currently available for sequence leaf nodes only.");
+        }
+    }
+
+    fn lineage_leaf_node_ids(
+        rows: &[LineageRow],
+        lineage_edges: &[(String, String, String)],
+    ) -> HashSet<String> {
+        let mut node_ids: HashSet<String> = rows.iter().map(|row| row.node_id.clone()).collect();
+        let mut non_leaf_ids: HashSet<String> = HashSet::new();
+        for (from_node, to_node, _) in lineage_edges {
+            if node_ids.contains(from_node) && node_ids.contains(to_node) {
+                non_leaf_ids.insert(from_node.clone());
+            }
+        }
+        node_ids.retain(|node_id| !non_leaf_ids.contains(node_id));
+        node_ids
+    }
+
+    fn request_remove_leaf_lineage_node(&mut self, node_id: &str) -> Result<String, String> {
+        let node_id = node_id.trim();
+        if node_id.is_empty() {
+            return Err("Node id cannot be empty".to_string());
+        }
+        let is_leaf = {
+            let engine = self.engine.read().unwrap();
+            let state = engine.state();
+            if !state.lineage.nodes.contains_key(node_id) {
+                return Err(format!("Node '{}' not found", node_id));
+            }
+            !state
+                .lineage
+                .edges
+                .iter()
+                .any(|edge| edge.from_node_id == node_id)
+        };
+        if !is_leaf {
+            return Err(format!(
+                "Node '{}' is not a leaf; remove downstream nodes first",
+                node_id
+            ));
+        }
+        self.lineage_node_remove_target_id = Some(node_id.to_string());
+        Ok(format!(
+            "Removal requested for leaf node '{}'; confirm in dialog.",
+            node_id
+        ))
+    }
+
+    fn remove_leaf_lineage_node(&mut self, node_id: &str) -> Result<String, String> {
+        let node_id = node_id.trim();
+        if node_id.is_empty() {
+            return Err("Node id cannot be empty".to_string());
+        }
+        let seq_id = {
+            let mut engine = self.engine.write().unwrap();
+            let state = engine.state_mut();
+            let Some(node) = state.lineage.nodes.get(node_id).cloned() else {
+                return Err(format!("Node '{}' not found", node_id));
+            };
+            if state
+                .lineage
+                .edges
+                .iter()
+                .any(|edge| edge.from_node_id == node_id)
+            {
+                return Err(format!(
+                    "Node '{}' is not a leaf; remove downstream nodes first",
+                    node_id
+                ));
+            }
+            let seq_id = node.seq_id.clone();
+            if state.sequences.remove(&seq_id).is_none() {
+                return Err(format!(
+                    "Sequence '{}' for node '{}' is missing",
+                    seq_id, node_id
+                ));
+            }
+            state.lineage.seq_to_node.remove(&seq_id);
+            state.lineage.nodes.remove(node_id);
+            state
+                .lineage
+                .edges
+                .retain(|edge| edge.from_node_id != node_id && edge.to_node_id != node_id);
+
+            let mut empty_container_ids: HashSet<String> = HashSet::new();
+            for (container_id, container) in state.container_state.containers.iter_mut() {
+                container.members.retain(|member| member != &seq_id);
+                if container.members.is_empty() {
+                    empty_container_ids.insert(container_id.clone());
+                }
+            }
+            for container_id in &empty_container_ids {
+                state.container_state.containers.remove(container_id);
+            }
+            for arrangement in state.container_state.arrangements.values_mut() {
+                arrangement
+                    .lane_container_ids
+                    .retain(|container_id| !empty_container_ids.contains(container_id));
+            }
+            state
+                .container_state
+                .arrangements
+                .retain(|_, arrangement| !arrangement.lane_container_ids.is_empty());
+            let live_sequence_ids: HashSet<String> =
+                state.sequences.keys().cloned().collect::<HashSet<_>>();
+            let container_members_by_id: HashMap<String, HashSet<String>> = state
+                .container_state
+                .containers
+                .iter()
+                .map(|(container_id, container)| {
+                    (
+                        container_id.clone(),
+                        container.members.iter().cloned().collect::<HashSet<_>>(),
+                    )
+                })
+                .collect();
+            state
+                .container_state
+                .seq_to_latest_container
+                .retain(|member_seq, container_id| {
+                    member_seq != &seq_id
+                        && live_sequence_ids.contains(member_seq)
+                        && container_members_by_id
+                            .get(container_id)
+                            .map(|members| members.contains(member_seq))
+                            .unwrap_or(false)
+                });
+            seq_id
+        };
+
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            if let Ok(mut to_close) = self.windows_to_close.write()
+                && !to_close.contains(&viewport_id)
+            {
+                to_close.push(viewport_id);
+            }
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+        }
+        self.new_windows
+            .retain(|window| window.sequence_id().as_deref() != Some(seq_id.as_str()));
+        self.lineage_group_marked_nodes.remove(node_id);
+        if self
+            .lineage_graph_selected_node_id
+            .as_deref()
+            .is_some_and(|selected| selected == node_id)
+        {
+            self.lineage_graph_selected_node_id = None;
+        }
+        if self
+            .lineage_node_rename_target_id
+            .as_deref()
+            .is_some_and(|target| target == node_id)
+        {
+            self.lineage_node_rename_target_id = None;
+            self.lineage_node_rename_text.clear();
+        }
+        if self
+            .lineage_node_remove_target_id
+            .as_deref()
+            .is_some_and(|target| target == node_id)
+        {
+            self.lineage_node_remove_target_id = None;
+        }
+        self.lineage_cache_valid = false;
+        Ok(format!(
+            "Removed leaf node '{}' (sequence '{}')",
+            node_id, seq_id
+        ))
+    }
+
+    fn rename_leaf_lineage_node(
+        &mut self,
+        node_id: &str,
+        new_name: &str,
+    ) -> Result<String, String> {
+        let node_id = node_id.trim();
+        let new_name = new_name.trim();
+        if node_id.is_empty() {
+            return Err("Node id cannot be empty".to_string());
+        }
+        if new_name.is_empty() {
+            return Err("New name cannot be empty".to_string());
+        }
+        let seq_id = {
+            let mut engine = self.engine.write().unwrap();
+            let state = engine.state_mut();
+            let Some(node) = state.lineage.nodes.get(node_id).cloned() else {
+                return Err(format!("Node '{}' not found", node_id));
+            };
+            if state
+                .lineage
+                .edges
+                .iter()
+                .any(|edge| edge.from_node_id == node_id)
+            {
+                return Err(format!(
+                    "Node '{}' is not a leaf; rename is leaf-only in this first implementation",
+                    node_id
+                ));
+            }
+            let seq_id = node.seq_id.clone();
+            let Some(dna) = state.sequences.get_mut(&seq_id) else {
+                return Err(format!(
+                    "Sequence '{}' for node '{}' is missing",
+                    seq_id, node_id
+                ));
+            };
+            dna.set_name(new_name.to_string());
+            seq_id
+        };
+        self.lineage_cache_valid = false;
+        Ok(format!(
+            "Renamed leaf node '{}' (sequence '{}') to '{}'",
+            node_id, seq_id, new_name
+        ))
+    }
+
+    fn render_lineage_node_rename_window(
+        &mut self,
+        ctx: &egui::Context,
+        persist_workspace_after_frame: &mut bool,
+    ) {
+        let Some(target_node_id) = self.lineage_node_rename_target_id.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut apply_clicked = false;
+        egui::Window::new("Rename Leaf Node")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(420.0, 120.0))
+            .show(ctx, |ui| {
+                ui.monospace(format!("node: {}", target_node_id));
+                ui.horizontal(|ui| {
+                    ui.label("new_name");
+                    ui.text_edit_singleline(&mut self.lineage_node_rename_text)
+                        .on_hover_text("Display name shown in lineage graph/table");
+                });
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Apply")
+                        .on_hover_text("Apply leaf-node rename")
+                        .clicked()
+                    {
+                        apply_clicked = true;
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Close rename window without changes")
+                        .clicked()
+                    {
+                        self.lineage_node_rename_target_id = None;
+                        self.lineage_node_rename_text.clear();
+                    }
+                });
+            });
+        if !open {
+            self.lineage_node_rename_target_id = None;
+            self.lineage_node_rename_text.clear();
+            return;
+        }
+        if apply_clicked {
+            let rename_text = self.lineage_node_rename_text.clone();
+            self.lineage_group_status =
+                match self.rename_leaf_lineage_node(&target_node_id, &rename_text) {
+                    Ok(status) => {
+                        *persist_workspace_after_frame = true;
+                        self.lineage_node_rename_target_id = None;
+                        self.lineage_node_rename_text.clear();
+                        status
+                    }
+                    Err(err) => err,
+                };
+        }
+    }
+
+    fn render_lineage_node_remove_confirm_window(
+        &mut self,
+        ctx: &egui::Context,
+        persist_workspace_after_frame: &mut bool,
+    ) {
+        let Some(target_node_id) = self.lineage_node_remove_target_id.clone() else {
+            return;
+        };
+        let seq_id_hint = {
+            let engine = self.engine.read().unwrap();
+            let state = engine.state();
+            state
+                .lineage
+                .nodes
+                .get(&target_node_id)
+                .map(|node| node.seq_id.clone())
+                .unwrap_or_else(|| "-".to_string())
+        };
+        let mut open = true;
+        let mut remove_clicked = false;
+        egui::Window::new("Remove Leaf Node")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(460.0, 130.0))
+            .show(ctx, |ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(150, 20, 20),
+                    "This action removes the sequence/node from the current project.",
+                );
+                ui.monospace(format!("node: {}", target_node_id));
+                ui.monospace(format!("sequence: {}", seq_id_hint));
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Remove")
+                        .on_hover_text("Confirm removal of this leaf node")
+                        .clicked()
+                    {
+                        remove_clicked = true;
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Cancel removal")
+                        .clicked()
+                    {
+                        self.lineage_node_remove_target_id = None;
+                    }
+                });
+            });
+        if !open {
+            self.lineage_node_remove_target_id = None;
+            return;
+        }
+        if remove_clicked {
+            self.lineage_group_status = match self.remove_leaf_lineage_node(&target_node_id) {
+                Ok(status) => {
+                    *persist_workspace_after_frame = true;
+                    self.lineage_node_remove_target_id = None;
+                    status
+                }
+                Err(err) => err,
+            };
+        }
+    }
+
+    fn normalized_lineage_panel_heights(
+        total_available_height: f32,
+        preferred_split_fraction: f32,
+    ) -> (f32, f32, f32) {
+        let min_graph_height = 220.0;
+        let min_container_height = 120.0;
+        let min_total_height = min_graph_height + min_container_height;
+        let total_height = if total_available_height.is_finite() {
+            total_available_height.clamp(min_total_height, 4000.0)
+        } else {
+            min_total_height
+        };
+        let clamped_split = preferred_split_fraction.clamp(0.2, 0.9);
+        let graph_height = (total_height * clamped_split)
+            .clamp(min_graph_height, total_height - min_container_height);
+        let container_height = (total_height - graph_height)
+            .clamp(min_container_height, total_height - min_graph_height);
+        let realized_split = (graph_height / total_height.max(1.0)).clamp(0.2, 0.9);
+        (graph_height, container_height, realized_split)
     }
 
     fn render_main_lineage(&mut self, ui: &mut Ui) {
@@ -15189,7 +16307,7 @@ Error: `{err}`"
         ui.heading("Lineage Graph");
         ui.label(format!("Project: {}", self.current_project_name()));
         ui.label("Project-level sequence lineage (branch and merge aware)");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let table = self.track_hover_status(
                 ui.selectable_label(!self.lineage_graph_view, "Table")
                     .on_hover_text("Show lineage as table"),
@@ -15211,6 +16329,7 @@ Error: `{err}`"
 
         let mut open_seq: Option<String> = None;
         let mut open_pool: Option<(String, Vec<String>)> = None;
+        let mut open_lineage_retrieval: Option<LineageRetrievalDescriptor> = None;
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
@@ -15218,6 +16337,7 @@ Error: `{err}`"
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
         let mut graph_area_height = self.lineage_graph_area_height.clamp(220.0, 2400.0);
         let mut container_area_height = self.lineage_container_area_height.clamp(120.0, 1600.0);
+        let mut main_split_fraction = self.lineage_main_split_fraction.clamp(0.2, 0.9);
         let mut graph_scroll_offset = Vec2::new(
             if self.lineage_graph_scroll_offset.x.is_finite() {
                 self.lineage_graph_scroll_offset.x.max(0.0)
@@ -15292,6 +16412,7 @@ Error: `{err}`"
                 genome_anchor_summary: None,
                 genome_anchor_display: None,
                 is_full_genome_sequence: false,
+                retrieval_descriptor: None,
                 macro_instance_id: None,
                 macro_routine_id: None,
                 macro_template_name: None,
@@ -15518,6 +16639,7 @@ Error: `{err}`"
                     &graph_op_label_by_id,
                 );
                 let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
+                let leaf_node_ids = Self::lineage_leaf_node_ids(&graph_rows, &graph_edges);
                 let visible_node_ids: HashSet<String> = projected_graph_rows
                     .iter()
                     .map(|row| row.node_id.clone())
@@ -15531,6 +16653,12 @@ Error: `{err}`"
                         self.lineage_graph_selected_node_id = remapped;
                     }
                 }
+                // Keep graph + containers filling the lineage viewport proportionally.
+                let (target_graph_height, target_container_height, normalized_split) =
+                    Self::normalized_lineage_panel_heights(ui.available_height(), main_split_fraction);
+                graph_area_height = target_graph_height;
+                container_area_height = target_container_height;
+                main_split_fraction = normalized_split;
 
                 if self.lineage_graph_view {
             if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
@@ -15569,12 +16697,13 @@ Error: `{err}`"
             }
             let mut request_fit_zoom = false;
             let mut request_fit_origin = false;
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
                 ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
                 ui.colored_label(egui::Color32::from_rgb(98, 98, 108), "▭ macro run");
                 ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
+                ui.colored_label(egui::Color32::from_rgb(188, 146, 48), "▣ retrieval pattern");
                 ui.colored_label(egui::Color32::from_rgb(145, 145, 145), "◻ node group");
                 ui.separator();
                 let zoom_out_resp = self.track_hover_status(
@@ -15637,25 +16766,13 @@ Error: `{err}`"
                         .text("Zoom"),
                 );
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut graph_area_height)
-                            .range(220.0..=2400.0)
-                            .speed(2.0)
-                            .prefix("Graph h "),
-                    )
-                    .on_hover_text("Persisted preferred height of the graph area")
-                    .changed()
-                {
-                    persist_workspace_after_frame = true;
-                }
             });
             ui.separator();
             let rows = &projected_graph_rows;
             let lineage_edges = &projected_graph_edges;
             let op_label_by_id = &graph_op_label_by_id;
             let graph_resize_max_height = ui.available_height().max(220.0);
-            let graph_resize_width = ui.available_width().max(360.0);
+            let graph_resize_width = ui.available_width().max(1.0);
             egui::Resize::default()
                 .id_salt("lineage_graph_area_resize")
                 .default_width(graph_resize_width)
@@ -15664,13 +16781,13 @@ Error: `{err}`"
                 .default_height(graph_area_height.min(graph_resize_max_height))
                 .min_height(220.0)
                 .max_height(graph_resize_max_height)
-                .resizable(egui::Vec2b::new(false, true))
+                .resizable(egui::Vec2b::new(false, false))
                 .show(ui, |ui| {
                     ui.set_min_width(graph_resize_width);
                     ui.set_max_width(graph_resize_width);
                     graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
                     ui.small(
-                        "Resize area by dragging lower edge. Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
+                        "Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
                     );
                     let graph_scroll_output = egui::ScrollArea::both()
                         .id_salt("lineage_graph_scroll")
@@ -15973,6 +17090,8 @@ Error: `{err}`"
                             let mut used_label_rects: Vec<egui::Rect> = Vec::new();
                             let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
                                 HashMap::new();
+                            let mut retrieval_badge_rects: HashMap<String, egui::Rect> =
+                                HashMap::new();
                             let edge_groups = Self::lineage_edge_groups(lineage_edges);
                             for (edge_idx, (from_node, to_node, op_ids)) in
                                 edge_groups.iter().enumerate()
@@ -16226,6 +17345,38 @@ Error: `{err}`"
                                     egui::FontId::monospace(node_id_font_size),
                                     egui::Color32::WHITE,
                                 );
+                                if let Some(descriptor) = &row.retrieval_descriptor {
+                                    let badge_center = pos + Vec2::new(16.0 * graph_zoom, -18.0 * graph_zoom);
+                                    let badge_rect = egui::Rect::from_center_size(
+                                        badge_center,
+                                        Vec2::new(
+                                            (28.0 * graph_zoom).clamp(18.0, 36.0),
+                                            (14.0 * graph_zoom).clamp(10.0, 20.0),
+                                        ),
+                                    );
+                                    painter.rect_filled(
+                                        badge_rect,
+                                        3.0 * graph_zoom,
+                                        egui::Color32::from_rgb(188, 146, 48),
+                                    );
+                                    painter.rect_stroke(
+                                        badge_rect,
+                                        3.0 * graph_zoom,
+                                        egui::Stroke::new(
+                                            (1.0 * graph_zoom).clamp(0.8, 1.8),
+                                            egui::Color32::from_rgb(80, 62, 20),
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    painter.text(
+                                        badge_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        Self::lineage_retrieval_pattern_label(descriptor),
+                                        egui::FontId::monospace((8.0 * graph_zoom).clamp(6.8, 10.5)),
+                                        egui::Color32::BLACK,
+                                    );
+                                    retrieval_badge_rects.insert(row.node_id.clone(), badge_rect);
+                                }
                                 if let Some(badge) = collapsed_group_badges.get(&row.node_id) {
                                     let chip_font =
                                         egui::FontId::monospace((8.2 * graph_zoom).clamp(6.8, 10.8));
@@ -16358,7 +17509,16 @@ Error: `{err}`"
                             let hit_row = hovered_node_id
                                 .as_ref()
                                 .and_then(|node_id| rows.iter().find(|row| &row.node_id == node_id));
-                            if let Some(row) = hit_row {
+                            let hovered_retrieval_node_id = pointer.and_then(|pointer| {
+                                retrieval_badge_rects
+                                    .iter()
+                                    .find_map(|(node_id, rect)| rect.contains(pointer).then_some(node_id.clone()))
+                            });
+                            let hovered_retrieval_row = hovered_retrieval_node_id
+                                .as_ref()
+                                .and_then(|node_id| rows.iter().find(|row| &row.node_id == node_id));
+                            let hover_row = hit_row.or(hovered_retrieval_row);
+                            if let Some(row) = hover_row {
                                 let mut hover_pool_range: Option<(usize, usize)> = None;
                                 let mut hover_ladder_hint: Option<String> = None;
                                 if row.kind == LineageNodeKind::Sequence && row.pool_size > 1 {
@@ -16487,6 +17647,13 @@ Error: `{err}`"
                                         }
                                         ui.small(anchor_text);
                                     }
+                                    if let Some(descriptor) = row.retrieval_descriptor.as_ref() {
+                                        ui.separator();
+                                        ui.small(Self::lineage_retrieval_pattern_tooltip(
+                                            descriptor,
+                                            row.genome_anchor_summary.as_ref(),
+                                        ));
+                                    }
                                     match row.kind {
                                         LineageNodeKind::Arrangement => {
                                             if !row.lane_container_ids.is_empty() {
@@ -16581,12 +17748,15 @@ Error: `{err}`"
                                     }
                                 });
                             }
-                            let context_node_id = hit_row.map(|row| row.node_id.clone());
+                            let context_node_id = hover_row.map(|row| row.node_id.clone());
+                            let context_row = hover_row.cloned();
                             resp.clone().context_menu(|ui| {
                                 if let Some(node_id) = context_node_id.as_ref() {
                                     self.render_lineage_group_context_menu(
                                         ui,
                                         node_id,
+                                        context_row.as_ref(),
+                                        &leaf_node_ids,
                                         &valid_lineage_node_ids,
                                         &mut persist_workspace_after_frame,
                                     );
@@ -16603,11 +17773,11 @@ Error: `{err}`"
                                     )
                                 });
                             if resp.drag_started() {
-                                if option_pan_requested || (space_pan_requested && hit_row.is_none())
+                                if option_pan_requested || (space_pan_requested && hover_row.is_none())
                                 {
                                     self.lineage_graph_pan_origin = Some(graph_scroll_offset);
                                     self.lineage_graph_drag_origin = None;
-                                } else if let Some(row) = hit_row {
+                                } else if let Some(row) = hover_row {
                                     let start_offset = self
                                         .lineage_graph_node_offsets
                                         .get(&row.node_id)
@@ -16657,34 +17827,47 @@ Error: `{err}`"
                                 graph_wheel_intent,
                             ) {
                                 ui.output_mut(|o| o.cursor_icon = cursor);
-                            } else if space_pan_requested && hit_row.is_none() {
+                            } else if space_pan_requested && hover_row.is_none() {
                                 ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
                             }
                             if self.lineage_graph_pan_origin.is_none()
                                 && self.lineage_graph_drag_origin.is_none()
                             {
+                                let mut retrieval_click_consumed = false;
                                 if resp.clicked() {
-                                    self.lineage_graph_selected_node_id =
-                                        hit_row.map(|row| row.node_id.clone());
+                                    if let Some(row) = hovered_retrieval_row {
+                                        if let Some(descriptor) = row.retrieval_descriptor.clone() {
+                                            self.lineage_graph_selected_node_id =
+                                                Some(row.node_id.clone());
+                                            open_lineage_retrieval = Some(descriptor);
+                                            retrieval_click_consumed = true;
+                                        }
+                                    }
                                 }
-                                if let Some(row) = hit_row {
-                                    if resp.double_clicked() {
-                                        match row.kind {
-                                            LineageNodeKind::Arrangement => {
-                                                if !row.lane_container_ids.is_empty() {
-                                                    open_lane_containers =
-                                                        Some(row.lane_container_ids.clone());
+                                if !retrieval_click_consumed {
+                                    if resp.clicked() {
+                                        self.lineage_graph_selected_node_id =
+                                            hover_row.map(|row| row.node_id.clone());
+                                    }
+                                    if let Some(row) = hover_row {
+                                        if resp.double_clicked() {
+                                            match row.kind {
+                                                LineageNodeKind::Arrangement => {
+                                                    if !row.lane_container_ids.is_empty() {
+                                                        open_lane_containers =
+                                                            Some(row.lane_container_ids.clone());
+                                                    }
                                                 }
-                                            }
-                                            LineageNodeKind::Macro => {}
-                                            LineageNodeKind::Sequence if row.pool_size > 1 => {
-                                                open_pool = Some((
-                                                    row.seq_id.clone(),
-                                                    row.pool_members.clone(),
-                                                ));
-                                            }
-                                            LineageNodeKind::Sequence => {
-                                                open_seq = Some(row.seq_id.clone());
+                                                LineageNodeKind::Macro => {}
+                                                LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                                    open_pool = Some((
+                                                        row.seq_id.clone(),
+                                                        row.pool_members.clone(),
+                                                    ));
+                                                }
+                                                LineageNodeKind::Sequence => {
+                                                    open_seq = Some(row.seq_id.clone());
+                                                }
                                             }
                                         }
                                     }
@@ -16720,16 +17903,27 @@ Error: `{err}`"
                     }
                 });
         } else {
-            // Keep startup table view compact enough that all primary sections
-            // (table + containers/arrangements + status) remain visible without
-            // requiring outer-window scrolling on typical laptop displays.
-            let table_max_height = (ui.available_height() * 0.55).clamp(180.0, 380.0);
+            let table_resize_max_height = ui.available_height().max(220.0);
+            let table_resize_width = ui.available_width().max(1.0);
             let mut toggle_group_collapse_id: Option<String> = None;
-            egui::ScrollArea::both()
-                .id_salt("lineage_table_scroll")
-                .auto_shrink([false, false])
-                .max_height(table_max_height)
+            egui::Resize::default()
+                .id_salt("lineage_table_area_resize")
+                .default_width(table_resize_width)
+                .min_width(table_resize_width)
+                .max_width(table_resize_width)
+                .default_height(graph_area_height.min(table_resize_max_height))
+                .min_height(220.0)
+                .max_height(table_resize_max_height)
+                .resizable(egui::Vec2b::new(false, false))
                 .show(ui, |ui| {
+                    ui.set_min_width(table_resize_width);
+                    ui.set_max_width(table_resize_width);
+                    graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
+                    egui::ScrollArea::both()
+                        .id_salt("lineage_table_scroll")
+                        .auto_shrink([false, false])
+                        .max_height(ui.available_height())
+                        .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
@@ -16748,6 +17942,7 @@ Error: `{err}`"
                             ui.strong("Length");
                             ui.strong("Topology");
                             ui.strong("Genome anchor");
+                            ui.strong("Pattern");
                             ui.strong("Action");
                             ui.end_row();
                             for entry in &table_entries {
@@ -16801,6 +17996,8 @@ Error: `{err}`"
                                     self.render_lineage_group_context_menu(
                                         ui,
                                         &row.node_id,
+                                        Some(row),
+                                        &leaf_node_ids,
                                         &valid_lineage_node_ids,
                                         &mut persist_workspace_after_frame,
                                     );
@@ -16928,6 +18125,23 @@ Error: `{err}`"
                                         }
                                     }
                                 }
+                                if let Some(descriptor) = row.retrieval_descriptor.as_ref() {
+                                    let button = ui
+                                        .small_button(Self::lineage_retrieval_pattern_label(
+                                            descriptor,
+                                        ))
+                                        .on_hover_text(Self::lineage_retrieval_pattern_tooltip(
+                                            descriptor,
+                                            row.genome_anchor_summary.as_ref(),
+                                        ));
+                                    if button.clicked() {
+                                        open_lineage_retrieval = Some(descriptor.clone());
+                                        self.lineage_graph_selected_node_id =
+                                            Some(row.node_id.clone());
+                                    }
+                                } else {
+                                    ui.label("-");
+                                }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         if !row.lane_container_ids.is_empty()
@@ -16962,6 +18176,7 @@ Error: `{err}`"
                                 ui.end_row();
                             }
                         });
+                });
                 });
             if let Some(group_id) = toggle_group_collapse_id {
                 if let Some(group) = self
@@ -17097,24 +18312,54 @@ Error: `{err}`"
             }
         }
         ui.separator();
+        let splitter_width = ui.available_width().max(1.0);
+        let (splitter_rect, splitter_response) = ui.allocate_exact_size(
+            egui::vec2(splitter_width, 10.0),
+            egui::Sense::click_and_drag(),
+        );
+        let splitter_active = splitter_response.hovered() || splitter_response.dragged();
+        let splitter_color = if splitter_active {
+            egui::Color32::from_rgb(120, 120, 120)
+        } else {
+            egui::Color32::from_rgb(150, 150, 150)
+        };
+        ui.painter().line_segment(
+            [
+                egui::pos2(splitter_rect.left(), splitter_rect.center().y),
+                egui::pos2(splitter_rect.right(), splitter_rect.center().y),
+            ],
+            egui::Stroke::new(1.2, splitter_color),
+        );
+        ui.painter().text(
+            splitter_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "⋮⋮",
+            egui::FontId::monospace(10.0),
+            splitter_color,
+        );
+        if splitter_active {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
+        }
+        if splitter_response.dragged() {
+            let frame_delta_y = ui.input(|i| i.pointer.delta().y);
+            if frame_delta_y.is_finite() && frame_delta_y.abs() > 0.0 {
+                let total_height = (graph_area_height + container_area_height).max(340.0);
+                let next_graph_height =
+                    (graph_area_height + frame_delta_y).clamp(220.0, total_height - 120.0);
+                if (next_graph_height - graph_area_height).abs() > f32::EPSILON {
+                    graph_area_height = next_graph_height;
+                    container_area_height =
+                        (total_height - graph_area_height).clamp(120.0, total_height - 220.0);
+                    main_split_fraction = (graph_area_height / total_height).clamp(0.2, 0.9);
+                    persist_workspace_after_frame = true;
+                }
+            }
+        }
+        ui.small("Drag split bar to resize graph/table and container sections");
         ui.heading("Containers");
         ui.label("Container-level view of candidate sequence sets");
-        ui.horizontal(|ui| {
-            if ui
-                .add(
-                    egui::DragValue::new(&mut container_area_height)
-                        .range(120.0..=1600.0)
-                        .speed(2.0)
-                        .prefix("Container h "),
-                )
-                .on_hover_text("Persisted preferred height of the containers area")
-                .changed()
-            {
-                persist_workspace_after_frame = true;
-            }
-        });
         let container_resize_max_height = ui.available_height().max(120.0);
-        let container_resize_width = ui.available_width().max(360.0);
+        let container_resize_width = ui.available_width().max(1.0);
         egui::Resize::default()
             .id_salt("lineage_container_area_resize")
             .default_width(container_resize_width)
@@ -17123,7 +18368,7 @@ Error: `{err}`"
             .default_height(container_area_height.min(container_resize_max_height))
             .min_height(120.0)
             .max_height(container_resize_max_height)
-            .resizable(egui::Vec2b::new(false, true))
+            .resizable(egui::Vec2b::new(false, false))
             .show(ui, |ui| {
                 ui.set_min_width(container_resize_width);
                 ui.set_max_width(container_resize_width);
@@ -17304,6 +18549,15 @@ Error: `{err}`"
             self.lineage_container_area_height = container_area_height;
             persist_workspace_after_frame = true;
         }
+        let combined_panel_height =
+            (graph_area_height.max(0.0) + container_area_height.max(0.0)).max(1.0);
+        let computed_main_split_fraction =
+            (graph_area_height.max(0.0) / combined_panel_height).clamp(0.2, 0.9);
+        main_split_fraction = computed_main_split_fraction;
+        if (self.lineage_main_split_fraction - main_split_fraction).abs() > 0.0001 {
+            self.lineage_main_split_fraction = main_split_fraction;
+            persist_workspace_after_frame = true;
+        }
         if self.lineage_graph_compact_labels != graph_compact_labels {
             self.lineage_graph_compact_labels = graph_compact_labels;
             persist_workspace_after_frame = true;
@@ -17312,6 +18566,11 @@ Error: `{err}`"
             self.lineage_graph_scroll_offset = graph_scroll_offset;
             persist_workspace_after_frame = true;
         }
+        self.render_lineage_node_rename_window(ui.ctx(), &mut persist_workspace_after_frame);
+        self.render_lineage_node_remove_confirm_window(
+            ui.ctx(),
+            &mut persist_workspace_after_frame,
+        );
         if persist_workspace_after_frame {
             self.persist_lineage_graph_workspace_to_state();
         }
@@ -17334,6 +18593,9 @@ Error: `{err}`"
             }
         }
 
+        if let Some(descriptor) = open_lineage_retrieval {
+            self.open_lineage_retrieval_descriptor(&descriptor);
+        }
         if let Some(seq_id) = open_seq {
             self.open_sequence_window(&seq_id);
         }
@@ -20149,19 +21411,21 @@ impl eframe::App for GENtleApp {
 mod tests {
     use super::{
         APP_CONFIGURATION_SCHEMA_VERSION, BackgroundJobEventPhase, BackgroundJobKind,
-        CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab, EngineError, ErrorCode,
-        GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
-        GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
+        DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
+        ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
+        GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
-        LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS, PersistedConfiguration,
-        PersistedLineageNodeGroup, RoutineAssistantStage,
+        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings,
-            GenomeAnnotationProjectionTelemetry, GentleEngine, LinearSequenceLetterLayoutMode,
-            OpResult, Operation, ProjectState,
+            GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge, LineageNode,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState, SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -20265,6 +21529,98 @@ mod tests {
     }
 
     #[test]
+    fn suggest_chromosome_names_prefers_alias_equivalent_contigs() {
+        let available = vec![
+            "NC_000017.11".to_string(),
+            "chr17".to_string(),
+            "17_random".to_string(),
+            "chr1".to_string(),
+        ];
+        let suggestions = GENtleApp::suggest_chromosome_names("17", &available, 8);
+        assert!(!suggestions.is_empty());
+        assert_eq!(suggestions[0], "chr17");
+        assert!(suggestions.iter().any(|name| name == "NC_000017.11"));
+    }
+
+    #[test]
+    fn load_lineage_workspace_derives_main_split_fraction_from_legacy_heights() {
+        let mut workspace = PersistedLineageGraphWorkspace::default();
+        workspace.main_split_fraction = None;
+        workspace.graph_area_height = 900.0;
+        workspace.container_area_height = 300.0;
+
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(),
+            serde_json::to_value(workspace).expect("serialize lineage workspace"),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_lineage_graph_workspace_from_state();
+
+        assert!((app.lineage_main_split_fraction - 0.75).abs() <= 0.0001);
+    }
+
+    #[test]
+    fn persist_lineage_workspace_stores_main_split_fraction() {
+        let mut app = GENtleApp::default();
+        app.lineage_main_split_fraction = 0.72;
+        app.persist_lineage_graph_workspace_to_state();
+
+        let workspace_value = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY)
+            .cloned()
+            .expect("workspace metadata");
+        let workspace: PersistedLineageGraphWorkspace =
+            serde_json::from_value(workspace_value).expect("deserialize lineage workspace");
+
+        assert_eq!(workspace.main_split_fraction, Some(0.72));
+    }
+
+    #[test]
+    fn lineage_panel_split_clamps_for_small_height_and_round_trips_via_workspace() {
+        let (graph_h, container_h, split) = GENtleApp::normalized_lineage_panel_heights(80.0, 0.95);
+        assert!((graph_h - 220.0).abs() <= 0.0001);
+        assert!((container_h - 120.0).abs() <= 0.0001);
+        assert!((split - (220.0 / 340.0)).abs() <= 0.0001);
+
+        let mut app = GENtleApp::default();
+        app.lineage_graph_area_height = graph_h;
+        app.lineage_container_area_height = container_h;
+        app.lineage_main_split_fraction = split;
+        app.persist_lineage_graph_workspace_to_state();
+
+        let workspace_value = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY)
+            .cloned()
+            .expect("workspace metadata");
+
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(),
+            workspace_value,
+        );
+        let mut reloaded = GENtleApp::default();
+        reloaded.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        reloaded.load_lineage_graph_workspace_from_state();
+
+        assert!((reloaded.lineage_graph_area_height - 220.0).abs() <= 0.0001);
+        assert!((reloaded.lineage_container_area_height - 120.0).abs() <= 0.0001);
+        assert!((reloaded.lineage_main_split_fraction - (220.0 / 340.0)).abs() <= 0.0001);
+    }
+
+    #[test]
     fn open_sequence_window_enqueues_lazy_window_for_existing_sequence() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -20341,6 +21697,82 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::planning_viewport_id())
         );
+    }
+
+    #[test]
+    fn open_reference_genome_retrieve_dialog_focuses_existing_window_without_resetting_state() {
+        let mut app = GENtleApp::default();
+        app.open_reference_genome_retrieve_dialog();
+        app.genome_gene_filter = "TP73".to_string();
+        app.genome_output_id = "tp73_roi".to_string();
+
+        app.open_reference_genome_retrieve_dialog();
+
+        assert!(app.show_reference_genome_retrieve_dialog);
+        assert_eq!(app.genome_gene_filter, "TP73");
+        assert_eq!(app.genome_output_id, "tp73_roi");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::retrieve_genome_viewport_id())
+        );
+    }
+
+    #[test]
+    fn genome_dialog_scope_preserves_reference_and_helper_paths_independently() {
+        let mut app = GENtleApp::default();
+        app.open_reference_genome_prepare_dialog();
+        app.genome_catalog_path = "custom/reference_catalog.json".to_string();
+        app.genome_cache_dir = "custom/reference_cache".to_string();
+
+        app.open_helper_genome_prepare_dialog();
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert_eq!(
+            app.genome_catalog_path,
+            DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string()
+        );
+        assert_eq!(
+            app.genome_cache_dir,
+            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+        );
+
+        app.genome_catalog_path = "custom/helper_catalog.json".to_string();
+        app.genome_cache_dir = "custom/helper_cache".to_string();
+
+        app.open_reference_genome_prepare_dialog();
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+        assert_eq!(app.genome_catalog_path, "custom/reference_catalog.json");
+        assert_eq!(app.genome_cache_dir, "custom/reference_cache");
+
+        app.open_helper_genome_prepare_dialog();
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert_eq!(app.genome_catalog_path, "custom/helper_catalog.json");
+        assert_eq!(app.genome_cache_dir, "custom/helper_cache");
+    }
+
+    #[test]
+    fn open_window_entries_use_helper_titles_for_helper_scope_dialogs() {
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_blast_dialog();
+
+        let entries = app.collect_open_window_entries();
+
+        assert!(entries.iter().any(|entry| {
+            entry.viewport_id == GENtleApp::blast_genome_viewport_id()
+                && entry.title == "BLAST Helper Sequence"
+        }));
+    }
+
+    #[test]
+    fn open_window_entries_include_retrieve_genome_viewport_when_open() {
+        let mut app = GENtleApp::default();
+        app.show_reference_genome_retrieve_dialog = true;
+
+        let entries = app.collect_open_window_entries();
+
+        assert!(entries.iter().any(|entry| {
+            entry.viewport_id == GENtleApp::retrieve_genome_viewport_id()
+                && entry.title == "Retrieve Genomic Sequence"
+        }));
     }
 
     #[test]
@@ -20989,7 +22421,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     }
 
     #[test]
-    fn uniprot_use_imports_entry_sequence_and_opens_window() {
+    fn uniprot_dialog_select_row_sets_entry_id_without_importing_sequence() {
         let mut app = GENtleApp::default();
         let temp = tempdir().expect("tempdir");
         let swiss_path = temp.path().join("toy_uniprot_dialog_use.txt");
@@ -21010,21 +22442,18 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         app.uniprot_swiss_path = swiss_path.display().to_string();
         app.import_uniprot_swiss_prot_from_dialog();
 
-        app.use_uniprot_entry_from_dialog("TOY_USE");
+        let recent = app.recent_uniprot_entries_for_dialog(5);
+        assert_eq!(recent.len(), 1);
+        app.uniprot_entry_id.clear();
+        app.uniprot_query.clear();
+        let row = recent.first().expect("recent row");
+        app.uniprot_entry_id = row.entry_id.clone();
+        app.uniprot_query = row.accession.clone();
 
         let state = app.engine.read().unwrap().state().clone();
-        assert!(state.sequences.contains_key("TOY_USE"));
-        assert_eq!(
-            app.new_windows
-                .first()
-                .and_then(|window| window.sequence_id()),
-            Some("TOY_USE".to_string())
-        );
-        assert!(
-            app.uniprot_status.contains("UniProt use: ok"),
-            "status was: {}",
-            app.uniprot_status
-        );
+        assert!(!state.sequences.contains_key("TOY_USE"));
+        assert_eq!(app.uniprot_entry_id, "TOY_USE");
+        assert_eq!(app.uniprot_query, "PUSE1");
     }
 
     #[test]
@@ -21481,6 +22910,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             genome_anchor_summary: None,
             genome_anchor_display: None,
             is_full_genome_sequence: false,
+            retrieval_descriptor: None,
             macro_instance_id: None,
             macro_routine_id: None,
             macro_template_name: None,
@@ -21490,6 +22920,23 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             macro_inputs: vec![],
             macro_outputs: vec![],
         }
+    }
+
+    fn insert_test_lineage_node(state: &mut ProjectState, node_id: &str, seq_id: &str) {
+        state.lineage.nodes.insert(
+            node_id.to_string(),
+            LineageNode {
+                node_id: node_id.to_string(),
+                seq_id: seq_id.to_string(),
+                origin: SequenceOrigin::ImportedUnknown,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state
+            .lineage
+            .seq_to_node
+            .insert(seq_id.to_string(), node_id.to_string());
     }
 
     #[test]
@@ -21582,6 +23029,117 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(collapsed_entries[0].row.node_id, "n1");
         assert_eq!(collapsed_entries[0].hidden_group_member_count, 1);
         assert_eq!(collapsed_entries[1].row.node_id, "n3");
+    }
+
+    #[test]
+    fn lineage_leaf_node_ids_detects_terminal_nodes() {
+        let rows = vec![
+            make_lineage_row("n1", "seq1"),
+            make_lineage_row("n2", "seq2"),
+            make_lineage_row("n3", "seq3"),
+        ];
+        let edges = vec![
+            ("n1".to_string(), "n2".to_string(), "op-1".to_string()),
+            ("n2".to_string(), "n3".to_string(), "op-2".to_string()),
+        ];
+        let leaves = GENtleApp::lineage_leaf_node_ids(&rows, &edges);
+        assert!(!leaves.contains("n1"));
+        assert!(!leaves.contains("n2"));
+        assert!(leaves.contains("n3"));
+    }
+
+    #[test]
+    fn rename_leaf_lineage_node_updates_sequence_name() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ATGC").unwrap(),
+            );
+            state.sequences.insert(
+                "seq_b".to_string(),
+                DNAsequence::from_sequence("ATGC").unwrap(),
+            );
+            insert_test_lineage_node(state, "n1", "seq_a");
+            insert_test_lineage_node(state, "n2", "seq_b");
+            state.lineage.edges.push(LineageEdge {
+                from_node_id: "n1".to_string(),
+                to_node_id: "n2".to_string(),
+                op_id: "op-1".to_string(),
+                run_id: "interactive".to_string(),
+            });
+        }
+        let status = app
+            .rename_leaf_lineage_node("n2", "Leaf renamed")
+            .expect("rename leaf");
+        assert!(status.contains("Renamed leaf node 'n2'"));
+        let name = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .get("seq_b")
+            .and_then(|dna| dna.name().clone());
+        assert_eq!(name.as_deref(), Some("Leaf renamed"));
+    }
+
+    #[test]
+    fn remove_leaf_lineage_node_rejects_non_leaf_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ATGC").unwrap(),
+            );
+            state.sequences.insert(
+                "seq_b".to_string(),
+                DNAsequence::from_sequence("ATGC").unwrap(),
+            );
+            insert_test_lineage_node(state, "n1", "seq_a");
+            insert_test_lineage_node(state, "n2", "seq_b");
+            state.lineage.edges.push(LineageEdge {
+                from_node_id: "n1".to_string(),
+                to_node_id: "n2".to_string(),
+                op_id: "op-1".to_string(),
+                run_id: "interactive".to_string(),
+            });
+        }
+        let err = app
+            .remove_leaf_lineage_node("n1")
+            .expect_err("non-leaf removal must fail");
+        assert!(err.contains("not a leaf"));
+        assert!(
+            app.engine
+                .read()
+                .unwrap()
+                .state()
+                .sequences
+                .contains_key("seq_a")
+        );
+    }
+
+    #[test]
+    fn request_remove_leaf_lineage_node_sets_pending_target() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "seq_leaf".to_string(),
+                DNAsequence::from_sequence("ATGC").unwrap(),
+            );
+            insert_test_lineage_node(state, "n_leaf", "seq_leaf");
+        }
+        let status = app
+            .request_remove_leaf_lineage_node("n_leaf")
+            .expect("request remove leaf");
+        assert!(status.contains("confirm in dialog"));
+        assert_eq!(app.lineage_node_remove_target_id.as_deref(), Some("n_leaf"));
     }
 
     #[test]

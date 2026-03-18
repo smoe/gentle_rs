@@ -263,6 +263,10 @@ impl GentleEngine {
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
+            Operation::FetchGenBankAccession { .. } => Some("Fetched GenBank sequence".to_string()),
+            Operation::FetchUniprotLinkedGenBank { .. } => {
+                Some("Fetched UniProt-linked GenBank sequence".to_string())
+            }
             Operation::ExtendGenomeAnchor { .. } => Some("Extended genome anchor".to_string()),
             Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
             Operation::ImportGenomeBigWigTrack { .. } => Some("Imported BigWig track".to_string()),

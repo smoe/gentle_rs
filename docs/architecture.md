@@ -212,6 +212,9 @@ are now maintained in `docs/roadmap.md`.
 `ProjectState` stores:
 
 - `sequences: HashMap<SeqId, DNAsequence>`
+- current sequence windows are DNA/RNA-oriented. First-class protein sequence
+  windows are intentionally deferred. UniProt integration is currently modeled
+  as metadata/projection state, not as native sequence-window materialization.
 - `metadata: HashMap<String, serde_json::Value>`
   - includes in-memory candidate scoring/filter sets at
     `metadata["candidate_sets"]` (`gentle.candidate_sets.v1`)
@@ -1284,7 +1287,7 @@ Design constraints:
 - GUI/CLI/JS/Lua/SVG must consume the same engine payloads.
 - Feature geometry remains authoritative; analysis overlays are additive.
 
-Status (2026-03-15):
+Status (2026-03-18):
 
 - Implemented baseline:
   - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
@@ -1344,8 +1347,9 @@ Low-latency strategy (engine-first):
 GUI contract (implemented baseline + follow-ups):
 
 - Implemented:
-  - sequence-window `Dotplot map` mode (separate from map background)
-  - bounded-span compute controls
+  - sequence-window `Dotplot map` compact launcher (separate from map background)
+  - dedicated standalone `Dotplot` workspace window (full controls + rendering)
+  - bounded-span compute controls (compact launcher + workspace)
   - linked hover/locked crosshair behavior
   - pair-mode rendering with separate query/reference axis spans
   - query-axis selection sync in pair mode

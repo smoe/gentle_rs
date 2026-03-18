@@ -244,6 +244,9 @@ UniProt mapping capability status:
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`
+- `ImportUniprotEntrySequence` is currently disabled (`Unsupported`) because
+  first-class protein sequence windows are deferred; use UniProt metadata +
+  projection routes instead.
 
 ## Build and run
 
@@ -979,6 +982,8 @@ Shared shell command:
         flag, and read counters)
     - `rna-reads show-report` output includes a `summary` field with the same
       compact provenance framing
+    - tutorial reference (TP53 basis + multi-gene sparse mapping):
+      `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
       (`report_mode`, `origin_mode`, `target_gene_count`,
       `target_gene_ids_json`, `roi_seed_capture_enabled`) and

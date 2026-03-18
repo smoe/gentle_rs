@@ -98,6 +98,8 @@ The project main window (lineage page) supports two views:
 - `Graph`: node/edge lineage visualization
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
+- The lineage (`Table`/`Graph`) area is split from `Containers` with a
+  draggable horizontal divider in the main window.
 - In `Table` view, the lineage grid supports both horizontal and vertical
   scrolling; `Node`/`Op` cells use compact IDs with full values on hover.
 
@@ -118,20 +120,35 @@ Primary map modes (linear topology):
 - `Splicing map`
   - transcript/exon lane rendering for selected `mRNA`/`exon` features
 - `Dotplot map`
-  - bounded local dotplot workflow for promoter-scale inspection
-  - default compute span uses viewport-centered `half_window_bp=500` (±500 bp)
-  - supports:
+  - compact launcher/compute panel in sequence windows
+  - selecting `Dotplot map` opens a dedicated standalone `Dotplot` workspace
+    window for full controls and rendering
+  - compact panel keeps quick operations in-window:
+    - `Compute dotplot`
+    - `Compute flexibility`
+    - `dotplot_id` / `flex_track_id` selection
+  - full parameter editing and plot inspection now live in the standalone window:
     - self modes: `self_forward`, `self_reverse_complement`
     - pair modes: `pair_forward`, `pair_reverse_complement`
       - pair modes require `reference_seq_id`
       - optional `ref_start` / `ref_end` set y-axis reference span
-  - optional paired flexibility-track panel (`AT richness` / `AT skew`)
-  - linked crosshair:
-    - hover for live `x/y` coordinates in the plotted span
-    - click to lock crosshair
-      - self modes: sync selection to x/y interval
-      - pair modes: sync selection from x/query axis (y/reference stays informational)
-    - right-click to clear the locked crosshair
+    - display controls:
+      - `display threshold` (cell-density sensitivity)
+      - `intensity gain` (contrast amplification for visible cells)
+      - if no cells pass visibility, the canvas shows an explicit message instead
+        of a silent white panel
+    - optional paired flexibility-track panel (`AT richness` / `AT skew`)
+    - linked crosshair:
+      - hover for live `x/y` coordinates in the plotted span
+      - click to lock crosshair
+        - self modes: sync selection to x/y interval
+        - pair modes: sync selection from x/query axis (y/reference stays informational)
+      - right-click to clear the locked crosshair
+    - status panel:
+      - deterministic request diagnostics (mode, spans, seed parameters, estimated
+        window counts / pair evaluations)
+      - loaded payload diagnostics (point count, estimated hit fraction, latest
+        operation status/messages)
 
 Linear map zoom detail:
 
@@ -286,6 +303,8 @@ Feature tree grouping:
   - advanced `ROI seed capture` toggle is persisted in report metadata as a
     planned annotation-independent capture-layer request (warning emitted until
     this layer is implemented)
+  - tutorial reference for TP53-basis multi-gene mapping:
+    - `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
   - scope presets are explicit:
     - `all-overlap / both-strands`: all overlapping transcripts, `+` and `-`
     - `target-group / any-strand`: target group only, but both strands allowed
@@ -497,6 +516,19 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
+- Right-click context menu (graph and table node-id cells):
+  - `Rename (leaf only)`: updates the node display name (sequence name).
+  - `Remove (leaf only)`: opens a confirmation dialog, then removes that
+    sequence/node from project state on confirm.
+  - both are disabled for non-leaf nodes in this first pass.
+- Retrieval-pattern badges are shown for retrieval-derived sequence nodes:
+  - `GENE` for `ExtractGenomeGene`
+  - `REGION` for `ExtractGenomeRegion`
+  - `GB` for `FetchGenBankAccession`
+  - clicking the badge reopens the matching retrieval dialog with saved inputs
+    prefilled
+  - if a genome anchor exists, it is shown in the same tooltip; GenBank source
+    provenance and genome-anchor provenance are complementary
 - Macro-instance nodes are rendered as dedicated box nodes.
   - Double-click behavior remains no-op (informational node type).
   - Click or use table `Inspect` to open a persistent macro detail panel below
@@ -1088,10 +1120,11 @@ In `Main window -> Graph` view:
   - edge text labels remain secondary annotations for detailed operation names
 - Workspace persistence:
   - graph node positions, zoom, compact-label toggle, graph scroll/pan offset,
-    and preferred graph/container panel heights are stored in project metadata
+    and preferred lineage/container split are stored in project metadata
   - the lineage page itself is vertically scrollable; oversized graph areas no
     longer hide the containers/arrangements section
-  - panel heights can be adjusted with `Graph h` and `Container h`
+  - in both `Table` and `Graph` view, drag the lower edge of the lineage pane
+    to resize it against the containers pane
 
 ## Command Palette and History/Jobs Panels
 
@@ -1468,6 +1501,16 @@ standalone window/viewport (not embedded in the project canvas):
 - `Genome -> Import Genome Track...`
 - `File -> Agent Assistant...`
 
+Scope behavior:
+
+- Reference and Helper dialogs now keep independent `catalog`/`cache_dir`
+  setups.
+- Switching between `Reference` and `Helper` menu entries restores that
+  scope's last-used setup.
+- BLAST runs against the indices in the active scope's `cache_dir`
+  (reference and helper index trees stay separated unless you explicitly point
+  both scopes to the same cache path).
+
 Recommended flow:
 
 1. Prepare/cache a genome once:
@@ -1563,6 +1606,8 @@ Recommended flow:
    - when extraction fails with chromosome/contig mismatch, status messages now
      include tried aliases, available-contig preview, and suggested matching
      contigs (for example accession-style names such as `NC_000017.11`)
+   - status output exposes `Apply suggested contig '...'` for one-click transfer
+     of the best prepared contig name into the `chr` field
    - use `Retrieve` directly from an inspected row
 5. Overlay signal tracks (BED, BigWig, or VCF) onto an extracted sequence:
    - open `Genome -> Import Genome Track...`
@@ -1814,11 +1859,12 @@ UniProt mapping behavior:
 - `UniProt Mapping...` opens a specialist window for:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
-  - import of stored UniProt entry sequence into project sequences (`ImportUniprotEntrySequence`)
   - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
 - The dialog shows a compact table of recent imported UniProt entries
-  (entry/accession/source/import timestamp) and `Use` buttons to import/open
-  the selected UniProt entry sequence in the project.
+  (entry/accession/source/import timestamp) and `Select` buttons to fill the
+  active `entry_id`/query in the form.
+- Protein sequence windows are intentionally not enabled yet. UniProt entries
+  currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 
 GenBank accession fetch behavior:
@@ -1827,6 +1873,9 @@ GenBank accession fetch behavior:
   - online fetch by accession (`FetchGenBankAccession`)
   - optional project sequence ID override (`as_id`)
   - automatic sequence-window open for newly imported sequence IDs
+- Sequences fetched from GenBank can still participate in genome-anchored
+  workflows (for example BED/BigWig/VCF projection once anchored). This is a
+  complement to GenBank provenance, not a source conflict.
 - Shell parity route:
   - `genbank fetch ACCESSION [--as-id ID]`
 

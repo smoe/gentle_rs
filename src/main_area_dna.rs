@@ -279,6 +279,8 @@ struct DotplotOpsUiState {
     tile_bp: String,
     mode: DotplotMode,
     dotplot_id: String,
+    display_density_threshold: f32,
+    display_intensity_gain: f32,
     reference_seq_id: String,
     reference_span_start_0based: String,
     reference_span_end_0based: String,
@@ -299,6 +301,8 @@ impl Default for DotplotOpsUiState {
             tile_bp: String::new(),
             mode: DotplotMode::SelfReverseComplement,
             dotplot_id: "dotplot_primary".to_string(),
+            display_density_threshold: 0.0,
+            display_intensity_gain: 1.0,
             reference_seq_id: String::new(),
             reference_span_start_0based: String::new(),
             reference_span_end_0based: String::new(),
@@ -309,6 +313,24 @@ impl Default for DotplotOpsUiState {
             flex_track_id: "flex_primary".to_string(),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+struct DotplotComputeDiagnostics {
+    seq_id: String,
+    reference_seq_id: Option<String>,
+    mode: DotplotMode,
+    query_span_start_0based: usize,
+    query_span_end_0based: usize,
+    reference_span_start_0based: usize,
+    reference_span_end_0based: usize,
+    word_size: usize,
+    step_bp: usize,
+    max_mismatches: usize,
+    tile_bp: Option<usize>,
+    query_windows: usize,
+    reference_windows: usize,
+    estimated_pair_evaluations: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1072,6 +1094,14 @@ mod tests {
                 .unwrap_err()
                 .contains("expected an integer")
         );
+    }
+
+    #[test]
+    fn dotplot_window_count_respects_word_and_step() {
+        assert_eq!(MainAreaDna::dotplot_window_count(1001, 11, 11), 91);
+        assert_eq!(MainAreaDna::dotplot_window_count(1001, 9, 4), 249);
+        assert_eq!(MainAreaDna::dotplot_window_count(8, 9, 1), 0);
+        assert_eq!(MainAreaDna::dotplot_window_count(100, 0, 1), 0);
     }
 
     #[test]
@@ -2016,6 +2046,24 @@ mod tests {
     }
 
     #[test]
+    fn collect_open_auxiliary_window_entries_includes_dotplot_window() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.show_dotplot_window = true;
+        let entries = area.collect_open_auxiliary_window_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].0,
+            MainAreaDna::dotplot_viewport_id("seq1"),
+            "dotplot viewport id should be deterministic for sequence scope"
+        );
+        assert!(
+            entries[0].1.contains("Dotplot - seq1"),
+            "dotplot title should be listed in auxiliary windows"
+        );
+    }
+
+    #[test]
     fn current_engine_ops_state_records_primary_map_mode() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, None, None);
@@ -2935,6 +2983,7 @@ pub struct MainAreaDna {
     description_cache_details: Vec<String>,
     description_cache_expert_view: Option<FeatureExpertView>,
     description_cache_expert_error: Option<String>,
+    show_dotplot_window: bool,
     show_splicing_expert_window: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
@@ -2951,6 +3000,7 @@ pub struct MainAreaDna {
     dotplot_cache_track_id: String,
     dotplot_hover_crosshair_bp: Option<(usize, usize)>,
     dotplot_locked_crosshair_bp: Option<(usize, usize)>,
+    dotplot_last_compute_status: String,
 }
 
 impl MainAreaDna {
@@ -3212,6 +3262,7 @@ impl MainAreaDna {
             description_cache_details: Vec::new(),
             description_cache_expert_view: None,
             description_cache_expert_error: None,
+            show_dotplot_window: false,
             show_splicing_expert_window: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
@@ -3228,6 +3279,7 @@ impl MainAreaDna {
             dotplot_cache_track_id: String::new(),
             dotplot_hover_crosshair_bp: None,
             dotplot_locked_crosshair_bp: None,
+            dotplot_last_compute_status: String::new(),
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -4201,7 +4253,7 @@ impl MainAreaDna {
                         "Dotplot map",
                     )
                     .on_hover_text(
-                        "Show promoter-oriented self-dotplot view with optional flexibility track",
+                        "Open compact dotplot launcher in this panel and a dedicated dotplot workspace window",
                     )
                     .clicked()
                 {
@@ -4211,6 +4263,7 @@ impl MainAreaDna {
                     self.primary_map_mode = next_mode;
                     if matches!(self.primary_map_mode, PrimaryMapMode::Dotplot) {
                         self.ensure_dotplot_cache_current();
+                        self.open_dotplot_window();
                     }
                     self.save_engine_ops_state();
                 }
@@ -8557,6 +8610,141 @@ impl MainAreaDna {
         )
     }
 
+    fn dotplot_window_count(span_bp: usize, word_size: usize, step_bp: usize) -> usize {
+        if word_size == 0 || step_bp == 0 || span_bp < word_size {
+            0
+        } else {
+            span_bp
+                .saturating_sub(word_size)
+                .checked_div(step_bp)
+                .unwrap_or(0)
+                .saturating_add(1)
+        }
+    }
+
+    fn resolve_dotplot_span_bounds_for_status(
+        seq_len: usize,
+        start_opt: Option<usize>,
+        end_opt: Option<usize>,
+        label: &str,
+    ) -> Result<(usize, usize), String> {
+        if seq_len == 0 {
+            return Err(format!("Selected {label} sequence is empty"));
+        }
+        let start = start_opt.unwrap_or(0);
+        let end = end_opt.unwrap_or(seq_len);
+        if start >= seq_len {
+            return Err(format!(
+                "{label} span start ({start}) must be within sequence length ({seq_len})"
+            ));
+        }
+        if end > seq_len {
+            return Err(format!(
+                "{label} span end ({end}) must be <= sequence length ({seq_len})"
+            ));
+        }
+        if end <= start {
+            return Err(format!(
+                "{label} span end ({end}) must be > span start ({start})"
+            ));
+        }
+        Ok((start, end))
+    }
+
+    fn build_dotplot_compute_diagnostics(&self) -> Result<DotplotComputeDiagnostics, String> {
+        let Some(seq_id) = self.seq_id.clone() else {
+            return Err("No active sequence selected for dotplot diagnostics".to_string());
+        };
+        let half_window_bp = Self::parse_positive_usize_text(
+            &self.dotplot_ui.half_window_bp,
+            "dotplot half_window_bp",
+        )?;
+        let word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word")?;
+        let step_bp = Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step")?;
+        let max_mismatches =
+            Self::parse_optional_usize_text(&self.dotplot_ui.max_mismatches, "dotplot mismatches")?
+                .unwrap_or(0);
+        let tile_bp = Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp")?
+            .filter(|value| *value > 0);
+        let (query_span_start_0based, query_span_end_0based) = self
+            .default_dotplot_span_for_view(half_window_bp)
+            .ok_or_else(|| "Active sequence is empty; query span unavailable".to_string())?;
+        let query_span_bp = query_span_end_0based.saturating_sub(query_span_start_0based);
+        let mode = self.dotplot_ui.mode;
+
+        let (
+            reference_seq_id,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            reference_span_bp,
+        ) = if Self::dotplot_mode_requires_reference(mode) {
+            let ref_id = self.dotplot_ui.reference_seq_id.trim();
+            if ref_id.is_empty() {
+                return Err("Pair mode requires reference_seq_id".to_string());
+            }
+            let Some(engine) = self.engine.as_ref() else {
+                return Err("No engine attached while resolving reference span".to_string());
+            };
+            let guard = engine
+                .read()
+                .map_err(|_| "Engine lock poisoned while resolving reference span".to_string())?;
+            let ref_len = guard
+                .state()
+                .sequences
+                .get(ref_id)
+                .map(|dna| dna.len())
+                .ok_or_else(|| format!("Reference sequence '{ref_id}' not found"))?;
+            let ref_start_opt = Self::parse_optional_usize_text(
+                &self.dotplot_ui.reference_span_start_0based,
+                "dotplot ref_start",
+            )?;
+            let ref_end_opt = Self::parse_optional_usize_text(
+                &self.dotplot_ui.reference_span_end_0based,
+                "dotplot ref_end",
+            )?;
+            let (ref_start, ref_end) = Self::resolve_dotplot_span_bounds_for_status(
+                ref_len,
+                ref_start_opt,
+                ref_end_opt,
+                "Reference",
+            )?;
+            (
+                Some(ref_id.to_string()),
+                ref_start,
+                ref_end,
+                ref_end.saturating_sub(ref_start),
+            )
+        } else {
+            (
+                None,
+                query_span_start_0based,
+                query_span_end_0based,
+                query_span_bp,
+            )
+        };
+
+        let query_windows = Self::dotplot_window_count(query_span_bp, word_size, step_bp);
+        let reference_windows = Self::dotplot_window_count(reference_span_bp, word_size, step_bp);
+        let estimated_pair_evaluations = query_windows.saturating_mul(reference_windows);
+        Ok(DotplotComputeDiagnostics {
+            seq_id,
+            reference_seq_id,
+            mode,
+            query_span_start_0based,
+            query_span_end_0based,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            query_windows,
+            reference_windows,
+            estimated_pair_evaluations,
+        })
+    }
+
     fn bounded_center_window(
         sequence_len: usize,
         center_0based: usize,
@@ -8688,6 +8876,7 @@ impl MainAreaDna {
             self.op_status = "No active sequence selected for dotplot computation".to_string();
             return;
         };
+        let mut diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
         let half_window_bp = match Self::parse_positive_usize_text(
             &self.dotplot_ui.half_window_bp,
             "dotplot half_window_bp",
@@ -8796,6 +8985,33 @@ impl MainAreaDna {
             None
         };
         self.dotplot_ui.dotplot_id = store_as.clone();
+        if let Some(diag) = diagnostics_snapshot.as_ref() {
+            let reference_label = diag
+                .reference_seq_id
+                .as_deref()
+                .unwrap_or(diag.seq_id.as_str());
+            self.dotplot_last_compute_status = format!(
+                "Requested compute: mode={} query={} [{}..{}] reference={} [{}..{}] word={} step={} mismatches={} tile_bp={} windows(query={},ref={}) pair_evals≈{}",
+                diag.mode.as_str(),
+                diag.seq_id,
+                diag.query_span_start_0based.saturating_add(1),
+                diag.query_span_end_0based,
+                reference_label,
+                diag.reference_span_start_0based.saturating_add(1),
+                diag.reference_span_end_0based,
+                diag.word_size,
+                diag.step_bp,
+                diag.max_mismatches,
+                diag.tile_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                diag.query_windows,
+                diag.reference_windows,
+                diag.estimated_pair_evaluations
+            );
+        } else {
+            self.dotplot_last_compute_status.clear();
+        }
         self.apply_operation_with_feedback(Operation::ComputeDotplot {
             seq_id,
             reference_seq_id,
@@ -8812,6 +9028,70 @@ impl MainAreaDna {
         });
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
+        if let Some(view) = self.dotplot_cached_view.as_ref() {
+            let reference_seq_label = view
+                .reference_seq_id
+                .as_deref()
+                .unwrap_or(view.seq_id.as_str());
+            let query_span_bp = view.span_end_0based.saturating_sub(view.span_start_0based);
+            let reference_span_bp = view
+                .reference_span_end_0based
+                .saturating_sub(view.reference_span_start_0based);
+            let query_windows = Self::dotplot_window_count(
+                query_span_bp,
+                view.word_size.max(1),
+                view.step_bp.max(1),
+            );
+            let reference_windows = Self::dotplot_window_count(
+                reference_span_bp,
+                view.word_size.max(1),
+                view.step_bp.max(1),
+            );
+            let estimated_pair_evaluations = query_windows.saturating_mul(reference_windows);
+            let estimated_hit_fraction = if estimated_pair_evaluations == 0 {
+                0.0
+            } else {
+                (view.point_count as f64 / estimated_pair_evaluations as f64) * 100.0
+            };
+            self.dotplot_last_compute_status = format!(
+                "Computed dotplot '{}' mode={} query={} [{}..{}] reference={} [{}..{}] points={} windows(query={},ref={}) pair_evals≈{} hit_fraction≈{:.6}%",
+                view.dotplot_id,
+                view.mode.as_str(),
+                view.seq_id,
+                view.span_start_0based.saturating_add(1),
+                view.span_end_0based,
+                reference_seq_label,
+                view.reference_span_start_0based.saturating_add(1),
+                view.reference_span_end_0based,
+                view.point_count,
+                query_windows,
+                reference_windows,
+                estimated_pair_evaluations,
+                estimated_hit_fraction
+            );
+        } else if diagnostics_snapshot.is_none() {
+            diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
+        }
+        if self.dotplot_cached_view.is_none()
+            && let Some(diag) = diagnostics_snapshot
+        {
+            let reference_label = diag
+                .reference_seq_id
+                .as_deref()
+                .unwrap_or(diag.seq_id.as_str());
+            self.dotplot_last_compute_status = format!(
+                "Compute finished but no cached payload was loaded for dotplot_id='{}'. Last request: mode={} query={} [{}..{}] reference={} [{}..{}] pair_evals≈{}",
+                self.dotplot_ui.dotplot_id.trim(),
+                diag.mode.as_str(),
+                diag.seq_id,
+                diag.query_span_start_0based.saturating_add(1),
+                diag.query_span_end_0based,
+                reference_label,
+                diag.reference_span_start_0based.saturating_add(1),
+                diag.reference_span_end_0based,
+                diag.estimated_pair_evaluations
+            );
+        }
         self.save_engine_ops_state();
     }
 
@@ -8941,11 +9221,163 @@ impl MainAreaDna {
         }
     }
 
+    fn render_dotplot_status_ui(&self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label(egui::RichText::new("Dotplot status").strong())
+            .on_hover_text(
+                "Deterministic compute diagnostics for current controls and most recently loaded payload",
+            );
+
+        match self.build_dotplot_compute_diagnostics() {
+            Ok(diag) => {
+                let reference_label = diag
+                    .reference_seq_id
+                    .as_deref()
+                    .unwrap_or(diag.seq_id.as_str());
+                ui.label(
+                    egui::RichText::new(format!(
+                        "request mode={} query={} [{}..{}] reference={} [{}..{}] | word={} step={} mismatches={} tile_bp={}",
+                        diag.mode.as_str(),
+                        diag.seq_id,
+                        diag.query_span_start_0based.saturating_add(1),
+                        diag.query_span_end_0based,
+                        reference_label,
+                        diag.reference_span_start_0based.saturating_add(1),
+                        diag.reference_span_end_0based,
+                        diag.word_size,
+                        diag.step_bp,
+                        diag.max_mismatches,
+                        diag.tile_bp
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "-".to_string())
+                    ))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+                );
+                ui.label(
+                    egui::RichText::new(format!(
+                        "estimated windows query={} reference={} => pair_evals≈{}",
+                        diag.query_windows, diag.reference_windows, diag.estimated_pair_evaluations
+                    ))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+                );
+                if diag.estimated_pair_evaluations == 0 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        "Estimated pair evaluations are zero; reduce word size or increase span.",
+                    );
+                }
+            }
+            Err(message) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 83, 9),
+                    format!("Dotplot request diagnostics unavailable: {message}"),
+                );
+            }
+        }
+
+        if let Some(view) = self.dotplot_cached_view.as_ref() {
+            let reference_seq_label = view
+                .reference_seq_id
+                .as_deref()
+                .unwrap_or(view.seq_id.as_str());
+            let query_span_bp = view.span_end_0based.saturating_sub(view.span_start_0based);
+            let reference_span_bp = view
+                .reference_span_end_0based
+                .saturating_sub(view.reference_span_start_0based);
+            let query_windows = Self::dotplot_window_count(
+                query_span_bp,
+                view.word_size.max(1),
+                view.step_bp.max(1),
+            );
+            let reference_windows = Self::dotplot_window_count(
+                reference_span_bp,
+                view.word_size.max(1),
+                view.step_bp.max(1),
+            );
+            let estimated_pair_evaluations = query_windows.saturating_mul(reference_windows);
+            let estimated_hit_fraction = if estimated_pair_evaluations == 0 {
+                0.0
+            } else {
+                (view.point_count as f64 / estimated_pair_evaluations as f64) * 100.0
+            };
+            ui.label(
+                egui::RichText::new(format!(
+                    "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% | query={} [{}..{}] reference={} [{}..{}]",
+                    view.dotplot_id,
+                    view.generated_at_unix_ms,
+                    view.mode.as_str(),
+                    view.point_count,
+                    estimated_hit_fraction,
+                    view.seq_id,
+                    view.span_start_0based.saturating_add(1),
+                    view.span_end_0based,
+                    reference_seq_label,
+                    view.reference_span_start_0based.saturating_add(1),
+                    view.reference_span_end_0based
+                ))
+                .monospace()
+                .size(self.feature_details_font_size()),
+            );
+            if view.point_count == 0 {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 24, 93),
+                    "Loaded payload has zero seed hits. Try smaller word size, higher mismatches, or a narrower reference span around the expected locus.",
+                );
+            }
+        } else {
+            ui.small("No dotplot payload is currently loaded.");
+        }
+
+        if !self.dotplot_last_compute_status.trim().is_empty() {
+            ui.label(
+                egui::RichText::new(format!("compute log: {}", self.dotplot_last_compute_status))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+        }
+
+        if !self.op_status.trim().is_empty() {
+            if let Some(first_line) = self.op_status.lines().next() {
+                ui.label(
+                    egui::RichText::new(format!("last operation: {first_line}"))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
+            if let Some(warnings_line) = self
+                .op_status
+                .lines()
+                .find(|line| line.starts_with("warnings:") && !line.ends_with(" -"))
+            {
+                ui.label(
+                    egui::RichText::new(warnings_line)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
+            if let Some(messages_line) = self
+                .op_status
+                .lines()
+                .find(|line| line.starts_with("messages:") && !line.ends_with(" -"))
+            {
+                ui.label(
+                    egui::RichText::new(messages_line)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
+        }
+    }
+
     fn render_dotplot_density_ui(
         &mut self,
         ui: &mut egui::Ui,
         view: &DotplotView,
         flex_track: Option<&FlexibilityTrack>,
+        density_threshold: f32,
+        intensity_gain: f32,
     ) {
         let desired_w = ui.available_width().max(740.0);
         let desired_h = if flex_track.is_some() { 470.0 } else { 390.0 };
@@ -9052,15 +9484,27 @@ impl MainAreaDna {
             entry.1 = entry.1.min(point.mismatches);
         }
         let max_cell_count = cells.values().map(|(count, _)| *count).max().unwrap_or(1) as f32;
+        let density_threshold = density_threshold.clamp(0.0, 0.99);
+        let intensity_gain = intensity_gain.clamp(0.1, 16.0);
+        let mut rendered_cells = 0usize;
         for ((x_cell, y_cell), (count, min_mismatch)) in &cells {
-            let density = (*count as f32 / max_cell_count).clamp(0.0, 1.0).sqrt();
+            let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
+            if density_raw < density_threshold {
+                continue;
+            }
+            let normalized = if density_threshold <= 0.0 {
+                density_raw
+            } else {
+                ((density_raw - density_threshold) / (1.0 - density_threshold)).clamp(0.0, 1.0)
+            };
+            let density = (normalized * intensity_gain).clamp(0.0, 1.0).sqrt();
             let mismatch_frac = if view.max_mismatches == 0 {
                 0.0
             } else {
                 (*min_mismatch as f32 / view.max_mismatches as f32).clamp(0.0, 1.0)
             };
             let rgb = Self::mix_rgb([29, 78, 216], [180, 83, 9], mismatch_frac);
-            let alpha = (35.0 + 220.0 * density).round() as u8;
+            let alpha = (90.0 + 165.0 * density).round() as u8;
             let color = egui::Color32::from_rgba_unmultiplied(rgb[0], rgb[1], rgb[2], alpha);
             let x0 = dotplot_rect.left() + (*x_cell as f32 / cols as f32) * dotplot_rect.width();
             let x1 =
@@ -9072,6 +9516,19 @@ impl MainAreaDna {
                 egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1)),
                 0.0,
                 color,
+            );
+            rendered_cells = rendered_cells.saturating_add(1);
+        }
+        if rendered_cells == 0 {
+            painter.text(
+                dotplot_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                format!(
+                    "No visible cells (threshold={:.2}, points={})",
+                    density_threshold, view.point_count
+                ),
+                egui::FontId::monospace(11.0),
+                egui::Color32::from_rgb(100, 116, 139),
             );
         }
 
@@ -9334,10 +9791,400 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(self.primary_map_mode.label()).strong())
+                    ui.label(egui::RichText::new("Dotplot map").strong())
                         .on_hover_text(
-                            "Promoter-oriented dotplot (self or pairwise) and flexibility track view for a bounded local span",
+                            "Compact dotplot launcher for this sequence. Open the dedicated Dotplot window for full controls and rendering.",
                         );
+                    ui.small(
+                        "This in-sequence panel is intentionally compact. Use 'Open Dotplot Window' for full parameter editing and plot inspection.",
+                    );
+
+                    ui.horizontal_wrapped(|ui| {
+                        let open_label = if self.show_dotplot_window {
+                            "Focus Dotplot Window"
+                        } else {
+                            "Open Dotplot Window"
+                        };
+                        if ui
+                            .button(open_label)
+                            .on_hover_text(
+                                "Open the standalone dotplot workspace window for this sequence",
+                            )
+                            .clicked()
+                        {
+                            self.open_dotplot_window();
+                        }
+                        if ui
+                            .button("Compute dotplot")
+                            .on_hover_text(
+                                "Run ComputeDotplot using current compact controls and store to dotplot_id",
+                            )
+                            .clicked()
+                        {
+                            self.compute_primary_dotplot();
+                        }
+                        if ui
+                            .button("Compute flexibility")
+                            .on_hover_text(
+                                "Run ComputeFlexibilityTrack using current compact controls and store to flex_track_id",
+                            )
+                            .clicked()
+                        {
+                            self.compute_primary_flexibility_track();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("mode").on_hover_text(
+                            "Dotplot comparison mode. Pair modes require reference_seq_id.",
+                        );
+                        let mode_before = self.dotplot_ui.mode;
+                        let mode_combo = egui::ComboBox::from_id_salt(format!(
+                            "dotplot_mode_compact_{}",
+                            self.seq_id.as_deref().unwrap_or("<none>")
+                        ))
+                        .selected_text(self.dotplot_ui.mode.as_str())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::SelfForward,
+                                DotplotMode::SelfForward.as_str(),
+                            )
+                            .on_hover_text("Compare sequence against itself in forward orientation");
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::SelfReverseComplement,
+                                DotplotMode::SelfReverseComplement.as_str(),
+                            )
+                            .on_hover_text(
+                                "Compare sequence against its reverse complement (inverted-repeat discovery)",
+                            );
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::PairForward,
+                                DotplotMode::PairForward.as_str(),
+                            )
+                            .on_hover_text("Compare active query sequence against reference sequence");
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::PairReverseComplement,
+                                DotplotMode::PairReverseComplement.as_str(),
+                            )
+                            .on_hover_text(
+                                "Compare active query sequence against reverse-complemented reference orientation",
+                            );
+                        });
+                        mode_combo.response.on_hover_text(
+                            "Choose self vs pair mode and forward vs reverse-complement matching",
+                        );
+                        if self.dotplot_ui.mode != mode_before {
+                            save_state = true;
+                        }
+
+                        ui.label("half_window_bp").on_hover_text(
+                            "Half-width of default bounded compute span around current viewport center",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.half_window_bp)
+                            .on_hover_text(
+                                "Default=500 => compute query span from center-500 to center+500",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("word").on_hover_text(
+                            "k-mer seed length used for candidate matches (larger=faster, lower sensitivity)",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.word_size)
+                            .on_hover_text("Minimum exact seed length in bases")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("step")
+                            .on_hover_text("Sampling step in bp along query/reference spans");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.step_bp)
+                            .on_hover_text(
+                                "Higher step reduces compute cost but may skip small local structures",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("mismatches")
+                            .on_hover_text("Allowed mismatches per seed comparison");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.max_mismatches)
+                            .on_hover_text(
+                                "0=enforce exact seeds; higher values increase tolerance",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                    });
+
+                    if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("reference_seq_id").on_hover_text(
+                                "Reference sequence used on y-axis in pair modes",
+                            );
+                            if ui
+                                .text_edit_singleline(&mut self.dotplot_ui.reference_seq_id)
+                                .on_hover_text(
+                                    "Sequence ID from project state; required in pair modes",
+                                )
+                                .changed()
+                            {
+                                save_state = true;
+                            }
+                            if !reference_seq_ids.is_empty() {
+                                let selected_reference =
+                                    if self.dotplot_ui.reference_seq_id.trim().is_empty() {
+                                        "<select>".to_string()
+                                    } else {
+                                        self.dotplot_ui.reference_seq_id.clone()
+                                    };
+                                let reference_combo = egui::ComboBox::from_id_salt(format!(
+                                    "dotplot_reference_select_compact_{}",
+                                    self.seq_id.as_deref().unwrap_or("<none>")
+                                ))
+                                .selected_text(selected_reference)
+                                .show_ui(ui, |ui| {
+                                    for id in &reference_seq_ids {
+                                        if ui
+                                            .selectable_label(
+                                                self.dotplot_ui.reference_seq_id == *id,
+                                                id,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.dotplot_ui.reference_seq_id = id.clone();
+                                            save_state = true;
+                                        }
+                                    }
+                                });
+                                reference_combo.response.on_hover_text(
+                                    "Choose reference sequence from currently loaded project sequences",
+                                );
+                            }
+                        });
+                    }
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("dotplot_id").on_hover_text(
+                            "Storage key for dotplot payload in project metadata",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.dotplot_id)
+                            .on_hover_text(
+                                "Set explicit ID to overwrite/reload deterministic dotplot payload",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        if !dotplot_ids.is_empty() {
+                            let selected = if self.dotplot_ui.dotplot_id.trim().is_empty() {
+                                "<select>".to_string()
+                            } else {
+                                self.dotplot_ui.dotplot_id.clone()
+                            };
+                            let dotplot_combo = egui::ComboBox::from_id_salt(format!(
+                                "dotplot_select_compact_{}",
+                                self.seq_id.as_deref().unwrap_or("<none>")
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for id in &dotplot_ids {
+                                    if ui
+                                        .selectable_label(self.dotplot_ui.dotplot_id == *id, id)
+                                        .clicked()
+                                    {
+                                        self.dotplot_ui.dotplot_id = id.clone();
+                                        self.invalidate_dotplot_cache();
+                                        save_state = true;
+                                    }
+                                }
+                            });
+                            dotplot_combo.response.on_hover_text(
+                                "Pick from stored dotplot payload IDs for this query sequence",
+                            );
+                        }
+                        if ui
+                            .small_button("Load")
+                            .on_hover_text("Load selected dotplot from metadata store")
+                            .clicked()
+                        {
+                            self.invalidate_dotplot_cache();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.checkbox(
+                            &mut self.dotplot_ui.show_flexibility_track,
+                            "Show flexibility track",
+                        )
+                        .on_hover_text("Render selected flexibility track below dotplot");
+                        ui.label("flex_track_id").on_hover_text(
+                            "Storage key for flexibility payload in project metadata",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.flex_track_id)
+                            .on_hover_text(
+                                "Set explicit ID for flexibility track load/compute target",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        if !track_ids.is_empty() {
+                            let selected = if self.dotplot_ui.flex_track_id.trim().is_empty() {
+                                "<select>".to_string()
+                            } else {
+                                self.dotplot_ui.flex_track_id.clone()
+                            };
+                            let flex_combo = egui::ComboBox::from_id_salt(format!(
+                                "flex_select_compact_{}",
+                                self.seq_id.as_deref().unwrap_or("<none>")
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for id in &track_ids {
+                                    if ui
+                                        .selectable_label(self.dotplot_ui.flex_track_id == *id, id)
+                                        .clicked()
+                                    {
+                                        self.dotplot_ui.flex_track_id = id.clone();
+                                        self.invalidate_dotplot_cache();
+                                        save_state = true;
+                                    }
+                                }
+                            });
+                            flex_combo.response.on_hover_text(
+                                "Pick from stored flexibility-track IDs for this query sequence",
+                            );
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("display threshold").on_hover_text(
+                            "Dotplot cell-density sensitivity threshold (higher hides faint/sparse cells)",
+                        );
+                        if ui
+                            .add(
+                                egui::Slider::new(
+                                    &mut self.dotplot_ui.display_density_threshold,
+                                    0.0..=0.95,
+                                )
+                                .show_value(true)
+                                .trailing_fill(true),
+                            )
+                            .on_hover_text(
+                                "Only render cells with normalized density >= threshold",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("intensity gain").on_hover_text(
+                            "Amplify visible density intensity (Dotter-style contrast control)",
+                        );
+                        if ui
+                            .add(
+                                egui::Slider::new(
+                                    &mut self.dotplot_ui.display_intensity_gain,
+                                    0.25..=8.0,
+                                )
+                                .logarithmic(true)
+                                .show_value(true)
+                                .trailing_fill(true),
+                            )
+                            .on_hover_text(
+                                "Multiplier applied to normalized cell density before alpha encoding",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                    });
+
+                    self.ensure_dotplot_cache_current();
+                    match self.dotplot_cached_view.as_ref() {
+                        Some(view) => {
+                            let reference_seq_label =
+                                view.reference_seq_id.as_deref().unwrap_or(view.seq_id.as_str());
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "selected dotplot '{}' query={} [{}..{}] reference={} [{}..{}] | mode={} | points={}",
+                                    view.dotplot_id,
+                                    view.seq_id,
+                                    view.span_start_0based.saturating_add(1),
+                                    view.span_end_0based,
+                                    reference_seq_label,
+                                    view.reference_span_start_0based.saturating_add(1),
+                                    view.reference_span_end_0based,
+                                    view.mode.as_str(),
+                                    view.point_count
+                                ))
+                                .monospace()
+                                .size(self.feature_details_font_size()),
+                            )
+                            .on_hover_text(
+                                "Current selected payload summary. Open Dotplot Window for full visualization and crosshair inspection.",
+                            );
+                        }
+                        None => {
+                            ui.small(
+                                "No selected dotplot payload yet. Compute one here or open Dotplot Window for full controls.",
+                            );
+                        }
+                    }
+                    self.render_dotplot_status_ui(ui);
+                });
+            });
+
+        if save_state {
+            self.save_engine_ops_state();
+        }
+    }
+
+    fn render_dotplot_workspace_ui(&mut self, ui: &mut egui::Ui) {
+        let panel_width = ui.available_width().max(600.0);
+        self.last_linear_map_width_px = panel_width;
+        self.ensure_dotplot_cache_current();
+        let mut save_state = false;
+        let dotplot_ids = self.dotplot_ids_for_active_sequence();
+        let track_ids = self.flexibility_track_ids_for_active_sequence();
+        let reference_seq_ids = self.dotplot_reference_sequence_ids();
+        if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode)
+            && self.dotplot_ui.reference_seq_id.trim().is_empty()
+            && !reference_seq_ids.is_empty()
+        {
+            let current_id = self.seq_id.as_deref();
+            let default_reference = reference_seq_ids
+                .iter()
+                .find(|id| Some(id.as_str()) != current_id)
+                .cloned()
+                .or_else(|| reference_seq_ids.first().cloned());
+            if let Some(reference_id) = default_reference {
+                self.dotplot_ui.reference_seq_id = reference_id;
+                save_state = true;
+            }
+        }
+
+        egui::Frame::NONE
+            .fill(egui::Color32::from_gray(249))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .show(ui, |ui| {
+                ui.set_width(panel_width);
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("Dotplot workspace").strong()).on_hover_text(
+                        "Promoter-oriented dotplot (self or pairwise) and flexibility track view for a bounded local span",
+                    );
                     ui.label(
                         egui::RichText::new(
                             "Default compute span is viewport-centered ±half_window_bp (500 bp each side by default).",
@@ -9346,8 +10193,11 @@ impl MainAreaDna {
                     );
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Mode");
-                        egui::ComboBox::from_id_salt(format!(
+                        ui.label("Mode").on_hover_text(
+                            "Dotplot comparison mode. Pair modes require a reference sequence.",
+                        );
+                        let mode_before = self.dotplot_ui.mode;
+                        let mode_combo = egui::ComboBox::from_id_salt(format!(
                             "dotplot_mode_{}",
                             self.seq_id.as_deref().unwrap_or("<none>")
                         ))
@@ -9357,36 +10207,87 @@ impl MainAreaDna {
                                 &mut self.dotplot_ui.mode,
                                 DotplotMode::SelfForward,
                                 DotplotMode::SelfForward.as_str(),
-                            );
+                            )
+                            .on_hover_text("Self-vs-self comparison in forward orientation");
                             ui.selectable_value(
                                 &mut self.dotplot_ui.mode,
                                 DotplotMode::SelfReverseComplement,
                                 DotplotMode::SelfReverseComplement.as_str(),
-                            );
+                            )
+                            .on_hover_text("Self-vs-reverse-complement (inverted repeat detection)");
                             ui.selectable_value(
                                 &mut self.dotplot_ui.mode,
                                 DotplotMode::PairForward,
                                 DotplotMode::PairForward.as_str(),
-                            );
+                            )
+                            .on_hover_text("Query sequence versus reference sequence");
                             ui.selectable_value(
                                 &mut self.dotplot_ui.mode,
                                 DotplotMode::PairReverseComplement,
                                 DotplotMode::PairReverseComplement.as_str(),
+                            )
+                            .on_hover_text(
+                                "Query sequence versus reverse-complemented reference orientation",
                             );
                         });
-                        ui.label("half_window_bp");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.half_window_bp);
-                        ui.label("word");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.word_size);
-                        ui.label("step");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.step_bp);
-                        ui.label("mismatches");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.max_mismatches);
-                        ui.label("tile_bp");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.tile_bp);
+                        mode_combo.response.on_hover_text(
+                            "Select self/pair and forward/reverse-complement comparison behavior",
+                        );
+                        if self.dotplot_ui.mode != mode_before {
+                            save_state = true;
+                        }
+                        ui.label("half_window_bp").on_hover_text(
+                            "Half-width of default query span around current viewport center",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.half_window_bp)
+                            .on_hover_text(
+                                "Default 500 computes about 1001 bp around current linear-map center",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("word")
+                            .on_hover_text("Seed/k-mer length used for candidate matching");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.word_size)
+                            .on_hover_text("Higher values are faster but less sensitive")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("step")
+                            .on_hover_text("Sampling step (bp) along query/reference spans");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.step_bp)
+                            .on_hover_text("Higher values reduce work but can miss local structures")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("mismatches")
+                            .on_hover_text("Allowed mismatches per seed comparison");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.max_mismatches)
+                            .on_hover_text("0 = exact seed matches only")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("tile_bp").on_hover_text(
+                            "Optional rendering/export hint for tile width in bp (analysis metadata)",
+                        );
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.tile_bp)
+                            .on_hover_text("Leave empty for automatic/default behavior")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
                         if ui
                             .button("Compute dotplot")
-                            .on_hover_text("Run ComputeDotplot on bounded local span via engine")
+                            .on_hover_text("Run ComputeDotplot with current parameters")
                             .clicked()
                         {
                             self.compute_primary_dotplot();
@@ -9394,15 +10295,24 @@ impl MainAreaDna {
                     });
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("dotplot_id");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.dotplot_id);
+                        ui.label("dotplot_id")
+                            .on_hover_text("Storage key for dotplot payload in metadata");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.dotplot_id)
+                            .on_hover_text(
+                                "Use stable IDs to overwrite/load deterministic dotplot payloads",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
                         if !dotplot_ids.is_empty() {
                             let selected = if self.dotplot_ui.dotplot_id.trim().is_empty() {
                                 "<select>".to_string()
                             } else {
                                 self.dotplot_ui.dotplot_id.clone()
                             };
-                            egui::ComboBox::from_id_salt(format!(
+                            let dotplot_combo = egui::ComboBox::from_id_salt(format!(
                                 "dotplot_select_{}",
                                 self.seq_id.as_deref().unwrap_or("<none>")
                             ))
@@ -9419,6 +10329,9 @@ impl MainAreaDna {
                                     }
                                 }
                             });
+                            dotplot_combo.response.on_hover_text(
+                                "Pick a stored dotplot payload for this query sequence",
+                            );
                         }
                         if ui
                             .small_button("Load")
@@ -9430,8 +10343,18 @@ impl MainAreaDna {
                     });
                     if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label("reference_seq_id");
-                            ui.text_edit_singleline(&mut self.dotplot_ui.reference_seq_id);
+                            ui.label("reference_seq_id").on_hover_text(
+                                "Reference sequence ID used for y-axis in pair modes",
+                            );
+                            if ui
+                                .text_edit_singleline(&mut self.dotplot_ui.reference_seq_id)
+                                .on_hover_text(
+                                    "Required in pair modes; pick from currently loaded sequences",
+                                )
+                                .changed()
+                            {
+                                save_state = true;
+                            }
                             if !reference_seq_ids.is_empty() {
                                 let selected_reference =
                                     if self.dotplot_ui.reference_seq_id.trim().is_empty() {
@@ -9439,7 +10362,7 @@ impl MainAreaDna {
                                     } else {
                                         self.dotplot_ui.reference_seq_id.clone()
                                     };
-                                egui::ComboBox::from_id_salt(format!(
+                                let reference_combo = egui::ComboBox::from_id_salt(format!(
                                     "dotplot_reference_select_{}",
                                     self.seq_id.as_deref().unwrap_or("<none>")
                                 ))
@@ -9458,24 +10381,53 @@ impl MainAreaDna {
                                         }
                                     }
                                 });
+                                reference_combo.response.on_hover_text(
+                                    "Choose reference sequence from project sequence IDs",
+                                );
                             }
-                            ui.label("ref_start");
-                            ui.text_edit_singleline(
-                                &mut self.dotplot_ui.reference_span_start_0based,
-                            );
-                            ui.label("ref_end");
-                            ui.text_edit_singleline(&mut self.dotplot_ui.reference_span_end_0based);
+                            ui.label("ref_start")
+                                .on_hover_text("Optional 0-based inclusive reference span start");
+                            if ui
+                                .text_edit_singleline(
+                                    &mut self.dotplot_ui.reference_span_start_0based,
+                                )
+                                .on_hover_text(
+                                    "Leave empty to use reference span start = 0 (full reference)",
+                                )
+                                .changed()
+                            {
+                                save_state = true;
+                            }
+                            ui.label("ref_end")
+                                .on_hover_text("Optional 0-based exclusive reference span end");
+                            if ui
+                                .text_edit_singleline(&mut self.dotplot_ui.reference_span_end_0based)
+                                .on_hover_text(
+                                    "Leave empty to use full reference length as end",
+                                )
+                                .changed()
+                            {
+                                save_state = true;
+                            }
                             ui.small("Leave ref_start/ref_end empty to use full reference span.");
                         });
                     }
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.checkbox(
-                            &mut self.dotplot_ui.show_flexibility_track,
-                            "Show flexibility track",
-                        );
-                        ui.label("model");
-                        egui::ComboBox::from_id_salt(format!(
+                        if ui
+                            .checkbox(
+                                &mut self.dotplot_ui.show_flexibility_track,
+                                "Show flexibility track",
+                            )
+                            .on_hover_text("Render selected flexibility track below dotplot")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("model")
+                            .on_hover_text("Flexibility model used for score track computation");
+                        let flex_model_before = self.dotplot_ui.flex_model;
+                        let flex_model_combo = egui::ComboBox::from_id_salt(format!(
                             "flex_model_{}",
                             self.seq_id.as_deref().unwrap_or("<none>")
                         ))
@@ -9492,10 +10444,30 @@ impl MainAreaDna {
                                 FlexibilityModel::AtSkew.as_str(),
                             );
                         });
-                        ui.label("bin_bp");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_bin_bp);
-                        ui.label("smoothing_bp");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_smoothing_bp);
+                        flex_model_combo
+                            .response
+                            .on_hover_text("Select flexibility scoring model");
+                        if self.dotplot_ui.flex_model != flex_model_before {
+                            save_state = true;
+                        }
+                        ui.label("bin_bp")
+                            .on_hover_text("Bin width for flexibility scoring aggregation");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.flex_bin_bp)
+                            .on_hover_text("Smaller bins give finer but noisier track detail")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("smoothing_bp")
+                            .on_hover_text("Optional smoothing window for flexibility track");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.flex_smoothing_bp)
+                            .on_hover_text("Leave empty for no smoothing")
+                            .changed()
+                        {
+                            save_state = true;
+                        }
                         if ui
                             .button("Compute flexibility")
                             .on_hover_text(
@@ -9508,15 +10480,24 @@ impl MainAreaDna {
                     });
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("flex_track_id");
-                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_track_id);
+                        ui.label("flex_track_id")
+                            .on_hover_text("Storage key for flexibility track payload");
+                        if ui
+                            .text_edit_singleline(&mut self.dotplot_ui.flex_track_id)
+                            .on_hover_text(
+                                "Use stable IDs to overwrite/load deterministic flexibility tracks",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
                         if !track_ids.is_empty() {
                             let selected = if self.dotplot_ui.flex_track_id.trim().is_empty() {
                                 "<select>".to_string()
                             } else {
                                 self.dotplot_ui.flex_track_id.clone()
                             };
-                            egui::ComboBox::from_id_salt(format!(
+                            let flex_combo = egui::ComboBox::from_id_salt(format!(
                                 "flex_select_{}",
                                 self.seq_id.as_deref().unwrap_or("<none>")
                             ))
@@ -9533,6 +10514,9 @@ impl MainAreaDna {
                                     }
                                 }
                             });
+                            flex_combo.response.on_hover_text(
+                                "Pick a stored flexibility payload for this query sequence",
+                            );
                         }
                         if ui
                             .small_button("Load")
@@ -9540,6 +10524,48 @@ impl MainAreaDna {
                             .clicked()
                         {
                             self.invalidate_dotplot_cache();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("display threshold").on_hover_text(
+                            "Dotplot cell-density sensitivity threshold (hide sparse/faint cells below this)",
+                        );
+                        if ui
+                            .add(
+                                egui::Slider::new(
+                                    &mut self.dotplot_ui.display_density_threshold,
+                                    0.0..=0.95,
+                                )
+                                .show_value(true)
+                                .trailing_fill(true),
+                            )
+                            .on_hover_text(
+                                "Only cells with normalized density >= threshold are rendered",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
+                        }
+                        ui.label("intensity gain").on_hover_text(
+                            "Amplify visible dot intensity after thresholding (Dotter-style contrast)",
+                        );
+                        if ui
+                            .add(
+                                egui::Slider::new(
+                                    &mut self.dotplot_ui.display_intensity_gain,
+                                    0.25..=8.0,
+                                )
+                                .logarithmic(true)
+                                .show_value(true)
+                                .trailing_fill(true),
+                            )
+                            .on_hover_text(
+                                "Gain multiplier applied to normalized density before alpha mapping",
+                            )
+                            .changed()
+                        {
+                            save_state = true;
                         }
                     });
 
@@ -9639,7 +10665,13 @@ impl MainAreaDna {
                             } else {
                                 None
                             };
-                            self.render_dotplot_density_ui(ui, view, flex_track);
+                            self.render_dotplot_density_ui(
+                                ui,
+                                view,
+                                flex_track,
+                                self.dotplot_ui.display_density_threshold,
+                                self.dotplot_ui.display_intensity_gain,
+                            );
                         }
                         None => {
                             ui.add_space(6.0);
@@ -9648,6 +10680,7 @@ impl MainAreaDna {
                             );
                         }
                     }
+                    self.render_dotplot_status_ui(ui);
                 });
             });
         if save_state {
@@ -10379,8 +11412,30 @@ impl MainAreaDna {
         format!("Isoform Expert - {panel_id} ({seq_id})")
     }
 
+    fn dotplot_viewport_id(seq_id: &str) -> egui::ViewportId {
+        egui::ViewportId::from_hash_of(("dotplot_viewport", seq_id))
+    }
+
+    fn dotplot_window_title(seq_id: &str) -> String {
+        format!("Dotplot - {seq_id}")
+    }
+
+    fn open_dotplot_window(&mut self) {
+        self.ensure_dotplot_cache_current();
+        self.show_dotplot_window = true;
+    }
+
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         let mut entries = Vec::new();
+        if self.show_dotplot_window {
+            if let Some(seq_id) = self.seq_id.as_deref() {
+                entries.push((
+                    Self::dotplot_viewport_id(seq_id),
+                    Self::dotplot_window_title(seq_id),
+                    format!("Dotplot workspace for '{seq_id}'"),
+                ));
+            }
+        }
         if self.show_splicing_expert_window {
             if let Some(view) = self.splicing_expert_window_view.as_ref() {
                 entries.push((
@@ -10410,6 +11465,70 @@ impl MainAreaDna {
             }
         }
         entries
+    }
+
+    fn render_dotplot_window(&mut self, ctx: &egui::Context) {
+        if !self.show_dotplot_window {
+            return;
+        }
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.show_dotplot_window = false;
+            return;
+        };
+        let title = Self::dotplot_window_title(&seq_id);
+        let viewport_id = Self::dotplot_viewport_id(&seq_id);
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1240.0, 820.0])
+            .with_min_inner_size([900.0, 560.0]);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_dotplot_window;
+                egui::Window::new(title.clone())
+                    .id(egui::Id::new(format!("dotplot_window_embedded_{}", seq_id)))
+                    .open(&mut open)
+                    .resizable(true)
+                    .default_size(Vec2::new(1240.0, 820.0))
+                    .show(ctx, |ui| {
+                        let backdrop_settings = current_window_backdrop_settings();
+                        paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                        egui::ScrollArea::both()
+                            .id_salt(format!("dotplot_window_scroll_embedded_{}", seq_id))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                ui.set_min_size(Vec2::new(980.0, 680.0));
+                                self.render_dotplot_workspace_ui(ui);
+                            });
+                    });
+                self.show_dotplot_window = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!("dotplot_window_scroll_viewport_{}", seq_id))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(Vec2::new(980.0, 680.0));
+                        self.render_dotplot_workspace_ui(ui);
+                    });
+            });
+
+            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
+            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+                self.show_dotplot_window = false;
+            }
+        });
     }
 
     fn render_splicing_expert_window(&mut self, ctx: &egui::Context) {
@@ -20897,6 +22016,7 @@ impl MainAreaDna {
                 }
             }
         });
+        self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
         self.render_isoform_expert_window(ctx);
     }

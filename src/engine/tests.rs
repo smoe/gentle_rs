@@ -3002,7 +3002,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 }
 
 #[test]
-fn test_import_uniprot_entry_sequence_creates_project_sequence() {
+fn test_import_uniprot_entry_sequence_is_currently_unsupported() {
     let dir = tempfile::tempdir().unwrap();
     let swiss_path = dir.path().join("toy_uniprot_use.txt");
     let swiss_text = r#"ID   TOY2_HUMAN              Reviewed;         12 AA.
@@ -3026,29 +3026,21 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         })
         .expect("import uniprot swiss");
 
-    let import_sequence = engine
+    let import_sequence_err = engine
         .apply(Operation::ImportUniprotEntrySequence {
             entry_id: "TOY_USE".to_string(),
             output_id: None,
         })
-        .expect("import uniprot entry sequence");
-    assert_eq!(import_sequence.created_seq_ids, vec!["TOY_USE".to_string()]);
-
-    let dna = engine
-        .state()
-        .sequences
-        .get("TOY_USE")
-        .expect("sequence imported from UniProt entry");
-    assert_eq!(dna.get_forward_string(), "MEEPQSDPSVEP".to_string());
+        .expect_err("uniprot sequence import should be disabled");
+    assert!(matches!(import_sequence_err.code, ErrorCode::Unsupported));
     assert!(
-        !dna.features().is_empty(),
-        "expected UniProt features to map into sequence features"
+        import_sequence_err
+            .message
+            .contains("ImportUniprotEntrySequence is currently disabled"),
+        "unexpected error message: {}",
+        import_sequence_err.message
     );
-    assert!(
-        dna.features()[0].location.to_gb_format().contains("2..6"),
-        "unexpected feature location: {}",
-        dna.features()[0].location.to_gb_format()
-    );
+    assert!(!engine.state().sequences.contains_key("TOY_USE"));
 }
 
 #[test]
@@ -10679,7 +10671,8 @@ fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
         *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
     }
     let seed_template_positions = GentleEngine::build_seed_template_position_index(&templates);
-    let seed_support_exons = GentleEngine::collect_seed_support_exon_summaries(&splicing.transcripts);
+    let seed_support_exons =
+        GentleEngine::collect_seed_support_exon_summaries(&splicing.transcripts);
     let (seed_to_exons, seed_to_transitions, transcript_models, _transition_rows) =
         GentleEngine::build_seed_support_indexes(
             &seed_support_exons,

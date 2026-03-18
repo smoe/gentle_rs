@@ -636,6 +636,67 @@
         "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
         "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
       ]
+    },
+    {
+      "id": "tp53_multi_gene_sparse_mapping_online",
+      "order": 12,
+      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "example_id": "tp53_multi_gene_sparse_mapping_online",
+      "tier": "online",
+      "summary": "Prepare GRCh38, extract TP53, then map RNA reads with origin_mode=multi_gene_sparse against TP53-family targets.",
+      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. After extracting the TP53 locus from GRCh38, you run `InterpretRnaReads` with `multi_gene_sparse` so the index can include additional target genes (for example TP53/TP63/TP73) in one run. The goal is to keep genome anchoring and multi-gene interpretation in the same reproducible workflow contract.",
+      "use_cases": [
+        "You want one TP53-based run that can contrast seed support across TP53-family targets.",
+        "You need a reproducible baseline for comparing single-gene vs multi-gene sparse indexing behavior.",
+        "You want GUI and CLI routes to produce the same multi-gene request payload."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.",
+        "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
+        "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
+      ],
+      "learning_objectives": [
+        "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
+        "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
+        "Interpret deterministic report provenance for `origin_mode`, target-gene set, and planned ROI capture flag."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "InterpretRnaReads.seed_feature_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.",
+          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id."
+        },
+        {
+          "parameter": "InterpretRnaReads.origin_mode / target_gene_ids",
+          "where_used": "operation 3",
+          "why_it_matters": "Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).",
+          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question."
+        },
+        {
+          "parameter": "InterpretRnaReads.roi_seed_capture_enabled",
+          "where_used": "operation 3",
+          "why_it_matters": "Tracks request intent for future annotation-independent ROI capture layer.",
+          "how_to_derive": "Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+        "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
+        "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history.",
+        "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
+        "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
+      ]
     }
   ]
 }

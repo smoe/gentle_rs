@@ -18,12 +18,20 @@ regions.
 
 ## GUI Workflow
 
+Initial state:
+
+![Main window start](../screenshots/tutorial_cdna_genomic_01_main_start.png)
+*Figure 1. Main window before starting the cDNA-vs-genomic tutorial.*
+
 ### Step 1: Fetch TP73 cDNA (query)
 
 1. Open `File -> Fetch GenBank Accession...`
 2. Accession: `NM_001126241.3`
 3. `as_id`: `tp73_cdna`
 4. Click `Fetch and Import`
+
+![Fetch cDNA dialog](../screenshots/tutorial_cdna_genomic_02_fetch_cdna_dialog.png)
+*Figure 2. GenBank fetch dialog for the TP73 cDNA accession.*
 
 ### Step 2: Prepare and retrieve TP73 genomic context (reference)
 
@@ -36,11 +44,23 @@ regions.
 7. Output ID: `tp73_genomic`
 8. Click `Retrieve`
 
+![Prepare/Retrieve genome dialog](../screenshots/tutorial_cdna_genomic_03_prepare_genome_dialog.png)
+*Figure 3. Reference-genome preparation/retrieval dialog used to extract the TP73 genomic locus.*
+
+![Retrieve TP73 genomic dialog](../screenshots/tutorial_cdna_genomic_04_retrieve_tp73_genomic_dialog.png)
+*Figure 4. Retrieve Genomic Sequence dialog with TP73 query and output ID prefilled.*
+
+![Sequences loaded in lineage](../screenshots/tutorial_cdna_genomic_05_sequences_loaded.png)
+*Figure 5. Main lineage view after both `tp73_cdna` and `tp73_genomic` are loaded.*
+
 ### Step 3: Open query sequence window (cDNA view) and switch to Dotplot map
 
 1. Open sequence window for `tp73_cdna`
 2. Verify the cDNA is visible in the standard sequence/DNA map view
 3. Switch primary map mode to `Dotplot map`
+
+![cDNA sequence window](../screenshots/tutorial_cdna_genomic_06_cdna_sequence_window.png)
+*Figure 6. `tp73_cdna` sequence window before switching to dotplot mode.*
 
 ### Step 4: Configure pairwise dotplot
 

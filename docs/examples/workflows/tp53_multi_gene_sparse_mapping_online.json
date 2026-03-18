@@ -1,0 +1,83 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp53_multi_gene_sparse_mapping_online",
+  "title": "TP53 locus mapping with multi-gene sparse RNA index (online template)",
+  "summary": "Prepare GRCh38, extract TP53, and run InterpretRnaReads with origin_mode=multi_gene_sparse using TP53-family target genes.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json",
+    "test_files/SRR32957124_10000.fasta"
+  ],
+  "tags": [
+    "genome",
+    "rna_reads",
+    "multi_gene_sparse",
+    "mapping",
+    "online",
+    "tp53",
+    "template"
+  ],
+  "workflow": {
+    "run_id": "example_tp53_multi_gene_sparse_mapping_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP53",
+          "occurrence": 1,
+          "output_id": "grch38_tp53",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "InterpretRnaReads": {
+          "seq_id": "grch38_tp53",
+          "seed_feature_id": 0,
+          "profile": "nanopore_cdna_v1",
+          "input_path": "test_files/SRR32957124_10000.fasta",
+          "input_format": "fasta",
+          "scope": "all_overlapping_both_strands",
+          "origin_mode": "multi_gene_sparse",
+          "target_gene_ids": [
+            "TP53",
+            "TP63",
+            "TP73"
+          ],
+          "roi_seed_capture_enabled": false,
+          "seed_filter": {
+            "kmer_len": 10,
+            "short_full_hash_max_bp": 420,
+            "long_window_bp": 140,
+            "long_window_count": 3,
+            "min_seed_hit_fraction": 0.3,
+            "min_weighted_seed_hit_fraction": 0.05,
+            "min_unique_matched_kmers": 12,
+            "max_median_transcript_gap": 4.0,
+            "min_chain_consistency_fraction": 0.4,
+            "min_confirmed_exon_transitions": 1,
+            "min_transition_support_fraction": 0.05,
+            "cdna_poly_t_flip_enabled": true,
+            "poly_t_prefix_min_bp": 18
+          },
+          "align_config": {
+            "band_width_bp": 24,
+            "min_identity_fraction": 0.6,
+            "max_secondary_mappings": 0
+          },
+          "report_id": "tp53_family_sparse_template",
+          "report_mode": "seed_passed_only",
+          "checkpoint_every_reads": 10000,
+          "resume_from_checkpoint": false
+        }
+      }
+    ]
+  }
+}

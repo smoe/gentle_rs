@@ -841,6 +841,7 @@ impl GentleEngine {
                 sequence_length: entry.sequence_length,
                 feature_count: entry.features.len(),
                 ensembl_xref_count: entry.ensembl_xrefs.len(),
+                nucleotide_xref_count: entry.nucleotide_xrefs.len(),
                 imported_at_unix_ms: entry.imported_at_unix_ms,
                 source: entry.source.clone(),
             })
@@ -1022,106 +1023,18 @@ impl GentleEngine {
 
     pub(super) fn import_uniprot_entry_sequence(
         &mut self,
-        result: &mut OpResult,
+        _result: &mut OpResult,
         entry_id: &str,
-        output_id: Option<&str>,
+        _output_id: Option<&str>,
     ) -> Result<SeqId, EngineError> {
-        let entry = self.get_uniprot_entry(entry_id)?;
-        let sequence = entry.sequence.trim().to_ascii_uppercase();
-        if sequence.is_empty() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!("UniProt entry '{}' has an empty sequence", entry.entry_id),
-            });
-        }
-        let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
-            code: ErrorCode::Internal,
+        let _entry = self.get_uniprot_entry(entry_id)?;
+        Err(EngineError {
+            code: ErrorCode::Unsupported,
             message: format!(
-                "Could not construct sequence from UniProt entry '{}': {e}",
-                entry.entry_id
+                "ImportUniprotEntrySequence is currently disabled: UniProt protein sequences are metadata/projection-only in this release (entry_id='{}').",
+                entry_id
             ),
-        })?;
-
-        for feature in &entry.features {
-            let Some(start_aa) = feature.interval.start_aa else {
-                continue;
-            };
-            let Some(end_aa) = feature.interval.end_aa else {
-                continue;
-            };
-            if start_aa == 0 || end_aa == 0 {
-                continue;
-            }
-            let start = start_aa.min(end_aa);
-            if start > entry.sequence_length {
-                continue;
-            }
-            let end = end_aa.max(start_aa).min(entry.sequence_length.max(1));
-            let kind = feature.key.trim();
-            let feature_kind = if kind.is_empty() {
-                "misc_feature"
-            } else {
-                kind
-            };
-            let start_zero_based = start.saturating_sub(1);
-            let end_one_based = end;
-            let mut qualifiers: Vec<(String, Option<String>)> = vec![
-                ("source".to_string(), Some("UniProt".to_string())),
-                ("uniprot_entry_id".to_string(), Some(entry.entry_id.clone())),
-                (
-                    "uniprot_accession".to_string(),
-                    Some(entry.accession.clone()),
-                ),
-                (
-                    "uniprot_raw_location".to_string(),
-                    Some(feature.interval.raw_location.clone()),
-                ),
-            ];
-            if let Some(note) = feature
-                .note
-                .as_deref()
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-            {
-                qualifiers.push(("note".to_string(), Some(note.to_string())));
-            }
-            for (key, value) in &feature.qualifiers {
-                if key.trim().is_empty() {
-                    continue;
-                }
-                qualifiers.push((key.trim().to_string(), Some(value.clone())));
-            }
-            dna.features_mut().push(gb_io::seq::Feature {
-                kind: gb_io::seq::FeatureKind::from(feature_kind),
-                location: gb_io::seq::Location::simple_range(
-                    start_zero_based as i64,
-                    end_one_based as i64,
-                ),
-                qualifiers: qualifiers
-                    .into_iter()
-                    .map(|(key, value)| (key.into(), value))
-                    .collect(),
-            });
-        }
-
-        Self::prepare_sequence(&mut dna);
-        let requested_id = output_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(&entry.entry_id);
-        let seq_id = self.unique_seq_id(requested_id);
-        self.state.sequences.insert(seq_id.clone(), dna);
-        self.add_lineage_node(
-            &seq_id,
-            SequenceOrigin::ImportedUnknown,
-            Some(&result.op_id),
-        );
-        result.created_seq_ids.push(seq_id.clone());
-        result.messages.push(format!(
-            "Imported UniProt sequence '{}' into sequence '{}'",
-            entry.entry_id, seq_id
-        ));
-        Ok(seq_id)
+        })
     }
 
     pub(super) fn aa_interval_to_genomic_segments(
