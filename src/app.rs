@@ -704,6 +704,7 @@ pub struct GENtleApp {
     retry_snapshot_kind_filter: RetrySnapshotKindFilter,
     retry_snapshot_text_filter: String,
     retry_snapshot_pending_cleanup_action: Option<RetrySnapshotPendingCleanupAction>,
+    retry_snapshot_cleanup_confirm_text: String,
     genome_track_preflight_track_subscription: bool,
     agent_catalog_path: String,
     agent_catalog_loaded_path: String,
@@ -888,6 +889,13 @@ impl RetrySnapshotPendingCleanupAction {
         match self {
             Self::DeleteFiltered => "Delete filtered",
             Self::ArchiveAndDeleteFiltered => "Archive & delete filtered",
+        }
+    }
+
+    fn confirm_phrase(self, target_count: usize) -> String {
+        match self {
+            Self::DeleteFiltered => format!("delete {target_count}"),
+            Self::ArchiveAndDeleteFiltered => format!("archive-delete {target_count}"),
         }
     }
 }
@@ -1752,6 +1760,7 @@ impl Default for GENtleApp {
             retry_snapshot_kind_filter: RetrySnapshotKindFilter::All,
             retry_snapshot_text_filter: String::new(),
             retry_snapshot_pending_cleanup_action: None,
+            retry_snapshot_cleanup_confirm_text: String::new(),
             genome_track_preflight_track_subscription: true,
             agent_catalog_path: DEFAULT_AGENT_SYSTEM_CATALOG_PATH.to_string(),
             agent_catalog_loaded_path: String::new(),
@@ -3409,6 +3418,15 @@ Error: `{err}`"
             after,
             before
         )
+    }
+
+    fn retry_snapshot_cleanup_confirm_input_matches(
+        action: RetrySnapshotPendingCleanupAction,
+        target_count: usize,
+        input: &str,
+    ) -> bool {
+        let expected = action.confirm_phrase(target_count);
+        input.trim().eq_ignore_ascii_case(expected.as_str())
     }
 
     fn build_retry_snapshot_archive_payload(
@@ -22067,6 +22085,7 @@ Error: `{err}`"
                         let removed =
                             self.prune_retry_snapshots_to_limit(self.retry_snapshot_retain_count);
                         self.retry_snapshot_pending_cleanup_action = None;
+                        self.retry_snapshot_cleanup_confirm_text.clear();
                         self.app_status = if removed == 0 {
                             "Retry snapshot prune: no snapshots removed".to_string()
                         } else {
@@ -22083,6 +22102,7 @@ Error: `{err}`"
                     {
                         let removed = self.clear_retry_snapshots();
                         self.retry_snapshot_pending_cleanup_action = None;
+                        self.retry_snapshot_cleanup_confirm_text.clear();
                         self.app_status = format!("Cleared {removed} retry snapshot(s)");
                     }
                 });
@@ -22140,10 +22160,13 @@ Error: `{err}`"
                         .on_hover_text("Delete only snapshots that match the current filters")
                         .clicked()
                     {
-                        self.retry_snapshot_pending_cleanup_action =
-                            Some(RetrySnapshotPendingCleanupAction::DeleteFiltered);
-                        self.app_status =
-                            "Delete filtered staged: review preview and confirm".to_string();
+                        let action = RetrySnapshotPendingCleanupAction::DeleteFiltered;
+                        self.retry_snapshot_pending_cleanup_action = Some(action);
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        let confirm_phrase = action.confirm_phrase(filtered_count);
+                        self.app_status = format!(
+                            "Delete filtered staged: type '{confirm_phrase}' to confirm"
+                        );
                     }
                     if ui
                         .add_enabled(
@@ -22155,25 +22178,48 @@ Error: `{err}`"
                         )
                         .clicked()
                     {
-                        self.retry_snapshot_pending_cleanup_action =
-                            Some(RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered);
-                        self.app_status =
-                            "Archive & delete filtered staged: review preview and confirm"
-                                .to_string();
+                        let action = RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered;
+                        self.retry_snapshot_pending_cleanup_action = Some(action);
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        let confirm_phrase = action.confirm_phrase(filtered_count);
+                        self.app_status = format!(
+                            "Archive & delete filtered staged: type '{confirm_phrase}' to confirm"
+                        );
                     }
                 });
                 let dry_run_diff = self.retry_snapshot_dry_run_diff();
                 let filtered_snapshots = &dry_run_diff.removed;
                 if filtered_snapshots.is_empty() {
                     self.retry_snapshot_pending_cleanup_action = None;
+                    self.retry_snapshot_cleanup_confirm_text.clear();
                 }
                 if let Some(action) = self.retry_snapshot_pending_cleanup_action {
                     let preview_summary =
                         Self::summarize_retry_snapshot_cleanup_targets(filtered_snapshots);
+                    let confirm_phrase = action.confirm_phrase(filtered_snapshots.len());
                     ui.group(|ui| {
                         ui.label(format!("Pending confirmation: {}", action.label()));
                         ui.small(preview_summary.clone());
                         ui.small(dry_run_diff.summary_line());
+                        ui.small(format!("Type '{}' to confirm", confirm_phrase));
+                        ui.horizontal(|ui| {
+                            ui.label("Confirm phrase");
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.retry_snapshot_cleanup_confirm_text,
+                                )
+                                .desired_width(220.0)
+                                .hint_text(confirm_phrase.as_str()),
+                            );
+                        });
+                        let confirm_ready = Self::retry_snapshot_cleanup_confirm_input_matches(
+                            action,
+                            filtered_snapshots.len(),
+                            &self.retry_snapshot_cleanup_confirm_text,
+                        );
+                        if !confirm_ready {
+                            ui.small("Confirmation phrase does not match yet");
+                        }
                         ui.columns(2, |columns| {
                             columns[0].small("Would be removed");
                             egui::ScrollArea::vertical()
@@ -22215,7 +22261,7 @@ Error: `{err}`"
                         ui.horizontal(|ui| {
                             if ui
                                 .add_enabled(
-                                    !filtered_snapshots.is_empty(),
+                                    !filtered_snapshots.is_empty() && confirm_ready,
                                     egui::Button::new("Confirm"),
                                 )
                                 .clicked()
@@ -22249,9 +22295,11 @@ Error: `{err}`"
                                     }
                                 }
                                 self.retry_snapshot_pending_cleanup_action = None;
+                                self.retry_snapshot_cleanup_confirm_text.clear();
                             }
                             if ui.button("Cancel").clicked() {
                                 self.retry_snapshot_pending_cleanup_action = None;
+                                self.retry_snapshot_cleanup_confirm_text.clear();
                                 self.app_status =
                                     "Retry snapshot cleanup confirmation canceled".to_string();
                             }
@@ -24377,6 +24425,32 @@ mod tests {
             text,
             "Delete filtered confirmed: removed 4 snapshot(s), retained 5 (was 9)"
         );
+    }
+
+    #[test]
+    fn retry_snapshot_pending_cleanup_action_confirm_phrase_includes_target_count() {
+        assert_eq!(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered.confirm_phrase(7),
+            "delete 7"
+        );
+        assert_eq!(
+            RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered.confirm_phrase(3),
+            "archive-delete 3"
+        );
+    }
+
+    #[test]
+    fn retry_snapshot_cleanup_confirm_input_matches_expected_phrase_case_insensitive() {
+        assert!(GENtleApp::retry_snapshot_cleanup_confirm_input_matches(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            "  DeLeTe 4  "
+        ));
+        assert!(!GENtleApp::retry_snapshot_cleanup_confirm_input_matches(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            "delete 3"
+        ));
     }
 
     #[test]

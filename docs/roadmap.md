@@ -1860,9 +1860,11 @@ Post-baseline follow-ups:
       summaries (match counts/kinds/origins/id-range) before delete/archive.
     - staged destructive cleanup now includes a dry-run diff panel that previews
       "would remove" vs "would remain" snapshot rows before confirm.
+    - destructive cleanup confirm now requires an action-specific type-to-confirm
+      phrase before confirm is enabled.
   - Next:
-    - optionally add a "type-to-confirm" guard for destructive retry-snapshot
-      cleanup actions
+    - optionally add cleanup audit entries (operation log/report artifact) for
+      destructive retry-snapshot actions
 
 ### Current branch blockers (must clear first)
 

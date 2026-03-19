@@ -1170,6 +1170,8 @@ In `Main window -> Graph` view:
     confirm with a match-summary preview before execution
   - staged destructive actions now include a dry-run diff panel showing
     "would remove" and "would remain" snapshot previews before confirm
+  - destructive cleanup confirm now requires typing an action-specific
+    phrase (for example `delete 3`) before the confirm button is enabled
 
 ## Linear map conventions
 
