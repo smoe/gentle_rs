@@ -892,6 +892,22 @@ impl RetrySnapshotPendingCleanupAction {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct RetrySnapshotDryRunDiff {
+    removed: Vec<BackgroundJobRetrySnapshot>,
+    retained: Vec<BackgroundJobRetrySnapshot>,
+}
+
+impl RetrySnapshotDryRunDiff {
+    fn summary_line(&self) -> String {
+        format!(
+            "Dry-run diff: remove {} snapshot(s), retain {}",
+            self.removed.len(),
+            self.retained.len()
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum BackgroundJobEventPhase {
@@ -3238,6 +3254,20 @@ Error: `{err}`"
             })
             .cloned()
             .collect()
+    }
+
+    fn retry_snapshot_dry_run_diff(&self) -> RetrySnapshotDryRunDiff {
+        let mut diff = RetrySnapshotDryRunDiff::default();
+        let kind_filter = self.retry_snapshot_kind_filter;
+        let filter_text = self.retry_snapshot_text_filter.clone();
+        for snapshot in self.retry_argument_snapshots.iter().cloned() {
+            if Self::retry_snapshot_matches_filter(&snapshot, kind_filter, &filter_text) {
+                diff.removed.push(snapshot);
+            } else {
+                diff.retained.push(snapshot);
+            }
+        }
+        diff
     }
 
     fn build_retry_snapshot_export_payload(
@@ -22132,16 +22162,56 @@ Error: `{err}`"
                                 .to_string();
                     }
                 });
-                let filtered_snapshots = self.filtered_retry_snapshots();
+                let dry_run_diff = self.retry_snapshot_dry_run_diff();
+                let filtered_snapshots = &dry_run_diff.removed;
                 if filtered_snapshots.is_empty() {
                     self.retry_snapshot_pending_cleanup_action = None;
                 }
                 if let Some(action) = self.retry_snapshot_pending_cleanup_action {
                     let preview_summary =
-                        Self::summarize_retry_snapshot_cleanup_targets(&filtered_snapshots);
+                        Self::summarize_retry_snapshot_cleanup_targets(filtered_snapshots);
                     ui.group(|ui| {
                         ui.label(format!("Pending confirmation: {}", action.label()));
                         ui.small(preview_summary.clone());
+                        ui.small(dry_run_diff.summary_line());
+                        ui.columns(2, |columns| {
+                            columns[0].small("Would be removed");
+                            egui::ScrollArea::vertical()
+                                .max_height(120.0)
+                                .show(&mut columns[0], |ui| {
+                                    if filtered_snapshots.is_empty() {
+                                        ui.small("No snapshots match current filters");
+                                    } else {
+                                        for snapshot in filtered_snapshots.iter().rev().take(12) {
+                                            ui.small(snapshot.to_line());
+                                        }
+                                        if filtered_snapshots.len() > 12 {
+                                            ui.small(format!(
+                                                "... and {} more",
+                                                filtered_snapshots.len() - 12
+                                            ));
+                                        }
+                                    }
+                                });
+                            columns[1].small("Would remain");
+                            egui::ScrollArea::vertical()
+                                .max_height(120.0)
+                                .show(&mut columns[1], |ui| {
+                                    if dry_run_diff.retained.is_empty() {
+                                        ui.small("No snapshots would remain");
+                                    } else {
+                                        for snapshot in dry_run_diff.retained.iter().rev().take(12) {
+                                            ui.small(snapshot.to_line());
+                                        }
+                                        if dry_run_diff.retained.len() > 12 {
+                                            ui.small(format!(
+                                                "... and {} more",
+                                                dry_run_diff.retained.len() - 12
+                                            ));
+                                        }
+                                    }
+                                });
+                        });
                         ui.horizontal(|ui| {
                             if ui
                                 .add_enabled(
@@ -24209,6 +24279,58 @@ mod tests {
             .expect_err("archive/delete should fail when no snapshots match filters");
         assert!(err.contains("No retry snapshots match current filters"));
         assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn retry_snapshot_dry_run_diff_splits_removed_and_retained_by_filters() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1", "genome_id": "hg38"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1", "genome_id": "mm10"}),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+
+        let diff = app.retry_snapshot_dry_run_diff();
+        assert_eq!(diff.removed.len(), 1);
+        assert_eq!(diff.retained.len(), 2);
+        assert_eq!(diff.removed[0].snapshot_id, 2);
+        assert_eq!(diff.retained[0].snapshot_id, 1);
+        assert_eq!(diff.retained[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn retry_snapshot_dry_run_diff_summary_line_reports_counts() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+
+        let diff = app.retry_snapshot_dry_run_diff();
+        assert_eq!(
+            diff.summary_line(),
+            "Dry-run diff: remove 1 snapshot(s), retain 1"
+        );
     }
 
     #[test]

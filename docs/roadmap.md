@@ -1858,9 +1858,11 @@ Post-baseline follow-ups:
       cleanup.
     - destructive filtered cleanup now uses staged confirm UX with preview
       summaries (match counts/kinds/origins/id-range) before delete/archive.
+    - staged destructive cleanup now includes a dry-run diff panel that previews
+      "would remove" vs "would remain" snapshot rows before confirm.
   - Next:
-    - optionally add a full dry-run diff panel and optional "type-to-confirm"
-      guard for destructive retry-snapshot cleanup actions
+    - optionally add a "type-to-confirm" guard for destructive retry-snapshot
+      cleanup actions
 
 ### Current branch blockers (must clear first)
 

@@ -1168,6 +1168,8 @@ In `Main window -> Graph` view:
     archive-and-delete export workflow for per-kind/per-origin cleanup
   - destructive filtered cleanup actions are staged and require explicit
     confirm with a match-summary preview before execution
+  - staged destructive actions now include a dry-run diff panel showing
+    "would remove" and "would remain" snapshot previews before confirm
 
 ## Linear map conventions
 
