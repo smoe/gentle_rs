@@ -1893,9 +1893,37 @@ Post-baseline follow-ups:
     - stale worker-message rejection by `job_id`
     - idempotent cancellation handlers reused by dialogs and jobs panel
     - explicit retry events from jobs panel actions
+    - recent job-event history now persists in project metadata
+      (`gui.background_job_history`, schema
+      `gentle.gui_background_job_history.v1`) and is restored on project load
+      / reset paths.
+    - retry actions from the Jobs panel now capture deterministic argument
+      snapshots (per job family) and persist them in the same metadata payload
+      for reproducibility/debugging across restarts.
+    - background-jobs retry snapshot list now supports kind/text filtering and
+      filtered JSON export for larger-history triage handoff.
+    - background-jobs retry snapshot retention controls now support retain-count
+      cap, explicit oldest-first prune, and clear-all cleanup (persisted via the
+      same metadata payload).
+    - background-jobs retry snapshot workflows now include filtered bulk-delete
+      and archive-and-delete (JSON artifact + removal) for targeted per-filter
+      cleanup.
+    - destructive filtered cleanup now uses staged confirm UX with preview
+      summaries (match counts/kinds/origins/id-range) before delete/archive.
+    - staged destructive cleanup now includes a dry-run diff panel that previews
+      "would remove" vs "would remain" snapshot rows before confirm.
+    - destructive cleanup confirm now requires an action-specific type-to-confirm
+      phrase before confirm is enabled.
+    - successful destructive cleanup actions now append persisted cleanup-audit
+      entries (action/filter/counts/archive path) rendered in the Jobs panel.
+    - cleanup-audit history now has a dedicated JSON report export action; this
+      export is intentionally read-only and does not self-append audit entries.
+    - cleanup-audit history now supports action/text filtering and independent
+      retention controls (`retain newest N`, prune oldest, clear-all) so
+      long-running sessions can keep bounded, searchable audit trails.
   - Next:
-    - optionally persist recent job-event history across restarts
-    - track retry argument snapshots for reproducibility/debugging
+    - optionally add filtered cleanup-audit report export and a staged
+      type-to-confirm gate for audit `clear all`
 
 ### Current branch blockers (must clear first)
 

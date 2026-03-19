@@ -470,6 +470,12 @@ Current baseline:
 - Structured JSON-RPC diagnostics are returned for invalid requests/params.
 - UI-intent MCP tools are explicitly non-mutating and reject unexpected
   `state_changed=true` results from routed shared-shell commands.
+- MCP state access is file-backed (`state_path`) rather than live GUI-memory
+  inspection; unsaved in-memory GUI edits are not exposed through MCP until
+  persisted.
+- Pointing MCP at the same project state file as active GUI/CLI workflows is
+  an intentional shared-state model and should be treated as a trusted-client
+  boundary.
 - Adapter-equivalence tests cover MCP-vs-shared-shell parity for:
   `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, and `ui_intent`.
 

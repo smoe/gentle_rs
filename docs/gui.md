@@ -1213,6 +1213,27 @@ In `Main window -> Graph` view:
 - Background Jobs panel:
   - open via `Window -> Show Background Jobs`
   - central place for progress, cancel/retry actions, and recent completion/error events
+  - retry actions capture structured argument snapshots (shown in-panel) and
+    persist them with project metadata for restart-safe debugging
+  - retry snapshot list supports kind/text filtering and filtered JSON export
+    for triage handoff or offline analysis
+  - retry snapshot retention controls support "retain newest N", explicit prune,
+    and clear-all cleanup for long-running sessions
+  - filtered maintenance actions now include direct filtered delete plus
+    archive-and-delete export workflow for per-kind/per-origin cleanup
+  - destructive filtered cleanup actions are staged and require explicit
+    confirm with a match-summary preview before execution
+  - staged destructive actions now include a dry-run diff panel showing
+    "would remove" and "would remain" snapshot previews before confirm
+  - destructive cleanup confirm now requires typing an action-specific
+    phrase (for example `delete 3`) before the confirm button is enabled
+  - successful destructive cleanup actions append persisted audit entries
+    (action/filter/counts/archive path) visible in-panel for traceability
+  - cleanup audit section provides a dedicated JSON report export action;
+    report export is read-only and does not append additional audit entries
+  - cleanup audit history supports action/text filtering plus independent
+    retention tuning (`retain newest N`, `prune oldest`, `clear all`) for
+    bounded, searchable long-running session traces
 
 ## Linear map conventions
 

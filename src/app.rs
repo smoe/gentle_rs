@@ -75,6 +75,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
@@ -83,10 +84,15 @@ const REVIEWER_PREVIEW_MD: &str = include_str!("../docs/reviewer_preview.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_PROJECTS: usize = 12;
+const MAX_BACKGROUND_JOB_EVENTS: usize = 200;
+const MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS: usize = 120;
+const MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES: usize = 240;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
-const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 220.0;
+const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 180.0;
+const BACKGROUND_JOB_HISTORY_METADATA_KEY: &str = "gui.background_job_history";
+const BACKGROUND_JOB_HISTORY_SCHEMA: &str = "gentle.gui_background_job_history.v1";
 const DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION: f32 = 420.0 / (420.0 + 220.0);
 const DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION: f32 = 0.58;
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
@@ -396,6 +402,15 @@ impl GenomeTrackSourceSelection {
         }
     }
 
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Bed => "bed",
+            Self::BigWig => "bigwig",
+            Self::Vcf => "vcf",
+        }
+    }
+
     fn resolve(self, path: &str) -> GenomeTrackSource {
         match self {
             Self::Auto => GenomeTrackSource::from_path(path),
@@ -685,6 +700,18 @@ pub struct GENtleApp {
     planning_status: String,
     next_background_job_id: u64,
     job_event_log: Vec<BackgroundJobEvent>,
+    next_retry_snapshot_id: u64,
+    retry_argument_snapshots: Vec<BackgroundJobRetrySnapshot>,
+    next_retry_cleanup_audit_id: u64,
+    retry_snapshot_cleanup_audit: Vec<RetrySnapshotCleanupAuditEntry>,
+    retry_snapshot_retain_count: usize,
+    retry_snapshot_kind_filter: RetrySnapshotKindFilter,
+    retry_snapshot_text_filter: String,
+    retry_cleanup_audit_retain_count: usize,
+    retry_cleanup_audit_action_filter: RetryCleanupAuditActionFilter,
+    retry_cleanup_audit_text_filter: String,
+    retry_snapshot_pending_cleanup_action: Option<RetrySnapshotPendingCleanupAction>,
+    retry_snapshot_cleanup_confirm_text: String,
     genome_track_preflight_track_subscription: bool,
     agent_catalog_path: String,
     agent_catalog_loaded_path: String,
@@ -797,7 +824,8 @@ enum ConfigurationTab {
     Graphics,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum BackgroundJobKind {
     PrepareGenome,
     BlastGenome,
@@ -817,6 +845,117 @@ impl BackgroundJobKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RetrySnapshotKindFilter {
+    All,
+    PrepareGenome,
+    BlastGenome,
+    TrackImport,
+    AgentAssist,
+}
+
+impl RetrySnapshotKindFilter {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::PrepareGenome => "PrepareGenome",
+            Self::BlastGenome => "BlastGenome",
+            Self::TrackImport => "TrackImport",
+            Self::AgentAssist => "AgentAssist",
+        }
+    }
+
+    fn export_token(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::PrepareGenome => "prepare_genome",
+            Self::BlastGenome => "blast_genome",
+            Self::TrackImport => "track_import",
+            Self::AgentAssist => "agent_assist",
+        }
+    }
+
+    fn matches_kind(self, kind: BackgroundJobKind) -> bool {
+        match self {
+            Self::All => true,
+            Self::PrepareGenome => kind == BackgroundJobKind::PrepareGenome,
+            Self::BlastGenome => kind == BackgroundJobKind::BlastGenome,
+            Self::TrackImport => kind == BackgroundJobKind::TrackImport,
+            Self::AgentAssist => kind == BackgroundJobKind::AgentAssist,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RetryCleanupAuditActionFilter {
+    All,
+    DeleteFiltered,
+    ArchiveDeleteFiltered,
+    PruneOldest,
+    ClearAll,
+}
+
+impl RetryCleanupAuditActionFilter {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::DeleteFiltered => "delete_filtered",
+            Self::ArchiveDeleteFiltered => "archive_delete_filtered",
+            Self::PruneOldest => "prune_oldest",
+            Self::ClearAll => "clear_all",
+        }
+    }
+
+    fn matches_action(self, action: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::DeleteFiltered => action.eq_ignore_ascii_case("delete_filtered"),
+            Self::ArchiveDeleteFiltered => action.eq_ignore_ascii_case("archive_delete_filtered"),
+            Self::PruneOldest => action.eq_ignore_ascii_case("prune_oldest"),
+            Self::ClearAll => action.eq_ignore_ascii_case("clear_all"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RetrySnapshotPendingCleanupAction {
+    DeleteFiltered,
+    ArchiveAndDeleteFiltered,
+}
+
+impl RetrySnapshotPendingCleanupAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::DeleteFiltered => "Delete filtered",
+            Self::ArchiveAndDeleteFiltered => "Archive & delete filtered",
+        }
+    }
+
+    fn confirm_phrase(self, target_count: usize) -> String {
+        match self {
+            Self::DeleteFiltered => format!("delete {target_count}"),
+            Self::ArchiveAndDeleteFiltered => format!("archive-delete {target_count}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct RetrySnapshotDryRunDiff {
+    removed: Vec<BackgroundJobRetrySnapshot>,
+    retained: Vec<BackgroundJobRetrySnapshot>,
+}
+
+impl RetrySnapshotDryRunDiff {
+    fn summary_line(&self) -> String {
+        format!(
+            "Dry-run diff: remove {} snapshot(s), retain {}",
+            self.removed.len(),
+            self.retained.len()
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum BackgroundJobEventPhase {
     Started,
     CancelRequested,
@@ -839,7 +978,7 @@ impl BackgroundJobEventPhase {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct BackgroundJobEvent {
     job_id: Option<u64>,
     kind: BackgroundJobKind,
@@ -862,6 +1001,147 @@ impl BackgroundJobEvent {
             self.emitted_at_unix_ms,
             self.summary
         )
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct BackgroundJobRetrySnapshot {
+    snapshot_id: u64,
+    kind: BackgroundJobKind,
+    origin: String,
+    captured_at_unix_ms: u128,
+    arguments: serde_json::Value,
+}
+
+impl Default for BackgroundJobRetrySnapshot {
+    fn default() -> Self {
+        Self {
+            snapshot_id: 0,
+            kind: BackgroundJobKind::PrepareGenome,
+            origin: String::new(),
+            captured_at_unix_ms: 0,
+            arguments: serde_json::Value::Null,
+        }
+    }
+}
+
+impl BackgroundJobRetrySnapshot {
+    fn to_line(&self) -> String {
+        let args = serde_json::to_string(&self.arguments)
+            .unwrap_or_else(|_| "{\"error\":\"could not format retry args\"}".to_string());
+        let mut compact = args.replace('\n', " ");
+        if compact.len() > 220 {
+            compact.truncate(220);
+            compact.push_str("...");
+        }
+        format!(
+            "[{} retry#{} @{} from {}] {}",
+            self.kind.label(),
+            self.snapshot_id,
+            self.captured_at_unix_ms,
+            if self.origin.trim().is_empty() {
+                "-"
+            } else {
+                self.origin.trim()
+            },
+            compact
+        )
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct RetrySnapshotCleanupAuditEntry {
+    audit_id: u64,
+    action: String,
+    performed_at_unix_ms: u128,
+    target_count: usize,
+    removed_count: usize,
+    retained_before: usize,
+    retained_after: usize,
+    filter_kind: String,
+    filter_text: String,
+    archive_path: Option<String>,
+    summary: String,
+}
+
+impl Default for RetrySnapshotCleanupAuditEntry {
+    fn default() -> Self {
+        Self {
+            audit_id: 0,
+            action: String::new(),
+            performed_at_unix_ms: 0,
+            target_count: 0,
+            removed_count: 0,
+            retained_before: 0,
+            retained_after: 0,
+            filter_kind: String::new(),
+            filter_text: String::new(),
+            archive_path: None,
+            summary: String::new(),
+        }
+    }
+}
+
+impl RetrySnapshotCleanupAuditEntry {
+    fn to_line(&self) -> String {
+        let mut summary = self.summary.replace('\n', " ");
+        if summary.len() > 180 {
+            summary.truncate(180);
+            summary.push_str("...");
+        }
+        let filter_text = if self.filter_text.trim().is_empty() {
+            "-".to_string()
+        } else {
+            self.filter_text.trim().to_string()
+        };
+        let archive_token = self
+            .archive_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("-");
+        format!(
+            "[audit#{} {} @{} removed={} retained {}->{} target={} filter(kind={}, text={}) archive={}] {}",
+            self.audit_id,
+            self.action,
+            self.performed_at_unix_ms,
+            self.removed_count,
+            self.retained_before,
+            self.retained_after,
+            self.target_count,
+            self.filter_kind,
+            filter_text,
+            archive_token,
+            summary
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct PersistedBackgroundJobHistory {
+    schema: String,
+    next_background_job_id: u64,
+    events: Vec<BackgroundJobEvent>,
+    next_retry_snapshot_id: u64,
+    retry_snapshots: Vec<BackgroundJobRetrySnapshot>,
+    next_retry_cleanup_audit_id: u64,
+    retry_cleanup_audit: Vec<RetrySnapshotCleanupAuditEntry>,
+}
+
+impl Default for PersistedBackgroundJobHistory {
+    fn default() -> Self {
+        Self {
+            schema: BACKGROUND_JOB_HISTORY_SCHEMA.to_string(),
+            next_background_job_id: 1,
+            events: vec![],
+            next_retry_snapshot_id: 1,
+            retry_snapshots: vec![],
+            next_retry_cleanup_audit_id: 1,
+            retry_cleanup_audit: vec![],
+        }
     }
 }
 
@@ -907,6 +1187,16 @@ enum GenomeBlastSourceMode {
     Manual,
     ProjectSequence,
     ProjectPool,
+}
+
+impl GenomeBlastSourceMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::ProjectSequence => "project_sequence",
+            Self::ProjectPool => "project_pool",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1575,6 +1865,18 @@ impl Default for GENtleApp {
             planning_status: String::new(),
             next_background_job_id: 1,
             job_event_log: vec![],
+            next_retry_snapshot_id: 1,
+            retry_argument_snapshots: vec![],
+            next_retry_cleanup_audit_id: 1,
+            retry_snapshot_cleanup_audit: vec![],
+            retry_snapshot_retain_count: MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS,
+            retry_snapshot_kind_filter: RetrySnapshotKindFilter::All,
+            retry_snapshot_text_filter: String::new(),
+            retry_cleanup_audit_retain_count: MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES,
+            retry_cleanup_audit_action_filter: RetryCleanupAuditActionFilter::All,
+            retry_cleanup_audit_text_filter: String::new(),
+            retry_snapshot_pending_cleanup_action: None,
+            retry_snapshot_cleanup_confirm_text: String::new(),
             genome_track_preflight_track_subscription: true,
             agent_catalog_path: DEFAULT_AGENT_SYSTEM_CATALOG_PATH.to_string(),
             agent_catalog_loaded_path: String::new(),
@@ -2768,6 +3070,7 @@ Error: `{err}`"
     fn alloc_background_job_id(&mut self) -> u64 {
         let next = self.next_background_job_id.max(1);
         self.next_background_job_id = next.saturating_add(1);
+        self.persist_background_job_history_to_state();
         next
     }
 
@@ -2776,6 +3079,852 @@ Error: `{err}`"
             .duration_since(UNIX_EPOCH)
             .map(|v| v.as_millis())
             .unwrap_or_default()
+    }
+
+    fn sha1_hex(value: &str) -> String {
+        let mut hasher = Sha1::new();
+        hasher.update(value.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn current_prepare_retry_arguments(&self) -> serde_json::Value {
+        let timeout_parse = self.parse_prepare_timeout_seconds();
+        let (timeout_seconds, timeout_parse_error) = match timeout_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot.prepare.v1",
+            "genome_id": self.genome_id.trim(),
+            "catalog_path": self.genome_catalog_path_opt(),
+            "cache_dir": self.genome_cache_dir_opt(),
+            "timeout_seconds_raw": self.genome_prepare_timeout_secs.trim(),
+            "timeout_seconds": timeout_seconds,
+            "timeout_parse_error": timeout_parse_error
+        })
+    }
+
+    fn current_blast_retry_arguments(&self) -> serde_json::Value {
+        let query_context = match self.genome_blast_source_mode {
+            GenomeBlastSourceMode::Manual => {
+                let query = self.genome_blast_query_manual.trim();
+                serde_json::json!({
+                    "manual_query_length_bp": query.len(),
+                    "manual_query_sha1": if query.is_empty() {
+                        None
+                    } else {
+                        Some(Self::sha1_hex(query))
+                    }
+                })
+            }
+            GenomeBlastSourceMode::ProjectSequence => serde_json::json!({
+                "project_sequence_id": self.genome_blast_query_seq_id.trim()
+            }),
+            GenomeBlastSourceMode::ProjectPool => serde_json::json!({
+                "project_pool_id": self.genome_blast_query_pool_id.trim()
+            }),
+        };
+        let request_override = self.build_genome_blast_request_override_json();
+        let (request_override_json, request_override_error) = match request_override {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot.blast.v1",
+            "genome_id": self.genome_id.trim(),
+            "source_mode": self.genome_blast_source_mode.as_str(),
+            "query_context": query_context,
+            "catalog_path": self.genome_catalog_path_opt(),
+            "cache_dir": self.genome_cache_dir_opt(),
+            "max_hits_legacy": self.genome_blast_max_hits.max(1),
+            "task_name_raw": self.genome_blast_task_name.trim(),
+            "options_preset": self.genome_blast_options_preset.label(),
+            "thresholds": {
+                "use_max_evalue": self.genome_blast_threshold_use_max_evalue,
+                "max_evalue": self.genome_blast_threshold_max_evalue.trim(),
+                "use_min_identity_percent": self.genome_blast_threshold_use_min_identity_percent,
+                "min_identity_percent": self.genome_blast_threshold_min_identity_percent.trim(),
+                "use_min_query_coverage_percent": self.genome_blast_threshold_use_min_query_coverage_percent,
+                "min_query_coverage_percent": self.genome_blast_threshold_min_query_coverage_percent.trim(),
+                "use_min_alignment_length_bp": self.genome_blast_threshold_use_min_alignment_length_bp,
+                "min_alignment_length_bp": self.genome_blast_threshold_min_alignment_length_bp.trim(),
+                "use_min_bit_score": self.genome_blast_threshold_use_min_bit_score,
+                "min_bit_score": self.genome_blast_threshold_min_bit_score.trim(),
+                "unique_best_hit": self.genome_blast_threshold_unique_best_hit
+            },
+            "options_json_raw": self.genome_blast_options_json.trim(),
+            "request_override_json": request_override_json,
+            "request_override_error": request_override_error
+        })
+    }
+
+    fn current_track_import_retry_arguments(&self) -> serde_json::Value {
+        let parsed = self.parse_bed_track_form();
+        let (subscription, parse_error) = match parsed {
+            Ok(value) => (Some(value), Option::<String>::None),
+            Err(err) => (None, Some(err.to_string())),
+        };
+        let subscription_value = subscription.map(|item| {
+            serde_json::json!({
+                "source": item.source.label(),
+                "path": item.path,
+                "track_name": item.track_name,
+                "min_score": item.min_score,
+                "max_score": item.max_score,
+                "clear_existing": item.clear_existing
+            })
+        });
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot.track_import.v1",
+            "selected_sequence_id": self.genome_track_seq_id.trim(),
+            "source_selection": self.genome_track_source_selection.as_str(),
+            "path_raw": self.genome_track_path.trim(),
+            "track_name_raw": self.genome_track_name.trim(),
+            "min_score_raw": self.genome_track_min_score.trim(),
+            "max_score_raw": self.genome_track_max_score.trim(),
+            "clear_existing": self.genome_track_clear_existing,
+            "parsed_subscription": subscription_value,
+            "parse_error": parse_error
+        })
+    }
+
+    fn current_agent_retry_arguments(&self) -> serde_json::Value {
+        let prompt = self.agent_prompt.trim();
+        let prompt_preview = if prompt.chars().count() > 200 {
+            format!("{}...", prompt.chars().take(200).collect::<String>())
+        } else {
+            prompt.to_string()
+        };
+        let timeout_parse = self.parse_agent_timeout_seconds();
+        let (timeout_secs, timeout_error) = match timeout_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        let connect_parse = self.parse_agent_connect_timeout_seconds();
+        let (connect_timeout_secs, connect_timeout_error) = match connect_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        let read_parse = self.parse_agent_read_timeout_seconds();
+        let (read_timeout_secs, read_timeout_error) = match read_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        let retries_parse = self.parse_agent_max_retries();
+        let (max_retries, max_retries_error) = match retries_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        let max_response_parse = self.parse_agent_max_response_bytes();
+        let (max_response_bytes, max_response_bytes_error) = match max_response_parse {
+            Ok(value) => (value, Option::<String>::None),
+            Err(err) => (None, Some(err)),
+        };
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot.agent_assist.v1",
+            "catalog_path": self.agent_catalog_path.trim(),
+            "system_id": self.agent_system_id.trim(),
+            "include_state_summary": self.agent_include_state_summary,
+            "allow_auto_exec": self.agent_allow_auto_exec,
+            "prompt_length_chars": prompt.len(),
+            "prompt_sha1": if prompt.is_empty() {
+                None
+            } else {
+                Some(Self::sha1_hex(prompt))
+            },
+            "prompt_preview": prompt_preview,
+            "base_url_override": self.agent_base_url_override.trim(),
+            "model_override": self.agent_model_override.trim(),
+            "discovered_model_pick": self.agent_discovered_model_pick.trim(),
+            "openai_api_key_override_set": !self.agent_openai_api_key.trim().is_empty(),
+            "timeout_seconds_raw": self.agent_timeout_secs.trim(),
+            "timeout_seconds": timeout_secs,
+            "timeout_error": timeout_error,
+            "connect_timeout_seconds_raw": self.agent_connect_timeout_secs.trim(),
+            "connect_timeout_seconds": connect_timeout_secs,
+            "connect_timeout_error": connect_timeout_error,
+            "read_timeout_seconds_raw": self.agent_read_timeout_secs.trim(),
+            "read_timeout_seconds": read_timeout_secs,
+            "read_timeout_error": read_timeout_error,
+            "max_retries_raw": self.agent_max_retries.trim(),
+            "max_retries": max_retries,
+            "max_retries_error": max_retries_error,
+            "max_response_bytes_raw": self.agent_max_response_bytes.trim(),
+            "max_response_bytes": max_response_bytes,
+            "max_response_bytes_error": max_response_bytes_error
+        })
+    }
+
+    fn normalize_background_job_retry_snapshots(
+        snapshots: Vec<BackgroundJobRetrySnapshot>,
+    ) -> Vec<BackgroundJobRetrySnapshot> {
+        let mut normalized = snapshots
+            .into_iter()
+            .filter_map(|snapshot| {
+                if snapshot.snapshot_id == 0 {
+                    return None;
+                }
+                let origin = snapshot.origin.trim().to_string();
+                Some(BackgroundJobRetrySnapshot { origin, ..snapshot })
+            })
+            .collect::<Vec<_>>();
+        if normalized.len() > MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS {
+            let drain_len = normalized.len() - MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS;
+            normalized.drain(0..drain_len);
+        }
+        normalized
+    }
+
+    fn normalize_retry_snapshot_cleanup_audit_entries(
+        entries: Vec<RetrySnapshotCleanupAuditEntry>,
+    ) -> Vec<RetrySnapshotCleanupAuditEntry> {
+        let mut normalized = entries
+            .into_iter()
+            .filter_map(|entry| {
+                if entry.audit_id == 0 {
+                    return None;
+                }
+                let action = entry.action.trim().to_string();
+                if action.is_empty() {
+                    return None;
+                }
+                let filter_kind = entry.filter_kind.trim().to_string();
+                if filter_kind.is_empty() {
+                    return None;
+                }
+                let summary = entry.summary.trim().to_string();
+                let filter_text = entry.filter_text.trim().to_string();
+                let archive_path = entry
+                    .archive_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string);
+                Some(RetrySnapshotCleanupAuditEntry {
+                    action,
+                    filter_kind,
+                    summary,
+                    filter_text,
+                    archive_path,
+                    ..entry
+                })
+            })
+            .collect::<Vec<_>>();
+        if normalized.len() > MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES {
+            let drain_len = normalized.len() - MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES;
+            normalized.drain(0..drain_len);
+        }
+        normalized
+    }
+
+    fn capture_retry_snapshot(
+        &mut self,
+        kind: BackgroundJobKind,
+        origin: &str,
+        arguments: serde_json::Value,
+    ) -> u64 {
+        let snapshot_id = self.next_retry_snapshot_id.max(1);
+        self.next_retry_snapshot_id = snapshot_id.saturating_add(1);
+        self.retry_argument_snapshots
+            .push(BackgroundJobRetrySnapshot {
+                snapshot_id,
+                kind,
+                origin: origin.trim().to_string(),
+                captured_at_unix_ms: Self::now_unix_ms(),
+                arguments,
+            });
+        let retention_limit = self.retry_snapshot_retention_limit();
+        if self.retry_argument_snapshots.len() > retention_limit {
+            let drain_len = self.retry_argument_snapshots.len() - retention_limit;
+            self.retry_argument_snapshots.drain(0..drain_len);
+        }
+        self.persist_background_job_history_to_state();
+        snapshot_id
+    }
+
+    fn record_retry_snapshot_cleanup_audit(
+        &mut self,
+        action: &str,
+        summary: &str,
+        target_count: usize,
+        removed_count: usize,
+        retained_before: usize,
+        retained_after: usize,
+        archive_path: Option<&str>,
+    ) -> u64 {
+        let action = action.trim();
+        let action = if action.is_empty() {
+            "unknown_cleanup_action"
+        } else {
+            action
+        };
+        let audit_id = self.next_retry_cleanup_audit_id.max(1);
+        self.next_retry_cleanup_audit_id = audit_id.saturating_add(1);
+        self.retry_snapshot_cleanup_audit
+            .push(RetrySnapshotCleanupAuditEntry {
+                audit_id,
+                action: action.to_string(),
+                performed_at_unix_ms: Self::now_unix_ms(),
+                target_count,
+                removed_count,
+                retained_before,
+                retained_after,
+                filter_kind: self.retry_snapshot_kind_filter.export_token().to_string(),
+                filter_text: self.retry_snapshot_text_filter.trim().to_string(),
+                archive_path: archive_path
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string),
+                summary: summary.trim().to_string(),
+            });
+        let retention_limit = self.retry_cleanup_audit_retention_limit();
+        if self.retry_snapshot_cleanup_audit.len() > retention_limit {
+            let drain_len = self.retry_snapshot_cleanup_audit.len() - retention_limit;
+            self.retry_snapshot_cleanup_audit.drain(0..drain_len);
+        }
+        self.persist_background_job_history_to_state();
+        audit_id
+    }
+
+    fn retry_snapshot_retention_limit(&self) -> usize {
+        self.retry_snapshot_retain_count
+            .clamp(1, MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS)
+    }
+
+    fn retry_cleanup_audit_retention_limit(&self) -> usize {
+        self.retry_cleanup_audit_retain_count
+            .clamp(1, MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES)
+    }
+
+    fn prune_retry_snapshots_to_limit(&mut self, retain_count: usize) -> usize {
+        let retain_count = retain_count.clamp(1, MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS);
+        self.retry_snapshot_retain_count = retain_count;
+        let before = self.retry_argument_snapshots.len();
+        if before > retain_count {
+            let drain_len = before - retain_count;
+            self.retry_argument_snapshots.drain(0..drain_len);
+            self.persist_background_job_history_to_state();
+        }
+        before.saturating_sub(self.retry_argument_snapshots.len())
+    }
+
+    fn prune_retry_cleanup_audit_to_limit(&mut self, retain_count: usize) -> usize {
+        let retain_count = retain_count.clamp(1, MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES);
+        self.retry_cleanup_audit_retain_count = retain_count;
+        let before = self.retry_snapshot_cleanup_audit.len();
+        if before > retain_count {
+            let drain_len = before - retain_count;
+            self.retry_snapshot_cleanup_audit.drain(0..drain_len);
+            self.persist_background_job_history_to_state();
+        }
+        before.saturating_sub(self.retry_snapshot_cleanup_audit.len())
+    }
+
+    fn clear_retry_snapshots(&mut self) -> usize {
+        let removed = self.retry_argument_snapshots.len();
+        if removed > 0 {
+            self.retry_argument_snapshots.clear();
+            self.persist_background_job_history_to_state();
+        }
+        removed
+    }
+
+    fn clear_retry_cleanup_audit(&mut self) -> usize {
+        let removed = self.retry_snapshot_cleanup_audit.len();
+        if removed > 0 {
+            self.retry_snapshot_cleanup_audit.clear();
+            self.persist_background_job_history_to_state();
+        }
+        removed
+    }
+
+    fn retry_snapshot_filter_help_text() -> &'static str {
+        "Free text matches kind/origin/arguments. Scoped terms: kind:blast origin:panel args:hg38"
+    }
+
+    fn retry_cleanup_audit_filter_help_text() -> &'static str {
+        "Free text matches action/filter/summary/archive. Scoped terms: action:delete kind:blast summary:pruned archive:json"
+    }
+
+    fn retry_snapshot_matches_filter(
+        snapshot: &BackgroundJobRetrySnapshot,
+        kind_filter: RetrySnapshotKindFilter,
+        filter_text: &str,
+    ) -> bool {
+        if !kind_filter.matches_kind(snapshot.kind) {
+            return false;
+        }
+        let terms = Self::parse_track_filter_terms(filter_text);
+        if terms.is_empty() {
+            return true;
+        }
+        let kind_terms = vec![
+            snapshot.kind.label().to_ascii_lowercase(),
+            serde_json::to_string(&snapshot.kind)
+                .unwrap_or_else(|_| String::new())
+                .to_ascii_lowercase(),
+        ];
+        let origin_terms = vec![snapshot.origin.to_ascii_lowercase()];
+        let args_terms = vec![snapshot.arguments.to_string().to_ascii_lowercase()];
+        let all_terms = kind_terms
+            .iter()
+            .chain(origin_terms.iter())
+            .chain(args_terms.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        terms.iter().all(|(scope, needle)| {
+            let search_space: &Vec<String> = match scope.as_deref() {
+                Some("kind") | Some("job") | Some("type") => &kind_terms,
+                Some("origin") | Some("from") => &origin_terms,
+                Some("args") | Some("json") => &args_terms,
+                _ => &all_terms,
+            };
+            search_space.iter().any(|value| value.contains(needle))
+        })
+    }
+
+    fn filtered_retry_snapshots(&self) -> Vec<BackgroundJobRetrySnapshot> {
+        self.retry_argument_snapshots
+            .iter()
+            .filter(|snapshot| {
+                Self::retry_snapshot_matches_filter(
+                    snapshot,
+                    self.retry_snapshot_kind_filter,
+                    &self.retry_snapshot_text_filter,
+                )
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn retry_cleanup_audit_entry_matches_filter(
+        entry: &RetrySnapshotCleanupAuditEntry,
+        action_filter: RetryCleanupAuditActionFilter,
+        filter_text: &str,
+    ) -> bool {
+        if !action_filter.matches_action(entry.action.as_str()) {
+            return false;
+        }
+        let terms = Self::parse_track_filter_terms(filter_text);
+        if terms.is_empty() {
+            return true;
+        }
+        let action_terms = vec![entry.action.to_ascii_lowercase()];
+        let filter_kind_terms = vec![entry.filter_kind.to_ascii_lowercase()];
+        let filter_text_terms = if entry.filter_text.trim().is_empty() {
+            Vec::<String>::new()
+        } else {
+            vec![entry.filter_text.to_ascii_lowercase()]
+        };
+        let summary_terms = if entry.summary.trim().is_empty() {
+            Vec::<String>::new()
+        } else {
+            vec![entry.summary.to_ascii_lowercase()]
+        };
+        let archive_terms = {
+            let mut values = Vec::<String>::new();
+            if let Some(path) = entry.archive_path.as_deref() {
+                values.push(path.to_ascii_lowercase());
+                if let Some(file_name) =
+                    Path::new(path).file_name().and_then(|value| value.to_str())
+                {
+                    values.push(file_name.to_ascii_lowercase());
+                }
+            }
+            values
+        };
+        let target_terms = vec![entry.target_count.to_string()];
+        let removed_terms = vec![entry.removed_count.to_string()];
+        let before_terms = vec![entry.retained_before.to_string()];
+        let after_terms = vec![entry.retained_after.to_string()];
+        let count_terms = vec![
+            entry.target_count.to_string(),
+            entry.removed_count.to_string(),
+            entry.retained_before.to_string(),
+            entry.retained_after.to_string(),
+        ];
+        let all_terms = action_terms
+            .iter()
+            .chain(filter_kind_terms.iter())
+            .chain(filter_text_terms.iter())
+            .chain(summary_terms.iter())
+            .chain(archive_terms.iter())
+            .chain(count_terms.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        terms.iter().all(|(scope, needle)| {
+            let search_space: &Vec<String> = match scope.as_deref() {
+                Some("action") | Some("audit") => &action_terms,
+                Some("kind") | Some("filter_kind") => &filter_kind_terms,
+                Some("filter") | Some("text") => &filter_text_terms,
+                Some("summary") => &summary_terms,
+                Some("archive") | Some("path") | Some("file") => &archive_terms,
+                Some("target") => &target_terms,
+                Some("removed") => &removed_terms,
+                Some("before") | Some("retained_before") => &before_terms,
+                Some("after") | Some("retained_after") => &after_terms,
+                Some("count") | Some("counts") => &count_terms,
+                _ => &all_terms,
+            };
+            search_space.iter().any(|value| value.contains(needle))
+        })
+    }
+
+    fn filtered_retry_cleanup_audit_entries(&self) -> Vec<RetrySnapshotCleanupAuditEntry> {
+        self.retry_snapshot_cleanup_audit
+            .iter()
+            .filter(|entry| {
+                Self::retry_cleanup_audit_entry_matches_filter(
+                    entry,
+                    self.retry_cleanup_audit_action_filter,
+                    &self.retry_cleanup_audit_text_filter,
+                )
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn retry_snapshot_dry_run_diff(&self) -> RetrySnapshotDryRunDiff {
+        let mut diff = RetrySnapshotDryRunDiff::default();
+        let kind_filter = self.retry_snapshot_kind_filter;
+        let filter_text = self.retry_snapshot_text_filter.clone();
+        for snapshot in self.retry_argument_snapshots.iter().cloned() {
+            if Self::retry_snapshot_matches_filter(&snapshot, kind_filter, &filter_text) {
+                diff.removed.push(snapshot);
+            } else {
+                diff.retained.push(snapshot);
+            }
+        }
+        diff
+    }
+
+    fn build_retry_snapshot_export_payload(
+        &self,
+        snapshots: Vec<BackgroundJobRetrySnapshot>,
+    ) -> serde_json::Value {
+        let snapshot_count = snapshots.len();
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot_export.v1",
+            "exported_at_unix_ms": Self::now_unix_ms(),
+            "filters": {
+                "kind": self.retry_snapshot_kind_filter.export_token(),
+                "text": self.retry_snapshot_text_filter.trim()
+            },
+            "snapshot_count": snapshot_count,
+            "snapshots": snapshots
+        })
+    }
+
+    fn export_filtered_retry_snapshots_to_path(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<usize, String> {
+        let snapshots = self.filtered_retry_snapshots();
+        if snapshots.is_empty() {
+            return Err("No retry snapshots match current filters".to_string());
+        }
+        let snapshot_count = snapshots.len();
+        let payload = self.build_retry_snapshot_export_payload(snapshots);
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize retry snapshot export JSON: {e}"))?;
+        fs::write(path, json).map_err(|e| {
+            format!(
+                "Could not write retry snapshot export '{}': {e}",
+                path.display()
+            )
+        })?;
+        Ok(snapshot_count)
+    }
+
+    fn remove_filtered_retry_snapshots(&mut self) -> usize {
+        let before = self.retry_argument_snapshots.len();
+        if before == 0 {
+            return 0;
+        }
+        let kind_filter = self.retry_snapshot_kind_filter;
+        let filter_text = self.retry_snapshot_text_filter.clone();
+        self.retry_argument_snapshots.retain(|snapshot| {
+            !Self::retry_snapshot_matches_filter(snapshot, kind_filter, &filter_text)
+        });
+        let removed = before.saturating_sub(self.retry_argument_snapshots.len());
+        if removed > 0 {
+            self.persist_background_job_history_to_state();
+        }
+        removed
+    }
+
+    fn summarize_retry_snapshot_cleanup_targets(
+        snapshots: &[BackgroundJobRetrySnapshot],
+    ) -> String {
+        if snapshots.is_empty() {
+            return "No matching retry snapshots".to_string();
+        }
+        let mut prepare = 0usize;
+        let mut blast = 0usize;
+        let mut track_import = 0usize;
+        let mut agent = 0usize;
+        let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut min_snapshot_id = u64::MAX;
+        let mut max_snapshot_id = 0u64;
+        let mut min_ts = u128::MAX;
+        let mut max_ts = 0u128;
+        for snapshot in snapshots {
+            match snapshot.kind {
+                BackgroundJobKind::PrepareGenome => prepare += 1,
+                BackgroundJobKind::BlastGenome => blast += 1,
+                BackgroundJobKind::TrackImport => track_import += 1,
+                BackgroundJobKind::AgentAssist => agent += 1,
+            }
+            let origin = if snapshot.origin.trim().is_empty() {
+                "-".to_string()
+            } else {
+                snapshot.origin.trim().to_string()
+            };
+            *origin_counts.entry(origin).or_insert(0usize) += 1;
+            min_snapshot_id = min_snapshot_id.min(snapshot.snapshot_id);
+            max_snapshot_id = max_snapshot_id.max(snapshot.snapshot_id);
+            min_ts = min_ts.min(snapshot.captured_at_unix_ms);
+            max_ts = max_ts.max(snapshot.captured_at_unix_ms);
+        }
+        let mut origin_entries = origin_counts.into_iter().collect::<Vec<_>>();
+        origin_entries.sort_by(|(left_origin, left_count), (right_origin, right_count)| {
+            right_count
+                .cmp(left_count)
+                .then_with(|| left_origin.cmp(right_origin))
+        });
+        let mut origin_preview = origin_entries
+            .iter()
+            .take(3)
+            .map(|(origin, count)| format!("{origin}={count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if origin_entries.len() > 3 {
+            if !origin_preview.is_empty() {
+                origin_preview.push_str(", ...");
+            } else {
+                origin_preview = "...".to_string();
+            }
+        }
+        format!(
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            snapshots.len(),
+            prepare,
+            blast,
+            track_import,
+            agent,
+            if origin_preview.is_empty() {
+                "-".to_string()
+            } else {
+                origin_preview
+            },
+            min_snapshot_id,
+            max_snapshot_id,
+            min_ts,
+            max_ts
+        )
+    }
+
+    fn format_retry_snapshot_cleanup_status(
+        action: RetrySnapshotPendingCleanupAction,
+        removed: usize,
+        before: usize,
+        after: usize,
+    ) -> String {
+        format!(
+            "{} confirmed: removed {} snapshot(s), retained {} (was {})",
+            action.label(),
+            removed,
+            after,
+            before
+        )
+    }
+
+    fn retry_snapshot_cleanup_confirm_input_matches(
+        action: RetrySnapshotPendingCleanupAction,
+        target_count: usize,
+        input: &str,
+    ) -> bool {
+        let expected = action.confirm_phrase(target_count);
+        input.trim().eq_ignore_ascii_case(expected.as_str())
+    }
+
+    fn build_retry_cleanup_audit_report_payload(
+        &self,
+        entries: Vec<RetrySnapshotCleanupAuditEntry>,
+    ) -> serde_json::Value {
+        let entry_count = entries.len();
+        let mut action_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for entry in entries.iter() {
+            let key = entry.action.trim().to_string();
+            *action_counts.entry(key).or_insert(0usize) += 1;
+        }
+        serde_json::json!({
+            "schema": "gentle.gui_retry_cleanup_audit_report.v1",
+            "exported_at_unix_ms": Self::now_unix_ms(),
+            "entry_count": entry_count,
+            "action_counts": action_counts,
+            "entries": entries
+        })
+    }
+
+    fn export_retry_cleanup_audit_report_to_path(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<usize, String> {
+        let entries = Self::normalize_retry_snapshot_cleanup_audit_entries(
+            self.retry_snapshot_cleanup_audit.clone(),
+        );
+        if entries.is_empty() {
+            return Err("No retry cleanup audit entries to export".to_string());
+        }
+        let entry_count = entries.len();
+        let payload = self.build_retry_cleanup_audit_report_payload(entries);
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize cleanup audit report JSON: {e}"))?;
+        fs::write(path, json).map_err(|e| {
+            format!(
+                "Could not write cleanup audit report '{}': {e}",
+                path.display()
+            )
+        })?;
+        Ok(entry_count)
+    }
+
+    fn build_retry_snapshot_archive_payload(
+        &self,
+        snapshots: Vec<BackgroundJobRetrySnapshot>,
+    ) -> serde_json::Value {
+        let archived_count = snapshots.len();
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot_archive.v1",
+            "archived_at_unix_ms": Self::now_unix_ms(),
+            "archive_mode": "archive_and_delete_filtered",
+            "filters": {
+                "kind": self.retry_snapshot_kind_filter.export_token(),
+                "text": self.retry_snapshot_text_filter.trim()
+            },
+            "archived_count": archived_count,
+            "snapshots": snapshots
+        })
+    }
+
+    fn archive_and_delete_filtered_retry_snapshots_to_path(
+        &mut self,
+        path: &Path,
+    ) -> std::result::Result<usize, String> {
+        let snapshots = self.filtered_retry_snapshots();
+        if snapshots.is_empty() {
+            return Err("No retry snapshots match current filters".to_string());
+        }
+        let payload = self.build_retry_snapshot_archive_payload(snapshots.clone());
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize retry snapshot archive JSON: {e}"))?;
+        fs::write(path, json).map_err(|e| {
+            format!(
+                "Could not write retry snapshot archive '{}': {e}",
+                path.display()
+            )
+        })?;
+        let removed = self.remove_filtered_retry_snapshots();
+        Ok(removed)
+    }
+
+    fn normalize_background_job_events(events: Vec<BackgroundJobEvent>) -> Vec<BackgroundJobEvent> {
+        let mut normalized = events
+            .into_iter()
+            .filter_map(|event| {
+                let summary = event.summary.trim();
+                if summary.is_empty() {
+                    None
+                } else {
+                    Some(BackgroundJobEvent {
+                        summary: summary.to_string(),
+                        ..event
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
+        if normalized.len() > MAX_BACKGROUND_JOB_EVENTS {
+            let drain_len = normalized.len() - MAX_BACKGROUND_JOB_EVENTS;
+            normalized.drain(0..drain_len);
+        }
+        normalized
+    }
+
+    fn load_background_job_history_from_state(&mut self) {
+        let raw = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned();
+        let Some(raw) = raw else {
+            self.next_background_job_id = 1;
+            self.job_event_log.clear();
+            self.next_retry_snapshot_id = 1;
+            self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
+            return;
+        };
+        let Ok(mut parsed) = serde_json::from_value::<PersistedBackgroundJobHistory>(raw) else {
+            self.next_background_job_id = 1;
+            self.job_event_log.clear();
+            self.next_retry_snapshot_id = 1;
+            self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
+            return;
+        };
+        if parsed.schema.trim().is_empty() {
+            parsed.schema = BACKGROUND_JOB_HISTORY_SCHEMA.to_string();
+        }
+        if parsed.schema != BACKGROUND_JOB_HISTORY_SCHEMA {
+            self.next_background_job_id = 1;
+            self.job_event_log.clear();
+            self.next_retry_snapshot_id = 1;
+            self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
+            return;
+        }
+        self.next_background_job_id = parsed.next_background_job_id.max(1);
+        self.job_event_log = Self::normalize_background_job_events(parsed.events);
+        self.next_retry_snapshot_id = parsed.next_retry_snapshot_id.max(1);
+        self.retry_argument_snapshots =
+            Self::normalize_background_job_retry_snapshots(parsed.retry_snapshots);
+        self.next_retry_cleanup_audit_id = parsed.next_retry_cleanup_audit_id.max(1);
+        self.retry_snapshot_cleanup_audit =
+            Self::normalize_retry_snapshot_cleanup_audit_entries(parsed.retry_cleanup_audit);
+    }
+
+    fn persist_background_job_history_to_state(&mut self) {
+        let payload = PersistedBackgroundJobHistory {
+            schema: BACKGROUND_JOB_HISTORY_SCHEMA.to_string(),
+            next_background_job_id: self.next_background_job_id.max(1),
+            events: Self::normalize_background_job_events(self.job_event_log.clone()),
+            next_retry_snapshot_id: self.next_retry_snapshot_id.max(1),
+            retry_snapshots: Self::normalize_background_job_retry_snapshots(
+                self.retry_argument_snapshots.clone(),
+            ),
+            next_retry_cleanup_audit_id: self.next_retry_cleanup_audit_id.max(1),
+            retry_cleanup_audit: Self::normalize_retry_snapshot_cleanup_audit_entries(
+                self.retry_snapshot_cleanup_audit.clone(),
+            ),
+        };
+        let Ok(value) = serde_json::to_value(payload) else {
+            return;
+        };
+        let mut engine = self.engine.write().unwrap();
+        let state = engine.state_mut();
+        if state.metadata.get(BACKGROUND_JOB_HISTORY_METADATA_KEY) == Some(&value) {
+            return;
+        }
+        state
+            .metadata
+            .insert(BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(), value);
     }
 
     fn push_job_event<S: Into<String>>(
@@ -2797,10 +3946,11 @@ Error: `{err}`"
             emitted_at_unix_ms: Self::now_unix_ms(),
             summary: trimmed.to_string(),
         });
-        if self.job_event_log.len() > 200 {
-            let drain_len = self.job_event_log.len() - 200;
+        if self.job_event_log.len() > MAX_BACKGROUND_JOB_EVENTS {
+            let drain_len = self.job_event_log.len() - MAX_BACKGROUND_JOB_EVENTS;
             self.job_event_log.drain(0..drain_len);
         }
+        self.persist_background_job_history_to_state();
     }
 
     fn request_prepare_task_cancel(&mut self, origin: &str) {
@@ -4021,6 +5171,7 @@ Error: `{err}`"
         self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
+        self.load_background_job_history_from_state();
         self.mark_clean_snapshot();
     }
 
@@ -4247,6 +5398,98 @@ Error: `{err}`"
                 .apply(Operation::RenderLineageSvg { path: path.clone() });
             if let Err(e) = result {
                 eprintln!("Could not export lineage SVG to '{}': {}", path, e.message);
+            }
+        }
+    }
+
+    fn prompt_export_filtered_retry_snapshots(&mut self) {
+        if self.filtered_retry_snapshots().is_empty() {
+            self.app_status = "No retry snapshots match current filters".to_string();
+            return;
+        }
+        let default_file_name = format!(
+            "retry_snapshots_{}.json",
+            self.retry_snapshot_kind_filter.export_token()
+        );
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Retry snapshot export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        match self.export_filtered_retry_snapshots_to_path(path.as_path()) {
+            Ok(count) => {
+                self.app_status = format!("Exported {count} retry snapshot(s) to '{path_text}'");
+            }
+            Err(err) => {
+                self.app_status =
+                    format!("Could not export retry snapshots '{}': {err}", path_text);
+            }
+        }
+    }
+
+    fn prompt_export_retry_cleanup_audit_report(&mut self) {
+        if self.retry_snapshot_cleanup_audit.is_empty() {
+            self.app_status = "No retry cleanup audit entries to export".to_string();
+            return;
+        }
+        let path = rfd::FileDialog::new()
+            .set_file_name("retry_cleanup_audit_report.json")
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Retry cleanup audit export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        match self.export_retry_cleanup_audit_report_to_path(path.as_path()) {
+            Ok(count) => {
+                // Exporting the audit report is read-only and intentionally not self-audited.
+                self.app_status =
+                    format!("Exported {count} retry cleanup audit entries to '{path_text}'");
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not export retry cleanup audit report '{}': {err}",
+                    path_text
+                );
+            }
+        }
+    }
+
+    fn prompt_archive_and_delete_filtered_retry_snapshots(&mut self) -> Option<(usize, String)> {
+        if self.filtered_retry_snapshots().is_empty() {
+            self.app_status = "No retry snapshots match current filters".to_string();
+            return None;
+        }
+        let default_file_name = format!(
+            "retry_snapshots_archive_{}.json",
+            self.retry_snapshot_kind_filter.export_token()
+        );
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Retry snapshot archive canceled".to_string();
+            return None;
+        };
+        let path_text = path.display().to_string();
+        match self.archive_and_delete_filtered_retry_snapshots_to_path(path.as_path()) {
+            Ok(count) => {
+                self.app_status =
+                    format!("Archived and removed {count} retry snapshot(s) to '{path_text}'");
+                Some((count, path_text))
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not archive/delete retry snapshots '{}': {err}",
+                    path_text
+                );
+                None
             }
         }
     }
@@ -13762,6 +15005,7 @@ Error: `{err}`"
         self.agent_model_discovery_source_key.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
+        self.load_background_job_history_from_state();
 
         self.mark_clean_snapshot();
         Ok(())
@@ -21238,11 +22482,18 @@ Error: `{err}`"
                             .on_hover_text("Run prepare genome again using current dialog settings")
                             .clicked()
                         {
+                            let snapshot_id = self.capture_retry_snapshot(
+                                BackgroundJobKind::PrepareGenome,
+                                "background jobs panel",
+                                self.current_prepare_retry_arguments(),
+                            );
                             self.push_job_event(
                                 BackgroundJobKind::PrepareGenome,
                                 BackgroundJobEventPhase::Retried,
                                 None,
-                                "Retry requested from background jobs panel",
+                                format!(
+                                    "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
+                                ),
                             );
                             self.start_prepare_reference_genome();
                         }
@@ -21287,11 +22538,18 @@ Error: `{err}`"
                             .on_hover_text("Run BLAST again using current BLAST dialog settings")
                             .clicked()
                         {
+                            let snapshot_id = self.capture_retry_snapshot(
+                                BackgroundJobKind::BlastGenome,
+                                "background jobs panel",
+                                self.current_blast_retry_arguments(),
+                            );
                             self.push_job_event(
                                 BackgroundJobKind::BlastGenome,
                                 BackgroundJobEventPhase::Retried,
                                 None,
-                                "Retry requested from background jobs panel",
+                                format!(
+                                    "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
+                                ),
                             );
                             self.start_reference_genome_blast();
                         }
@@ -21340,11 +22598,18 @@ Error: `{err}`"
                             )
                             .clicked()
                         {
+                            let snapshot_id = self.capture_retry_snapshot(
+                                BackgroundJobKind::TrackImport,
+                                "background jobs panel",
+                                self.current_track_import_retry_arguments(),
+                            );
                             self.push_job_event(
                                 BackgroundJobKind::TrackImport,
                                 BackgroundJobEventPhase::Retried,
                                 None,
-                                "Retry requested from background jobs panel",
+                                format!(
+                                    "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
+                                ),
                             );
                             self.import_genome_bed_track_for_selected_sequence();
                         }
@@ -21373,11 +22638,18 @@ Error: `{err}`"
                             .on_hover_text("Run the agent assistant request again with current prompt/settings")
                             .clicked()
                         {
+                            let snapshot_id = self.capture_retry_snapshot(
+                                BackgroundJobKind::AgentAssist,
+                                "background jobs panel",
+                                self.current_agent_retry_arguments(),
+                            );
                             self.push_job_event(
                                 BackgroundJobKind::AgentAssist,
                                 BackgroundJobEventPhase::Retried,
                                 None,
-                                "Retry requested from background jobs panel",
+                                format!(
+                                    "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
+                                ),
                             );
                             self.start_agent_assistant_request();
                         }
@@ -21398,6 +22670,443 @@ Error: `{err}`"
                         );
                         for event in self.job_event_log.iter().rev().take(40) {
                             ui.small(event.to_line());
+                        }
+                    });
+
+                ui.separator();
+                ui.strong("Recent retry snapshots");
+                self.retry_snapshot_retain_count = self.retry_snapshot_retention_limit();
+                ui.horizontal(|ui| {
+                    ui.label("Retain newest");
+                    ui.add(
+                        egui::DragValue::new(&mut self.retry_snapshot_retain_count)
+                            .range(1..=MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS)
+                            .speed(1.0),
+                    )
+                    .on_hover_text(
+                        "Retention cap for future retry captures (up to in-memory maximum)",
+                    );
+                    ui.small(format!("max {}", MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS));
+                    if ui
+                        .button("Prune oldest")
+                        .on_hover_text("Drop oldest snapshots until retained count is reached")
+                        .clicked()
+                    {
+                        let before = self.retry_argument_snapshots.len();
+                        let removed =
+                            self.prune_retry_snapshots_to_limit(self.retry_snapshot_retain_count);
+                        let after = self.retry_argument_snapshots.len();
+                        self.retry_snapshot_pending_cleanup_action = None;
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        self.app_status = if removed == 0 {
+                            "Retry snapshot prune: no snapshots removed".to_string()
+                        } else {
+                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                "prune_oldest",
+                                "Pruned oldest retry snapshots via retention control",
+                                self.retry_snapshot_retain_count,
+                                removed,
+                                before,
+                                after,
+                                None,
+                            );
+                            format!(
+                                "Retry snapshot prune: removed {removed} oldest snapshot(s) (audit #{audit_id})"
+                            )
+                        };
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.retry_argument_snapshots.is_empty(),
+                            egui::Button::new("Clear all"),
+                        )
+                        .on_hover_text("Delete all retained retry snapshots")
+                        .clicked()
+                    {
+                        let before = self.retry_argument_snapshots.len();
+                        let removed = self.clear_retry_snapshots();
+                        let after = self.retry_argument_snapshots.len();
+                        self.retry_snapshot_pending_cleanup_action = None;
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        self.app_status = if removed == 0 {
+                            "Cleared 0 retry snapshot(s)".to_string()
+                        } else {
+                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                "clear_all",
+                                "Cleared all retained retry snapshots",
+                                before,
+                                removed,
+                                before,
+                                after,
+                                None,
+                            );
+                            format!("Cleared {removed} retry snapshot(s) (audit #{audit_id})")
+                        };
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Kind");
+                    egui::ComboBox::from_id_salt("retry_snapshot_kind_filter")
+                        .selected_text(self.retry_snapshot_kind_filter.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::All,
+                                RetrySnapshotKindFilter::All.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::PrepareGenome,
+                                RetrySnapshotKindFilter::PrepareGenome.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::BlastGenome,
+                                RetrySnapshotKindFilter::BlastGenome.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::TrackImport,
+                                RetrySnapshotKindFilter::TrackImport.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::AgentAssist,
+                                RetrySnapshotKindFilter::AgentAssist.label(),
+                            );
+                        });
+                    ui.label("Filter");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.retry_snapshot_text_filter)
+                            .desired_width(260.0)
+                            .hint_text("kind:blast origin:panel args:hg38"),
+                    )
+                    .on_hover_text(Self::retry_snapshot_filter_help_text());
+                    if ui.button("Clear").clicked() {
+                        self.retry_snapshot_text_filter.clear();
+                    }
+                    let filtered_count = self.filtered_retry_snapshots().len();
+                    if ui
+                        .add_enabled(filtered_count > 0, egui::Button::new("Export filtered..."))
+                        .on_hover_text("Export filtered retry snapshots to JSON")
+                        .clicked()
+                    {
+                        self.prompt_export_filtered_retry_snapshots();
+                    }
+                    if ui
+                        .add_enabled(filtered_count > 0, egui::Button::new("Delete filtered"))
+                        .on_hover_text("Delete only snapshots that match the current filters")
+                        .clicked()
+                    {
+                        let action = RetrySnapshotPendingCleanupAction::DeleteFiltered;
+                        self.retry_snapshot_pending_cleanup_action = Some(action);
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        let confirm_phrase = action.confirm_phrase(filtered_count);
+                        self.app_status = format!(
+                            "Delete filtered staged: type '{confirm_phrase}' to confirm"
+                        );
+                    }
+                    if ui
+                        .add_enabled(
+                            filtered_count > 0,
+                            egui::Button::new("Archive & delete filtered..."),
+                        )
+                        .on_hover_text(
+                            "Export filtered snapshots to JSON archive and remove them from retained history",
+                        )
+                        .clicked()
+                    {
+                        let action = RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered;
+                        self.retry_snapshot_pending_cleanup_action = Some(action);
+                        self.retry_snapshot_cleanup_confirm_text.clear();
+                        let confirm_phrase = action.confirm_phrase(filtered_count);
+                        self.app_status = format!(
+                            "Archive & delete filtered staged: type '{confirm_phrase}' to confirm"
+                        );
+                    }
+                });
+                let dry_run_diff = self.retry_snapshot_dry_run_diff();
+                let filtered_snapshots = &dry_run_diff.removed;
+                if filtered_snapshots.is_empty() {
+                    self.retry_snapshot_pending_cleanup_action = None;
+                    self.retry_snapshot_cleanup_confirm_text.clear();
+                }
+                if let Some(action) = self.retry_snapshot_pending_cleanup_action {
+                    let preview_summary =
+                        Self::summarize_retry_snapshot_cleanup_targets(filtered_snapshots);
+                    let confirm_phrase = action.confirm_phrase(filtered_snapshots.len());
+                    ui.group(|ui| {
+                        ui.label(format!("Pending confirmation: {}", action.label()));
+                        ui.small(preview_summary.clone());
+                        ui.small(dry_run_diff.summary_line());
+                        ui.small(format!("Type '{}' to confirm", confirm_phrase));
+                        ui.horizontal(|ui| {
+                            ui.label("Confirm phrase");
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.retry_snapshot_cleanup_confirm_text,
+                                )
+                                .desired_width(220.0)
+                                .hint_text(confirm_phrase.as_str()),
+                            );
+                        });
+                        let confirm_ready = Self::retry_snapshot_cleanup_confirm_input_matches(
+                            action,
+                            filtered_snapshots.len(),
+                            &self.retry_snapshot_cleanup_confirm_text,
+                        );
+                        if !confirm_ready {
+                            ui.small("Confirmation phrase does not match yet");
+                        }
+                        ui.columns(2, |columns| {
+                            columns[0].small("Would be removed");
+                            egui::ScrollArea::vertical()
+                                .max_height(120.0)
+                                .show(&mut columns[0], |ui| {
+                                    if filtered_snapshots.is_empty() {
+                                        ui.small("No snapshots match current filters");
+                                    } else {
+                                        for snapshot in filtered_snapshots.iter().rev().take(12) {
+                                            ui.small(snapshot.to_line());
+                                        }
+                                        if filtered_snapshots.len() > 12 {
+                                            ui.small(format!(
+                                                "... and {} more",
+                                                filtered_snapshots.len() - 12
+                                            ));
+                                        }
+                                    }
+                                });
+                            columns[1].small("Would remain");
+                            egui::ScrollArea::vertical()
+                                .max_height(120.0)
+                                .show(&mut columns[1], |ui| {
+                                    if dry_run_diff.retained.is_empty() {
+                                        ui.small("No snapshots would remain");
+                                    } else {
+                                        for snapshot in dry_run_diff.retained.iter().rev().take(12) {
+                                            ui.small(snapshot.to_line());
+                                        }
+                                        if dry_run_diff.retained.len() > 12 {
+                                            ui.small(format!(
+                                                "... and {} more",
+                                                dry_run_diff.retained.len() - 12
+                                            ));
+                                        }
+                                    }
+                                });
+                        });
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    !filtered_snapshots.is_empty() && confirm_ready,
+                                    egui::Button::new("Confirm"),
+                                )
+                                .clicked()
+                            {
+                                let before = self.retry_argument_snapshots.len();
+                                match action {
+                                    RetrySnapshotPendingCleanupAction::DeleteFiltered => {
+                                        let removed = self.remove_filtered_retry_snapshots();
+                                        let after = self.retry_argument_snapshots.len();
+                                        if removed > 0 {
+                                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                                "delete_filtered",
+                                                &preview_summary,
+                                                filtered_snapshots.len(),
+                                                removed,
+                                                before,
+                                                after,
+                                                None,
+                                            );
+                                            self.app_status = format!(
+                                                "{} (audit #{}); {}",
+                                                Self::format_retry_snapshot_cleanup_status(
+                                                    action, removed, before, after
+                                                ),
+                                                audit_id,
+                                                preview_summary
+                                            );
+                                        } else {
+                                            self.app_status = "Delete filtered confirmed: no snapshots removed"
+                                                .to_string();
+                                        }
+                                    }
+                                    RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
+                                        let archive_result =
+                                            self.prompt_archive_and_delete_filtered_retry_snapshots();
+                                        if let Some((removed, archive_path)) = archive_result {
+                                            let after = self.retry_argument_snapshots.len();
+                                            if removed > 0 {
+                                                let audit_id = self
+                                                    .record_retry_snapshot_cleanup_audit(
+                                                        "archive_delete_filtered",
+                                                        &preview_summary,
+                                                        filtered_snapshots.len(),
+                                                        removed,
+                                                        before,
+                                                        after,
+                                                        Some(archive_path.as_str()),
+                                                    );
+                                                self.app_status = format!(
+                                                    "{} (audit #{}); {}",
+                                                    Self::format_retry_snapshot_cleanup_status(
+                                                        action, removed, before, after
+                                                    ),
+                                                    audit_id,
+                                                    preview_summary
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                self.retry_snapshot_pending_cleanup_action = None;
+                                self.retry_snapshot_cleanup_confirm_text.clear();
+                            }
+                            if ui.button("Cancel").clicked() {
+                                self.retry_snapshot_pending_cleanup_action = None;
+                                self.retry_snapshot_cleanup_confirm_text.clear();
+                                self.app_status =
+                                    "Retry snapshot cleanup confirmation canceled".to_string();
+                            }
+                        });
+                    });
+                }
+                ui.small(format!(
+                    "Showing {} of {} retained snapshots",
+                    filtered_snapshots.len(),
+                    self.retry_argument_snapshots.len()
+                ));
+                egui::ScrollArea::vertical()
+                    .max_height(160.0)
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        if self.retry_argument_snapshots.is_empty() {
+                            ui.small("No retry snapshots captured yet");
+                        } else if filtered_snapshots.is_empty() {
+                            ui.small("No retry snapshots match current filters");
+                        } else {
+                            for snapshot in filtered_snapshots.iter().rev().take(40) {
+                                ui.small(snapshot.to_line());
+                            }
+                        }
+                    });
+                ui.separator();
+                ui.strong("Retry cleanup audit");
+                self.retry_cleanup_audit_retain_count = self.retry_cleanup_audit_retention_limit();
+                ui.horizontal(|ui| {
+                    ui.label("Retain newest");
+                    ui.add(
+                        egui::DragValue::new(&mut self.retry_cleanup_audit_retain_count)
+                            .range(1..=MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES)
+                            .speed(1.0),
+                    )
+                    .on_hover_text("Retention cap for cleanup-audit entries");
+                    ui.small(format!("max {}", MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES));
+                    if ui
+                        .button("Prune oldest")
+                        .on_hover_text("Drop oldest cleanup-audit entries until retained count is reached")
+                        .clicked()
+                    {
+                        let removed = self.prune_retry_cleanup_audit_to_limit(
+                            self.retry_cleanup_audit_retain_count,
+                        );
+                        self.app_status = if removed == 0 {
+                            "Retry cleanup audit prune: no entries removed".to_string()
+                        } else {
+                            format!("Retry cleanup audit prune: removed {removed} oldest entries")
+                        };
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.retry_snapshot_cleanup_audit.is_empty(),
+                            egui::Button::new("Clear all"),
+                        )
+                        .on_hover_text("Delete all retained cleanup-audit entries")
+                        .clicked()
+                    {
+                        let removed = self.clear_retry_cleanup_audit();
+                        self.app_status = format!("Cleared {removed} retry cleanup audit entries");
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Action");
+                    egui::ComboBox::from_id_salt("retry_cleanup_audit_action_filter")
+                        .selected_text(self.retry_cleanup_audit_action_filter.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.retry_cleanup_audit_action_filter,
+                                RetryCleanupAuditActionFilter::All,
+                                RetryCleanupAuditActionFilter::All.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_cleanup_audit_action_filter,
+                                RetryCleanupAuditActionFilter::DeleteFiltered,
+                                RetryCleanupAuditActionFilter::DeleteFiltered.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_cleanup_audit_action_filter,
+                                RetryCleanupAuditActionFilter::ArchiveDeleteFiltered,
+                                RetryCleanupAuditActionFilter::ArchiveDeleteFiltered.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_cleanup_audit_action_filter,
+                                RetryCleanupAuditActionFilter::PruneOldest,
+                                RetryCleanupAuditActionFilter::PruneOldest.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_cleanup_audit_action_filter,
+                                RetryCleanupAuditActionFilter::ClearAll,
+                                RetryCleanupAuditActionFilter::ClearAll.label(),
+                            );
+                        });
+                    ui.label("Filter");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.retry_cleanup_audit_text_filter)
+                            .desired_width(260.0)
+                            .hint_text("action:delete kind:blast summary:pruned"),
+                    )
+                    .on_hover_text(Self::retry_cleanup_audit_filter_help_text());
+                    if ui.button("Clear").clicked() {
+                        self.retry_cleanup_audit_text_filter.clear();
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.retry_snapshot_cleanup_audit.is_empty(),
+                            egui::Button::new("Export report..."),
+                        )
+                        .on_hover_text(
+                            "Export full cleanup-audit report JSON (read-only; does not append new audit entries)",
+                        )
+                        .clicked()
+                    {
+                        self.prompt_export_retry_cleanup_audit_report();
+                    }
+                });
+                let filtered_audit_entries = self.filtered_retry_cleanup_audit_entries();
+                ui.small(format!(
+                    "Showing {} of {} retained audit entries",
+                    filtered_audit_entries.len(),
+                    self.retry_snapshot_cleanup_audit.len()
+                ));
+                egui::ScrollArea::vertical()
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        if self.retry_snapshot_cleanup_audit.is_empty() {
+                            ui.small("No retry cleanup audit entries yet");
+                        } else if filtered_audit_entries.is_empty() {
+                            ui.small("No retry cleanup audit entries match current filters");
+                        } else {
+                            for entry in filtered_audit_entries.iter().rev().take(40) {
+                                ui.small(entry.to_line());
+                            }
                         }
                     });
             });
@@ -22637,7 +24346,8 @@ impl eframe::App for GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        APP_CONFIGURATION_SCHEMA_VERSION, BackgroundJobEventPhase, BackgroundJobKind,
+        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+        BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
@@ -22645,7 +24355,8 @@ mod tests {
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageAnalysisKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, RoutineAssistantStage,
+        PersistedLineageNodeGroup, RetryCleanupAuditActionFilter, RetrySnapshotKindFilter,
+        RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -22809,6 +24520,1008 @@ mod tests {
             serde_json::from_value(workspace_value).expect("deserialize lineage workspace");
 
         assert_eq!(workspace.main_split_fraction, Some(0.72));
+    }
+
+    #[test]
+    fn push_job_event_persists_background_job_history_metadata() {
+        let mut app = GENtleApp::default();
+        app.next_background_job_id = 9;
+        app.push_job_event(
+            BackgroundJobKind::PrepareGenome,
+            BackgroundJobEventPhase::Started,
+            Some(8),
+            "prepare started",
+        );
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        assert_eq!(
+            history.get("schema").and_then(|value| value.as_str()),
+            Some(BACKGROUND_JOB_HISTORY_SCHEMA)
+        );
+        assert_eq!(
+            history
+                .get("next_background_job_id")
+                .and_then(|value| value.as_u64()),
+            Some(9)
+        );
+        let events = history
+            .get("events")
+            .and_then(|value| value.as_array())
+            .expect("events array");
+        assert_eq!(events.len(), 1);
+        let first = &events[0];
+        assert_eq!(
+            first.get("kind").and_then(|value| value.as_str()),
+            Some("prepare_genome")
+        );
+        assert_eq!(
+            first.get("phase").and_then(|value| value.as_str()),
+            Some("started")
+        );
+        assert_eq!(
+            first.get("job_id").and_then(|value| value.as_u64()),
+            Some(8)
+        );
+        assert_eq!(
+            first.get("summary").and_then(|value| value.as_str()),
+            Some("prepare started")
+        );
+    }
+
+    #[test]
+    fn load_background_job_history_from_state_restores_events_and_counter() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "schema": BACKGROUND_JOB_HISTORY_SCHEMA,
+                "next_background_job_id": 41,
+                "events": [
+                    {
+                        "job_id": 38,
+                        "kind": "prepare_genome",
+                        "phase": "started",
+                        "emitted_at_unix_ms": 1000,
+                        "summary": "prepare started"
+                    },
+                    {
+                        "job_id": 39,
+                        "kind": "blast_genome",
+                        "phase": "failed",
+                        "emitted_at_unix_ms": 1200,
+                        "summary": "blast failed"
+                    }
+                ]
+            }),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_background_job_history_from_state();
+
+        assert_eq!(app.next_background_job_id, 41);
+        assert_eq!(app.job_event_log.len(), 2);
+        assert_eq!(app.job_event_log[0].job_id, Some(38));
+        assert_eq!(app.job_event_log[0].kind, BackgroundJobKind::PrepareGenome);
+        assert_eq!(app.job_event_log[0].phase, BackgroundJobEventPhase::Started);
+        assert_eq!(app.job_event_log[1].job_id, Some(39));
+        assert_eq!(app.job_event_log[1].kind, BackgroundJobKind::BlastGenome);
+        assert_eq!(app.job_event_log[1].phase, BackgroundJobEventPhase::Failed);
+        assert_eq!(app.next_retry_snapshot_id, 1);
+        assert!(app.retry_argument_snapshots.is_empty());
+        assert_eq!(app.next_retry_cleanup_audit_id, 1);
+        assert!(app.retry_snapshot_cleanup_audit.is_empty());
+    }
+
+    #[test]
+    fn load_background_job_history_from_state_restores_retry_snapshots() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "schema": BACKGROUND_JOB_HISTORY_SCHEMA,
+                "next_background_job_id": 3,
+                "events": [],
+                "next_retry_snapshot_id": 12,
+                "retry_snapshots": [
+                    {
+                        "snapshot_id": 9,
+                        "kind": "prepare_genome",
+                        "origin": "background jobs panel",
+                        "captured_at_unix_ms": 2000,
+                        "arguments": {
+                            "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                            "genome_id": "hg38"
+                        }
+                    },
+                    {
+                        "snapshot_id": 10,
+                        "kind": "blast_genome",
+                        "origin": "background jobs panel",
+                        "captured_at_unix_ms": 2010,
+                        "arguments": {
+                            "schema": "gentle.gui_retry_snapshot.blast.v1",
+                            "genome_id": "hg38",
+                            "source_mode": "manual"
+                        }
+                    }
+                ]
+            }),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_background_job_history_from_state();
+
+        assert_eq!(app.next_retry_snapshot_id, 12);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 9);
+        assert_eq!(
+            app.retry_argument_snapshots[0]
+                .arguments
+                .get("schema")
+                .and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_snapshot.prepare.v1")
+        );
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 10);
+        assert_eq!(
+            app.retry_argument_snapshots[1].kind,
+            BackgroundJobKind::BlastGenome
+        );
+        assert_eq!(app.next_retry_cleanup_audit_id, 1);
+        assert!(app.retry_snapshot_cleanup_audit.is_empty());
+    }
+
+    #[test]
+    fn capture_retry_snapshot_persists_background_job_history_metadata() {
+        let mut app = GENtleApp::default();
+        let snapshot_id = app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.track_import.v1",
+                "selected_sequence_id": "seq_1"
+            }),
+        );
+        assert_eq!(snapshot_id, 1);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        assert_eq!(
+            history
+                .get("next_retry_snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        let snapshots = history
+            .get("retry_snapshots")
+            .and_then(|value| value.as_array())
+            .expect("retry snapshots array");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(
+            snapshots[0]
+                .get("snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            snapshots[0].get("kind").and_then(|value| value.as_str()),
+            Some("track_import")
+        );
+    }
+
+    #[test]
+    fn load_background_job_history_from_state_restores_retry_cleanup_audit() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "schema": BACKGROUND_JOB_HISTORY_SCHEMA,
+                "next_background_job_id": 3,
+                "events": [],
+                "next_retry_snapshot_id": 2,
+                "retry_snapshots": [],
+                "next_retry_cleanup_audit_id": 8,
+                "retry_cleanup_audit": [
+                    {
+                        "audit_id": 6,
+                        "action": "delete_filtered",
+                        "performed_at_unix_ms": 3000,
+                        "target_count": 4,
+                        "removed_count": 3,
+                        "retained_before": 10,
+                        "retained_after": 7,
+                        "filter_kind": "blast_genome",
+                        "filter_text": "origin:panel",
+                        "archive_path": null,
+                        "summary": "deleted filtered snapshots"
+                    }
+                ]
+            }),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_background_job_history_from_state();
+
+        assert_eq!(app.next_retry_cleanup_audit_id, 8);
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), 1);
+        assert_eq!(app.retry_snapshot_cleanup_audit[0].audit_id, 6);
+        assert_eq!(
+            app.retry_snapshot_cleanup_audit[0].action,
+            "delete_filtered"
+        );
+        assert_eq!(
+            app.retry_snapshot_cleanup_audit[0].filter_kind,
+            "blast_genome".to_string()
+        );
+    }
+
+    #[test]
+    fn record_retry_snapshot_cleanup_audit_persists_background_job_history_metadata() {
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+        let audit_id = app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "deleted filtered snapshots",
+            4,
+            3,
+            10,
+            7,
+            None,
+        );
+        assert_eq!(audit_id, 1);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        assert_eq!(
+            history
+                .get("next_retry_cleanup_audit_id")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        let audits = history
+            .get("retry_cleanup_audit")
+            .and_then(|value| value.as_array())
+            .expect("retry cleanup audit array");
+        assert_eq!(audits.len(), 1);
+        assert_eq!(
+            audits[0].get("action").and_then(|value| value.as_str()),
+            Some("delete_filtered")
+        );
+        assert_eq!(
+            audits[0]
+                .get("filter_kind")
+                .and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+        assert_eq!(
+            audits[0]
+                .get("removed_count")
+                .and_then(|value| value.as_u64()),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_writes_report_payload_without_self_audit() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report.json");
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "deleted filtered snapshots",
+            4,
+            3,
+            10,
+            7,
+            None,
+        );
+        app.record_retry_snapshot_cleanup_audit(
+            "archive_delete_filtered",
+            "archived and removed filtered snapshots",
+            2,
+            2,
+            7,
+            5,
+            Some("/tmp/retry_archive.json"),
+        );
+        let audit_len_before = app.retry_snapshot_cleanup_audit.len();
+
+        let exported = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect("export retry cleanup audit report");
+        assert_eq!(exported, 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), audit_len_before);
+        assert_eq!(app.next_retry_cleanup_audit_id, 3);
+
+        let payload = fs::read_to_string(&output_path).expect("read retry cleanup audit report");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse audit report");
+        assert_eq!(
+            payload_json.get("schema").and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_cleanup_audit_report.v1")
+        );
+        assert_eq!(
+            payload_json
+                .get("entry_count")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            payload_json
+                .get("action_counts")
+                .and_then(|value| value.get("delete_filtered"))
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        let entries = payload_json
+            .get("entries")
+            .and_then(|value| value.as_array())
+            .expect("entries array");
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_rejects_empty_audit() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report.json");
+        let app = GENtleApp::default();
+        let err = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect_err("export should fail when audit is empty");
+        assert!(err.contains("No retry cleanup audit entries to export"));
+        assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn filtered_retry_cleanup_audit_entries_support_action_and_scoped_text_filters() {
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "Removed blast hg38 panel snapshots",
+            3,
+            2,
+            8,
+            6,
+            None,
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::TrackImport;
+        app.retry_snapshot_text_filter = "origin:dialog args:seq_1".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "prune_oldest",
+            "Pruned old track-import entries",
+            5,
+            2,
+            7,
+            5,
+            None,
+        );
+
+        app.retry_cleanup_audit_action_filter = RetryCleanupAuditActionFilter::DeleteFiltered;
+        app.retry_cleanup_audit_text_filter = "kind:blast summary:hg38".to_string();
+
+        let filtered = app.filtered_retry_cleanup_audit_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].audit_id, 1);
+        assert_eq!(filtered[0].action, "delete_filtered");
+    }
+
+    #[test]
+    fn record_retry_snapshot_cleanup_audit_honors_audit_retention_limit() {
+        let mut app = GENtleApp::default();
+        app.retry_cleanup_audit_retain_count = 2;
+
+        app.record_retry_snapshot_cleanup_audit("delete_filtered", "first", 3, 1, 6, 5, None);
+        app.record_retry_snapshot_cleanup_audit("prune_oldest", "second", 2, 1, 5, 4, None);
+        app.record_retry_snapshot_cleanup_audit("clear_all", "third", 4, 4, 4, 0, None);
+
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit[0].audit_id, 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit[1].audit_id, 3);
+    }
+
+    #[test]
+    fn prune_retry_cleanup_audit_to_limit_removes_oldest_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.record_retry_snapshot_cleanup_audit("delete_filtered", "first", 3, 1, 6, 5, None);
+        app.record_retry_snapshot_cleanup_audit("prune_oldest", "second", 2, 1, 5, 4, None);
+        app.record_retry_snapshot_cleanup_audit("clear_all", "third", 4, 4, 4, 0, None);
+
+        let removed = app.prune_retry_cleanup_audit_to_limit(2);
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit[0].audit_id, 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit[1].audit_id, 3);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let audits = history
+            .get("retry_cleanup_audit")
+            .and_then(|value| value.as_array())
+            .expect("retry cleanup audit array");
+        assert_eq!(audits.len(), 2);
+        assert_eq!(
+            audits[0].get("audit_id").and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            audits[1].get("audit_id").and_then(|value| value.as_u64()),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn clear_retry_cleanup_audit_removes_all_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.record_retry_snapshot_cleanup_audit("delete_filtered", "first", 3, 1, 6, 5, None);
+        app.record_retry_snapshot_cleanup_audit("prune_oldest", "second", 2, 1, 5, 4, None);
+
+        let removed = app.clear_retry_cleanup_audit();
+        assert_eq!(removed, 2);
+        assert!(app.retry_snapshot_cleanup_audit.is_empty());
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let audits = history
+            .get("retry_cleanup_audit")
+            .and_then(|value| value.as_array())
+            .expect("retry cleanup audit array");
+        assert!(audits.is_empty());
+    }
+
+    #[test]
+    fn filtered_retry_snapshots_support_kind_and_scoped_text_filters() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38",
+                "source_mode": "manual"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10",
+                "source_mode": "manual"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+
+        let filtered = app.filtered_retry_snapshots();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].snapshot_id, 2);
+        assert_eq!(filtered[0].kind, BackgroundJobKind::BlastGenome);
+        assert_eq!(filtered[0].origin, "background jobs panel");
+    }
+
+    #[test]
+    fn export_filtered_retry_snapshots_to_path_writes_filtered_payload() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38",
+                "source_mode": "manual"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10",
+                "source_mode": "project_sequence"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "args:hg38".to_string();
+
+        let count = app
+            .export_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect("retry snapshot export");
+        assert_eq!(count, 1);
+
+        let payload = fs::read_to_string(&output_path).expect("read export payload");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse export payload");
+        assert_eq!(
+            payload_json.get("schema").and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_snapshot_export.v1")
+        );
+        assert_eq!(
+            payload_json
+                .get("filters")
+                .and_then(|value| value.get("kind"))
+                .and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+        assert_eq!(
+            payload_json
+                .get("filters")
+                .and_then(|value| value.get("text"))
+                .and_then(|value| value.as_str()),
+            Some("args:hg38")
+        );
+        assert_eq!(
+            payload_json
+                .get("snapshot_count")
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        let snapshots = payload_json
+            .get("snapshots")
+            .and_then(|value| value.as_array())
+            .expect("snapshots array");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(
+            snapshots[0].get("kind").and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+    }
+
+    #[test]
+    fn export_filtered_retry_snapshots_to_path_rejects_empty_match_set() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "args:mm10".to_string();
+
+        let err = app
+            .export_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect_err("export should fail when no snapshots match filters");
+        assert!(err.contains("No retry snapshots match current filters"));
+        assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn capture_retry_snapshot_honors_retention_limit() {
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_retain_count = 2;
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.track_import.v1",
+                "selected_sequence_id": "seq_1"
+            }),
+        );
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 2);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn prune_retry_snapshots_to_limit_removes_oldest_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.track_import.v1"}),
+        );
+
+        let removed = app.prune_retry_snapshots_to_limit(2);
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 2);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let snapshots = history
+            .get("retry_snapshots")
+            .and_then(|value| value.as_array())
+            .expect("retry snapshots array");
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(
+            snapshots[0]
+                .get("snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            snapshots[1]
+                .get("snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn clear_retry_snapshots_removes_all_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+
+        let removed = app.clear_retry_snapshots();
+        assert_eq!(removed, 2);
+        assert!(app.retry_argument_snapshots.is_empty());
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let snapshots = history
+            .get("retry_snapshots")
+            .and_then(|value| value.as_array())
+            .expect("retry snapshots array");
+        assert!(snapshots.is_empty());
+    }
+
+    #[test]
+    fn remove_filtered_retry_snapshots_deletes_only_matching_entries() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+
+        let removed = app.remove_filtered_retry_snapshots();
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 1);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn archive_and_delete_filtered_retry_snapshots_to_path_writes_archive_and_removes_matches() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots_archive.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+
+        let removed = app
+            .archive_and_delete_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect("archive/delete retry snapshots");
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 1);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+
+        let payload = fs::read_to_string(&output_path).expect("read archive payload");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse archive payload");
+        assert_eq!(
+            payload_json.get("schema").and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_snapshot_archive.v1")
+        );
+        assert_eq!(
+            payload_json
+                .get("archive_mode")
+                .and_then(|value| value.as_str()),
+            Some("archive_and_delete_filtered")
+        );
+        assert_eq!(
+            payload_json
+                .get("archived_count")
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        let archived = payload_json
+            .get("snapshots")
+            .and_then(|value| value.as_array())
+            .expect("archived snapshots array");
+        assert_eq!(archived.len(), 1);
+        assert_eq!(
+            archived[0].get("kind").and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+    }
+
+    #[test]
+    fn archive_and_delete_filtered_retry_snapshots_to_path_rejects_empty_match_set() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots_archive.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "args:mm10".to_string();
+
+        let err = app
+            .archive_and_delete_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect_err("archive/delete should fail when no snapshots match filters");
+        assert!(err.contains("No retry snapshots match current filters"));
+        assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn retry_snapshot_dry_run_diff_splits_removed_and_retained_by_filters() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1", "genome_id": "hg38"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1", "genome_id": "mm10"}),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+
+        let diff = app.retry_snapshot_dry_run_diff();
+        assert_eq!(diff.removed.len(), 1);
+        assert_eq!(diff.retained.len(), 2);
+        assert_eq!(diff.removed[0].snapshot_id, 2);
+        assert_eq!(diff.retained[0].snapshot_id, 1);
+        assert_eq!(diff.retained[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn retry_snapshot_dry_run_diff_summary_line_reports_counts() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+
+        let diff = app.retry_snapshot_dry_run_diff();
+        assert_eq!(
+            diff.summary_line(),
+            "Dry-run diff: remove 1 snapshot(s), retain 1"
+        );
+    }
+
+    #[test]
+    fn summarize_retry_snapshot_cleanup_targets_reports_kind_origin_and_id_ranges() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "dialog retry button",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.track_import.v1"}),
+        );
+
+        let summary = GENtleApp::summarize_retry_snapshot_cleanup_targets(
+            &app.retry_argument_snapshots.clone(),
+        );
+        assert!(summary.contains("3 match(es)"));
+        assert!(summary.contains("PrepareGenome=1"));
+        assert!(summary.contains("BlastGenome=1"));
+        assert!(summary.contains("TrackImport=1"));
+        assert!(summary.contains("AgentAssist=0"));
+        assert!(summary.contains("background jobs panel=2"));
+        assert!(summary.contains("dialog retry button=1"));
+        assert!(summary.contains("ids #1..#3"));
+    }
+
+    #[test]
+    fn format_retry_snapshot_cleanup_status_reports_before_after_counts() {
+        let text = GENtleApp::format_retry_snapshot_cleanup_status(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            9,
+            5,
+        );
+        assert_eq!(
+            text,
+            "Delete filtered confirmed: removed 4 snapshot(s), retained 5 (was 9)"
+        );
+    }
+
+    #[test]
+    fn retry_snapshot_pending_cleanup_action_confirm_phrase_includes_target_count() {
+        assert_eq!(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered.confirm_phrase(7),
+            "delete 7"
+        );
+        assert_eq!(
+            RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered.confirm_phrase(3),
+            "archive-delete 3"
+        );
+    }
+
+    #[test]
+    fn retry_snapshot_cleanup_confirm_input_matches_expected_phrase_case_insensitive() {
+        assert!(GENtleApp::retry_snapshot_cleanup_confirm_input_matches(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            "  DeLeTe 4  "
+        ));
+        assert!(!GENtleApp::retry_snapshot_cleanup_confirm_input_matches(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            "delete 3"
+        ));
     }
 
     #[test]
