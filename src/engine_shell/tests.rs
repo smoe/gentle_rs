@@ -4908,7 +4908,7 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
         },
     )
     .expect("start async blast");
-    assert!(!start.state_changed);
+    assert!(start.state_changed);
     let job_id = start
         .output
         .get("job")
@@ -5101,14 +5101,13 @@ fn execute_async_blast_list_reports_scheduler_metadata() {
             },
         )
         .expect("start async blast");
-        assert!(!start.state_changed);
+        assert!(start.state_changed);
 
         let listed = execute_shell_command(
             &mut engine,
             &ShellCommand::ReferenceBlastAsyncList { helper_mode: true },
         )
         .expect("list async blast jobs");
-        assert!(!listed.state_changed);
         assert_eq!(listed.output["job_count"].as_u64(), Some(1));
         let jobs = listed.output["jobs"]
             .as_array()
@@ -5117,6 +5116,215 @@ fn execute_async_blast_list_reports_scheduler_metadata() {
         assert_eq!(jobs[0]["max_concurrent_jobs"].as_u64(), Some(2));
         assert!(jobs[0]["running_jobs"].as_u64().unwrap_or(0) <= 2);
         assert!(jobs[0]["queued_jobs"].as_u64().unwrap_or(0) <= 1);
+    });
+}
+
+#[test]
+fn execute_async_blast_restart_recovery_marks_orphaned_nonterminal_job_failed() {
+    with_blast_async_test_overrides(1, 200, || {
+        let mut engine = GentleEngine::new();
+        let start = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode: true,
+                genome_id: "missing_helper".to_string(),
+                query_sequence: "ACGTACGT".to_string(),
+                max_hits: 5,
+                max_hits_explicit: true,
+                task: Some("blastn-short".to_string()),
+                request_options_json: None,
+                catalog_path: None,
+                cache_dir: None,
+            },
+        )
+        .expect("start async blast");
+        assert!(start.state_changed);
+        let job_id = start.output["job"]["job_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!job_id.is_empty());
+
+        let persisted_state = engine.state().clone();
+        {
+            let mut jobs = BLAST_ASYNC_JOBS
+                .lock()
+                .expect("blast async registry lock for restart simulation");
+            jobs.clear();
+        }
+
+        let mut restarted_engine = GentleEngine::from_state(persisted_state);
+        let status = execute_shell_command(
+            &mut restarted_engine,
+            &ShellCommand::ReferenceBlastAsyncStatus {
+                helper_mode: true,
+                job_id: job_id.clone(),
+                include_report: false,
+            },
+        )
+        .expect("status after restart");
+        assert!(status.state_changed);
+        assert_eq!(
+            status.output["job"]["job_id"].as_str(),
+            Some(job_id.as_str())
+        );
+        assert_eq!(status.output["job"]["state"].as_str(), Some("failed"));
+        assert_eq!(
+            status.output["job"]["error"].as_str(),
+            Some(BLAST_ASYNC_RESTART_INTERRUPTED_ERROR)
+        );
+        assert!(
+            !status.output["job"]["result_available"]
+                .as_bool()
+                .unwrap_or(true)
+        );
+    });
+}
+
+#[test]
+fn execute_async_blast_cancel_after_restart_is_deterministic() {
+    with_blast_async_test_overrides(1, 200, || {
+        let mut engine = GentleEngine::new();
+        let start = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode: true,
+                genome_id: "missing_helper".to_string(),
+                query_sequence: "ACGTACGT".to_string(),
+                max_hits: 5,
+                max_hits_explicit: true,
+                task: Some("blastn-short".to_string()),
+                request_options_json: None,
+                catalog_path: None,
+                cache_dir: None,
+            },
+        )
+        .expect("start async blast");
+        assert!(start.state_changed);
+        let job_id = start.output["job"]["job_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!job_id.is_empty());
+
+        let persisted_state = engine.state().clone();
+        {
+            let mut jobs = BLAST_ASYNC_JOBS
+                .lock()
+                .expect("blast async registry lock for restart simulation");
+            jobs.clear();
+        }
+
+        let mut restarted_engine = GentleEngine::from_state(persisted_state);
+        let cancel = execute_shell_command(
+            &mut restarted_engine,
+            &ShellCommand::ReferenceBlastAsyncCancel {
+                helper_mode: true,
+                job_id: job_id.clone(),
+            },
+        )
+        .expect("cancel after restart");
+        assert!(cancel.state_changed);
+        assert_eq!(
+            cancel.output["job"]["job_id"].as_str(),
+            Some(job_id.as_str())
+        );
+        assert_eq!(cancel.output["job"]["state"].as_str(), Some("cancelled"));
+        assert_eq!(
+            cancel.output["job"]["error"].as_str(),
+            Some("BLAST search cancelled by caller")
+        );
+
+        let status = execute_shell_command(
+            &mut restarted_engine,
+            &ShellCommand::ReferenceBlastAsyncStatus {
+                helper_mode: true,
+                job_id,
+                include_report: false,
+            },
+        )
+        .expect("status after restart-cancel");
+        assert_eq!(status.output["job"]["state"].as_str(), Some("cancelled"));
+    });
+}
+
+#[test]
+fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically() {
+    with_blast_async_test_overrides(1, 80, || {
+        let mut engine = GentleEngine::new();
+        let start = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode: true,
+                genome_id: "missing_helper".to_string(),
+                query_sequence: "ACGTACGT".to_string(),
+                max_hits: 5,
+                max_hits_explicit: true,
+                task: Some("blastn-short".to_string()),
+                request_options_json: None,
+                catalog_path: None,
+                cache_dir: None,
+            },
+        )
+        .expect("start async blast");
+        let job_id = start.output["job"]["job_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert!(!job_id.is_empty());
+        let pre_completion_snapshot = engine.state().clone();
+
+        let mut terminal_state = String::new();
+        for _ in 0..60 {
+            let status = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ReferenceBlastAsyncStatus {
+                    helper_mode: true,
+                    job_id: job_id.clone(),
+                    include_report: false,
+                },
+            )
+            .expect("status before restart");
+            terminal_state = status.output["job"]["state"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            if matches!(
+                terminal_state.as_str(),
+                "completed" | "failed" | "cancelled"
+            ) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        assert!(
+            matches!(terminal_state.as_str(), "failed" | "cancelled"),
+            "expected original process to reach terminal state, got {}",
+            terminal_state
+        );
+
+        {
+            let mut jobs = BLAST_ASYNC_JOBS
+                .lock()
+                .expect("blast async registry lock for restart simulation");
+            jobs.clear();
+        }
+
+        let mut restarted_engine = GentleEngine::from_state(pre_completion_snapshot);
+        let status = execute_shell_command(
+            &mut restarted_engine,
+            &ShellCommand::ReferenceBlastAsyncStatus {
+                helper_mode: true,
+                job_id,
+                include_report: false,
+            },
+        )
+        .expect("status from stale snapshot after restart");
+        assert_eq!(status.output["job"]["state"].as_str(), Some("failed"));
+        assert_eq!(
+            status.output["job"]["error"].as_str(),
+            Some(BLAST_ASYNC_RESTART_INTERRUPTED_ERROR)
+        );
     });
 }
 

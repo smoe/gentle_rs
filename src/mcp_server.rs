@@ -783,6 +783,36 @@ fn run_non_mutating_shell_tool(
     Ok(run.output)
 }
 
+fn run_shell_tool_with_optional_persist(
+    default_state_path: &str,
+    args: &Map<String, Value>,
+    tokens: Vec<String>,
+    tool_name: &str,
+) -> Result<Value, String> {
+    let state_path = state_path_from_args(default_state_path, args);
+    let state = load_state(&state_path)
+        .map_err(|err| format!("Could not load state from '{state_path}': {err}"))?;
+    let mut engine = GentleEngine::from_state(state);
+    let command = parse_shell_tokens(&tokens).map_err(|err| {
+        format!("Could not parse shared shell command for MCP tool '{tool_name}': {err}")
+    })?;
+    let run = execute_shell_command_with_options(
+        &mut engine,
+        &command,
+        &ShellExecutionOptions::default(),
+    )
+    .map_err(|err| {
+        format!("Could not execute shared shell command for MCP tool '{tool_name}': {err}")
+    })?;
+    if run.state_changed {
+        engine
+            .state()
+            .save_to_path(&state_path)
+            .map_err(|err| format!("Could not save state to '{state_path}': {err}"))?;
+    }
+    Ok(run.output)
+}
+
 fn ui_intents_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     match run_non_mutating_shell_tool(
@@ -947,7 +977,12 @@ fn blast_async_start_tool_result(default_state_path: &str, arguments: &Value) ->
     }
     append_string_flag(&mut tokens, "--catalog", catalog_path);
     append_string_flag(&mut tokens, "--cache-dir", cache_dir);
-    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_start") {
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "blast_async_start",
+    ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -979,7 +1014,12 @@ fn blast_async_status_tool_result(default_state_path: &str, arguments: &Value) -
     if with_report {
         tokens.push("--with-report".to_string());
     }
-    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_status") {
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "blast_async_status",
+    ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -1004,7 +1044,12 @@ fn blast_async_cancel_tool_result(default_state_path: &str, arguments: &Value) -
         "blast-cancel".to_string(),
         job_id,
     ];
-    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_cancel") {
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "blast_async_cancel",
+    ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -1024,7 +1069,12 @@ fn blast_async_list_tool_result(default_state_path: &str, arguments: &Value) -> 
         },
         "blast-list".to_string(),
     ];
-    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_list") {
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "blast_async_list",
+    ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -1437,10 +1487,6 @@ mod tests {
         let mut engine = GentleEngine::new();
         let run =
             execute_shell_command(&mut engine, &command).expect("execute shared shell command");
-        assert!(
-            !run.state_changed,
-            "expected non-mutating shared shell command"
-        );
         run.output
     }
 

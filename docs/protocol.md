@@ -1535,6 +1535,15 @@ Async BLAST shell contract (agent/MCP-ready baseline):
     - `queued_jobs`
     - `queue_position` (present while state is `queued`)
   - optional final `report` on `blast-status --with-report`
+- Durability/restart semantics:
+  - BLAST async status snapshots are persisted in project metadata as
+    `blast_async_jobs` (`gentle.blast_async_job_store.v1`).
+  - On restart/reload, recovered jobs that were previously non-terminal but no
+    longer have an active worker context are normalized deterministically:
+    - `cancel_requested=true` -> `cancelled`
+    - otherwise -> `failed` with explicit restart/reload interruption reason.
+  - `blast-start`, `blast-status`, `blast-cancel`, and `blast-list` may mark
+    shell state as changed when they persist updated async job snapshots.
 - Scheduler policy:
   - async BLAST jobs are executed by a bounded FIFO scheduler (queue + worker slots)
   - default concurrency uses host CPU parallelism
