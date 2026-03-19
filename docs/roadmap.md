@@ -1858,17 +1858,23 @@ Post-baseline follow-ups:
 - None currently blocking on this branch. Latest local run: `cargo test -q`
   passed (`528 passed, 1 ignored` in main suite; additional suites green).
 
-### Stability TODO (queued: 4, 7, 6; item 5 done)
+### Stability TODO (queued: 7, 6; items 4, 5 done)
 
 - Done (2026-03-04): 5) malformed-annotation reporting now summarizes non-fatal
   GTF/GFF parse issues with file/line context and surfaces the warnings through
   prepare/report payloads consumed by engine/CLI/GUI paths.
 
-- 4) Harden async long-running job durability:
-  - persist BLAST/long-job transition state across restart
-    (`queued|running|failed|cancelled|completed`),
-  - keep cancellation/timebox semantics deterministic after restart/reload,
-  - add conformance tests for restart + race-transition cases.
+- Done (2026-03-19): 4) async long-running BLAST job durability hardened:
+  - BLAST async job snapshots are now persisted in project metadata
+    (`gentle.blast_async_job_store.v1`) with deterministic ordering and
+    counter carry-forward,
+  - restart/reload recovery now normalizes orphaned non-terminal jobs
+    deterministically (`queued|running` -> `failed` with explicit interruption
+    reason, or `cancelled` when cancellation was requested),
+  - cancellation semantics after restart/reload are deterministic (cancel can
+    be applied to recovered non-terminal snapshots before normalization),
+  - conformance tests now cover restart recovery and stale-snapshot
+    race-transition normalization behavior.
 
 - 7) Extend cancellation/timebox controls beyond current genome-track import flow
   (BLAST now supported; continue hardening prepare + future long-running jobs).
