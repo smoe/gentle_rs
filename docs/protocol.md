@@ -1112,6 +1112,9 @@ Operation progress/cancellation semantics:
   - `GenomeTrackImport`
   - `RnaReadInterpret`
 - Current cancellation support:
+  - genome preparation supports cooperative cancellation plus optional
+    `timeout_seconds` timeboxing and reports deterministic cancellation/timeout
+    outcomes.
   - genome-track imports support cooperative cancellation and return partial
     import warnings.
   - RNA-read interpretation uses cooperative callback checks while emitting
@@ -1525,6 +1528,13 @@ Async BLAST shell contract (agent/MCP-ready baseline):
   - `gentle.blast_async_status.v1`
   - `gentle.blast_async_cancel.v1`
   - `gentle.blast_async_list.v1`
+- External-binary preflight payload:
+  - `blast-start` responses now include `binary_preflight` with schema
+    `gentle.blast_external_binary_preflight.v1`.
+  - payload includes deterministic `blastn` and `makeblastdb` probe rows with:
+    `found`, `version`, `executable`, and resolved `path` diagnostics.
+  - equivalent preflight payload is also emitted by synchronous shared-shell
+    routes `prepare`, `blast`, and `blast-track`.
 - Job status contract:
   - `job_id` stable per process
   - non-terminal states: `queued | running`

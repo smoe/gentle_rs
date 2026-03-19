@@ -1267,14 +1267,19 @@ Genome convenience commands:
   - `--biotype` can be repeated to constrain matches to selected biotypes.
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Runs engine `PrepareGenome`.
+  - Output now includes `binary_preflight` (`gentle.blast_external_binary_preflight.v1`)
+    with `makeblastdb`/`blastn` found/missing/version/path diagnostics captured
+    before prepare work starts.
 - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Runs `blastn` against prepared genome cache/index.
   - `--task` defaults to `blastn-short`; accepted values: `blastn-short`, `blastn`.
   - `--options-json` / `--options-file` accept a JSON object that can override quick options and include thresholds (`max_evalue`, `min_identity_percent`, `min_query_coverage_percent`, `min_alignment_length_bp`, `min_bit_score`, `unique_best_hit`).
+  - Output includes `binary_preflight` with explicit BLAST tool diagnostics.
 - `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Starts one async BLAST job and returns a stable `job_id`.
   - Jobs run through a bounded FIFO scheduler and may return initial state
     `queued` or `running` depending on current slot availability.
+  - Start payload includes `binary_preflight` with explicit BLAST tool diagnostics.
 - `genomes blast-status JOB_ID [--with-report]`
   - Polls async BLAST job status; `--with-report` includes final report payload when available.
   - Status includes scheduler metadata (`max_concurrent_jobs`, `running_jobs`,

@@ -1541,6 +1541,8 @@ Recommended flow:
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
+   - startup status now includes `makeblastdb` preflight diagnostics
+     (found/missing/version/path) before heavy prepare work continues
    - a running prepare task can be cancelled via `Cancel Prepare`
    - optional `timeout_sec` can be set in GUI (or `--timeout-secs` in CLI/shell)
    - if a previous attempt already downloaded `sequence.fa` but annotation
@@ -1606,6 +1608,8 @@ Recommended flow:
        - quick controls
        - preset + structured thresholds + advanced JSON override
    - click `Run BLAST`
+   - startup status now includes `blastn` + `makeblastdb` preflight diagnostics
+     (found/missing/version/path) before query execution progresses
    - while running, click `Cancel BLAST` in the dialog (or `Cancel` in `Window -> Show Background Jobs`).
    - BLAST runs in background and keeps the UI responsive; pool mode returns one result set per member
    - BLAST itself does not expose a native `% complete` CLI flag; GENtle therefore shows:

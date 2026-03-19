@@ -29,11 +29,12 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
-        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, GenomeTranscriptRecord,
-        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeFallbackPolicy,
-        PreparedGenomeInspection, build_genbank_efetch_url, is_prepare_cancelled_error,
-        validate_genbank_accession,
+        BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
+        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedGenomeFallbackPolicy, PreparedGenomeInspection,
+        blast_external_binary_preflight_report, build_genbank_efetch_url,
+        is_prepare_cancelled_error, validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -6268,6 +6269,10 @@ impl GentleEngine {
             legacy_task,
             legacy_max_hits,
         )
+    }
+
+    pub fn blast_external_binary_preflight_report(&self) -> BlastExternalBinaryPreflightReport {
+        blast_external_binary_preflight_report()
     }
 
     pub fn blast_reference_genome_with_project_and_request_options(

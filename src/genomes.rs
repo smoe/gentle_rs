@@ -151,6 +151,42 @@ pub struct PrepareGenomeReport {
     pub annotation_parse_report: Option<AnnotationParseReport>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalBinaryPreflightProbe {
+    pub tool: String,
+    pub env_var: String,
+    pub executable: String,
+    pub resolved_path: Option<String>,
+    pub found: bool,
+    pub version_probe_ok: bool,
+    pub status_code: Option<i32>,
+    pub version: Option<String>,
+    pub detail: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BlastExternalBinaryPreflightReport {
+    pub schema: String,
+    pub blastn: ExternalBinaryPreflightProbe,
+    pub makeblastdb: ExternalBinaryPreflightProbe,
+}
+
+pub fn blast_external_binary_preflight_report() -> BlastExternalBinaryPreflightReport {
+    BlastExternalBinaryPreflightReport {
+        schema: "gentle.blast_external_binary_preflight.v1".to_string(),
+        blastn: probe_external_binary(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, "blastn", &["-version"]),
+        makeblastdb: probe_external_binary(
+            MAKEBLASTDB_ENV_BIN,
+            DEFAULT_MAKEBLASTDB_BIN,
+            "makeblastdb",
+            &["-version"],
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedGenomeInspection {
     pub genome_id: String,
@@ -3147,6 +3183,72 @@ fn resolve_tool_executable(env_var: &str, default_bin: &str) -> String {
     crate::tool_overrides::resolve_tool_executable(env_var, default_bin)
 }
 
+fn resolve_executable_path(executable: &str) -> Option<String> {
+    let trimmed = executable.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let candidate = Path::new(trimmed);
+    if candidate.is_absolute() || candidate.components().count() > 1 {
+        if candidate.exists() {
+            return Some(canonical_or_display(candidate));
+        }
+        return None;
+    }
+    let path_env = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_env) {
+        let joined = dir.join(trimmed);
+        if joined.exists() {
+            return Some(canonical_or_display(&joined));
+        }
+    }
+    None
+}
+
+fn probe_external_binary(
+    env_var: &str,
+    default_bin: &str,
+    tool_name: &str,
+    version_args: &[&str],
+) -> ExternalBinaryPreflightProbe {
+    let executable = resolve_tool_executable(env_var, default_bin);
+    let mut report = ExternalBinaryPreflightProbe {
+        tool: tool_name.to_string(),
+        env_var: env_var.to_string(),
+        executable: executable.clone(),
+        resolved_path: resolve_executable_path(&executable),
+        ..ExternalBinaryPreflightProbe::default()
+    };
+    match Command::new(&executable).args(version_args).output() {
+        Ok(output) => {
+            report.found = true;
+            report.status_code = output.status.code();
+            report.version_probe_ok = output.status.success();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let first_line = first_non_empty_output_line(&stdout, &stderr);
+            if first_line != "no output" {
+                report.version = Some(first_line.clone());
+            }
+            if !report.version_probe_ok {
+                report.detail = Some(first_line);
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            report.found = false;
+            report.error = Some(format!(
+                "Executable '{}' was not found in PATH or configured path",
+                executable
+            ));
+        }
+        Err(err) => {
+            report.found = report.resolved_path.is_some();
+            report.error = Some(err.to_string());
+        }
+    }
+    report
+}
+
 fn default_blast_db_prefix(install_dir: &Path) -> PathBuf {
     install_dir.join("blastdb").join("genome")
 }
@@ -4537,6 +4639,8 @@ mod tests {
     use super::*;
     use flate2::{Compression, write::GzEncoder};
     use std::env;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
 
     struct EnvVarGuard {
@@ -4579,6 +4683,80 @@ mod tests {
 
     fn file_url(path: &Path) -> String {
         format!("file://{}", path.display())
+    }
+
+    #[cfg(unix)]
+    fn write_executable_script(path: &Path, body: &str) {
+        fs::write(path, body).expect("write executable script");
+        let mut perms = fs::metadata(path).expect("script metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).expect("set executable permissions");
+    }
+
+    #[test]
+    fn test_blast_external_binary_preflight_reports_missing_tools() {
+        let _blastn_guard = EnvVarGuard::set(BLASTN_ENV_BIN, "__gentle_missing_blastn__");
+        let _makeblastdb_guard =
+            EnvVarGuard::set(MAKEBLASTDB_ENV_BIN, "__gentle_missing_makeblastdb__");
+
+        let report = blast_external_binary_preflight_report();
+        assert_eq!(report.schema, "gentle.blast_external_binary_preflight.v1");
+        assert_eq!(report.blastn.tool, "blastn");
+        assert_eq!(report.makeblastdb.tool, "makeblastdb");
+        assert!(!report.blastn.found);
+        assert!(!report.makeblastdb.found);
+        assert_eq!(report.blastn.executable, "__gentle_missing_blastn__");
+        assert_eq!(
+            report.makeblastdb.executable,
+            "__gentle_missing_makeblastdb__"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_blast_external_binary_preflight_reports_version_and_path_for_configured_tools() {
+        let td = tempdir().expect("tempdir");
+        let fake_blastn = td.path().join("fake_blastn");
+        let fake_makeblastdb = td.path().join("fake_makeblastdb");
+        write_executable_script(
+            &fake_blastn,
+            "#!/bin/sh\necho \"blastn: fake 1.2.3\"; exit 0\n",
+        );
+        write_executable_script(
+            &fake_makeblastdb,
+            "#!/bin/sh\necho \"makeblastdb: fake 4.5.6\"; exit 0\n",
+        );
+
+        let _blastn_guard =
+            EnvVarGuard::set(BLASTN_ENV_BIN, fake_blastn.to_string_lossy().as_ref());
+        let _makeblastdb_guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            fake_makeblastdb.to_string_lossy().as_ref(),
+        );
+
+        let report = blast_external_binary_preflight_report();
+        assert!(report.blastn.found);
+        assert!(report.makeblastdb.found);
+        assert!(report.blastn.version_probe_ok);
+        assert!(report.makeblastdb.version_probe_ok);
+        assert!(
+            report
+                .blastn
+                .version
+                .as_deref()
+                .unwrap_or_default()
+                .contains("fake 1.2.3")
+        );
+        assert!(
+            report
+                .makeblastdb
+                .version
+                .as_deref()
+                .unwrap_or_default()
+                .contains("fake 4.5.6")
+        );
+        assert!(report.blastn.resolved_path.is_some());
+        assert!(report.makeblastdb.resolved_path.is_some());
     }
 
     #[test]
