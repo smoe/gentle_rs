@@ -163,15 +163,24 @@ Dotplot/flexibility capability status:
 
 - `gentle_cli`: supported via shared-shell/direct commands:
   - `dotplot compute|list|show`
+  - `transcripts derive`
   - `flex compute|list|show`
-  backed by `ComputeDotplot` and `ComputeFlexibilityTrack`.
+  backed by `ComputeDotplot`, `DeriveTranscriptSequences`, and
+  `ComputeFlexibilityTrack`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
+  - `transcripts derive` supports:
+    - full-sequence derivation (all `mRNA`/`transcript` features)
+    - selected feature derivation (`--feature-id`)
+    - splicing-scope constrained derivation from one seed feature
+      (`--scope ...` with exactly one `--feature-id`)
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`);
+  dedicated convenience wrappers pending.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`);
+  dedicated convenience wrappers pending.
 
 RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
@@ -932,6 +941,7 @@ Shared shell command:
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`
     - `dotplot show DOTPLOT_ID`
+    - `transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`

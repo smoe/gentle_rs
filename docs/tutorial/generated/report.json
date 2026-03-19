@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 12,
+  "chapter_count": 13,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -20,24 +20,26 @@
     "chapters/10_tp53_isoform_architecture_online.md",
     "chapters/11_tp63_anchor_extension_online.md",
     "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
+    "chapters/13_tp73_cdna_genomic_dotplot_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "da7516cd5bd8e8aab2374a0196863d02aad32d2e",
+    "README.md": "5b4e3bcc24ce92e1bb06e4b7f7bdcbf3d872afcb",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "719718f09ac94cae3d1372c5cd911e5b4ce63c68",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "30a5fd936165b7bfa1fb9ff1b7da7d414f13dd40",
-    "chapters/03_load_and_digest_pgex.md": "95e5d81bb5a902641af58f7f2d2d303ed1fc7067",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "e622f2e24ccbcfb8408eada536aa61e9915b1057",
-    "chapters/05_guides_filter_and_generate_oligos.md": "248a93083c0997301407688174ef24d0bf950b45",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "b7af38fb8f4ce4a12a08d7caa89baea326d827ed",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "324cf58e8f70fd7aeadf589f063629654667337a",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "fb9e17615426cadaecd3f1a6f18ce92a923ad047",
+    "chapters/03_load_and_digest_pgex.md": "cf52639518968389d0e17838acfa50f1f87eda05",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "43af58f9cbb661f87876f42198bc2250bc81feb4",
+    "chapters/05_guides_filter_and_generate_oligos.md": "08860b11cab56f7ec85b8a915e9e518e8f7d2e63",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "b0c12be4eee21819c2122cec78ee70c3e0b691d8",
     "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "dcb2d2fcd968a77e5c6fb08841b4b334c2ed9c1e",
-    "chapters/09_prepare_reference_genome_online.md": "28b22133850348cb3652c79bfae8b8af130d0ed0",
-    "chapters/10_tp53_isoform_architecture_online.md": "21d60006475a6bd5cf586d6fbcbac02fa7a3dafc",
-    "chapters/11_tp63_anchor_extension_online.md": "30d6300a9459990cf3fcd35d936b6090990f0765",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "536c2057e7c551048508f2b65a39c6e2e22b7c92"
+    "chapters/08_contribute_to_gentle_development.md": "3037e469f1608807fb8fe0568c9ed72364951db8",
+    "chapters/09_prepare_reference_genome_online.md": "44ecb6ec5c3baaa752c8300c32d0f999ce3be840",
+    "chapters/10_tp53_isoform_architecture_online.md": "9af5756a4ee4861725abe574efb45162d46082d7",
+    "chapters/11_tp63_anchor_extension_online.md": "d74cb4529cda66e86eb8465f0e6a62146c39eb8f",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "3e008cf26ec0179cf3f007c30b6c8eb55d4ccb8d",
+    "chapters/13_tp73_cdna_genomic_dotplot_online.md": "7e7299f0f1c38abbd431413ef0c221fd8b0fffa6"
   },
   "chapters": [
     {
@@ -218,6 +220,23 @@
       "concepts": [
         "shared_engine_contract",
         "deterministic_workflows",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "order": 13,
+      "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "tier": "online",
+      "example_id": "tp73_cdna_genomic_dotplot_online",
+      "example_source": "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
         "genome_catalog_targeting",
         "online_opt_in"
       ],

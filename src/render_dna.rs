@@ -262,6 +262,39 @@ impl RenderDna {
         feature.kind.to_string().to_ascii_uppercase() == "MRNA"
     }
 
+    pub fn is_contextual_transcript_feature(feature: &Feature) -> bool {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        let transcript_like = matches!(kind.as_str(), "MRNA" | "EXON" | "CDS");
+        if !transcript_like {
+            return false;
+        }
+        if Self::feature_has_qualifier_value(
+            feature,
+            "gentle_context_layer",
+            "contextual_transcript",
+        ) {
+            return true;
+        }
+        if Self::feature_has_qualifier_value(
+            feature,
+            "gentle_generated",
+            "genome_annotation_projection",
+        ) {
+            return true;
+        }
+        // Backward-compatible heuristic for older projects created before
+        // contextual transcript qualifiers were introduced.
+        if kind == "MRNA"
+            && Self::feature_has_qualifier(feature, "chromosome")
+            && Self::feature_has_qualifier(feature, "genomic_start_1based")
+            && Self::feature_has_qualifier(feature, "genomic_end_1based")
+            && !Self::feature_has_qualifier(feature, "synthetic_origin")
+        {
+            return true;
+        }
+        false
+    }
+
     pub fn feature_passes_kind_filter(
         feature: &Feature,
         show_cds_features: bool,
@@ -346,6 +379,19 @@ impl RenderDna {
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
             .map(|value| value.trim().to_string())
             .find(|value| !value.is_empty())
+    }
+
+    fn feature_has_qualifier(feature: &Feature, key: &str) -> bool {
+        feature
+            .qualifier_values(key.into())
+            .map(|value| value.trim())
+            .any(|value| !value.is_empty())
+    }
+
+    fn feature_has_qualifier_value(feature: &Feature, key: &str, expected: &str) -> bool {
+        feature
+            .qualifier_values(key.into())
+            .any(|value| value.trim().eq_ignore_ascii_case(expected))
     }
 
     fn regulatory_class(feature: &Feature) -> Option<String> {
@@ -817,5 +863,61 @@ impl Widget for RenderDna {
         let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
         self.render(ui, rect);
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RenderDna;
+    use gb_io::seq::{Feature, FeatureKind, Location};
+
+    fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
+        Feature {
+            kind: FeatureKind::from(kind),
+            location: Location::simple_range(0, 10),
+            qualifiers: qualifiers
+                .iter()
+                .map(|(k, v)| ((*k).into(), Some((*v).to_string())))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn contextual_transcript_feature_detects_qualifier_tags() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("gentle_generated", "genome_annotation_projection"),
+                ("gentle_context_layer", "contextual_transcript"),
+            ],
+        );
+        assert!(RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn contextual_transcript_feature_detects_legacy_projected_mrna_shape() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("chromosome", "1"),
+                ("genomic_start_1based", "100"),
+                ("genomic_end_1based", "200"),
+            ],
+        );
+        assert!(RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn contextual_transcript_feature_skips_synthetic_intrinsic_transcript() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("chromosome", "1"),
+                ("genomic_start_1based", "100"),
+                ("genomic_end_1based", "200"),
+                ("synthetic_origin", "mrna_transcript_derived"),
+            ],
+        );
+        assert!(!RenderDna::is_contextual_transcript_feature(&feature));
     }
 }

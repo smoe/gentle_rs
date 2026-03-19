@@ -282,6 +282,9 @@ impl GentleEngine {
             Operation::FilterContainerByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
             }
+            Operation::DeriveTranscriptSequences { .. } => {
+                Some("Derived transcript sequence".to_string())
+            }
             Operation::Reverse { .. }
             | Operation::Complement { .. }
             | Operation::ReverseComplement { .. }

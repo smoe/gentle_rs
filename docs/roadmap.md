@@ -146,6 +146,15 @@ order. Durable architecture constraints and decisions remain in
     - `inspect-feature-expert` / `render-feature-expert-svg`
     - `panels import-isoform` / `panels inspect-isoform` /
       `panels render-isoform-svg`
+- Transcript derivation baseline is now additive and parity-wired:
+  - engine operation `DeriveTranscriptSequences` derives cDNA/transcript
+    sequences from `mRNA`/`transcript` features
+  - shared-shell/CLI command:
+    `transcripts derive SEQ_ID [--feature-id N ...] [--scope ...] [--output-prefix PREFIX]`
+  - Splicing Expert quick actions in GUI:
+    - `Derive group transcripts`
+    - `Derive all mRNA`
+    - `Derive + Dotplot` (selected transcript; strand-aware pair mode)
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
@@ -646,6 +655,17 @@ Notes:
    - tutorial/executable-guidance UX still needs an explicit per-step checklist
      with state-verifiable completion markers inside GUI walkthrough flows
      (including promoter cloning walkthroughs such as TP73)
+   - TP73 cDNA-vs-genomic dotplot tutorial now has an explicit screenshot
+     coverage checklist in `docs/tutorial/two_sequence_dotplot_gui.md`; pending
+     additions are focused on dotplot-stage captures (`10..11`) to complete the
+     visual walkthrough
+   - canonical reusable workflow baseline is now added for this route:
+     `docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json`
+     and linked as chapter `13` in `docs/tutorial/manifest.json`
+   - tutorial quality gate now includes deterministic image-link existence
+     coverage for TP73 cDNA-vs-genomic tutorial markdown
+     (`tutorial_tp73_cdna_genomic_markdown_image_links_exist` in
+     `src/workflow_examples.rs`)
    - publication/release visual-polish mode is still pending:
      - add a dedicated `Publication mode` preset for GUI + SVG export paths
      - include deterministic readability-focused defaults (backdrop strength,
@@ -664,20 +684,24 @@ Notes:
      need full pinned-source provenance capture before broader CI adoption
    - follow-up: add a TP53-forward benchmark profile (higher-abundance,
      TP73-family-adjacent) while keeping fixture footprint small
-13. cDNA presentation semantics are not yet fully enforced:
-   - toolbar-level DNA presentation mode gating is now available, but cDNA
-     mode still needs stricter annotation-layer semantics
-   - standalone cDNA display should default to intrinsic cDNA evidence only
-     (for example mapped exon composition for that cDNA) and avoid showing
-     unrelated transcript (`mRNA`) tracks by default
-   - once cDNA-to-genome or cDNA-to-genomic-region mapping is run (current
-     two-step seed-filter + alignment workflow), mapped context should appear
-     as an explicit contextual layer rather than being merged into intrinsic
-     cDNA annotations
-   - dotplot outputs prepared for this workflow should be wired into the same
-     intrinsic-vs-context layer model and visibility controls
-   - follow-up UI contract: keep "all contextual transcripts" as an explicit
-     opt-in toggle, not default
+13. cDNA presentation semantics are partially enforced (follow-up remains):
+   - implemented:
+     - cDNA mode now defaults to intrinsic evidence by hiding contextual
+       transcript-projection features (`mRNA`/`exon`/`CDS`) unless explicitly
+       enabled
+     - explicit cDNA-only opt-in toggle is available in toolbar
+       (`Ctx mRNA`), default off
+     - genomic annotation projection now tags generated context features with
+       deterministic qualifiers
+       (`gentle_generated=genome_annotation_projection`,
+       `gentle_context_layer=contextual_transcript|contextual_gene`)
+   - remaining:
+     - continue refining intrinsic-vs-context split for broader mapped layers
+       beyond transcript projection
+     - wire dotplot/flex outputs into the same intrinsic-vs-context visibility
+       contract
+     - keep "all contextual transcripts" contract stable across reopen/reload
+       and expand fixture coverage for legacy projects without context tags
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
@@ -1691,12 +1715,18 @@ Status (2026-03-19):
       distributions (`boxplot_bin_count`, `boxplot_bins`)
     - standalone Dotplot workspace renders these boxplots below the density map
       for rapid exon-band distribution inspection
+  - GUI export baseline (2026-03-19):
+    - compact Dotplot map panel and standalone Dotplot workspace now expose
+      `Export Dotplot SVG...`
+    - default export filename now encodes active dotplot parameters (`mode`,
+      spans, `word`, `step`, `mismatches`, optional `tile`) and display controls
+      (`threshold`, `gain`; plus flexibility parameters when enabled)
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
       between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
-  - `RenderDotplotSvg`
+  - engine-level `RenderDotplotSvg` operation for shell/CLI/adapter parity
   - additional overlay controls beyond crosshair baseline
   - JS/Lua/Python convenience wrappers beyond generic operation calls
 
@@ -1706,9 +1736,9 @@ Latest GUI baseline (2026-03-09):
 - Sequence-window `Dotplot map` now acts as a compact launcher/compute panel
   and opens a dedicated standalone `Dotplot` workspace window for full
   parameter editing and plot inspection.
-- Dotplot compute defaults to a viewport-centered bounded span with
-  `half_window_bp` (default `500` => ±500 bp), reducing compute load on large
-  loci.
+- Dotplot compute defaults to a full-span view by setting `half_window_bp` to
+  the larger query/reference sequence length; default `max_mismatches` is `0`
+  (exact-seed baseline).
 - Dotplot mode now supports:
   - parameterized compute (`mode`, `word_size`, `step`, `max_mismatches`,
     optional `tile_bp`)
@@ -1718,8 +1748,11 @@ Latest GUI baseline (2026-03-09):
   - density-render safeguards (point sampling cap for responsive redraws)
   - pairwise sparse-result diagnostics (orientation hinting, strict-parameter
     warnings, reference-edge warnings)
-  - `Fit ref span to hits` helper to center pairwise signal without manual
-    coordinate trial-and-error
+  - pairwise default auto-fit for reference span:
+    - when `ref_start/ref_end` are empty, dotplot compute performs one
+      full-reference pass, auto-fits to hit envelope (+padding), and recomputes
+  - `Fit ref span to hits` manual helper remains available for explicit-span
+    re-fit workflows
   - expanded engine pair-evaluation guardrail (now `100,000,000`) for larger
     pairwise spans before requiring coarser sampling
   - exact-seed acceleration for `mismatches=0` requests (indexed k-mer matching
@@ -1780,8 +1813,10 @@ Phase 3 (CLI/JS/Lua parity + export):
 - Add engine export operation:
   - `RenderDotplotSvg` (optional flexibility-track panels on same coordinate axis).
 - Status: partial.
-  - implemented: `dotplot compute|list|show`, `flex compute|list|show`
-  - pending: `dotplot render-svg`, adapter convenience wrappers.
+  - implemented: `dotplot compute|list|show`, `flex compute|list|show`, GUI
+    `Export Dotplot SVG...`
+  - pending: engine/shared-shell `dotplot render-svg`, adapter convenience
+    wrappers.
 
 Phase 4 (latency hardening):
 

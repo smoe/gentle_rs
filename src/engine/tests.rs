@@ -3662,6 +3662,106 @@ fn test_is_mrna_feature_accepts_transcript_alias() {
 }
 
 #[test]
+fn test_derive_transcript_sequences_derives_all_mrna_features() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let source = engine
+        .state()
+        .sequences
+        .get("s")
+        .expect("source sequence")
+        .get_forward_string();
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive transcripts");
+    assert_eq!(result.created_seq_ids.len(), 2);
+    for derived_seq_id in result.created_seq_ids {
+        let derived = engine
+            .state()
+            .sequences
+            .get(&derived_seq_id)
+            .expect("derived sequence");
+        let features = derived.features();
+        assert!(
+            features
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        );
+        let exon_count = features
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+            .count();
+        assert!(exon_count >= 2);
+        for feature in features {
+            if feature.kind.to_string().eq_ignore_ascii_case("mRNA") {
+                let source_seq = feature
+                    .qualifier_values("source_seq_id".into())
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                assert_eq!(source_seq, "s");
+            }
+        }
+        assert!(
+            source.len() >= derived.len(),
+            "derived transcript should not exceed source length"
+        );
+    }
+}
+
+#[test]
+fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
+    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(2, 6),
+            gb_io::seq::Location::simple_range(10, 14),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("TX_MINUS".to_string())),
+            ("label".into(), Some("TX_MINUS".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let source = engine
+        .state()
+        .sequences
+        .get("s")
+        .expect("source")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let joined = format!("{}{}", &source[2..6], &source[10..14]);
+    let expected = GentleEngine::reverse_complement(&joined);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![0],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive reverse transcript");
+    assert_eq!(result.created_seq_ids.len(), 1);
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived");
+    assert_eq!(derived.get_forward_string(), expected);
+}
+
+#[test]
 fn test_render_feature_expert_svg_operation() {
     let mut state = ProjectState::default();
     state
@@ -5308,6 +5408,16 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
             .qualifier_values("gene_id".into())
             .any(|value| value == "GENE1")
     );
+    assert!(
+        gene_feature
+            .qualifier_values("gentle_context_layer".into())
+            .any(|value| value.eq_ignore_ascii_case("contextual_gene"))
+    );
+    assert!(
+        gene_feature
+            .qualifier_values("gentle_generated".into())
+            .any(|value| value.eq_ignore_ascii_case("genome_annotation_projection"))
+    );
     let tx_feature = loaded_gene
         .features()
         .iter()
@@ -5318,10 +5428,30 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
                     .any(|value| value == "TX1")
         })
         .expect("expected extracted transcript feature");
+    assert!(
+        tx_feature
+            .qualifier_values("gentle_context_layer".into())
+            .any(|value| value.eq_ignore_ascii_case("contextual_transcript"))
+    );
+    assert!(
+        tx_feature
+            .qualifier_values("gentle_generated".into())
+            .any(|value| value.eq_ignore_ascii_case("genome_annotation_projection"))
+    );
     let mut exons = vec![];
     collect_location_ranges_usize(&tx_feature.location, &mut exons);
     exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     assert_eq!(exons, vec![(0, 4), (8, 12)]);
+    let projected_exon = loaded_gene
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+        .expect("expected projected exon feature");
+    assert!(
+        projected_exon
+            .qualifier_values("gentle_context_layer".into())
+            .any(|value| value.eq_ignore_ascii_case("contextual_transcript"))
+    );
     assert!(
         loaded_gene
             .features()

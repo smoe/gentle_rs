@@ -1042,6 +1042,12 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
     },
+    TranscriptsDerive {
+        seq_id: String,
+        feature_ids: Vec<usize>,
+        scope: Option<SplicingScopePreset>,
+        output_prefix: Option<String>,
+    },
     PrimersDesignQpcr {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
@@ -5478,6 +5484,29 @@ impl ShellCommand {
                 "seed primer/qPCR design ROI payloads from splicing group for feature n-{} on '{}'",
                 feature_id, seq_id
             ),
+            Self::TranscriptsDerive {
+                seq_id,
+                feature_ids,
+                scope,
+                output_prefix,
+            } => format!(
+                "derive transcript sequences from '{}' (feature_ids={}, scope={}, output_prefix='{}')",
+                seq_id,
+                if feature_ids.is_empty() {
+                    "all_mrna".to_string()
+                } else {
+                    feature_ids
+                        .iter()
+                        .map(|id| (id + 1).to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                },
+                scope.map(SplicingScopePreset::as_str).unwrap_or("-"),
+                output_prefix
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::PrimersDesignQpcr {
                 request_json,
                 backend,
@@ -5893,6 +5922,7 @@ impl ShellCommand {
                 | Self::GuidesProtocolExport { .. }
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
+                | Self::TranscriptsDerive { .. }
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
                 | Self::RnaReadsInterpret { .. }
@@ -9057,6 +9087,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "dotplot" => parse_dotplot_command(tokens),
         "flex" => parse_flex_command(tokens),
+        "transcripts" => parse_transcripts_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -13626,6 +13657,42 @@ pub fn execute_shell_command_with_options(
                         "design_primer_pairs": primer_pairs,
                         "design_qpcr_assays": qpcr,
                     }
+                }),
+            }
+        }
+        ShellCommand::TranscriptsDerive {
+            seq_id,
+            feature_ids,
+            scope,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::DeriveTranscriptSequences {
+                    seq_id: seq_id.clone(),
+                    feature_ids: feature_ids.clone(),
+                    scope: *scope,
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let created_ids = op_result.created_seq_ids.clone();
+            let created = created_ids
+                .iter()
+                .filter_map(|derived_seq_id| {
+                    engine.state().sequences.get(derived_seq_id).map(|dna| {
+                        json!({
+                            "seq_id": derived_seq_id,
+                            "name": dna.name(),
+                            "length_bp": dna.len(),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "transcript_count": created.len(),
+                    "transcripts": created,
                 }),
             }
         }

@@ -7435,6 +7435,28 @@ fn parse_dotplot_and_flex_commands() {
 }
 
 #[test]
+fn parse_transcripts_derive_command() {
+    let parsed = parse_shell_line(
+        "transcripts derive seq_a --feature-id 11 --scope all_overlapping_both_strands --output-prefix seq_a__mrna",
+    )
+    .expect("parse transcripts derive");
+    match parsed {
+        ShellCommand::TranscriptsDerive {
+            seq_id,
+            feature_ids,
+            scope,
+            output_prefix,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(feature_ids, vec![11]);
+            assert_eq!(scope, Some(SplicingScopePreset::AllOverlappingBothStrands));
+            assert_eq!(output_prefix.as_deref(), Some("seq_a__mrna"));
+        }
+        other => panic!("expected TranscriptsDerive, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_reads_commands() {
     let interpret = parse_shell_line(
             "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --short-max-bp 420 --long-window-bp 140 --long-window-count 3 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
@@ -7728,6 +7750,34 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
     )
     .expect("list flex tracks");
     assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
+}
+
+#[test]
+fn execute_transcripts_derive_creates_sequences() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::TranscriptsDerive {
+            seq_id: "seq_a".to_string(),
+            feature_ids: vec![],
+            scope: None,
+            output_prefix: Some("seq_a__mrna".to_string()),
+        },
+    )
+    .expect("execute transcripts derive");
+    assert!(out.state_changed);
+    let transcript_count = out.output["transcript_count"]
+        .as_u64()
+        .expect("transcript_count");
+    assert!(transcript_count >= 1);
+    let rows = out.output["transcripts"]
+        .as_array()
+        .expect("transcripts array");
+    assert_eq!(rows.len() as u64, transcript_count);
 }
 
 #[test]

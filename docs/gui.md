@@ -128,14 +128,30 @@ Primary map modes (linear topology):
   - compact panel keeps quick operations in-window:
     - `Compute dotplot`
     - `Compute flexibility`
+    - `Export Dotplot SVG...`
+      - exports the currently loaded dotplot/flexibility rendering from GUI
+      - default filename includes dotplot parameters (`mode`, query/reference
+        spans, `word`, `step`, `mismatches`, optional `tile`) and display
+        controls (`threshold`, `gain`; plus flexibility model/bin/smoothing when
+        shown)
     - `dotplot_id` / `flex_track_id` selection
   - full parameter editing and plot inspection now live in the standalone window:
     - self modes: `self_forward`, `self_reverse_complement`
     - pair modes: `pair_forward`, `pair_reverse_complement`
       - pair modes require `reference_seq_id`
       - optional `ref_start` / `ref_end` set y-axis reference span
-      - `Fit ref span to hits` narrows `ref_start/ref_end` to the detected hit
-        envelope (+padding) to avoid edge-compressed exon stripes
+      - default behavior when `ref_start/ref_end` are empty:
+        - run an initial full-reference pass
+        - auto-fit to detected hit envelope (+padding)
+        - recompute once on that fitted reference span
+      - `Fit ref span to hits` remains available for manual re-fit when explicit
+        reference spans are used
+    - default parameters:
+      - `half_window_bp`: defaults to the larger query/reference sequence length
+        so the initial view spans the full comparison context
+      - `word`: defaults to `7` (higher values are faster but less sensitive)
+      - `step`: defaults to `1` (highest sampling density)
+      - `mismatches`: defaults to `0` (exact-seed matching)
     - display controls:
       - `display threshold` (cell-density sensitivity)
       - `intensity gain` (contrast amplification for visible cells)
@@ -285,6 +301,22 @@ Feature tree grouping:
   - `Send Group ROI -> Primer/qPCR`
   - seeds ROI start/end fields in Engine Ops primer and qPCR design forms from
     the current splicing-group genomic bounds.
+- The splicing expert window also includes transcript-level quick actions:
+  - `Transcript` selector (choose one lane by `n-<feature_id> <transcript_id>`)
+  - `Derive group transcripts`
+    - derives cDNA transcript sequences for all transcript lanes admitted by
+      the current splicing scope.
+  - `Derive all mRNA`
+    - derives cDNA transcript sequences for every `mRNA`/`transcript` feature
+      on the active sequence.
+  - `Derive + Dotplot`
+    - derives the selected transcript sequence, switches to transcript context,
+      and opens pairwise transcript-vs-genomic dotplot.
+    - strand-aware default mode:
+      - transcript `+` strand -> `pair_forward`
+      - transcript `-` strand -> `pair_reverse_complement`
+    - step size is auto-increased when needed so pair evaluations stay within
+      engine limits.
 - The splicing expert window also includes `Nanopore cDNA interpretation`:
   - phase-1 FASTA input run panel for `InterpretRnaReads`
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
@@ -602,6 +634,9 @@ The exact set depends on `Mode`:
   - full controls
 - `cDNA`
   - full controls
+  - defaults to intrinsic cDNA-focused display behavior:
+    contextual transcript-projection features (`mRNA`/`exon`/`CDS`) are hidden
+    unless explicitly enabled
 
 Controls:
 
@@ -628,33 +663,37 @@ Controls:
    - Shows or hides gene feature rendering.
 8. mRNA
    - Shows or hides mRNA feature rendering.
-9. Show/Hide TFBS
+9. Ctx mRNA (shown in `cDNA` mode)
+   - Explicit opt-in for contextual transcript-projection features derived from
+     genome annotation/mapping context.
+   - Default is off in `cDNA` mode (intrinsic cDNA evidence only).
+10. Show/Hide TFBS
    - Toggles computed TFBS annotations.
    - Default is off.
-10. Show/Hide restriction enzymes
+11. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
-11. Show/Hide GC content
+12. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).
-12. Show/Hide ORFs
+13. Show/Hide ORFs
    - Toggles open reading frame overlays.
-13. Show/Hide methylation sites
+14. Show/Hide methylation sites
    - Toggles methylation-site markers.
-14. Extract Sel
+15. Extract Sel
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
-15. PCR ROI
+16. PCR ROI
    - `PCR ROI` menu seeds Primer/qPCR design ROI fields directly from:
      - current map/text selection
      - selected feature bounds
    - opens Engine Ops so the user can run `Design Primer Pairs` or
      `Design qPCR Assays`.
-16. Export Seq
+17. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-17. Export SVG
+18. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-18. Export View SVG
+19. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
    - When linear `Splicing map` mode is active, export uses the same splicing
@@ -666,10 +705,10 @@ Controls:
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
    - Debug builds include adaptive routing-tier diagnostics in the SVG header.
-19. Export RNA SVG (ssRNA only)
+20. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-20. Engine Ops
+21. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
    - Digest quick-fill actions:
      - `Use MCS enzymes`: fills digest enzyme list from MCS feature context
@@ -678,7 +717,7 @@ Controls:
        once in the active sequence.
      - `Single-cutters in CDS`: same single-cutter filter constrained to
        cleavage positions inside CDS features.
-21. Shell
+22. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 

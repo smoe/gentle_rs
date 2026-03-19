@@ -1704,6 +1704,86 @@ pub(super) fn parse_rna_read_score_density_scale(
     }
 }
 
+pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("transcripts requires a subcommand: derive".to_string());
+    }
+    match tokens[1].as_str() {
+        "derive" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "transcripts derive requires SEQ_ID [--feature-id N ...] [--scope SCOPE] [--output-prefix PREFIX]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("transcripts derive SEQ_ID must not be empty".to_string());
+            }
+            let mut feature_ids: Vec<usize> = vec![];
+            let mut scope: Option<SplicingScopePreset> = None;
+            let mut output_prefix: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-id",
+                            "transcripts derive",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --feature-id value '{}' for transcripts derive: {e}",
+                                raw
+                            )
+                        })?;
+                        feature_ids.push(parsed);
+                    }
+                    "--scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--scope", "transcripts derive")?;
+                        scope = Some(parse_splicing_scope_preset(&raw)?);
+                    }
+                    "--output-prefix" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-prefix",
+                            "transcripts derive",
+                        )?;
+                        let trimmed = raw.trim();
+                        output_prefix = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{}' for transcripts derive", other));
+                    }
+                }
+            }
+            if scope.is_some() && feature_ids.len() != 1 {
+                return Err(
+                    "transcripts derive --scope requires exactly one --feature-id seed".to_string(),
+                );
+            }
+            Ok(ShellCommand::TranscriptsDerive {
+                seq_id,
+                feature_ids,
+                scope,
+                output_prefix,
+            })
+        }
+        other => Err(format!(
+            "Unknown transcripts subcommand '{}' (expected derive)",
+            other
+        )),
+    }
+}
+
 pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("dotplot requires a subcommand: compute, list, show".to_string());

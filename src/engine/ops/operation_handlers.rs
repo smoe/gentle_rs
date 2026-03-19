@@ -4,6 +4,337 @@ use super::*;
 use crate::uniprot::UniprotNucleotideXref;
 
 impl GentleEngine {
+    fn is_transcript_feature_for_derivation(feature: &gb_io::seq::Feature) -> bool {
+        let kind = feature.kind.to_string();
+        kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
+    }
+
+    fn qualifier_text_for_derivation(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key.into())
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty())
+    }
+
+    fn first_nonempty_qualifier_for_derivation(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        for key in keys {
+            if let Some(value) = Self::qualifier_text_for_derivation(feature, key) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn transcript_feature_ids_for_derivation(
+        &self,
+        seq_id: &str,
+        feature_ids: &[usize],
+        scope: Option<SplicingScopePreset>,
+    ) -> Result<Vec<usize>, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let features = dna.features();
+
+        if let Some(scope) = scope {
+            if feature_ids.len() != 1 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message:
+                        "DeriveTranscriptSequences with scope requires exactly one seed feature id"
+                            .to_string(),
+                });
+            }
+            let seed_feature_id = feature_ids[0];
+            if seed_feature_id >= features.len() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Feature id '{}' was not found in sequence '{}'",
+                        seed_feature_id, seq_id
+                    ),
+                });
+            }
+            let expert = self.inspect_feature_expert(
+                seq_id,
+                &FeatureExpertTarget::SplicingFeature {
+                    feature_id: seed_feature_id,
+                    scope,
+                },
+            )?;
+            let splicing = match expert {
+                FeatureExpertView::Splicing(view) => view,
+                _ => {
+                    return Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message:
+                            "Unexpected expert-view payload while deriving transcript sequences"
+                                .to_string(),
+                    });
+                }
+            };
+            let mut ids = splicing
+                .transcripts
+                .iter()
+                .map(|row| row.transcript_feature_id)
+                .collect::<Vec<_>>();
+            ids.sort_unstable();
+            ids.dedup();
+            if ids.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "No mRNA transcript features matched splicing scope '{}' for seed feature {}",
+                        scope.as_str(),
+                        seed_feature_id + 1
+                    ),
+                });
+            }
+            return Ok(ids);
+        }
+
+        if feature_ids.is_empty() {
+            let mut ids = features
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, feature)| {
+                    Self::is_transcript_feature_for_derivation(feature).then_some(idx)
+                })
+                .collect::<Vec<_>>();
+            ids.sort_unstable();
+            ids.dedup();
+            if ids.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Sequence '{}' has no mRNA/transcript features", seq_id),
+                });
+            }
+            return Ok(ids);
+        }
+
+        let mut ids = feature_ids.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        for feature_id in &ids {
+            let feature = features.get(*feature_id).ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Feature id '{}' was not found in sequence '{}'",
+                    feature_id, seq_id
+                ),
+            })?;
+            if !Self::is_transcript_feature_for_derivation(feature) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Feature n-{} in '{}' is not an mRNA/transcript feature",
+                        feature_id + 1,
+                        seq_id
+                    ),
+                });
+            }
+        }
+        Ok(ids)
+    }
+
+    fn derive_transcript_sequence_from_feature(
+        source_sequence_upper: &[u8],
+        source_feature: &gb_io::seq::Feature,
+        source_feature_id: usize,
+        source_seq_id: &str,
+    ) -> Result<(DNAsequence, String, String, bool, usize), EngineError> {
+        let mut exon_ranges: Vec<(usize, usize)> = vec![];
+        collect_location_ranges_usize(&source_feature.location, &mut exon_ranges);
+        if exon_ranges.is_empty() {
+            let (from, to) = source_feature
+                .location
+                .find_bounds()
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse transcript feature n-{} location: {e}",
+                        source_feature_id + 1
+                    ),
+                })?;
+            if from >= 0 && to >= 0 {
+                exon_ranges.push((from as usize, to as usize));
+            }
+        }
+        exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        exon_ranges.dedup();
+        exon_ranges.retain(|(start, end)| *end > *start);
+        if exon_ranges.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript feature n-{} has no usable exon ranges",
+                    source_feature_id + 1
+                ),
+            });
+        }
+
+        let source_len = source_sequence_upper.len();
+        let mut assembled: Vec<u8> = vec![];
+        let mut exon_segments: Vec<(usize, usize, usize, usize)> = vec![];
+        for (start_0based, end_0based_exclusive) in &exon_ranges {
+            if *end_0based_exclusive > source_len {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Transcript feature n-{} exon range {}..{} exceeds source sequence length {}",
+                        source_feature_id + 1,
+                        start_0based + 1,
+                        end_0based_exclusive,
+                        source_len
+                    ),
+                });
+            }
+            let local_start = assembled.len();
+            assembled
+                .extend_from_slice(&source_sequence_upper[*start_0based..*end_0based_exclusive]);
+            let local_end = assembled.len();
+            exon_segments.push((*start_0based, *end_0based_exclusive, local_start, local_end));
+        }
+        if assembled.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript feature n-{} produced an empty spliced sequence",
+                    source_feature_id + 1
+                ),
+            });
+        }
+
+        let is_reverse = feature_is_reverse(source_feature);
+        let mut derived_sequence = String::from_utf8_lossy(&assembled).to_ascii_uppercase();
+        if is_reverse {
+            derived_sequence = Self::reverse_complement(&derived_sequence);
+            let total_len = derived_sequence.len();
+            for segment in &mut exon_segments {
+                let new_start = total_len.saturating_sub(segment.3);
+                let new_end = total_len.saturating_sub(segment.2);
+                segment.2 = new_start;
+                segment.3 = new_end;
+            }
+        }
+        exon_segments.sort_unstable_by(|a, b| a.2.cmp(&b.2).then(a.3.cmp(&b.3)));
+
+        let transcript_id = Self::first_nonempty_qualifier_for_derivation(
+            source_feature,
+            &[
+                "transcript_id",
+                "standard_name",
+                "label",
+                "name",
+                "product",
+                "gene",
+            ],
+        )
+        .unwrap_or_else(|| format!("transcript_{}", source_feature_id + 1));
+        let transcript_label = Self::first_nonempty_qualifier_for_derivation(
+            source_feature,
+            &[
+                "label",
+                "name",
+                "standard_name",
+                "product",
+                "transcript_id",
+                "gene",
+            ],
+        )
+        .unwrap_or_else(|| transcript_id.clone());
+
+        let mut derived =
+            DNAsequence::from_sequence(&derived_sequence).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not construct derived transcript sequence for feature n-{}: {e}",
+                    source_feature_id + 1
+                ),
+            })?;
+        derived.set_name(transcript_label.clone());
+        let total_len = derived_sequence.len();
+        let strand_text = if is_reverse { "-" } else { "+" }.to_string();
+
+        let mut transcript_qualifiers = vec![
+            ("transcript_id".into(), Some(transcript_id.clone())),
+            ("label".into(), Some(transcript_label.clone())),
+            ("source_seq_id".into(), Some(source_seq_id.to_string())),
+            (
+                "source_feature_id".into(),
+                Some((source_feature_id + 1).to_string()),
+            ),
+            (
+                "synthetic_origin".into(),
+                Some("mrna_transcript_derived".to_string()),
+            ),
+            ("strand".into(), Some(strand_text.clone())),
+        ];
+        for key in ["gene", "gene_id", "locus_tag", "note"] {
+            if let Some(value) = Self::qualifier_text_for_derivation(source_feature, key) {
+                transcript_qualifiers.push((key.into(), Some(value)));
+            }
+        }
+        derived.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::simple_range(0, total_len as i64),
+            qualifiers: transcript_qualifiers,
+        });
+
+        for (idx, segment) in exon_segments.iter().enumerate() {
+            let mut exon_qualifiers = vec![
+                (
+                    "exon_number".into(),
+                    Some((idx.saturating_add(1)).to_string()),
+                ),
+                ("transcript_id".into(), Some(transcript_id.clone())),
+                ("source_seq_id".into(), Some(source_seq_id.to_string())),
+                (
+                    "source_feature_id".into(),
+                    Some((source_feature_id + 1).to_string()),
+                ),
+                (
+                    "genomic_start_1based".into(),
+                    Some((segment.0 + 1).to_string()),
+                ),
+                ("genomic_end_1based".into(), Some(segment.1.to_string())),
+                (
+                    "synthetic_origin".into(),
+                    Some("mrna_transcript_derived".to_string()),
+                ),
+                ("strand".into(), Some(strand_text.clone())),
+            ];
+            for key in ["gene", "gene_id", "locus_tag"] {
+                if let Some(value) = Self::qualifier_text_for_derivation(source_feature, key) {
+                    exon_qualifiers.push((key.into(), Some(value)));
+                }
+            }
+            derived.features_mut().push(gb_io::seq::Feature {
+                kind: gb_io::seq::FeatureKind::from("exon"),
+                location: gb_io::seq::Location::simple_range(segment.2 as i64, segment.3 as i64),
+                qualifiers: exon_qualifiers,
+            });
+        }
+
+        Self::prepare_sequence(&mut derived);
+        Ok((
+            derived,
+            transcript_id,
+            transcript_label,
+            is_reverse,
+            exon_segments.len(),
+        ))
+    }
+
     fn choose_uniprot_nucleotide_xref(
         entry: &UniprotEntry,
         accession_override: Option<&str>,
@@ -3982,6 +4313,109 @@ impl GentleEngine {
                         "No qPCR assays satisfied constraints for report '{}'",
                         report.report_id
                     ));
+                }
+            }
+            Operation::DeriveTranscriptSequences {
+                seq_id,
+                feature_ids,
+                scope,
+                output_prefix,
+            } => {
+                let source_sequence_upper = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .get_forward_string()
+                    .to_ascii_uppercase()
+                    .into_bytes();
+                let source_features = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .features()
+                    .to_vec();
+                let transcript_feature_ids =
+                    self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
+                parent_seq_ids.push(seq_id.clone());
+                let normalized_prefix = output_prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| format!("{seq_id}__mrna"));
+                for transcript_feature_id in transcript_feature_ids {
+                    let source_feature =
+                        source_features
+                            .get(transcript_feature_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Feature id '{}' was not found in sequence '{}'",
+                                    transcript_feature_id, seq_id
+                                ),
+                            })?;
+                    let (derived_dna, transcript_id, transcript_label, is_reverse, exon_count) =
+                        Self::derive_transcript_sequence_from_feature(
+                            &source_sequence_upper,
+                            source_feature,
+                            transcript_feature_id,
+                            &seq_id,
+                        )?;
+                    let transcript_token = Self::normalize_id_token(&transcript_id);
+                    let transcript_token = if transcript_token.is_empty() {
+                        format!("feature_{}", transcript_feature_id + 1)
+                    } else {
+                        transcript_token
+                    };
+                    let base_seq_id = format!(
+                        "{normalized_prefix}__f{}__{}",
+                        transcript_feature_id + 1,
+                        transcript_token
+                    );
+                    let derived_seq_id = self.unique_seq_id(&base_seq_id);
+                    self.state
+                        .sequences
+                        .insert(derived_seq_id.clone(), derived_dna);
+                    self.add_lineage_node(
+                        &derived_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(derived_seq_id.clone());
+                    let strand = if is_reverse { "-" } else { "+" };
+                    let derived_len = self
+                        .state
+                        .sequences
+                        .get(&derived_seq_id)
+                        .map(|dna| dna.len())
+                        .unwrap_or(0);
+                    result.messages.push(format!(
+                        "Derived transcript '{}' from mRNA feature n-{} ('{}', label='{}', strand {}, exons={}, length={} bp).",
+                        derived_seq_id,
+                        transcript_feature_id + 1,
+                        transcript_id,
+                        transcript_label,
+                        strand,
+                        exon_count,
+                        derived_len
+                    ));
+                }
+                if result.created_seq_ids.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "DeriveTranscriptSequences did not produce transcripts for '{}'",
+                            seq_id
+                        ),
+                    });
                 }
             }
             Operation::ComputeDotplot {

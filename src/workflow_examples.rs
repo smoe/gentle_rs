@@ -1679,6 +1679,7 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::Mutex;
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -1719,6 +1720,35 @@ mod tests {
 
     fn tutorial_output_dir() -> PathBuf {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
+    }
+
+    fn markdown_image_targets(markdown: &str) -> Vec<String> {
+        let mut targets = Vec::new();
+        for line in markdown.lines() {
+            let mut remaining = line;
+            loop {
+                let Some(image_start) = remaining.find("![") else {
+                    break;
+                };
+                remaining = &remaining[image_start + 2..];
+                let Some(target_start) = remaining.find("](") else {
+                    break;
+                };
+                let after_target_start = &remaining[target_start + 2..];
+                let Some(target_end) = after_target_start.find(')') else {
+                    break;
+                };
+                let target = after_target_start[..target_end].trim();
+                if !target.is_empty() {
+                    let path_only = target.split_whitespace().next().unwrap_or(target).trim();
+                    if !path_only.is_empty() {
+                        targets.push(path_only.to_string());
+                    }
+                }
+                remaining = &after_target_start[target_end + 1..];
+            }
+        }
+        targets
     }
 
     #[test]
@@ -1854,6 +1884,42 @@ mod tests {
         assert!(markdown.contains("## Concepts and Recurrence"));
         assert!(markdown.contains("## GUI First"));
         assert!(markdown.contains("## Parameters That Matter"));
+    }
+
+    #[test]
+    fn tutorial_tp73_cdna_genomic_markdown_image_links_exist() {
+        let tutorial_path = PathBuf::from("docs/tutorial/two_sequence_dotplot_gui.md");
+        let tutorial_text =
+            fs::read_to_string(&tutorial_path).expect("read TP73 cDNA/genomic tutorial");
+        let targets = markdown_image_targets(&tutorial_text);
+        assert!(
+            !targets.is_empty(),
+            "expected markdown image references in {}",
+            display_path(&tutorial_path)
+        );
+        let parent = tutorial_path
+            .parent()
+            .expect("tutorial path should have parent");
+        for target in targets {
+            if target.starts_with("http://")
+                || target.starts_with("https://")
+                || target.starts_with("data:")
+            {
+                continue;
+            }
+            let resolved = if Path::new(&target).is_absolute() {
+                PathBuf::from(&target)
+            } else {
+                parent.join(&target)
+            };
+            assert!(
+                resolved.exists(),
+                "markdown image target '{}' in '{}' does not exist (resolved: '{}')",
+                target,
+                display_path(&tutorial_path),
+                display_path(&resolved)
+            );
+        }
     }
 
     #[test]

@@ -697,6 +697,60 @@
         "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
         "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
       ]
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "order": 13,
+      "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "example_id": "tp73_cdna_genomic_dotplot_online",
+      "tier": "online",
+      "summary": "Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).",
+      "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.",
+      "use_cases": [
+        "You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.",
+        "You need a reproducible TP73 baseline for demonstrating dotplot settings to collaborators.",
+        "You want one canonical workflow file that mirrors your GUI tutorial run."
+      ],
+      "gui_steps": [
+        "Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`.",
+        "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
+        "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
+      ],
+      "learning_objectives": [
+        "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
+        "Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.",
+        "Trace parity between GUI actions and canonical workflow JSON execution."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ComputeDotplot.word_size / step_bp / max_mismatches",
+          "where_used": "operation 4",
+          "why_it_matters": "These settings control sensitivity for dispersed exon-aligned signal in long genomic spans.",
+          "how_to_derive": "Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed."
+        },
+        {
+          "parameter": "ComputeDotplot.reference_seq_id",
+          "where_used": "operation 4",
+          "why_it_matters": "Pairwise mode requires explicit reference identity for y-axis mapping.",
+          "how_to_derive": "Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter)."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'dotplot show tp73_cdna_vs_genomic_dotplot'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Dotplot artifact is created and can be listed/shown by id (`tp73_cdna_vs_genomic_dotplot`).",
+        "Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.",
+        "GUI tutorial and workflow JSON describe the same parameter baseline."
+      ]
     }
   ]
 }

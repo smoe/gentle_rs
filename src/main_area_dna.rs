@@ -118,7 +118,7 @@ impl DnaPresentationMode {
                 "Gene-centric workflow: full editing, cloning, and engine/shell controls."
             }
             Self::Cdna => {
-                "cDNA workflow: full editing, cloning, and engine/shell controls for transcript-focused operations."
+                "cDNA workflow: full editing + transcript-focused operations. Contextual transcript projections are hidden by default and can be opt-in via Ctx mRNA."
             }
         }
     }
@@ -295,10 +295,10 @@ struct DotplotOpsUiState {
 impl Default for DotplotOpsUiState {
     fn default() -> Self {
         Self {
-            half_window_bp: "500".to_string(),
-            word_size: "9".to_string(),
-            step_bp: "4".to_string(),
-            max_mismatches: "1".to_string(),
+            half_window_bp: String::new(),
+            word_size: "7".to_string(),
+            step_bp: "1".to_string(),
+            max_mismatches: "0".to_string(),
             tile_bp: String::new(),
             mode: DotplotMode::SelfReverseComplement,
             dotplot_id: "dotplot_primary".to_string(),
@@ -452,6 +452,8 @@ struct EngineOpsUiState {
     primary_map_mode: PrimaryMapMode,
     #[serde(default)]
     dna_presentation_mode: DnaPresentationMode,
+    #[serde(default)]
+    show_all_contextual_transcripts: bool,
     #[serde(default)]
     dotplot_ui: DotplotOpsUiState,
     #[serde(default)]
@@ -773,12 +775,16 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            DotplotMode, DotplotView, Engine, GentleEngine, LinearSequenceLetterLayoutMode,
+            DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
+            LinearSequenceLetterLayoutMode,
             Operation, PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
             ProjectState, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
-        feature_expert::{IsoformArchitectureExpertView, SplicingExpertView},
+        feature_expert::{
+            IsoformArchitectureExpertView, SplicingExpertView, SplicingRange,
+            SplicingTranscriptLane,
+        },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
@@ -1109,6 +1115,77 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_svg_default_filename_mentions_parameters() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let mut view = DotplotView::default();
+        view.dotplot_id = "tp73.dotplot.primary".to_string();
+        view.seq_id = "tp73.ncbi".to_string();
+        view.reference_seq_id = Some("NC_000001".to_string());
+        view.span_start_0based = 3_652_306;
+        view.span_end_0based = 3_736_201;
+        view.reference_span_start_0based = 3_652_306;
+        view.reference_span_end_0based = 3_736_201;
+        view.mode = DotplotMode::PairForward;
+        view.word_size = 9;
+        view.step_bp = 4;
+        view.max_mismatches = 1;
+        view.tile_bp = Some(250);
+        let mut track = FlexibilityTrack::default();
+        track.track_id = "tp73.flex.track".to_string();
+        track.model = FlexibilityModel::AtRichness;
+        track.bin_bp = 50;
+        track.smoothing_bp = Some(150);
+        let file_name = area.default_dotplot_svg_file_name(&view, Some(&track), 0.35, 1.75);
+        assert!(file_name.ends_with(".svg"));
+        assert!(file_name.contains("pair_forward"));
+        assert!(file_name.contains("_w9_s4_mm1_tile250_"));
+        assert!(file_name.contains("_th35_gain175"));
+        assert!(file_name.contains("_fx-tp73_flex_track_at_richness_b50_sm150"));
+    }
+
+    #[test]
+    fn dotplot_svg_export_document_contains_summary_and_cells() {
+        let mut view = DotplotView::default();
+        view.dotplot_id = "toy_plot".to_string();
+        view.seq_id = "q1".to_string();
+        view.reference_seq_id = Some("r1".to_string());
+        view.mode = DotplotMode::SelfForward;
+        view.span_start_0based = 0;
+        view.span_end_0based = 200;
+        view.reference_span_start_0based = 0;
+        view.reference_span_end_0based = 200;
+        view.word_size = 7;
+        view.step_bp = 1;
+        view.max_mismatches = 1;
+        view.point_count = 3;
+        view.points = vec![
+            crate::engine::DotplotMatchPoint {
+                x_0based: 10,
+                y_0based: 10,
+                mismatches: 0,
+            },
+            crate::engine::DotplotMatchPoint {
+                x_0based: 30,
+                y_0based: 35,
+                mismatches: 1,
+            },
+            crate::engine::DotplotMatchPoint {
+                x_0based: 150,
+                y_0based: 151,
+                mismatches: 0,
+            },
+        ];
+        let svg = MainAreaDna::build_dotplot_svg_document(&view, None, 0.10, 1.50, Some((25, 26)));
+        assert!(svg.starts_with("<svg "));
+        assert!(svg.contains("Dotplot workspace export: toy_plot"));
+        assert!(svg.contains("mode=self_forward"));
+        assert!(svg.contains("threshold=0.10 gain=1.50"));
+        assert!(svg.contains("GENtle dotplot SVG export"));
+        assert!(svg.contains("<rect "));
+    }
+
+    #[test]
     fn async_task_repaint_delay_scales_with_queue_pressure() {
         assert_eq!(
             MainAreaDna::async_task_repaint_delay(0, false),
@@ -1253,6 +1330,74 @@ mod tests {
         assert_eq!(
             MainAreaDna::splicing_group_roi_range_0based(&view),
             Some((100, 640))
+        );
+    }
+
+    #[test]
+    fn recommend_pair_dotplot_step_respects_pair_evaluation_limit() {
+        let step = MainAreaDna::recommend_pair_dotplot_step(5000, 83686, 7, 1);
+        let query_windows = MainAreaDna::dotplot_window_count(5000, 7, step);
+        let reference_windows = MainAreaDna::dotplot_window_count(83686, 7, step);
+        assert!(
+            query_windows.saturating_mul(reference_windows)
+                <= crate::engine::MAX_DOTPLOT_PAIR_EVALUATIONS
+        );
+        assert!(step >= 1);
+    }
+
+    #[test]
+    fn splicing_transcript_dotplot_mode_uses_transcript_lane_strand() {
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 3,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 10,
+            region_end_1based: 90,
+            transcript_count: 2,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![
+                SplicingTranscriptLane {
+                    transcript_feature_id: 11,
+                    transcript_id: "TX_PLUS".to_string(),
+                    label: "TX_PLUS".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![SplicingRange {
+                        start_1based: 10,
+                        end_1based: 20,
+                    }],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: false,
+                },
+                SplicingTranscriptLane {
+                    transcript_feature_id: 12,
+                    transcript_id: "TX_MINUS".to_string(),
+                    label: "TX_MINUS".to_string(),
+                    strand: "-".to_string(),
+                    exons: vec![SplicingRange {
+                        start_1based: 30,
+                        end_1based: 40,
+                    }],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: false,
+                },
+            ],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        assert_eq!(
+            MainAreaDna::splicing_transcript_dotplot_mode(&view, 11),
+            DotplotMode::PairForward
+        );
+        assert_eq!(
+            MainAreaDna::splicing_transcript_dotplot_mode(&view, 12),
+            DotplotMode::PairReverseComplement
         );
     }
 
@@ -2102,6 +2247,15 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_contextual_transcript_toggle() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.show_all_contextual_transcripts = true;
+        let state = area.current_engine_ops_state();
+        assert!(state.show_all_contextual_transcripts);
+    }
+
+    #[test]
     fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -2122,6 +2276,55 @@ mod tests {
             .remove("dna_presentation_mode");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.dna_presentation_mode, DnaPresentationMode::Region);
+    }
+
+    #[test]
+    fn contextual_transcript_toggle_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("show_all_contextual_transcripts");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert!(!decoded.show_all_contextual_transcripts);
+    }
+
+    #[test]
+    fn sync_contextual_transcript_visibility_filter_is_mode_aware() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.dna_presentation_mode = DnaPresentationMode::Region;
+        area.show_all_contextual_transcripts = false;
+        area.sync_contextual_transcript_visibility_filter();
+        assert!(
+            area.dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_contextual_transcript_features()
+        );
+
+        area.dna_presentation_mode = DnaPresentationMode::Cdna;
+        area.show_all_contextual_transcripts = false;
+        area.sync_contextual_transcript_visibility_filter();
+        assert!(
+            !area
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_contextual_transcript_features()
+        );
+
+        area.show_all_contextual_transcripts = true;
+        area.sync_contextual_transcript_visibility_filter();
+        assert!(
+            area.dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_contextual_transcript_features()
+        );
     }
 
     #[test]
@@ -2154,12 +2357,33 @@ mod tests {
         let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
         value.as_object_mut().unwrap().remove("dotplot_ui");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
-        assert_eq!(decoded.dotplot_ui.half_window_bp, "500");
-        assert_eq!(decoded.dotplot_ui.word_size, "9");
+        assert_eq!(decoded.dotplot_ui.half_window_bp, "");
+        assert_eq!(decoded.dotplot_ui.word_size, "7");
+        assert_eq!(decoded.dotplot_ui.step_bp, "1");
+        assert_eq!(decoded.dotplot_ui.max_mismatches, "0");
         assert_eq!(
             decoded.dotplot_ui.mode,
             crate::engine::DotplotMode::SelfReverseComplement
         );
+    }
+
+    #[test]
+    fn dotplot_half_window_default_normalizes_to_active_sequence_length() {
+        let dna = DNAsequence::from_sequence("ACGTAC").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        assert_eq!(area.dotplot_ui.half_window_bp, "");
+        assert!(area.normalize_dotplot_half_window_default_if_needed());
+        assert_eq!(area.dotplot_ui.half_window_bp, "6");
+        assert!(!area.normalize_dotplot_half_window_default_if_needed());
+    }
+
+    #[test]
+    fn dotplot_half_window_manual_legacy_like_value_is_preserved() {
+        let dna = DNAsequence::from_sequence("ACGTAC").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.dotplot_ui.half_window_bp = "500".to_string();
+        assert!(!area.normalize_dotplot_half_window_default_if_needed());
+        assert_eq!(area.dotplot_ui.half_window_bp, "500");
     }
 
     #[test]
@@ -2498,6 +2722,47 @@ mod tests {
     }
 
     #[test]
+    fn auto_fit_reference_span_for_view_if_requested_returns_fit_span() {
+        let mut view = DotplotView::default();
+        view.mode = DotplotMode::PairForward;
+        view.reference_span_start_0based = 1_000;
+        view.reference_span_end_0based = 2_000;
+        view.points = vec![
+            crate::engine::DotplotMatchPoint {
+                x_0based: 20,
+                y_0based: 1_120,
+                mismatches: 0,
+            },
+            crate::engine::DotplotMatchPoint {
+                x_0based: 40,
+                y_0based: 1_360,
+                mismatches: 0,
+            },
+        ];
+        assert_eq!(
+            MainAreaDna::auto_fit_reference_span_for_view_if_requested(true, &view, 50),
+            Some((1_070, 1_411))
+        );
+    }
+
+    #[test]
+    fn auto_fit_reference_span_for_view_if_requested_skips_without_request() {
+        let mut view = DotplotView::default();
+        view.mode = DotplotMode::PairForward;
+        view.reference_span_start_0based = 1_000;
+        view.reference_span_end_0based = 2_000;
+        view.points = vec![crate::engine::DotplotMatchPoint {
+            x_0based: 20,
+            y_0based: 1_120,
+            mismatches: 0,
+        }];
+        assert_eq!(
+            MainAreaDna::auto_fit_reference_span_for_view_if_requested(false, &view, 50),
+            None
+        );
+    }
+
+    #[test]
     fn splicing_lane_index_at_y_returns_expected_lane() {
         assert_eq!(
             MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
@@ -2775,6 +3040,7 @@ struct RegulatoryFeatureGrouping {
 #[derive(Clone, Debug, Default)]
 struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
+    contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
     restriction_site_count: usize,
     gc_region_count: usize,
@@ -2798,6 +3064,10 @@ impl LayerVisibilityCounts {
 
     fn total_feature_count(&self) -> usize {
         self.feature_kind_counts.values().sum()
+    }
+
+    fn contextual_transcript_count(&self) -> usize {
+        self.contextual_transcript_feature_count
     }
 }
 
@@ -2852,6 +3122,7 @@ pub struct MainAreaDna {
     show_map: bool,      // TODO move to DnaDisplay
     primary_map_mode: PrimaryMapMode,
     dna_presentation_mode: DnaPresentationMode,
+    show_all_contextual_transcripts: bool,
     dotplot_ui: DotplotOpsUiState,
     rna_reads_ui: RnaReadInterpretOpsUiState,
     show_engine_ops: bool,
@@ -3044,6 +3315,7 @@ pub struct MainAreaDna {
     show_splicing_expert_window: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
+    splicing_expert_selected_transcript_feature_id: Option<usize>,
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
     isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
@@ -3130,6 +3402,7 @@ impl MainAreaDna {
             show_map: true,
             primary_map_mode: PrimaryMapMode::Standard,
             dna_presentation_mode: DnaPresentationMode::Region,
+            show_all_contextual_transcripts: false,
             dotplot_ui: DotplotOpsUiState::default(),
             rna_reads_ui: RnaReadInterpretOpsUiState::default(),
             show_engine_ops: false,
@@ -3323,6 +3596,7 @@ impl MainAreaDna {
             show_splicing_expert_window: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
+            splicing_expert_selected_transcript_feature_id: None,
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
             isoform_expert_window_view: None,
@@ -3340,6 +3614,7 @@ impl MainAreaDna {
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
+        ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
         ret
     }
@@ -3537,6 +3812,18 @@ impl MainAreaDna {
             .unwrap_or(false)
     }
 
+    fn should_show_contextual_transcript_features(&self) -> bool {
+        !matches!(self.dna_presentation_mode, DnaPresentationMode::Cdna)
+            || self.show_all_contextual_transcripts
+    }
+
+    fn sync_contextual_transcript_visibility_filter(&self) {
+        let show_contextual = self.should_show_contextual_transcript_features();
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_show_contextual_transcript_features(show_contextual);
+        }
+    }
+
     fn active_linear_viewport_range(&self) -> Option<(usize, usize)> {
         if self.is_circular() {
             return None;
@@ -3647,6 +3934,7 @@ impl MainAreaDna {
             vcf_display_criteria,
             regulatory_feature_max_view_span_bp,
             gc_content_bin_size_bp,
+            show_contextual_transcript_features,
         ) = self
             .dna_display
             .read()
@@ -3656,6 +3944,7 @@ impl MainAreaDna {
                     display.vcf_display_criteria(),
                     display.regulatory_feature_max_view_span_bp(),
                     display.gc_content_bin_size_bp(),
+                    display.show_contextual_transcript_features(),
                 )
             })
             .unwrap_or((
@@ -3663,6 +3952,7 @@ impl MainAreaDna {
                 VcfDisplayCriteria::default(),
                 50_000,
                 100,
+                true,
             ));
         let view_span_bp = viewport
             .map(|(start, end)| end.saturating_sub(start))
@@ -3690,6 +3980,14 @@ impl MainAreaDna {
                 }
                 let kind = feature.kind.to_string().trim().to_ascii_uppercase();
                 if kind.is_empty() {
+                    continue;
+                }
+                let is_contextual_transcript = RenderDna::is_contextual_transcript_feature(feature);
+                if is_contextual_transcript {
+                    counts.contextual_transcript_feature_count =
+                        counts.contextual_transcript_feature_count.saturating_add(1);
+                }
+                if !show_contextual_transcript_features && is_contextual_transcript {
                     continue;
                 }
                 if RenderDna::is_tfbs_feature(feature)
@@ -4300,6 +4598,7 @@ impl MainAreaDna {
                     self.show_engine_ops = false;
                     self.show_shell = false;
                 }
+                self.sync_contextual_transcript_visibility_filter();
                 self.save_engine_ops_state();
             }
 
@@ -4944,6 +5243,23 @@ impl MainAreaDna {
                     .expect("DNA display lock poisoned")
                     .set_show_mrna_features(visible);
                 self.set_display_visibility(DisplayTarget::MrnaFeatures, visible);
+            }
+
+            if matches!(self.dna_presentation_mode, DnaPresentationMode::Cdna) {
+                let contextual_count = layer_counts.contextual_transcript_count();
+                let response = ui
+                    .selectable_label(
+                        self.show_all_contextual_transcripts,
+                        format!("Ctx mRNA ({contextual_count})"),
+                    )
+                    .on_hover_text(
+                        "cDNA mode: show or hide contextual transcript-derived mRNA/exon/CDS features imported from genome mappings or annotation projection. Intrinsic cDNA evidence stays visible.",
+                    );
+                if response.clicked() {
+                    self.show_all_contextual_transcripts = !self.show_all_contextual_transcripts;
+                    self.sync_contextual_transcript_visibility_filter();
+                    self.save_engine_ops_state();
+                }
             }
 
             let tfbs_active = self
@@ -7265,6 +7581,8 @@ impl MainAreaDna {
         display.set_linear_external_feature_label_background_opacity(
             settings.linear_external_feature_label_background_opacity,
         );
+        drop(display);
+        self.sync_contextual_transcript_visibility_filter();
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {
@@ -7463,6 +7781,169 @@ impl MainAreaDna {
             view.region_start_1based.saturating_sub(1),
             view.region_end_1based,
         ))
+    }
+
+    fn splicing_selected_transcript_feature_id(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Option<usize> {
+        let exists = self
+            .splicing_expert_selected_transcript_feature_id
+            .and_then(|feature_id| {
+                view.transcripts
+                    .iter()
+                    .any(|row| row.transcript_feature_id == feature_id)
+                    .then_some(feature_id)
+            });
+        if let Some(feature_id) = exists {
+            return Some(feature_id);
+        }
+        let fallback = view
+            .transcripts
+            .first()
+            .map(|row| row.transcript_feature_id);
+        self.splicing_expert_selected_transcript_feature_id = fallback;
+        fallback
+    }
+
+    fn splicing_transcript_dotplot_mode(
+        view: &SplicingExpertView,
+        transcript_feature_id: usize,
+    ) -> DotplotMode {
+        view.transcripts
+            .iter()
+            .find(|row| row.transcript_feature_id == transcript_feature_id)
+            .map(|row| row.strand.trim() == "-")
+            .unwrap_or_else(|| view.strand.trim() == "-")
+            .then_some(DotplotMode::PairReverseComplement)
+            .unwrap_or(DotplotMode::PairForward)
+    }
+
+    fn recommend_pair_dotplot_step(
+        query_span_bp: usize,
+        reference_span_bp: usize,
+        word_size: usize,
+        requested_step_bp: usize,
+    ) -> usize {
+        let query_span_bp = query_span_bp.max(1);
+        let reference_span_bp = reference_span_bp.max(1);
+        let word_size = word_size.max(1);
+        let mut step_bp = requested_step_bp.max(1);
+        loop {
+            let query_windows = Self::dotplot_window_count(query_span_bp, word_size, step_bp);
+            let reference_windows =
+                Self::dotplot_window_count(reference_span_bp, word_size, step_bp);
+            if query_windows == 0
+                || reference_windows == 0
+                || query_windows.saturating_mul(reference_windows) <= MAX_DOTPLOT_PAIR_EVALUATIONS
+            {
+                return step_bp;
+            }
+            if step_bp >= query_span_bp.max(reference_span_bp) {
+                return step_bp;
+            }
+            step_bp = step_bp.saturating_add(1);
+        }
+    }
+
+    fn normalize_operation_id_token(raw: &str) -> String {
+        let mut token = String::new();
+        for c in raw.chars() {
+            if c.is_ascii_alphanumeric() {
+                token.push(c.to_ascii_lowercase());
+            } else if matches!(c, '_' | '-' | '.') && !token.ends_with('_') {
+                token.push('_');
+            }
+        }
+        token.trim_matches('_').to_string()
+    }
+
+    fn derive_selected_transcript_and_open_dotplot(&mut self, view: &SplicingExpertView) {
+        let Some(source_seq_id) = self.seq_id.clone() else {
+            self.op_status =
+                "No active genomic sequence selected for transcript derivation".to_string();
+            return;
+        };
+        let Some(transcript_feature_id) = self.splicing_selected_transcript_feature_id(view) else {
+            self.op_status = "No transcript lane is available in this splicing group".to_string();
+            return;
+        };
+        let derive_result =
+            self.apply_operation_with_feedback_and_result(Operation::DeriveTranscriptSequences {
+                seq_id: source_seq_id.clone(),
+                feature_ids: vec![transcript_feature_id],
+                scope: None,
+                output_prefix: Some(format!("{source_seq_id}__mrna")),
+            });
+        let Some(derive_result) = derive_result else {
+            return;
+        };
+        let Some(derived_seq_id) = derive_result.created_seq_ids.first().cloned() else {
+            self.op_status =
+                "Transcript derivation succeeded but no output sequence was returned".to_string();
+            return;
+        };
+        let query_len = self
+            .engine
+            .as_ref()
+            .and_then(|engine| {
+                engine.read().ok().and_then(|guard| {
+                    guard
+                        .state()
+                        .sequences
+                        .get(&derived_seq_id)
+                        .map(|dna| dna.len())
+                })
+            })
+            .unwrap_or(0);
+        if query_len == 0 {
+            self.op_status = format!(
+                "Derived transcript '{}' is empty; dotplot was skipped",
+                derived_seq_id
+            );
+            return;
+        }
+        let reference_span_start_0based = view.region_start_1based.saturating_sub(1);
+        let reference_span_end_0based = view.region_end_1based;
+        if reference_span_end_0based <= reference_span_start_0based {
+            self.op_status =
+                "Splicing view region is invalid for transcript-vs-genomic dotplot".to_string();
+            return;
+        }
+        let word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
+                .unwrap_or(7);
+        let requested_step_bp =
+            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
+                .unwrap_or(1);
+        let reference_span_bp =
+            reference_span_end_0based.saturating_sub(reference_span_start_0based);
+        let adjusted_step_bp = Self::recommend_pair_dotplot_step(
+            query_len,
+            reference_span_bp,
+            word_size,
+            requested_step_bp,
+        );
+        self.dotplot_ui.mode = Self::splicing_transcript_dotplot_mode(view, transcript_feature_id);
+        self.dotplot_ui.reference_seq_id = source_seq_id.clone();
+        self.dotplot_ui.reference_span_start_0based = reference_span_start_0based.to_string();
+        self.dotplot_ui.reference_span_end_0based = reference_span_end_0based.to_string();
+        self.dotplot_ui.step_bp = adjusted_step_bp.to_string();
+        self.dotplot_ui.dotplot_id = format!(
+            "{}_vs_{}_f{}",
+            Self::normalize_operation_id_token(&derived_seq_id),
+            Self::normalize_operation_id_token(&source_seq_id),
+            transcript_feature_id + 1
+        );
+        self.primary_map_mode = PrimaryMapMode::Dotplot;
+        self.compute_primary_dotplot();
+        self.open_dotplot_window();
+        if adjusted_step_bp != requested_step_bp {
+            self.op_status = format!(
+                "Auto-adjusted dotplot step to {} to keep pair evaluations <= {}; {}",
+                adjusted_step_bp, MAX_DOTPLOT_PAIR_EVALUATIONS, self.op_status
+            );
+        }
     }
 
     fn extract_current_selection_as_sequence(&mut self) {
@@ -8800,6 +9281,23 @@ impl MainAreaDna {
         true
     }
 
+    fn auto_fit_reference_span_for_view_if_requested(
+        auto_fit_requested: bool,
+        view: &DotplotView,
+        padding_bp: usize,
+    ) -> Option<(usize, usize)> {
+        if !auto_fit_requested || !Self::dotplot_mode_requires_reference(view.mode) {
+            return None;
+        }
+        let (fit_start, fit_end) = Self::dotplot_reference_hit_envelope(view, padding_bp)?;
+        if fit_start == view.reference_span_start_0based
+            && fit_end == view.reference_span_end_0based
+        {
+            return None;
+        }
+        Some((fit_start, fit_end))
+    }
+
     fn dotplot_quantile(sorted_values: &[f32], q: f32) -> f32 {
         if sorted_values.is_empty() {
             return 0.0;
@@ -8955,14 +9453,55 @@ impl MainAreaDna {
         Ok((start, end))
     }
 
+    fn default_dotplot_half_window_bp(&self) -> Option<usize> {
+        let query_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if query_len == 0 {
+            return None;
+        }
+        let mut largest_len = query_len;
+        if Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+            let reference_seq_id = self.dotplot_ui.reference_seq_id.trim();
+            if !reference_seq_id.is_empty()
+                && let Some(engine) = self.engine.as_ref()
+                && let Ok(guard) = engine.read()
+                && let Some(reference_dna) = guard.state().sequences.get(reference_seq_id)
+            {
+                largest_len = largest_len.max(reference_dna.len());
+            }
+        }
+        Some(largest_len.max(1))
+    }
+
+    fn normalize_dotplot_half_window_default_if_needed(&mut self) -> bool {
+        let raw = self.dotplot_ui.half_window_bp.trim();
+        if !raw.is_empty() {
+            return false;
+        }
+        let Some(default_half_window_bp) = self.default_dotplot_half_window_bp() else {
+            return false;
+        };
+        let normalized = default_half_window_bp.to_string();
+        if self.dotplot_ui.half_window_bp == normalized {
+            return false;
+        }
+        self.dotplot_ui.half_window_bp = normalized;
+        true
+    }
+
+    fn resolve_dotplot_half_window_bp(&self, field_name: &str) -> Result<usize, String> {
+        if self.dotplot_ui.half_window_bp.trim().is_empty() {
+            return self.default_dotplot_half_window_bp().ok_or_else(|| {
+                format!("Could not resolve {field_name}; active sequence is empty")
+            });
+        }
+        Self::parse_positive_usize_text(&self.dotplot_ui.half_window_bp, field_name)
+    }
+
     fn build_dotplot_compute_diagnostics(&self) -> Result<DotplotComputeDiagnostics, String> {
         let Some(seq_id) = self.seq_id.clone() else {
             return Err("No active sequence selected for dotplot diagnostics".to_string());
         };
-        let half_window_bp = Self::parse_positive_usize_text(
-            &self.dotplot_ui.half_window_bp,
-            "dotplot half_window_bp",
-        )?;
+        let half_window_bp = self.resolve_dotplot_half_window_bp("dotplot half_window_bp")?;
         let word_size =
             Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word")?;
         let step_bp = Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step")?;
@@ -9183,10 +9722,7 @@ impl MainAreaDna {
             return;
         };
         let mut diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
-        let half_window_bp = match Self::parse_positive_usize_text(
-            &self.dotplot_ui.half_window_bp,
-            "dotplot half_window_bp",
-        ) {
+        let half_window_bp = match self.resolve_dotplot_half_window_bp("dotplot half_window_bp") {
             Ok(v) => v,
             Err(e) => {
                 self.op_status = e;
@@ -9290,6 +9826,9 @@ impl MainAreaDna {
         } else {
             None
         };
+        let auto_fit_reference_span_requested = requires_reference
+            && reference_span_start_0based.is_none()
+            && reference_span_end_0based.is_none();
         self.dotplot_ui.dotplot_id = store_as.clone();
         if let Some(diag) = diagnostics_snapshot.as_ref() {
             let reference_label = diag
@@ -9319,8 +9858,8 @@ impl MainAreaDna {
             self.dotplot_last_compute_status.clear();
         }
         self.apply_operation_with_feedback(Operation::ComputeDotplot {
-            seq_id,
-            reference_seq_id,
+            seq_id: seq_id.clone(),
+            reference_seq_id: reference_seq_id.clone(),
             span_start_0based: Some(span_start_0based),
             span_end_0based: Some(span_end_0based),
             reference_span_start_0based,
@@ -9330,10 +9869,38 @@ impl MainAreaDna {
             step_bp,
             max_mismatches,
             tile_bp,
-            store_as: Some(store_as),
+            store_as: Some(store_as.clone()),
         });
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
+        let mut auto_fit_applied: Option<(usize, usize)> = None;
+        if let Some(view) = self.dotplot_cached_view.clone()
+            && let Some((fit_start, fit_end)) = Self::auto_fit_reference_span_for_view_if_requested(
+                auto_fit_reference_span_requested,
+                &view,
+                DOTPLOT_HIT_ENVELOPE_PADDING_BP,
+            )
+        {
+            self.dotplot_ui.reference_span_start_0based = fit_start.to_string();
+            self.dotplot_ui.reference_span_end_0based = fit_end.to_string();
+            self.apply_operation_with_feedback(Operation::ComputeDotplot {
+                seq_id,
+                reference_seq_id,
+                span_start_0based: Some(span_start_0based),
+                span_end_0based: Some(span_end_0based),
+                reference_span_start_0based: Some(fit_start),
+                reference_span_end_0based: Some(fit_end),
+                mode: self.dotplot_ui.mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                store_as: Some(store_as),
+            });
+            self.invalidate_dotplot_cache();
+            self.ensure_dotplot_cache_current();
+            auto_fit_applied = Some((fit_start, fit_end));
+        }
         if let Some(view) = self.dotplot_cached_view.as_ref() {
             let reference_seq_label = view
                 .reference_seq_id
@@ -9375,6 +9942,15 @@ impl MainAreaDna {
                 estimated_pair_evaluations,
                 estimated_hit_fraction
             );
+            if let Some((fit_start, fit_end)) = auto_fit_applied {
+                self.dotplot_last_compute_status = format!(
+                    "Auto-fit reference span to hit envelope [{}..{}] (padding={} bp), then recomputed. {}",
+                    fit_start.saturating_add(1),
+                    fit_end,
+                    DOTPLOT_HIT_ENVELOPE_PADDING_BP,
+                    self.dotplot_last_compute_status
+                );
+            }
         } else if diagnostics_snapshot.is_none() {
             diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
         }
@@ -9406,10 +9982,8 @@ impl MainAreaDna {
             self.op_status = "No active sequence selected for flexibility computation".to_string();
             return;
         };
-        let half_window_bp = match Self::parse_positive_usize_text(
-            &self.dotplot_ui.half_window_bp,
-            "flexibility half_window_bp",
-        ) {
+        let half_window_bp = match self.resolve_dotplot_half_window_bp("flexibility half_window_bp")
+        {
             Ok(v) => v,
             Err(e) => {
                 self.op_status = e;
@@ -9715,7 +10289,7 @@ impl MainAreaDna {
                     {
                         ui.colored_label(
                             egui::Color32::from_rgb(180, 83, 9),
-                            "Detected hits are near reference-span edge. Use 'Fit ref span to hits' and recompute for a less edge-compressed map.",
+                            "Detected hits are near reference-span edge. If you are using explicit ref_start/ref_end, click 'Fit ref span to hits' and recompute for a less edge-compressed map.",
                         );
                     }
                 }
@@ -10435,6 +11009,9 @@ impl MainAreaDna {
                 save_state = true;
             }
         }
+        if self.normalize_dotplot_half_window_default_if_needed() {
+            save_state = true;
+        }
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
@@ -10482,6 +11059,15 @@ impl MainAreaDna {
                             .clicked()
                         {
                             self.compute_primary_flexibility_track();
+                        }
+                        if ui
+                            .button("Export Dotplot SVG...")
+                            .on_hover_text(
+                                "Export the currently loaded dotplot density view as SVG. The default filename includes mode, spans, and compute/display parameters.",
+                            )
+                            .clicked()
+                        {
+                            self.export_active_dotplot_svg();
                         }
                     });
 
@@ -10533,7 +11119,7 @@ impl MainAreaDna {
                         }
 
                         ui.label("half_window_bp").on_hover_text(
-                            "Half-width of default bounded compute span around current viewport center",
+                            "Half-width of default bounded compute span around current viewport center (default fills to the larger sequence length)",
                         );
                         if Self::add_small_uint_text_edit(
                             ui,
@@ -10541,7 +11127,7 @@ impl MainAreaDna {
                             5,
                         )
                             .on_hover_text(
-                                "Default=500 => compute query span from center-500 to center+500",
+                                "Default auto-fills full-span view from the larger query/reference sequence length. Enter a value to bound around center.",
                             )
                             .changed()
                         {
@@ -10574,7 +11160,7 @@ impl MainAreaDna {
                             2,
                         )
                             .on_hover_text(
-                                "0=enforce exact seeds; higher values increase tolerance",
+                                "Default is 0 (exact seeds). Higher values increase tolerance.",
                             )
                             .changed()
                         {
@@ -10627,9 +11213,9 @@ impl MainAreaDna {
                                 );
                             }
                             if ui
-                                .small_button("Fit ref span")
+                                .small_button("Refit ref span")
                                 .on_hover_text(
-                                    "Adjust hidden ref_start/ref_end to loaded hit envelope (+padding). Use Dotplot Window to inspect exact values, then recompute.",
+                                    "Manually refit hidden ref_start/ref_end to loaded hit envelope (+padding). Default behavior auto-fits once when ref_start/ref_end are empty.",
                                 )
                                 .clicked()
                                 && self.fit_dotplot_reference_span_to_loaded_hits()
@@ -10851,6 +11437,9 @@ impl MainAreaDna {
                 save_state = true;
             }
         }
+        if self.normalize_dotplot_half_window_default_if_needed() {
+            save_state = true;
+        }
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
@@ -10863,7 +11452,7 @@ impl MainAreaDna {
                     );
                     ui.label(
                         egui::RichText::new(
-                            "Default compute span is viewport-centered ±half_window_bp (500 bp each side by default).",
+                            "Default compute span auto-fills to full view using the larger query/reference sequence length.",
                         )
                         .size(self.feature_details_font_size()),
                     );
@@ -10913,7 +11502,7 @@ impl MainAreaDna {
                             save_state = true;
                         }
                         ui.label("half_window_bp").on_hover_text(
-                            "Half-width of default query span around current viewport center",
+                            "Half-width of default query span around current viewport center (default fills to larger query/reference sequence length)",
                         );
                         if Self::add_small_uint_text_edit(
                             ui,
@@ -10921,7 +11510,7 @@ impl MainAreaDna {
                             5,
                         )
                             .on_hover_text(
-                                "Default 500 computes about 1001 bp around current linear-map center",
+                                "Default auto-fills full span from larger sequence length; enter explicit value to bound around viewport center",
                             )
                             .changed()
                         {
@@ -10950,7 +11539,7 @@ impl MainAreaDna {
                             &mut self.dotplot_ui.max_mismatches,
                             2,
                         )
-                            .on_hover_text("0 = exact seed matches only")
+                            .on_hover_text("Default 0 = exact seed matches only")
                             .changed()
                         {
                             save_state = true;
@@ -10970,6 +11559,15 @@ impl MainAreaDna {
                             .clicked()
                         {
                             self.compute_primary_dotplot();
+                        }
+                        if ui
+                            .button("Export Dotplot SVG...")
+                            .on_hover_text(
+                                "Export the currently loaded dotplot density view as SVG. The default filename includes mode, spans, and compute/display parameters.",
+                            )
+                            .clicked()
+                        {
+                            self.export_active_dotplot_svg();
                         }
                     });
 
@@ -11072,7 +11670,7 @@ impl MainAreaDna {
                                 5,
                             )
                                 .on_hover_text(
-                                    "Leave empty to use reference span start = 0 (full reference)",
+                                    "Leave empty for default auto-fit flow: initial full reference pass, then automatic hit-envelope fitting and recompute.",
                                 )
                                 .changed()
                             {
@@ -11086,7 +11684,7 @@ impl MainAreaDna {
                                 5,
                             )
                                 .on_hover_text(
-                                    "Leave empty to use full reference length as end",
+                                    "Leave empty for default auto-fit flow: initial full reference pass, then automatic hit-envelope fitting and recompute.",
                                 )
                                 .changed()
                             {
@@ -11095,14 +11693,14 @@ impl MainAreaDna {
                             if ui
                                 .small_button("Fit ref span to hits")
                                 .on_hover_text(
-                                    "Set ref_start/ref_end to the loaded hit envelope (+padding) so exon blocks are not pinned to the plot margin. Recompute afterwards.",
+                                    "Manually refit ref_start/ref_end to loaded hit envelope (+padding). Default behavior auto-fits once when both fields are empty.",
                                 )
                                 .clicked()
                                 && self.fit_dotplot_reference_span_to_loaded_hits()
                             {
                                 save_state = true;
                             }
-                            ui.small("Leave ref_start/ref_end empty to use full reference span.");
+                            ui.small("Leave ref_start/ref_end empty for automatic first-pass full-span compute followed by automatic hit-envelope refit.");
                         });
                     }
 
@@ -12336,6 +12934,82 @@ impl MainAreaDna {
         view: &SplicingExpertView,
     ) {
         let mut persist_ui_state = false;
+        let transcript_rows: Vec<(usize, String)> = view
+            .transcripts
+            .iter()
+            .map(|row| {
+                (
+                    row.transcript_feature_id,
+                    format!("n-{} {}", row.transcript_feature_id, row.transcript_id),
+                )
+            })
+            .collect();
+        let _ = self.splicing_selected_transcript_feature_id(view);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Transcript")
+                .on_hover_text("Select the transcript lane used by transcript-level quick actions");
+            egui::ComboBox::from_id_salt((
+                "splicing_expert_transcript_selector",
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .selected_text(
+                self.splicing_expert_selected_transcript_feature_id
+                    .and_then(|feature_id| {
+                        transcript_rows
+                            .iter()
+                            .find(|row| row.0 == feature_id)
+                            .map(|row| row.1.clone())
+                    })
+                    .unwrap_or_else(|| "<none>".to_string()),
+            )
+            .show_ui(ui, |ui| {
+                for (feature_id, label) in &transcript_rows {
+                    ui.selectable_value(
+                        &mut self.splicing_expert_selected_transcript_feature_id,
+                        Some(*feature_id),
+                        label,
+                    );
+                }
+            });
+            if ui
+                .button("Derive group transcripts")
+                .on_hover_text(
+                    "Derive cDNA transcript sequences for all transcript lanes in this splicing group",
+                )
+                .clicked()
+            {
+                self.apply_operation_with_feedback(Operation::DeriveTranscriptSequences {
+                    seq_id: view.seq_id.clone(),
+                    feature_ids: vec![view.target_feature_id],
+                    scope: Some(SplicingScopePreset::AllOverlappingBothStrands),
+                    output_prefix: Some(format!("{}__mrna", view.seq_id)),
+                });
+            }
+            if ui
+                .button("Derive all mRNA")
+                .on_hover_text(
+                    "Derive cDNA transcript sequences for every mRNA/transcript feature on this sequence",
+                )
+                .clicked()
+            {
+                self.apply_operation_with_feedback(Operation::DeriveTranscriptSequences {
+                    seq_id: view.seq_id.clone(),
+                    feature_ids: vec![],
+                    scope: None,
+                    output_prefix: Some(format!("{}__mrna", view.seq_id)),
+                });
+            }
+            if ui
+                .button("Derive + Dotplot")
+                .on_hover_text(
+                    "Derive selected transcript sequence, switch to transcript context, and open pairwise transcript-vs-genomic dotplot",
+                )
+                .clicked()
+            {
+                self.derive_selected_transcript_and_open_dotplot(view);
+            }
+        });
         ui.horizontal_wrapped(|ui| {
             let action = ui.button("Send Group ROI -> Primer/qPCR").on_hover_text(
                 "Seed Primer/qPCR design ROI from current splicing-group genomic interval and open Engine Ops",
@@ -16016,9 +16690,13 @@ impl MainAreaDna {
     }
 
     fn apply_operation_with_feedback(&mut self, op: Operation) {
+        let _ = self.apply_operation_with_feedback_and_result(op);
+    }
+
+    fn apply_operation_with_feedback_and_result(&mut self, op: Operation) -> Option<OpResult> {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
-            return;
+            return None;
         };
         let started = Instant::now();
         let apply_result = {
@@ -16026,13 +16704,20 @@ impl MainAreaDna {
                 self.op_status =
                     "Engine lock poisoned while applying operation; restart recommended"
                         .to_string();
-                return;
+                return None;
             };
             guard.apply(op)
         };
         match apply_result {
-            Ok(result) => self.handle_operation_success(result, started),
-            Err(e) => self.handle_operation_error(e, started),
+            Ok(result) => {
+                let out = result.clone();
+                self.handle_operation_success(result, started);
+                Some(out)
+            }
+            Err(e) => {
+                self.handle_operation_error(e, started);
+                None
+            }
         }
     }
 
@@ -16581,6 +17266,491 @@ impl MainAreaDna {
             RenderSvgMode::Linear
         };
         self.apply_operation_with_feedback(Operation::RenderSequenceSvg { seq_id, mode, path });
+    }
+
+    fn sanitize_export_name_component(raw: &str, fallback: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        let mut previous_separator = false;
+        for ch in raw.chars() {
+            let mapped = if ch.is_ascii_alphanumeric() {
+                previous_separator = false;
+                Some(ch.to_ascii_lowercase())
+            } else if ch == '_' || ch == '-' || ch == '.' || ch == ':' {
+                if previous_separator {
+                    None
+                } else {
+                    previous_separator = true;
+                    Some('_')
+                }
+            } else if previous_separator {
+                None
+            } else {
+                previous_separator = true;
+                Some('_')
+            };
+            if let Some(mapped) = mapped {
+                out.push(mapped);
+            }
+        }
+        let mut cleaned = out.trim_matches('_').to_string();
+        if cleaned.is_empty() {
+            cleaned = fallback.to_string();
+        }
+        if cleaned.len() > 48 {
+            cleaned.truncate(48);
+        }
+        cleaned
+    }
+
+    fn format_dotplot_filename_float_component(value: f32, scale: f32) -> String {
+        if !value.is_finite() {
+            return "na".to_string();
+        }
+        let scaled = ((value.max(0.0) as f64) * (scale.max(1.0) as f64)).round() as i64;
+        scaled.max(0).to_string()
+    }
+
+    fn default_dotplot_svg_file_name(
+        &self,
+        view: &DotplotView,
+        flex_track: Option<&FlexibilityTrack>,
+        density_threshold: f32,
+        intensity_gain: f32,
+    ) -> String {
+        let query_id = Self::sanitize_export_name_component(&view.seq_id, "query");
+        let reference_id = Self::sanitize_export_name_component(
+            view.reference_seq_id
+                .as_deref()
+                .unwrap_or(view.seq_id.as_str()),
+            "reference",
+        );
+        let dotplot_id = Self::sanitize_export_name_component(&view.dotplot_id, "dotplot");
+        let mode = Self::sanitize_export_name_component(view.mode.as_str(), "mode");
+        let tile = view
+            .tile_bp
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        let mut stem = format!(
+            "dotplot_{dotplot_id}_q-{query_id}_r-{reference_id}_{mode}_q{}-{}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
+            view.span_start_0based.saturating_add(1),
+            view.span_end_0based,
+            view.reference_span_start_0based.saturating_add(1),
+            view.reference_span_end_0based,
+            view.word_size,
+            view.step_bp,
+            view.max_mismatches,
+            tile,
+            Self::format_dotplot_filename_float_component(density_threshold, 100.0),
+            Self::format_dotplot_filename_float_component(intensity_gain, 100.0),
+        );
+        if let Some(track) = flex_track {
+            let track_id = Self::sanitize_export_name_component(&track.track_id, "flex");
+            let model = Self::sanitize_export_name_component(track.model.as_str(), "model");
+            let smoothing = track.smoothing_bp.unwrap_or(0);
+            stem.push_str(&format!(
+                "_fx-{track_id}_{model}_b{}_sm{}",
+                track.bin_bp, smoothing
+            ));
+        }
+        if stem.len() > 220 {
+            stem.truncate(220);
+        }
+        format!("{stem}.svg")
+    }
+
+    fn build_dotplot_svg_document(
+        view: &DotplotView,
+        flex_track: Option<&FlexibilityTrack>,
+        density_threshold: f32,
+        intensity_gain: f32,
+        crosshair_bp: Option<(usize, usize)>,
+    ) -> String {
+        let canvas_width = 1400.0f32;
+        let canvas_height = if flex_track.is_some() { 980.0 } else { 840.0 };
+        let outer_margin = 22.0f32;
+        let header_height = 62.0f32;
+        let top_margin = 30.0f32;
+        let left_margin = 72.0f32;
+        let right_margin = 20.0f32;
+        let bottom_margin = 26.0f32;
+        let flex_height = if flex_track.is_some() { 120.0 } else { 0.0 };
+        let gap = if flex_track.is_some() { 14.0 } else { 0.0 };
+        let content_top = outer_margin + header_height;
+        let dotplot_left = outer_margin + left_margin;
+        let dotplot_top = content_top + top_margin;
+        let dotplot_right = canvas_width - (outer_margin + right_margin);
+        let dotplot_bottom = canvas_height - (outer_margin + bottom_margin + flex_height + gap);
+        let dotplot_width = (dotplot_right - dotplot_left).max(2.0);
+        let dotplot_height = (dotplot_bottom - dotplot_top).max(2.0);
+        let cols = dotplot_width.round() as i32;
+        let rows = dotplot_height.round() as i32;
+        let query_span = view
+            .span_end_0based
+            .saturating_sub(view.span_start_0based)
+            .max(1);
+        let query_span_max = query_span.saturating_sub(1).max(1);
+        let reference_span = view
+            .reference_span_end_0based
+            .saturating_sub(view.reference_span_start_0based)
+            .max(1);
+        let reference_span_max = reference_span.saturating_sub(1).max(1);
+        let reference_seq_label = view
+            .reference_seq_id
+            .as_deref()
+            .unwrap_or(view.seq_id.as_str());
+        let sample_stride = (view.points.len() / DOTPLOT_RENDER_MAX_POINTS).max(1);
+        let mut cells: HashMap<(i32, i32), (usize, usize)> = HashMap::new();
+        for point in view.points.iter().step_by(sample_stride) {
+            let x_local = point
+                .x_0based
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max);
+            let y_local = point
+                .y_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max);
+            let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+            let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+            let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+            let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+            let entry = cells
+                .entry((x_cell, y_cell))
+                .or_insert((0usize, point.mismatches));
+            entry.0 = entry.0.saturating_add(1);
+            entry.1 = entry.1.min(point.mismatches);
+        }
+        let max_cell_count = cells.values().map(|(count, _)| *count).max().unwrap_or(1) as f32;
+        let density_threshold = density_threshold.clamp(0.0, 0.99);
+        let intensity_gain = intensity_gain.clamp(0.1, 16.0);
+        let mut cell_entries: Vec<((i32, i32), (usize, usize))> = cells.into_iter().collect();
+        cell_entries.sort_by_key(|((x_cell, y_cell), _)| (*y_cell, *x_cell));
+        let mut rendered_cells = 0usize;
+        let mut visible_cells: HashMap<(i32, i32), ([u8; 3], f32)> = HashMap::new();
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+            canvas_width, canvas_height, canvas_width, canvas_height
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.0}\" fill=\"#ffffff\"/>",
+            canvas_width, canvas_height
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"6\" ry=\"6\"/>",
+            outer_margin,
+            content_top,
+            canvas_width - 2.0 * outer_margin,
+            canvas_height - content_top - outer_margin
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"18\" fill=\"#111827\">{}</text>",
+            outer_margin,
+            outer_margin + 22.0,
+            Self::xml_escape(&format!("Dotplot workspace export: {}", view.dotplot_id))
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"12\" fill=\"#334155\">{}</text>",
+            canvas_width - outer_margin,
+            outer_margin + 22.0,
+            Self::xml_escape(&format!("query={} | reference={}", view.seq_id, reference_seq_label))
+        ));
+        let tile_label = view
+            .tile_bp
+            .map(|tile| tile.to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        let parameter_line = format!(
+            "mode={} | q={}..{} | r={}..{} | word={} step={} mismatches={} tile={} | threshold={:.2} gain={:.2} | points={} sampled_stride={}",
+            view.mode.as_str(),
+            view.span_start_0based.saturating_add(1),
+            view.span_end_0based,
+            view.reference_span_start_0based.saturating_add(1),
+            view.reference_span_end_0based,
+            view.word_size,
+            view.step_bp,
+            view.max_mismatches,
+            tile_label,
+            density_threshold,
+            intensity_gain,
+            view.point_count,
+            sample_stride
+        );
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">{}</text>",
+            outer_margin,
+            outer_margin + 42.0,
+            Self::xml_escape(&parameter_line)
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"4\" ry=\"4\"/>",
+            dotplot_left, dotplot_top, dotplot_width, dotplot_height
+        ));
+
+        for tick_idx in 1..10 {
+            let fraction = tick_idx as f32 / 10.0;
+            let x = dotplot_left + fraction * dotplot_width;
+            let y = dotplot_top + fraction * dotplot_height;
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#f1f5f9\" stroke-width=\"0.5\"/>",
+                x, dotplot_top, x, dotplot_bottom
+            ));
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#f1f5f9\" stroke-width=\"0.5\"/>",
+                dotplot_left, y, dotplot_right, y
+            ));
+        }
+
+        for ((x_cell, y_cell), (count, min_mismatch)) in &cell_entries {
+            let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
+            if density_raw < density_threshold {
+                continue;
+            }
+            let normalized = if density_threshold <= 0.0 {
+                density_raw
+            } else {
+                ((density_raw - density_threshold) / (1.0 - density_threshold)).clamp(0.0, 1.0)
+            };
+            let density = (normalized * intensity_gain).clamp(0.0, 1.0).sqrt();
+            let mismatch_fraction = if view.max_mismatches == 0 {
+                0.0
+            } else {
+                (*min_mismatch as f32 / view.max_mismatches as f32).clamp(0.0, 1.0)
+            };
+            let rgb = Self::mix_rgb([29, 78, 216], [180, 83, 9], mismatch_fraction);
+            let alpha = (90.0 + 165.0 * density).round() as u8;
+            let opacity = (alpha as f32 / 255.0).clamp(0.0, 1.0);
+            let x0 = dotplot_left + (*x_cell as f32 / cols as f32) * dotplot_width;
+            let x1 = dotplot_left + ((*x_cell + 1) as f32 / cols as f32) * dotplot_width;
+            let y0 = dotplot_top + (*y_cell as f32 / rows as f32) * dotplot_height;
+            let y1 = dotplot_top + ((*y_cell + 1) as f32 / rows as f32) * dotplot_height;
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgb({},{},{})\" fill-opacity=\"{:.3}\"/>",
+                x0,
+                y0,
+                (x1 - x0).max(0.2),
+                (y1 - y0).max(0.2),
+                rgb[0],
+                rgb[1],
+                rgb[2],
+                opacity
+            ));
+            visible_cells.insert((*x_cell, *y_cell), (rgb, opacity));
+            rendered_cells = rendered_cells.saturating_add(1);
+        }
+
+        if !visible_cells.is_empty() && visible_cells.len() <= DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS {
+            let cell_width = dotplot_width / cols as f32;
+            let cell_height = dotplot_height / rows as f32;
+            let stroke_width = (cell_width.min(cell_height) * 0.45).clamp(0.8, 2.0);
+            let mut sorted_keys: Vec<(i32, i32)> = visible_cells.keys().copied().collect();
+            sorted_keys.sort_by_key(|(x_cell, y_cell)| (*y_cell, *x_cell));
+            for (x_cell, y_cell) in sorted_keys {
+                let Some((rgb, opacity)) = visible_cells.get(&(x_cell, y_cell)).copied() else {
+                    continue;
+                };
+                for dy in [-1, 0, 1] {
+                    let neighbor = (x_cell + 1, y_cell + dy);
+                    if !visible_cells.contains_key(&neighbor) {
+                        continue;
+                    }
+                    let x0 = dotplot_left + (x_cell as f32 + 0.5) * cell_width;
+                    let y0 = dotplot_top + (y_cell as f32 + 0.5) * cell_height;
+                    let x1 = dotplot_left + (neighbor.0 as f32 + 0.5) * cell_width;
+                    let y1 = dotplot_top + (neighbor.1 as f32 + 0.5) * cell_height;
+                    let r = ((rgb[0] as f32) * 0.55).round() as u8;
+                    let g = ((rgb[1] as f32) * 0.55).round() as u8;
+                    let b = ((rgb[2] as f32) * 0.55).round() as u8;
+                    svg.push_str(&format!(
+                        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"rgb({},{},{})\" stroke-opacity=\"{:.3}\" stroke-width=\"{:.2}\"/>",
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        r,
+                        g,
+                        b,
+                        opacity.max(0.30),
+                        stroke_width
+                    ));
+                }
+            }
+        }
+
+        if rendered_cells == 0 {
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#64748b\">{}</text>",
+                dotplot_left + dotplot_width * 0.5,
+                dotplot_top + dotplot_height * 0.5,
+                Self::xml_escape(&format!(
+                    "No visible cells (threshold={:.2}, points={})",
+                    density_threshold, view.point_count
+                ))
+            ));
+        }
+
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>",
+            dotplot_left,
+            content_top + 14.0,
+            Self::xml_escape(&format!("x: {}", view.seq_id))
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>",
+            dotplot_right,
+            content_top + 14.0,
+            Self::xml_escape(&format!("y: {reference_seq_label}"))
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left,
+            dotplot_bottom + 14.0,
+            view.span_start_0based.saturating_add(1)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_right,
+            dotplot_bottom + 14.0,
+            view.span_end_0based
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left - 6.0,
+            dotplot_top + 10.0,
+            view.reference_span_start_0based.saturating_add(1)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left - 6.0,
+            dotplot_bottom,
+            view.reference_span_end_0based
+        ));
+
+        if let Some((x_bp, y_bp)) = crosshair_bp {
+            let x_local = x_bp
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max) as f32;
+            let y_local = y_bp
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max) as f32;
+            let x = dotplot_left + (x_local / query_span_max as f32) * dotplot_width;
+            let y = dotplot_top + (y_local / reference_span_max as f32) * dotplot_height;
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#be185d\" stroke-width=\"1.4\"/>",
+                x, dotplot_top, x, dotplot_bottom
+            ));
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#be185d\" stroke-width=\"1.4\"/>",
+                dotplot_left, y, dotplot_right, y
+            ));
+            svg.push_str(&format!(
+                "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"2.8\" fill=\"#be185d\"/>",
+                x, y
+            ));
+        }
+
+        if let Some(track) = flex_track {
+            let flex_top = dotplot_bottom + gap;
+            let flex_bottom = canvas_height - (outer_margin + bottom_margin);
+            let flex_height_px = (flex_bottom - flex_top).max(10.0);
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"4\" ry=\"4\"/>",
+                dotplot_left, flex_top, dotplot_width, flex_height_px
+            ));
+            let score_span = (track.max_score - track.min_score).abs().max(1e-12);
+            let span_bp = track
+                .span_end_0based
+                .saturating_sub(track.span_start_0based)
+                .max(1) as f32;
+            let mut bins: Vec<&_> = track.bins.iter().collect();
+            bins.sort_by_key(|bin| bin.start_0based);
+            let mut points: Vec<(f32, f32)> = Vec::with_capacity(bins.len());
+            for bin in bins {
+                let x_fraction =
+                    (bin.start_0based.saturating_sub(track.span_start_0based) as f32 / span_bp)
+                        .clamp(0.0, 1.0);
+                let y_fraction = ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
+                let x = dotplot_left + x_fraction * dotplot_width;
+                let y = flex_bottom - y_fraction * flex_height_px;
+                points.push((x, y));
+            }
+            for pair in points.windows(2) {
+                let (left_x, left_y) = pair[0];
+                let (right_x, right_y) = pair[1];
+                svg.push_str(&format!(
+                    "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#166534\" stroke-width=\"1.5\"/>",
+                    left_x, left_y, right_x, right_y
+                ));
+            }
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#0f172a\">{}</text>",
+                dotplot_left + 6.0,
+                flex_top + 14.0,
+                Self::xml_escape(&format!(
+                    "{} [{}..{}] min={:.3} max={:.3}",
+                    track.model.as_str(),
+                    track.span_start_0based.saturating_add(1),
+                    track.span_end_0based,
+                    track.min_score,
+                    track.max_score
+                ))
+            ));
+        }
+
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">GENtle dotplot SVG export</text>",
+            canvas_width - outer_margin,
+            canvas_height - 6.0
+        ));
+        svg.push_str("</svg>");
+        svg
+    }
+
+    fn export_active_dotplot_svg(&mut self) {
+        self.ensure_dotplot_cache_current();
+        let Some(view) = self.dotplot_cached_view.clone() else {
+            self.op_status = "No loaded dotplot payload to export".to_string();
+            return;
+        };
+        let selected_flex_track = if self.dotplot_ui.show_flexibility_track {
+            self.dotplot_cached_flex_track.clone()
+        } else {
+            None
+        };
+        let density_threshold = self.dotplot_ui.display_density_threshold;
+        let intensity_gain = self.dotplot_ui.display_intensity_gain;
+        let default_name = self.default_dotplot_svg_file_name(
+            &view,
+            selected_flex_track.as_ref(),
+            density_threshold,
+            intensity_gain,
+        );
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Dotplot SVG export canceled".to_string();
+            return;
+        };
+        let svg = Self::build_dotplot_svg_document(
+            &view,
+            selected_flex_track.as_ref(),
+            density_threshold,
+            intensity_gain,
+            self.dotplot_locked_crosshair_bp,
+        );
+        let path_text = path.display().to_string();
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Exported dotplot SVG '{}' to '{}'",
+                    view.dotplot_id, path_text
+                );
+            }
+            Err(error) => {
+                self.op_status = format!("Could not write dotplot SVG '{}': {}", path_text, error);
+            }
+        }
     }
 
     fn xml_escape(text: &str) -> String {
@@ -19778,6 +20948,7 @@ impl MainAreaDna {
             show_shell: self.show_shell,
             primary_map_mode: self.primary_map_mode,
             dna_presentation_mode: self.dna_presentation_mode,
+            show_all_contextual_transcripts: self.show_all_contextual_transcripts,
             dotplot_ui: self.dotplot_ui.clone(),
             rna_reads_ui: self.rna_reads_ui.clone(),
             shell_command_text: self.shell_command_text.clone(),
@@ -19972,6 +21143,8 @@ impl MainAreaDna {
         self.show_shell = s.show_shell;
         self.primary_map_mode = s.primary_map_mode;
         self.dna_presentation_mode = s.dna_presentation_mode;
+        self.show_all_contextual_transcripts = s.show_all_contextual_transcripts;
+        self.sync_contextual_transcript_visibility_filter();
         if !self.dna_presentation_mode.allows_engine_shell_panels() {
             self.show_engine_ops = false;
             self.show_shell = false;
@@ -21410,6 +22583,7 @@ impl MainAreaDna {
             show_cds_features,
             show_gene_features,
             show_mrna_features,
+            show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
             vcf_display_criteria,
@@ -21421,6 +22595,7 @@ impl MainAreaDna {
                 display.show_cds_features_effective(),
                 display.show_gene_features(),
                 display.show_mrna_features(),
+                display.show_contextual_transcript_features(),
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
                 display.vcf_display_criteria(),
@@ -21449,6 +22624,11 @@ impl MainAreaDna {
                         show_gene_features,
                         show_mrna_features,
                     ) {
+                        return None;
+                    }
+                    if !show_contextual_transcript_features
+                        && RenderDna::is_contextual_transcript_feature(feature)
+                    {
                         return None;
                     }
                     if hidden_feature_kinds.contains(&feature.kind.to_string().to_ascii_uppercase())

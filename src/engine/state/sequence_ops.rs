@@ -594,6 +594,7 @@ impl GentleEngine {
             | Operation::ImportBlastHitsTrack { seq_id, .. }
             | Operation::GenerateCandidateSet { seq_id, .. }
             | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }
+            | Operation::DeriveTranscriptSequences { seq_id, .. }
             | Operation::ComputeDotplot { seq_id, .. }
             | Operation::ComputeFlexibilityTrack { seq_id, .. }
             | Operation::InterpretRnaReads { seq_id, .. }

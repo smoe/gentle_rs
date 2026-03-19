@@ -550,6 +550,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
   gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
@@ -593,6 +594,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "guides",
     "primers",
     "dotplot",
+    "transcripts",
     "flex",
     "rna-reads",
     "tracks",

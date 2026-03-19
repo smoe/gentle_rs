@@ -124,6 +124,10 @@ const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
+const GENOME_ANNOTATION_PROJECTION_GENERATED_TAG: &str = "genome_annotation_projection";
+const CONTEXT_LAYER_QUALIFIER_KEY: &str = "gentle_context_layer";
+const CONTEXT_LAYER_TRANSCRIPT: &str = "contextual_transcript";
+const CONTEXT_LAYER_GENE: &str = "contextual_gene";
 const BLAST_OPTIONS_OVERRIDE_METADATA_KEY: &str = "blast_options_override";
 const BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY: &str = "blast_options_defaults_path";
 const DEFAULT_BLAST_OPTIONS_PATH: &str = "assets/blast_defaults.json";
@@ -4099,6 +4103,15 @@ pub enum Operation {
         max_assays: Option<usize>,
         report_id: Option<String>,
     },
+    DeriveTranscriptSequences {
+        seq_id: SeqId,
+        #[serde(default)]
+        feature_ids: Vec<usize>,
+        #[serde(default)]
+        scope: Option<SplicingScopePreset>,
+        #[serde(default)]
+        output_prefix: Option<String>,
+    },
     ComputeDotplot {
         seq_id: SeqId,
         #[serde(default)]
@@ -5642,6 +5655,7 @@ impl GentleEngine {
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
                 "DesignQpcrAssays".to_string(),
+                "DeriveTranscriptSequences".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
                 "InterpretRnaReads".to_string(),
@@ -6913,6 +6927,34 @@ impl GentleEngine {
             .any(|v| v.eq_ignore_ascii_case(HELPER_MCS_GENERATED_TAG))
     }
 
+    fn feature_has_qualifier_value(feature: &gb_io::seq::Feature, key: &str, value: &str) -> bool {
+        feature
+            .qualifier_values(key.into())
+            .any(|entry| entry.trim().eq_ignore_ascii_case(value))
+    }
+
+    fn mark_feature_as_genome_annotation_context(
+        feature: &mut gb_io::seq::Feature,
+        context_layer: &'static str,
+    ) {
+        if !Self::feature_has_qualifier_value(
+            feature,
+            "gentle_generated",
+            GENOME_ANNOTATION_PROJECTION_GENERATED_TAG,
+        ) {
+            feature.qualifiers.push((
+                "gentle_generated".into(),
+                Some(GENOME_ANNOTATION_PROJECTION_GENERATED_TAG.to_string()),
+            ));
+        }
+        if !Self::feature_has_qualifier_value(feature, CONTEXT_LAYER_QUALIFIER_KEY, context_layer) {
+            feature.qualifiers.push((
+                CONTEXT_LAYER_QUALIFIER_KEY.into(),
+                Some(context_layer.to_string()),
+            ));
+        }
+    }
+
     fn text_mentions_mcs(text: &str) -> bool {
         let lower = text.to_ascii_lowercase();
         lower.contains("multiple cloning site")
@@ -7212,11 +7254,13 @@ impl GentleEngine {
                 qualifiers.push(("mcs_expected_sites".into(), Some(linked_enzymes.join(","))));
             }
         }
-        Some(gb_io::seq::Feature {
+        let mut feature = gb_io::seq::Feature {
             kind: gb_io::seq::FeatureKind::from("gene"),
             location,
             qualifiers,
-        })
+        };
+        Self::mark_feature_as_genome_annotation_context(&mut feature, CONTEXT_LAYER_GENE);
+        Some(feature)
     }
 
     fn transcript_subfeatures_from_genome_record(
@@ -7264,11 +7308,13 @@ impl GentleEngine {
             if let Some(strand) = record.strand {
                 qualifiers.push(("strand".into(), Some(strand.to_string())));
             }
-            features.push(gb_io::seq::Feature {
+            let mut feature = gb_io::seq::Feature {
                 kind: gb_io::seq::FeatureKind::from("exon"),
                 location,
                 qualifiers,
-            });
+            };
+            Self::mark_feature_as_genome_annotation_context(&mut feature, CONTEXT_LAYER_TRANSCRIPT);
+            features.push(feature);
             exons_attached = exons_attached.saturating_add(1);
         }
 
@@ -7307,11 +7353,13 @@ impl GentleEngine {
             if let Some(strand) = record.strand {
                 qualifiers.push(("strand".into(), Some(strand.to_string())));
             }
-            features.push(gb_io::seq::Feature {
+            let mut feature = gb_io::seq::Feature {
                 kind: gb_io::seq::FeatureKind::from("CDS"),
                 location,
                 qualifiers,
-            });
+            };
+            Self::mark_feature_as_genome_annotation_context(&mut feature, CONTEXT_LAYER_TRANSCRIPT);
+            features.push(feature);
             cds_attached = cds_attached.saturating_add(1);
         }
         (features, exons_attached, cds_attached)
@@ -7545,11 +7593,13 @@ impl GentleEngine {
             qualifiers.push(("cds_ranges_1based".into(), Some(cds_encoded)));
         }
 
-        Some(gb_io::seq::Feature {
+        let mut feature = gb_io::seq::Feature {
             kind: gb_io::seq::FeatureKind::from("mRNA"),
             location,
             qualifiers,
-        })
+        };
+        Self::mark_feature_as_genome_annotation_context(&mut feature, CONTEXT_LAYER_TRANSCRIPT);
+        Some(feature)
     }
 
     fn import_genome_slice_sequence(

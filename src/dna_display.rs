@@ -183,6 +183,7 @@ pub struct DnaDisplay {
     suppress_cds_features_for_gene_annotations: bool,
     show_gene_features: bool,
     show_mrna_features: bool,
+    show_contextual_transcript_features: bool,
     show_tfbs: bool,
     regulatory_tracks_near_baseline: bool,
     regulatory_feature_max_view_span_bp: usize,
@@ -355,6 +356,17 @@ impl DnaDisplay {
     pub fn set_show_mrna_features(&mut self, value: bool) {
         if self.show_mrna_features != value {
             self.show_mrna_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn show_contextual_transcript_features(&self) -> bool {
+        self.show_contextual_transcript_features
+    }
+
+    pub fn set_show_contextual_transcript_features(&mut self, value: bool) {
+        if self.show_contextual_transcript_features != value {
+            self.show_contextual_transcript_features = value;
             self.mark_layout_dirty();
         }
     }
@@ -837,6 +849,7 @@ impl Default for DnaDisplay {
             suppress_cds_features_for_gene_annotations: false,
             show_gene_features: true,
             show_mrna_features: true,
+            show_contextual_transcript_features: true,
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
             regulatory_feature_max_view_span_bp: 50_000,

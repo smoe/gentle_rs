@@ -1,5 +1,5 @@
 {
-   "command_count": 216,
+   "command_count": 217,
    "commands": [
       {
          "aliases": [
@@ -1186,6 +1186,20 @@
          "path": "dotplot show",
          "summary": "Inspect one persisted dotplot payload by ID.",
          "usage": "dotplot show DOTPLOT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeriveTranscriptSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "transcripts derive",
+         "summary": "Derive transcript/cDNA sequences from mRNA or transcript features, optionally constrained by splicing scope.",
+         "usage": "transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
       },
       {
          "aliases": [],

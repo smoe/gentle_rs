@@ -507,6 +507,7 @@ impl RenderDnaLinear {
         show_cds_features: bool,
         show_gene_features: bool,
         show_mrna_features: bool,
+        show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
         vcf_display_criteria: VcfDisplayCriteria,
@@ -525,6 +526,11 @@ impl RenderDnaLinear {
             show_gene_features,
             show_mrna_features,
         ) {
+            return false;
+        }
+        if !show_contextual_transcript_features
+            && RenderDna::is_contextual_transcript_feature(feature)
+        {
             return false;
         }
         if RenderDna::is_tfbs_feature(feature) {
@@ -705,6 +711,7 @@ impl RenderDnaLinear {
             show_cds_features,
             show_gene_features,
             show_mrna_features,
+            show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
             vcf_display_criteria,
@@ -719,6 +726,7 @@ impl RenderDnaLinear {
                     display.show_cds_features_effective(),
                     display.show_gene_features(),
                     display.show_mrna_features(),
+                    display.show_contextual_transcript_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
                     display.vcf_display_criteria(),
@@ -728,6 +736,7 @@ impl RenderDnaLinear {
                 )
             })
             .unwrap_or((
+                true,
                 true,
                 true,
                 true,
@@ -749,6 +758,7 @@ impl RenderDnaLinear {
                 show_cds_features,
                 show_gene_features,
                 show_mrna_features,
+                show_contextual_transcript_features,
                 show_tfbs,
                 tfbs_display_criteria,
                 vcf_display_criteria.clone(),

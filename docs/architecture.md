@@ -124,6 +124,15 @@ Visual consistency rule:
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
 
+cDNA presentation rule:
+
+- `cDNA` mode defaults to intrinsic cDNA evidence and must not automatically
+  flood the map with contextual transcript projections.
+- Contextual transcript-projection features should be tagged explicitly in
+  qualifiers (for deterministic filtering across adapters/reloads).
+- Showing all contextual transcripts in `cDNA` mode is an explicit opt-in
+  action, not default behavior.
+
 Interaction consistency rule:
 
 - GUI scroll/zoom interaction must follow one cross-surface policy:
