@@ -703,6 +703,7 @@ pub struct GENtleApp {
     retry_snapshot_retain_count: usize,
     retry_snapshot_kind_filter: RetrySnapshotKindFilter,
     retry_snapshot_text_filter: String,
+    retry_snapshot_pending_cleanup_action: Option<RetrySnapshotPendingCleanupAction>,
     genome_track_preflight_track_subscription: bool,
     agent_catalog_path: String,
     agent_catalog_loaded_path: String,
@@ -872,6 +873,21 @@ impl RetrySnapshotKindFilter {
             Self::BlastGenome => kind == BackgroundJobKind::BlastGenome,
             Self::TrackImport => kind == BackgroundJobKind::TrackImport,
             Self::AgentAssist => kind == BackgroundJobKind::AgentAssist,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RetrySnapshotPendingCleanupAction {
+    DeleteFiltered,
+    ArchiveAndDeleteFiltered,
+}
+
+impl RetrySnapshotPendingCleanupAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::DeleteFiltered => "Delete filtered",
+            Self::ArchiveAndDeleteFiltered => "Archive & delete filtered",
         }
     }
 }
@@ -1719,6 +1735,7 @@ impl Default for GENtleApp {
             retry_snapshot_retain_count: MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS,
             retry_snapshot_kind_filter: RetrySnapshotKindFilter::All,
             retry_snapshot_text_filter: String::new(),
+            retry_snapshot_pending_cleanup_action: None,
             genome_track_preflight_track_subscription: true,
             agent_catalog_path: DEFAULT_AGENT_SYSTEM_CATALOG_PATH.to_string(),
             agent_catalog_loaded_path: String::new(),
@@ -3276,6 +3293,92 @@ Error: `{err}`"
             self.persist_background_job_history_to_state();
         }
         removed
+    }
+
+    fn summarize_retry_snapshot_cleanup_targets(
+        snapshots: &[BackgroundJobRetrySnapshot],
+    ) -> String {
+        if snapshots.is_empty() {
+            return "No matching retry snapshots".to_string();
+        }
+        let mut prepare = 0usize;
+        let mut blast = 0usize;
+        let mut track_import = 0usize;
+        let mut agent = 0usize;
+        let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut min_snapshot_id = u64::MAX;
+        let mut max_snapshot_id = 0u64;
+        let mut min_ts = u128::MAX;
+        let mut max_ts = 0u128;
+        for snapshot in snapshots {
+            match snapshot.kind {
+                BackgroundJobKind::PrepareGenome => prepare += 1,
+                BackgroundJobKind::BlastGenome => blast += 1,
+                BackgroundJobKind::TrackImport => track_import += 1,
+                BackgroundJobKind::AgentAssist => agent += 1,
+            }
+            let origin = if snapshot.origin.trim().is_empty() {
+                "-".to_string()
+            } else {
+                snapshot.origin.trim().to_string()
+            };
+            *origin_counts.entry(origin).or_insert(0usize) += 1;
+            min_snapshot_id = min_snapshot_id.min(snapshot.snapshot_id);
+            max_snapshot_id = max_snapshot_id.max(snapshot.snapshot_id);
+            min_ts = min_ts.min(snapshot.captured_at_unix_ms);
+            max_ts = max_ts.max(snapshot.captured_at_unix_ms);
+        }
+        let mut origin_entries = origin_counts.into_iter().collect::<Vec<_>>();
+        origin_entries.sort_by(|(left_origin, left_count), (right_origin, right_count)| {
+            right_count
+                .cmp(left_count)
+                .then_with(|| left_origin.cmp(right_origin))
+        });
+        let mut origin_preview = origin_entries
+            .iter()
+            .take(3)
+            .map(|(origin, count)| format!("{origin}={count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if origin_entries.len() > 3 {
+            if !origin_preview.is_empty() {
+                origin_preview.push_str(", ...");
+            } else {
+                origin_preview = "...".to_string();
+            }
+        }
+        format!(
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            snapshots.len(),
+            prepare,
+            blast,
+            track_import,
+            agent,
+            if origin_preview.is_empty() {
+                "-".to_string()
+            } else {
+                origin_preview
+            },
+            min_snapshot_id,
+            max_snapshot_id,
+            min_ts,
+            max_ts
+        )
+    }
+
+    fn format_retry_snapshot_cleanup_status(
+        action: RetrySnapshotPendingCleanupAction,
+        removed: usize,
+        before: usize,
+        after: usize,
+    ) -> String {
+        format!(
+            "{} confirmed: removed {} snapshot(s), retained {} (was {})",
+            action.label(),
+            removed,
+            after,
+            before
+        )
     }
 
     fn build_retry_snapshot_archive_payload(
@@ -21933,6 +22036,7 @@ Error: `{err}`"
                     {
                         let removed =
                             self.prune_retry_snapshots_to_limit(self.retry_snapshot_retain_count);
+                        self.retry_snapshot_pending_cleanup_action = None;
                         self.app_status = if removed == 0 {
                             "Retry snapshot prune: no snapshots removed".to_string()
                         } else {
@@ -21948,6 +22052,7 @@ Error: `{err}`"
                         .clicked()
                     {
                         let removed = self.clear_retry_snapshots();
+                        self.retry_snapshot_pending_cleanup_action = None;
                         self.app_status = format!("Cleared {removed} retry snapshot(s)");
                     }
                 });
@@ -22005,9 +22110,10 @@ Error: `{err}`"
                         .on_hover_text("Delete only snapshots that match the current filters")
                         .clicked()
                     {
-                        let removed = self.remove_filtered_retry_snapshots();
+                        self.retry_snapshot_pending_cleanup_action =
+                            Some(RetrySnapshotPendingCleanupAction::DeleteFiltered);
                         self.app_status =
-                            format!("Deleted {removed} filtered retry snapshot(s)");
+                            "Delete filtered staged: review preview and confirm".to_string();
                     }
                     if ui
                         .add_enabled(
@@ -22019,10 +22125,69 @@ Error: `{err}`"
                         )
                         .clicked()
                     {
-                        self.prompt_archive_and_delete_filtered_retry_snapshots();
+                        self.retry_snapshot_pending_cleanup_action =
+                            Some(RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered);
+                        self.app_status =
+                            "Archive & delete filtered staged: review preview and confirm"
+                                .to_string();
                     }
                 });
                 let filtered_snapshots = self.filtered_retry_snapshots();
+                if filtered_snapshots.is_empty() {
+                    self.retry_snapshot_pending_cleanup_action = None;
+                }
+                if let Some(action) = self.retry_snapshot_pending_cleanup_action {
+                    let preview_summary =
+                        Self::summarize_retry_snapshot_cleanup_targets(&filtered_snapshots);
+                    ui.group(|ui| {
+                        ui.label(format!("Pending confirmation: {}", action.label()));
+                        ui.small(preview_summary.clone());
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    !filtered_snapshots.is_empty(),
+                                    egui::Button::new("Confirm"),
+                                )
+                                .clicked()
+                            {
+                                let before = self.retry_argument_snapshots.len();
+                                match action {
+                                    RetrySnapshotPendingCleanupAction::DeleteFiltered => {
+                                        let removed = self.remove_filtered_retry_snapshots();
+                                        let after = self.retry_argument_snapshots.len();
+                                        self.app_status = format!(
+                                            "{}; {}",
+                                            Self::format_retry_snapshot_cleanup_status(
+                                                action, removed, before, after
+                                            ),
+                                            preview_summary
+                                        );
+                                    }
+                                    RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
+                                        self.prompt_archive_and_delete_filtered_retry_snapshots();
+                                        let after = self.retry_argument_snapshots.len();
+                                        let removed = before.saturating_sub(after);
+                                        if removed > 0 {
+                                            self.app_status = format!(
+                                                "{}; {}",
+                                                Self::format_retry_snapshot_cleanup_status(
+                                                    action, removed, before, after
+                                                ),
+                                                preview_summary
+                                            );
+                                        }
+                                    }
+                                }
+                                self.retry_snapshot_pending_cleanup_action = None;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                self.retry_snapshot_pending_cleanup_action = None;
+                                self.app_status =
+                                    "Retry snapshot cleanup confirmation canceled".to_string();
+                            }
+                        });
+                    });
+                }
                 ui.small(format!(
                     "Showing {} of {} retained snapshots",
                     filtered_snapshots.len(),
@@ -23291,7 +23456,8 @@ mod tests {
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageAnalysisKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, RetrySnapshotKindFilter, RoutineAssistantStage,
+        PersistedLineageNodeGroup, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -24043,6 +24209,52 @@ mod tests {
             .expect_err("archive/delete should fail when no snapshots match filters");
         assert!(err.contains("No retry snapshots match current filters"));
         assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn summarize_retry_snapshot_cleanup_targets_reports_kind_origin_and_id_ranges() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "dialog retry button",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.track_import.v1"}),
+        );
+
+        let summary = GENtleApp::summarize_retry_snapshot_cleanup_targets(
+            &app.retry_argument_snapshots.clone(),
+        );
+        assert!(summary.contains("3 match(es)"));
+        assert!(summary.contains("PrepareGenome=1"));
+        assert!(summary.contains("BlastGenome=1"));
+        assert!(summary.contains("TrackImport=1"));
+        assert!(summary.contains("AgentAssist=0"));
+        assert!(summary.contains("background jobs panel=2"));
+        assert!(summary.contains("dialog retry button=1"));
+        assert!(summary.contains("ids #1..#3"));
+    }
+
+    #[test]
+    fn format_retry_snapshot_cleanup_status_reports_before_after_counts() {
+        let text = GENtleApp::format_retry_snapshot_cleanup_status(
+            RetrySnapshotPendingCleanupAction::DeleteFiltered,
+            4,
+            9,
+            5,
+        );
+        assert_eq!(
+            text,
+            "Delete filtered confirmed: removed 4 snapshot(s), retained 5 (was 9)"
+        );
     }
 
     #[test]

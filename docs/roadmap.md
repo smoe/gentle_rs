@@ -1856,9 +1856,11 @@ Post-baseline follow-ups:
     - background-jobs retry snapshot workflows now include filtered bulk-delete
       and archive-and-delete (JSON artifact + removal) for targeted per-filter
       cleanup.
+    - destructive filtered cleanup now uses staged confirm UX with preview
+      summaries (match counts/kinds/origins/id-range) before delete/archive.
   - Next:
-    - optionally add post-cleanup reporting UX (preview/confirm summaries before
-      destructive filtered delete/archive actions)
+    - optionally add a full dry-run diff panel and optional "type-to-confirm"
+      guard for destructive retry-snapshot cleanup actions
 
 ### Current branch blockers (must clear first)
 

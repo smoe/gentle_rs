@@ -1166,6 +1166,8 @@ In `Main window -> Graph` view:
     and clear-all cleanup for long-running sessions
   - filtered maintenance actions now include direct filtered delete plus
     archive-and-delete export workflow for per-kind/per-origin cleanup
+  - destructive filtered cleanup actions are staged and require explicit
+    confirm with a match-summary preview before execution
 
 ## Linear map conventions
 
