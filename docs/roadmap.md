@@ -1853,9 +1853,12 @@ Post-baseline follow-ups:
     - background-jobs retry snapshot retention controls now support retain-count
       cap, explicit oldest-first prune, and clear-all cleanup (persisted via the
       same metadata payload).
+    - background-jobs retry snapshot workflows now include filtered bulk-delete
+      and archive-and-delete (JSON artifact + removal) for targeted per-filter
+      cleanup.
   - Next:
-    - optionally add filtered bulk-delete/archival workflows for retry snapshots
-      (for example per kind/origin cleanup)
+    - optionally add post-cleanup reporting UX (preview/confirm summaries before
+      destructive filtered delete/archive actions)
 
 ### Current branch blockers (must clear first)
 

@@ -1164,6 +1164,8 @@ In `Main window -> Graph` view:
     for triage handoff or offline analysis
   - retry snapshot retention controls support "retain newest N", explicit prune,
     and clear-all cleanup for long-running sessions
+  - filtered maintenance actions now include direct filtered delete plus
+    archive-and-delete export workflow for per-kind/per-origin cleanup
 
 ## Linear map conventions
 

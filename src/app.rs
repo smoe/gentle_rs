@@ -3261,6 +3261,62 @@ Error: `{err}`"
         Ok(snapshot_count)
     }
 
+    fn remove_filtered_retry_snapshots(&mut self) -> usize {
+        let before = self.retry_argument_snapshots.len();
+        if before == 0 {
+            return 0;
+        }
+        let kind_filter = self.retry_snapshot_kind_filter;
+        let filter_text = self.retry_snapshot_text_filter.clone();
+        self.retry_argument_snapshots.retain(|snapshot| {
+            !Self::retry_snapshot_matches_filter(snapshot, kind_filter, &filter_text)
+        });
+        let removed = before.saturating_sub(self.retry_argument_snapshots.len());
+        if removed > 0 {
+            self.persist_background_job_history_to_state();
+        }
+        removed
+    }
+
+    fn build_retry_snapshot_archive_payload(
+        &self,
+        snapshots: Vec<BackgroundJobRetrySnapshot>,
+    ) -> serde_json::Value {
+        let archived_count = snapshots.len();
+        serde_json::json!({
+            "schema": "gentle.gui_retry_snapshot_archive.v1",
+            "archived_at_unix_ms": Self::now_unix_ms(),
+            "archive_mode": "archive_and_delete_filtered",
+            "filters": {
+                "kind": self.retry_snapshot_kind_filter.export_token(),
+                "text": self.retry_snapshot_text_filter.trim()
+            },
+            "archived_count": archived_count,
+            "snapshots": snapshots
+        })
+    }
+
+    fn archive_and_delete_filtered_retry_snapshots_to_path(
+        &mut self,
+        path: &Path,
+    ) -> std::result::Result<usize, String> {
+        let snapshots = self.filtered_retry_snapshots();
+        if snapshots.is_empty() {
+            return Err("No retry snapshots match current filters".to_string());
+        }
+        let payload = self.build_retry_snapshot_archive_payload(snapshots.clone());
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize retry snapshot archive JSON: {e}"))?;
+        fs::write(path, json).map_err(|e| {
+            format!(
+                "Could not write retry snapshot archive '{}': {e}",
+                path.display()
+            )
+        })?;
+        let removed = self.remove_filtered_retry_snapshots();
+        Ok(removed)
+    }
+
     fn normalize_background_job_events(events: Vec<BackgroundJobEvent>) -> Vec<BackgroundJobEvent> {
         let mut normalized = events
             .into_iter()
@@ -4762,6 +4818,38 @@ Error: `{err}`"
             Err(err) => {
                 self.app_status =
                     format!("Could not export retry snapshots '{}': {err}", path_text);
+            }
+        }
+    }
+
+    fn prompt_archive_and_delete_filtered_retry_snapshots(&mut self) {
+        if self.filtered_retry_snapshots().is_empty() {
+            self.app_status = "No retry snapshots match current filters".to_string();
+            return;
+        }
+        let default_file_name = format!(
+            "retry_snapshots_archive_{}.json",
+            self.retry_snapshot_kind_filter.export_token()
+        );
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Retry snapshot archive canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        match self.archive_and_delete_filtered_retry_snapshots_to_path(path.as_path()) {
+            Ok(count) => {
+                self.app_status =
+                    format!("Archived and removed {count} retry snapshot(s) to '{path_text}'");
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not archive/delete retry snapshots '{}': {err}",
+                    path_text
+                );
             }
         }
     }
@@ -21912,6 +22000,27 @@ Error: `{err}`"
                     {
                         self.prompt_export_filtered_retry_snapshots();
                     }
+                    if ui
+                        .add_enabled(filtered_count > 0, egui::Button::new("Delete filtered"))
+                        .on_hover_text("Delete only snapshots that match the current filters")
+                        .clicked()
+                    {
+                        let removed = self.remove_filtered_retry_snapshots();
+                        self.app_status =
+                            format!("Deleted {removed} filtered retry snapshot(s)");
+                    }
+                    if ui
+                        .add_enabled(
+                            filtered_count > 0,
+                            egui::Button::new("Archive & delete filtered..."),
+                        )
+                        .on_hover_text(
+                            "Export filtered snapshots to JSON archive and remove them from retained history",
+                        )
+                        .clicked()
+                    {
+                        self.prompt_archive_and_delete_filtered_retry_snapshots();
+                    }
                 });
                 let filtered_snapshots = self.filtered_retry_snapshots();
                 ui.small(format!(
@@ -23804,6 +23913,136 @@ mod tests {
             .and_then(|value| value.as_array())
             .expect("retry snapshots array");
         assert!(snapshots.is_empty());
+    }
+
+    #[test]
+    fn remove_filtered_retry_snapshots_deletes_only_matching_entries() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+
+        let removed = app.remove_filtered_retry_snapshots();
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 1);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn archive_and_delete_filtered_retry_snapshots_to_path_writes_archive_and_removes_matches() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots_archive.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "dialog retry button",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "mm10"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+
+        let removed = app
+            .archive_and_delete_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect("archive/delete retry snapshots");
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 1);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+
+        let payload = fs::read_to_string(&output_path).expect("read archive payload");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse archive payload");
+        assert_eq!(
+            payload_json.get("schema").and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_snapshot_archive.v1")
+        );
+        assert_eq!(
+            payload_json
+                .get("archive_mode")
+                .and_then(|value| value.as_str()),
+            Some("archive_and_delete_filtered")
+        );
+        assert_eq!(
+            payload_json
+                .get("archived_count")
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        let archived = payload_json
+            .get("snapshots")
+            .and_then(|value| value.as_array())
+            .expect("archived snapshots array");
+        assert_eq!(archived.len(), 1);
+        assert_eq!(
+            archived[0].get("kind").and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+    }
+
+    #[test]
+    fn archive_and_delete_filtered_retry_snapshots_to_path_rejects_empty_match_set() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_snapshots_archive.json");
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "args:mm10".to_string();
+
+        let err = app
+            .archive_and_delete_filtered_retry_snapshots_to_path(output_path.as_path())
+            .expect_err("archive/delete should fail when no snapshots match filters");
+        assert!(err.contains("No retry snapshots match current filters"));
+        assert!(!output_path.exists());
     }
 
     #[test]
