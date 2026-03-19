@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-15
+Last updated: 2026-03-19
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -383,6 +383,8 @@ order. Durable architecture constraints and decisions remain in
   - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
   - macro instances are rendered as dedicated box nodes with explicit
     input/output edges (sequence/container-resolved where applicable)
+  - dotplot/flexibility analysis artifacts are rendered as dedicated analysis
+    nodes linked from source sequence nodes
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:
@@ -1676,6 +1678,11 @@ Status (2026-03-18):
       x/y spans and query-axis selection sync
     - shell/CLI `dotplot compute` supports `--reference-seq`, `--ref-start`,
       `--ref-end`
+  - lineage integration (2026-03-19):
+    - main lineage table/graph now materializes persisted dotplot/flex artifacts
+      as analysis nodes
+    - analysis nodes are linked to query/reference source sequences by operation
+      edges and carry artifact id + mode/model + count metadata in tooltips/details
 - Remaining:
   - `RenderDotplotSvg`
   - additional overlay controls beyond crosshair baseline

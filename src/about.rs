@@ -2,11 +2,12 @@
 
 pub const GENTLE_DISPLAY_VERSION: &str = env!("GENTLE_DISPLAY_VERSION");
 pub const GENTLE_BUILD_N: &str = env!("GENTLE_BUILD_N");
+pub const GENTLE_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn version_cli_text() -> String {
     format!(
         "GENtle {}\nBuild {}\nCross-platform DNA cloning workbench",
-        GENTLE_DISPLAY_VERSION, GENTLE_BUILD_N
+        GENTLE_PACKAGE_VERSION, GENTLE_BUILD_N
     )
 }
 

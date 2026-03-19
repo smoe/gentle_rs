@@ -785,6 +785,7 @@ mod tests {
         fs,
         path::Path,
         sync::{Arc, RwLock},
+        time::Duration,
     };
     use tempfile::{TempDir, tempdir};
 
@@ -1102,6 +1103,22 @@ mod tests {
         assert_eq!(MainAreaDna::dotplot_window_count(1001, 9, 4), 249);
         assert_eq!(MainAreaDna::dotplot_window_count(8, 9, 1), 0);
         assert_eq!(MainAreaDna::dotplot_window_count(100, 0, 1), 0);
+    }
+
+    #[test]
+    fn async_task_repaint_delay_scales_with_queue_pressure() {
+        assert_eq!(
+            MainAreaDna::async_task_repaint_delay(0, false),
+            Duration::from_millis(700)
+        );
+        assert_eq!(
+            MainAreaDna::async_task_repaint_delay(3, false),
+            Duration::from_millis(120)
+        );
+        assert_eq!(
+            MainAreaDna::async_task_repaint_delay(512, true),
+            Duration::from_millis(20)
+        );
     }
 
     #[test]
@@ -8610,6 +8627,19 @@ impl MainAreaDna {
         )
     }
 
+    fn add_small_uint_text_edit(
+        ui: &mut egui::Ui,
+        value: &mut String,
+        expected_digits: usize,
+    ) -> egui::Response {
+        let expected_digits = expected_digits.clamp(1, 8);
+        let width = 20.0 + expected_digits as f32 * 8.0;
+        ui.add_sized(
+            [width, ui.spacing().interact_size.y],
+            egui::TextEdit::singleline(value),
+        )
+    }
+
     fn dotplot_window_count(span_bp: usize, word_size: usize, step_bp: usize) -> usize {
         if word_size == 0 || step_bp == 0 || span_bp < word_size {
             0
@@ -8620,6 +8650,132 @@ impl MainAreaDna {
                 .unwrap_or(0)
                 .saturating_add(1)
         }
+    }
+
+    fn dotplot_quantile(sorted_values: &[f32], q: f32) -> f32 {
+        if sorted_values.is_empty() {
+            return 0.0;
+        }
+        let q = q.clamp(0.0, 1.0);
+        let idx = ((sorted_values.len().saturating_sub(1)) as f32 * q).round() as usize;
+        sorted_values
+            .get(idx.min(sorted_values.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    fn recommend_dotplot_display_from_view(view: &DotplotView) -> Option<(f32, f32, String)> {
+        if view.point_count == 0 || view.points.is_empty() {
+            return None;
+        }
+        let query_span = view
+            .span_end_0based
+            .saturating_sub(view.span_start_0based)
+            .max(1);
+        let reference_span = view
+            .reference_span_end_0based
+            .saturating_sub(view.reference_span_start_0based)
+            .max(1);
+        let cols: usize = 192;
+        let aspect = reference_span as f32 / query_span as f32;
+        let rows = ((cols as f32 * aspect).round() as usize).clamp(48, 384);
+        let total_cells = cols.saturating_mul(rows).max(1);
+
+        let query_span_max = query_span.saturating_sub(1).max(1);
+        let reference_span_max = reference_span.saturating_sub(1).max(1);
+        let mut cells: HashMap<(usize, usize), usize> = HashMap::new();
+        for point in &view.points {
+            let x_local = point
+                .x_0based
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max);
+            let y_local = point
+                .y_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max);
+            let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+            let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+            let x_cell = ((x_frac * (cols.saturating_sub(1)) as f32).round() as usize)
+                .min(cols.saturating_sub(1));
+            let y_cell = ((y_frac * (rows.saturating_sub(1)) as f32).round() as usize)
+                .min(rows.saturating_sub(1));
+            let entry = cells.entry((x_cell, y_cell)).or_insert(0);
+            *entry = entry.saturating_add(1);
+        }
+        if cells.is_empty() {
+            return None;
+        }
+        let mut counts: Vec<usize> = cells.values().copied().collect();
+        counts.sort_unstable();
+        let max_count = (*counts.last().unwrap_or(&1)).max(1) as f32;
+        let mut densities: Vec<f32> = counts
+            .into_iter()
+            .map(|count| (count as f32 / max_count).clamp(0.0, 1.0))
+            .collect();
+        densities.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+        let occupancy = cells.len() as f32 / total_cells as f32;
+
+        let q_target = if occupancy > 0.35 {
+            0.70
+        } else if occupancy > 0.20 {
+            0.55
+        } else if occupancy > 0.08 {
+            0.35
+        } else {
+            0.15
+        };
+        let mut threshold = if view.point_count >= 800 {
+            Self::dotplot_quantile(&densities, q_target)
+        } else {
+            0.0
+        };
+        if occupancy < 0.02 {
+            threshold = threshold.min(0.05);
+        }
+        threshold = threshold.clamp(0.0, 0.90);
+        let q90 = Self::dotplot_quantile(&densities, 0.90);
+        let q90_post = if q90 <= threshold {
+            0.05
+        } else {
+            ((q90 - threshold) / (1.0 - threshold)).clamp(0.05, 1.0)
+        };
+        let mut gain = (0.85 / q90_post).clamp(0.25, 8.0);
+        if view.point_count < 300 {
+            gain = gain.max(1.5);
+        }
+
+        let summary = format!(
+            "Auto contrast: threshold={:.3}, gain={:.3}, occupancy={:.2}%, q90={:.3}, points={}, cells={}/{}",
+            threshold,
+            gain,
+            occupancy * 100.0,
+            q90,
+            view.point_count,
+            cells.len(),
+            total_cells
+        );
+        Some((threshold, gain, summary))
+    }
+
+    fn apply_auto_dotplot_display_contrast(&mut self) {
+        self.ensure_dotplot_cache_current();
+        let Some(view) = self.dotplot_cached_view.as_ref() else {
+            self.dotplot_last_compute_status =
+                "Auto contrast skipped: no dotplot payload loaded".to_string();
+            return;
+        };
+        let Some((threshold, gain, summary)) = Self::recommend_dotplot_display_from_view(view)
+        else {
+            self.dotplot_last_compute_status = format!(
+                "Auto contrast skipped: payload '{}' has no usable point density",
+                view.dotplot_id
+            );
+            return;
+        };
+        self.dotplot_ui.display_density_threshold = threshold;
+        self.dotplot_ui.display_intensity_gain = gain;
+        self.dotplot_last_compute_status = summary;
+        self.save_engine_ops_state();
     }
 
     fn resolve_dotplot_span_bounds_for_status(
@@ -9320,11 +9476,28 @@ impl MainAreaDna {
                 .monospace()
                 .size(self.feature_details_font_size()),
             );
+            let same_reference = reference_seq_label == view.seq_id.as_str();
+            if matches!(view.mode, DotplotMode::SelfForward) {
+                ui.small(
+                    "Self-forward compares a sequence to itself. A main diagonal is expected identity; off-diagonal signal indicates repeated motifs.",
+                );
+            }
             if view.point_count == 0 {
                 ui.colored_label(
                     egui::Color32::from_rgb(190, 24, 93),
                     "Loaded payload has zero seed hits. Try smaller word size, higher mismatches, or a narrower reference span around the expected locus.",
                 );
+                if same_reference
+                    && matches!(
+                        view.mode,
+                        DotplotMode::PairReverseComplement | DotplotMode::SelfReverseComplement
+                    )
+                {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        "Reverse-complement self-pair mode is an inverted-repeat scan. Zero hits can be valid with sparse sampling/strict seeds; try smaller step and word for sensitivity.",
+                    );
+                }
             }
         } else {
             ui.small("No dotplot payload is currently loaded.");
@@ -9439,12 +9612,6 @@ impl MainAreaDna {
             view.mode,
             DotplotMode::SelfForward | DotplotMode::SelfReverseComplement
         );
-        if is_self_mode {
-            painter.line_segment(
-                [dotplot_rect.left_top(), dotplot_rect.right_bottom()],
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
-            );
-        }
 
         let query_span = view
             .span_end_0based
@@ -9884,8 +10051,11 @@ impl MainAreaDna {
                         ui.label("half_window_bp").on_hover_text(
                             "Half-width of default bounded compute span around current viewport center",
                         );
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.half_window_bp)
+                        if Self::add_small_uint_text_edit(
+                            ui,
+                            &mut self.dotplot_ui.half_window_bp,
+                            5,
+                        )
                             .on_hover_text(
                                 "Default=500 => compute query span from center-500 to center+500",
                             )
@@ -9896,8 +10066,7 @@ impl MainAreaDna {
                         ui.label("word").on_hover_text(
                             "k-mer seed length used for candidate matches (larger=faster, lower sensitivity)",
                         );
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.word_size)
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.word_size, 2)
                             .on_hover_text("Minimum exact seed length in bases")
                             .changed()
                         {
@@ -9905,8 +10074,7 @@ impl MainAreaDna {
                         }
                         ui.label("step")
                             .on_hover_text("Sampling step in bp along query/reference spans");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.step_bp)
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.step_bp, 4)
                             .on_hover_text(
                                 "Higher step reduces compute cost but may skip small local structures",
                             )
@@ -9916,8 +10084,11 @@ impl MainAreaDna {
                         }
                         ui.label("mismatches")
                             .on_hover_text("Allowed mismatches per seed comparison");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.max_mismatches)
+                        if Self::add_small_uint_text_edit(
+                            ui,
+                            &mut self.dotplot_ui.max_mismatches,
+                            2,
+                        )
                             .on_hover_text(
                                 "0=enforce exact seeds; higher values increase tolerance",
                             )
@@ -10028,9 +10199,11 @@ impl MainAreaDna {
                             &mut self.dotplot_ui.show_flexibility_track,
                             "Show flexibility track",
                         )
-                        .on_hover_text("Render selected flexibility track below dotplot");
+                        .on_hover_text(
+                            "Show an auxiliary composition track below the dotplot. The track is computed from the sequence span and can help reveal local A/T-rich or skewed segments.",
+                        );
                         ui.label("flex_track_id").on_hover_text(
-                            "Storage key for flexibility payload in project metadata",
+                            "Persistent metadata key for flexibility payloads. Compute writes under this ID; Load reuses it later (GUI, shell, and exports).",
                         );
                         if ui
                             .text_edit_singleline(&mut self.dotplot_ui.flex_track_id)
@@ -10109,6 +10282,15 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                        }
+                        if ui
+                            .button("Auto contrast")
+                            .on_hover_text(
+                                "Estimate threshold/gain from currently loaded payload density distribution",
+                            )
+                            .clicked()
+                        {
+                            self.apply_auto_dotplot_display_contrast();
                         }
                     });
 
@@ -10239,8 +10421,11 @@ impl MainAreaDna {
                         ui.label("half_window_bp").on_hover_text(
                             "Half-width of default query span around current viewport center",
                         );
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.half_window_bp)
+                        if Self::add_small_uint_text_edit(
+                            ui,
+                            &mut self.dotplot_ui.half_window_bp,
+                            5,
+                        )
                             .on_hover_text(
                                 "Default 500 computes about 1001 bp around current linear-map center",
                             )
@@ -10250,8 +10435,7 @@ impl MainAreaDna {
                         }
                         ui.label("word")
                             .on_hover_text("Seed/k-mer length used for candidate matching");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.word_size)
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.word_size, 2)
                             .on_hover_text("Higher values are faster but less sensitive")
                             .changed()
                         {
@@ -10259,8 +10443,7 @@ impl MainAreaDna {
                         }
                         ui.label("step")
                             .on_hover_text("Sampling step (bp) along query/reference spans");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.step_bp)
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.step_bp, 4)
                             .on_hover_text("Higher values reduce work but can miss local structures")
                             .changed()
                         {
@@ -10268,8 +10451,11 @@ impl MainAreaDna {
                         }
                         ui.label("mismatches")
                             .on_hover_text("Allowed mismatches per seed comparison");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.max_mismatches)
+                        if Self::add_small_uint_text_edit(
+                            ui,
+                            &mut self.dotplot_ui.max_mismatches,
+                            2,
+                        )
                             .on_hover_text("0 = exact seed matches only")
                             .changed()
                         {
@@ -10278,8 +10464,7 @@ impl MainAreaDna {
                         ui.label("tile_bp").on_hover_text(
                             "Optional rendering/export hint for tile width in bp (analysis metadata)",
                         );
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.tile_bp)
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.tile_bp, 5)
                             .on_hover_text("Leave empty for automatic/default behavior")
                             .changed()
                         {
@@ -10387,10 +10572,11 @@ impl MainAreaDna {
                             }
                             ui.label("ref_start")
                                 .on_hover_text("Optional 0-based inclusive reference span start");
-                            if ui
-                                .text_edit_singleline(
-                                    &mut self.dotplot_ui.reference_span_start_0based,
-                                )
+                            if Self::add_small_uint_text_edit(
+                                ui,
+                                &mut self.dotplot_ui.reference_span_start_0based,
+                                5,
+                            )
                                 .on_hover_text(
                                     "Leave empty to use reference span start = 0 (full reference)",
                                 )
@@ -10400,8 +10586,11 @@ impl MainAreaDna {
                             }
                             ui.label("ref_end")
                                 .on_hover_text("Optional 0-based exclusive reference span end");
-                            if ui
-                                .text_edit_singleline(&mut self.dotplot_ui.reference_span_end_0based)
+                            if Self::add_small_uint_text_edit(
+                                ui,
+                                &mut self.dotplot_ui.reference_span_end_0based,
+                                5,
+                            )
                                 .on_hover_text(
                                     "Leave empty to use full reference length as end",
                                 )
@@ -10419,13 +10608,17 @@ impl MainAreaDna {
                                 &mut self.dotplot_ui.show_flexibility_track,
                                 "Show flexibility track",
                             )
-                            .on_hover_text("Render selected flexibility track below dotplot")
+                            .on_hover_text(
+                                "Render an auxiliary composition profile below the dotplot. This is visual context only; it does not modify dotplot matching.",
+                            )
                             .changed()
                         {
                             save_state = true;
                         }
                         ui.label("model")
-                            .on_hover_text("Flexibility model used for score track computation");
+                            .on_hover_text(
+                                "Scoring model for flexibility profile: at_richness = (A+T)/len, at_skew = (A-T)/(A+T).",
+                            );
                         let flex_model_before = self.dotplot_ui.flex_model;
                         let flex_model_combo = egui::ComboBox::from_id_salt(format!(
                             "flex_model_{}",
@@ -10437,11 +10630,17 @@ impl MainAreaDna {
                                 &mut self.dotplot_ui.flex_model,
                                 FlexibilityModel::AtRichness,
                                 FlexibilityModel::AtRichness.as_str(),
+                            )
+                            .on_hover_text(
+                                "AT-richness per bin: fraction of A/T bases in each bin (0..1)",
                             );
                             ui.selectable_value(
                                 &mut self.dotplot_ui.flex_model,
                                 FlexibilityModel::AtSkew,
                                 FlexibilityModel::AtSkew.as_str(),
+                            )
+                            .on_hover_text(
+                                "AT-skew per bin: (A-T)/(A+T), highlighting strand composition bias",
                             );
                         });
                         flex_model_combo
@@ -10451,18 +10650,24 @@ impl MainAreaDna {
                             save_state = true;
                         }
                         ui.label("bin_bp")
-                            .on_hover_text("Bin width for flexibility scoring aggregation");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.flex_bin_bp)
+                            .on_hover_text(
+                                "Bin width for flexibility scoring. Smaller bins increase detail, larger bins emphasize broad trends.",
+                            );
+                        if Self::add_small_uint_text_edit(ui, &mut self.dotplot_ui.flex_bin_bp, 4)
                             .on_hover_text("Smaller bins give finer but noisier track detail")
                             .changed()
                         {
                             save_state = true;
                         }
                         ui.label("smoothing_bp")
-                            .on_hover_text("Optional smoothing window for flexibility track");
-                        if ui
-                            .text_edit_singleline(&mut self.dotplot_ui.flex_smoothing_bp)
+                            .on_hover_text(
+                                "Optional moving-average smoothing window (bp). Leave empty for raw per-bin profile.",
+                            );
+                        if Self::add_small_uint_text_edit(
+                            ui,
+                            &mut self.dotplot_ui.flex_smoothing_bp,
+                            5,
+                        )
                             .on_hover_text("Leave empty for no smoothing")
                             .changed()
                         {
@@ -10481,11 +10686,13 @@ impl MainAreaDna {
 
                     ui.horizontal_wrapped(|ui| {
                         ui.label("flex_track_id")
-                            .on_hover_text("Storage key for flexibility track payload");
+                            .on_hover_text(
+                                "Persistent metadata key for flexibility payload. Compute writes under this ID; Load reuses the same payload later in GUI/shell/export flows.",
+                            );
                         if ui
                             .text_edit_singleline(&mut self.dotplot_ui.flex_track_id)
                             .on_hover_text(
-                                "Use stable IDs to overwrite/load deterministic flexibility tracks",
+                                "Use stable IDs for reproducible workflows and later retrieval (for example before SVG export or in CLI review).",
                             )
                             .changed()
                         {
@@ -10566,6 +10773,15 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                        }
+                        if ui
+                            .button("Auto contrast")
+                            .on_hover_text(
+                                "Estimate threshold/gain from currently loaded payload density distribution",
+                            )
+                            .clicked()
+                        {
+                            self.apply_auto_dotplot_display_contrast();
                         }
                     });
 
@@ -13996,17 +14212,32 @@ impl MainAreaDna {
         }
     }
 
+    fn async_task_repaint_delay(
+        processed_progress_messages: usize,
+        hit_progress_cap: bool,
+    ) -> Duration {
+        if hit_progress_cap {
+            Duration::from_millis(20)
+        } else if processed_progress_messages > 0 {
+            Duration::from_millis(120)
+        } else {
+            Duration::from_millis(700)
+        }
+    }
+
     fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
         if self.rna_read_task.is_none() {
             return;
         }
         let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut processed_progress_messages = 0usize;
+        let mut hit_progress_cap = false;
+        let mut task_still_running = false;
         if let Some(task) = &self.rna_read_task {
             let compression = Self::rna_reads_input_compression_label(&task.input_path);
-            ctx.request_repaint_after(Duration::from_millis(250));
             match task.receiver.lock() {
                 Ok(rx) => {
-                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 64;
+                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 512;
                     let mut processed_progress = 0usize;
                     loop {
                         match rx.try_recv() {
@@ -14046,6 +14277,7 @@ impl MainAreaDna {
                                 self.rna_read_progress = Some(progress);
                                 processed_progress = processed_progress.saturating_add(1);
                                 if processed_progress >= MAX_PROGRESS_MESSAGES_PER_TICK {
+                                    hit_progress_cap = true;
                                     break;
                                 }
                             }
@@ -14144,6 +14376,8 @@ impl MainAreaDna {
                             );
                         }
                     }
+                    processed_progress_messages = processed_progress;
+                    task_still_running = done.is_none();
                 }
                 Err(_) => {
                     done = Some(Err(EngineError {
@@ -14152,6 +14386,13 @@ impl MainAreaDna {
                     }));
                 }
             }
+        }
+
+        if done.is_none() && task_still_running {
+            ctx.request_repaint_after(Self::async_task_repaint_delay(
+                processed_progress_messages,
+                hit_progress_cap,
+            ));
         }
 
         if let Some(done) = done {
@@ -15560,11 +15801,13 @@ impl MainAreaDna {
         }
 
         let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut processed_progress_messages = 0usize;
+        let mut hit_progress_cap = false;
+        let mut task_still_running = false;
         if let Some(task) = &self.tfbs_task {
-            ctx.request_repaint_after(Duration::from_millis(100));
             match task.receiver.lock() {
                 Ok(rx) => {
-                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 256;
+                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 512;
                     let mut processed_progress = 0usize;
                     loop {
                         match rx.try_recv() {
@@ -15572,6 +15815,7 @@ impl MainAreaDna {
                                 self.tfbs_progress = Some(progress);
                                 processed_progress = processed_progress.saturating_add(1);
                                 if processed_progress >= MAX_PROGRESS_MESSAGES_PER_TICK {
+                                    hit_progress_cap = true;
                                     break;
                                 }
                             }
@@ -15610,6 +15854,8 @@ impl MainAreaDna {
                             );
                         }
                     }
+                    processed_progress_messages = processed_progress;
+                    task_still_running = done.is_none();
                 }
                 Err(_) => {
                     done = Some(Err(EngineError {
@@ -15618,6 +15864,13 @@ impl MainAreaDna {
                     }));
                 }
             }
+        }
+
+        if done.is_none() && task_still_running {
+            ctx.request_repaint_after(Self::async_task_repaint_delay(
+                processed_progress_messages,
+                hit_progress_cap,
+            ));
         }
 
         if let Some(done) = done {

@@ -87,6 +87,7 @@ const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace"
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION: f32 = 420.0 / (420.0 + 220.0);
+const DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION: f32 = 0.58;
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
 const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
@@ -512,9 +513,12 @@ pub struct GENtleApp {
     lineage_graph_zoom: f32,
     lineage_graph_area_height: f32,
     lineage_container_area_height: f32,
+    lineage_container_arrangement_split_fraction: f32,
     lineage_graph_scroll_offset: Vec2,
     lineage_graph_pan_origin: Option<Vec2>,
     lineage_graph_compact_labels: bool,
+    lineage_main_split_drag_origin: Option<f32>,
+    lineage_container_arrangement_split_drag_origin: Option<f32>,
     lineage_graph_selected_node_id: Option<String>,
     lineage_graph_node_offsets: HashMap<String, Vec2>,
     lineage_graph_drag_origin: Option<(String, Vec2)>,
@@ -1030,11 +1034,27 @@ struct BlastPoolOption {
     members: Vec<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LineageNodeKind {
     Sequence,
     Arrangement,
     Macro,
+    Analysis,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LineageAnalysisKind {
+    Dotplot,
+    FlexibilityTrack,
+}
+
+impl LineageAnalysisKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Dotplot => "dotplot",
+            Self::FlexibilityTrack => "flexibility_track",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1084,6 +1104,12 @@ struct LineageRow {
     genome_anchor_display: Option<String>,
     is_full_genome_sequence: bool,
     retrieval_descriptor: Option<LineageRetrievalDescriptor>,
+    analysis_kind: Option<LineageAnalysisKind>,
+    analysis_artifact_id: Option<String>,
+    analysis_reference_seq_id: Option<String>,
+    analysis_mode: Option<String>,
+    analysis_point_count: Option<usize>,
+    analysis_bin_count: Option<usize>,
     macro_instance_id: Option<String>,
     macro_routine_id: Option<String>,
     macro_template_name: Option<String>,
@@ -1293,6 +1319,7 @@ struct CommandPaletteEntry {
 #[serde(default)]
 struct PersistedLineageGraphWorkspace {
     main_split_fraction: Option<f32>,
+    container_arrangement_split_fraction: Option<f32>,
     zoom: f32,
     graph_area_height: f32,
     container_area_height: f32,
@@ -1306,6 +1333,9 @@ impl Default for PersistedLineageGraphWorkspace {
     fn default() -> Self {
         Self {
             main_split_fraction: Some(DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION),
+            container_arrangement_split_fraction: Some(
+                DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION,
+            ),
             zoom: 1.0,
             graph_area_height: 420.0,
             container_area_height: 220.0,
@@ -1370,9 +1400,13 @@ impl Default for GENtleApp {
             lineage_graph_zoom: 1.0,
             lineage_graph_area_height: 420.0,
             lineage_container_area_height: 220.0,
+            lineage_container_arrangement_split_fraction:
+                DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION,
             lineage_graph_scroll_offset: Vec2::ZERO,
             lineage_graph_pan_origin: None,
             lineage_graph_compact_labels: true,
+            lineage_main_split_drag_origin: None,
+            lineage_container_arrangement_split_drag_origin: None,
             lineage_graph_selected_node_id: None,
             lineage_graph_node_offsets: HashMap::new(),
             lineage_graph_drag_origin: None,
@@ -2039,8 +2073,9 @@ impl GENtleApp {
     fn rewrite_inline_image_destination(span: &str, absolute_dest: &Path) -> Option<String> {
         let (dest_start, dest_end) = Self::find_inline_image_destination(span)?;
         let mut rewritten = String::with_capacity(span.len() + 64);
+        let absolute_uri = Self::file_uri_from_path(absolute_dest);
         rewritten.push_str(&span[..dest_start]);
-        rewritten.push_str(&absolute_dest.to_string_lossy());
+        rewritten.push_str(&absolute_uri);
         rewritten.push_str(&span[dest_end..]);
         Some(rewritten)
     }
@@ -2139,13 +2174,137 @@ impl GENtleApp {
             || path.starts_with('/')
             || path.starts_with('\\')
             || path.starts_with('#')
-            || path.contains("://")
-            || path.contains(':')
+            || Self::is_windows_drive_path(path)
+            || Self::has_uri_scheme(path)
         {
             return None;
         }
         let joined = base_dir.join(path);
         Some(joined.canonicalize().unwrap_or(joined))
+    }
+
+    fn is_windows_drive_path(path: &str) -> bool {
+        let bytes = path.as_bytes();
+        bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'/' || bytes[2] == b'\\')
+    }
+
+    fn has_uri_scheme(path: &str) -> bool {
+        if Self::is_windows_drive_path(path) {
+            return false;
+        }
+        let mut chars = path.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic() {
+            return false;
+        }
+        for ch in chars {
+            if ch == ':' {
+                return true;
+            }
+            if !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')) {
+                return false;
+            }
+        }
+        false
+    }
+
+    fn encode_hex_nibble(value: u8) -> char {
+        match value {
+            0..=9 => (b'0' + value) as char,
+            _ => (b'A' + (value - 10)) as char,
+        }
+    }
+
+    fn percent_encode_file_uri_path(path: &str) -> String {
+        let mut encoded = String::with_capacity(path.len());
+        for byte in path.bytes() {
+            let keep = byte.is_ascii_alphanumeric()
+                || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/' | b':');
+            if keep {
+                encoded.push(byte as char);
+                continue;
+            }
+            encoded.push('%');
+            encoded.push(Self::encode_hex_nibble(byte >> 4));
+            encoded.push(Self::encode_hex_nibble(byte & 0x0f));
+        }
+        encoded
+    }
+
+    fn file_uri_from_path(path: &Path) -> String {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        let rooted = if normalized.starts_with('/') {
+            normalized
+        } else {
+            format!("/{normalized}")
+        };
+        let encoded = Self::percent_encode_file_uri_path(&rooted);
+        format!("file://{encoded}")
+    }
+
+    fn markdown_image_uri_for_render(dest: &str) -> String {
+        let trimmed = dest.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        if Self::has_uri_scheme(trimmed) || trimmed.starts_with('#') {
+            return trimmed.to_string();
+        }
+        if Self::is_windows_drive_path(trimmed) {
+            return Self::file_uri_from_path(Path::new(trimmed));
+        }
+        let path = Path::new(trimmed);
+        if path.is_absolute() {
+            return Self::file_uri_from_path(path);
+        }
+        trimmed.to_string()
+    }
+
+    fn collect_markdown_inline_image_destinations(markdown: &str) -> Vec<String> {
+        let mut destinations = Vec::new();
+        for event in Parser::new(markdown) {
+            let Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                ..
+            }) = event
+            else {
+                continue;
+            };
+            if link_type == LinkType::Inline {
+                destinations.push(dest_url.to_string());
+            }
+        }
+        destinations
+    }
+
+    fn render_help_markdown_fallback(ui: &mut Ui, markdown: &str, max_image_width: f32) {
+        ui.add(egui::Label::new(markdown).wrap());
+
+        let images = Self::collect_markdown_inline_image_destinations(markdown);
+        if images.is_empty() {
+            return;
+        }
+
+        ui.separator();
+        for image_dest in images {
+            let image_uri = Self::markdown_image_uri_for_render(&image_dest);
+            if image_uri.is_empty() {
+                continue;
+            }
+            ui.add(
+                egui::Image::from_uri(image_uri)
+                    .max_width(max_image_width)
+                    .max_height(1200.0)
+                    .shrink_to_fit(),
+            );
+            ui.add_space(6.0);
+        }
     }
 
     fn load_help_doc(path: &str, fallback: &'static str) -> String {
@@ -3406,6 +3565,71 @@ Error: `{err}`"
         }
     }
 
+    fn sanitize_fasta_header(raw: &str) -> String {
+        let mut header: String = raw
+            .chars()
+            .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+            .collect();
+        if header.trim().is_empty() {
+            header = "sequence".to_string();
+        }
+        header
+    }
+
+    fn build_fasta_payload(header: &str, sequence: &str) -> String {
+        let mut output = format!(">{header}\n");
+        for chunk in sequence.as_bytes().chunks(80) {
+            output.push_str(std::str::from_utf8(chunk).unwrap_or_default());
+            output.push('\n');
+        }
+        output
+    }
+
+    fn sequence_copy_payload(
+        &self,
+        seq_id: &str,
+        fasta: bool,
+    ) -> std::result::Result<(String, usize), String> {
+        let guard = self
+            .engine
+            .read()
+            .map_err(|_| "Engine lock poisoned".to_string())?;
+        let dna = guard
+            .state()
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| format!("Sequence '{seq_id}' is not available in project state"))?;
+        let plain = dna.get_forward_string();
+        let bp = plain.len();
+        if fasta {
+            let header = Self::sanitize_fasta_header(seq_id);
+            Ok((Self::build_fasta_payload(&header, &plain), bp))
+        } else {
+            Ok((plain, bp))
+        }
+    }
+
+    fn copy_project_sequence_to_clipboard(
+        &mut self,
+        ctx: &egui::Context,
+        seq_id: &str,
+        fasta: bool,
+    ) {
+        match self.sequence_copy_payload(seq_id, fasta) {
+            Ok((payload, bp)) => {
+                ctx.copy_text(payload);
+                if fasta {
+                    self.app_status = format!("Copied FASTA for '{seq_id}' ({bp} bp)");
+                } else {
+                    self.app_status = format!("Copied sequence for '{seq_id}' ({bp} bp)");
+                }
+            }
+            Err(err) => {
+                self.app_status = format!("Could not copy '{seq_id}': {err}");
+            }
+        }
+    }
+
     pub fn load_from_file(path: &str) -> Result<DNAsequence> {
         let extension = Path::new(path)
             .extension()
@@ -3704,9 +3928,13 @@ Error: `{err}`"
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
+        self.lineage_container_arrangement_split_fraction =
+            DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION;
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_main_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_origin = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
@@ -13376,9 +13604,13 @@ Error: `{err}`"
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
+        self.lineage_container_arrangement_split_fraction =
+            DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION;
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_main_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_origin = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
@@ -13446,9 +13678,13 @@ Error: `{err}`"
         self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
+        self.lineage_container_arrangement_split_fraction =
+            DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION;
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_main_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_origin = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_node_groups.clear();
@@ -13465,7 +13701,7 @@ Error: `{err}`"
                     .map(|value| value.clamp(0.2, 0.9));
                 if workspace.graph_area_height.is_finite() {
                     self.lineage_graph_area_height =
-                        workspace.graph_area_height.clamp(220.0, 2400.0);
+                        workspace.graph_area_height.clamp(280.0, 2400.0);
                 }
                 if workspace.container_area_height.is_finite() {
                     self.lineage_container_area_height =
@@ -13482,6 +13718,14 @@ Error: `{err}`"
                 }
                 if let Some(main_split_fraction) = loaded_main_split_fraction {
                     self.lineage_main_split_fraction = main_split_fraction;
+                }
+                if let Some(container_arrangement_split_fraction) = workspace
+                    .container_arrangement_split_fraction
+                    .filter(|value| value.is_finite())
+                    .map(|value| value.clamp(0.2, 0.8))
+                {
+                    self.lineage_container_arrangement_split_fraction =
+                        container_arrangement_split_fraction;
                 }
                 if workspace.scroll_offset[0].is_finite() && workspace.scroll_offset[1].is_finite()
                 {
@@ -13541,8 +13785,12 @@ Error: `{err}`"
 
         let workspace = PersistedLineageGraphWorkspace {
             main_split_fraction: Some(self.lineage_main_split_fraction.clamp(0.2, 0.9)),
+            container_arrangement_split_fraction: Some(
+                self.lineage_container_arrangement_split_fraction
+                    .clamp(0.2, 0.8),
+            ),
             zoom: self.lineage_graph_zoom.clamp(0.35, 4.0),
-            graph_area_height: self.lineage_graph_area_height.clamp(220.0, 2400.0),
+            graph_area_height: self.lineage_graph_area_height.clamp(280.0, 2400.0),
             container_area_height: self.lineage_container_area_height.clamp(120.0, 1600.0),
             scroll_offset: [
                 self.lineage_graph_scroll_offset.x.max(0.0),
@@ -13562,6 +13810,12 @@ Error: `{err}`"
                 <= 0.0001
             && (workspace.graph_area_height - 420.0).abs() <= 0.0001
             && (workspace.container_area_height - 220.0).abs() <= 0.0001
+            && (workspace
+                .container_arrangement_split_fraction
+                .unwrap_or(DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION)
+                - DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION)
+                .abs()
+                <= 0.0001
             && workspace.scroll_offset[0].abs() <= 0.0001
             && workspace.scroll_offset[1].abs() <= 0.0001
             && workspace.compact_labels
@@ -14593,6 +14847,9 @@ Error: `{err}`"
             let mut op_label_by_id: HashMap<String, String> = HashMap::new();
             let mut op_retrieval_by_id: HashMap<String, LineageRetrievalDescriptor> =
                 HashMap::new();
+            let mut dotplot_op_by_id: HashMap<String, (String, String, Option<String>)> =
+                HashMap::new();
+            let mut flex_track_op_by_id: HashMap<String, (String, String)> = HashMap::new();
             for rec in engine.operation_log() {
                 op_created_count.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.len());
                 op_created_ids.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.clone());
@@ -14600,6 +14857,34 @@ Error: `{err}`"
                 if let Some(descriptor) = Self::lineage_retrieval_descriptor_from_operation(&rec.op)
                 {
                     op_retrieval_by_id.insert(rec.result.op_id.clone(), descriptor);
+                }
+                match &rec.op {
+                    Operation::ComputeDotplot {
+                        seq_id,
+                        reference_seq_id,
+                        store_as,
+                        ..
+                    } => {
+                        let dotplot_id =
+                            Self::lineage_dotplot_id_for_operation(store_as, &rec.result.op_id);
+                        dotplot_op_by_id.insert(
+                            dotplot_id,
+                            (
+                                rec.result.op_id.clone(),
+                                seq_id.clone(),
+                                reference_seq_id.clone(),
+                            ),
+                        );
+                    }
+                    Operation::ComputeFlexibilityTrack {
+                        seq_id, store_as, ..
+                    } => {
+                        let track_id =
+                            Self::lineage_flex_track_id_for_operation(store_as, &rec.result.op_id);
+                        flex_track_op_by_id
+                            .insert(track_id, (rec.result.op_id.clone(), seq_id.clone()));
+                    }
+                    _ => {}
                 }
             }
 
@@ -14690,6 +14975,12 @@ Error: `{err}`"
                         genome_anchor_display,
                         is_full_genome_sequence,
                         retrieval_descriptor,
+                        analysis_kind: None,
+                        analysis_artifact_id: None,
+                        analysis_reference_seq_id: None,
+                        analysis_mode: None,
+                        analysis_point_count: None,
+                        analysis_bin_count: None,
                         macro_instance_id: None,
                         macro_routine_id: None,
                         macro_template_name: None,
@@ -14836,6 +15127,12 @@ Error: `{err}`"
                     genome_anchor_display: None,
                     is_full_genome_sequence: false,
                     retrieval_descriptor: None,
+                    analysis_kind: None,
+                    analysis_artifact_id: None,
+                    analysis_reference_seq_id: None,
+                    analysis_mode: None,
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
                     macro_instance_id: Some(instance.macro_instance_id.clone()),
                     macro_routine_id: instance.routine_id.clone(),
                     macro_template_name: instance.template_name.clone(),
@@ -14845,6 +15142,150 @@ Error: `{err}`"
                     macro_inputs: instance.bound_inputs.clone(),
                     macro_outputs: instance.bound_outputs.clone(),
                 });
+            }
+
+            let dotplot_summaries = engine.list_dotplot_views(None);
+            for summary in dotplot_summaries {
+                let node_id = format!("analysis:dotplot:{}", summary.dotplot_id);
+                let op_binding = dotplot_op_by_id.get(&summary.dotplot_id).cloned();
+                let created_by_op = op_binding
+                    .as_ref()
+                    .map(|(op_id, _, _)| op_id.clone())
+                    .unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:dotplot:{}", summary.dotplot_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id
+                    .entry(edge_op_id.clone())
+                    .or_insert_with(|| format!("Compute dotplot: id={}", summary.dotplot_id));
+                let query_seq_id = summary.seq_id.clone();
+                let reference_seq_id = summary.reference_seq_id.clone().or_else(|| {
+                    op_binding
+                        .as_ref()
+                        .and_then(|(_, _, reference_seq_id)| reference_seq_id.clone())
+                });
+                let mut parents = vec![query_seq_id.clone()];
+                if let Some(reference_seq_id) = reference_seq_id.as_ref() {
+                    if !reference_seq_id.eq_ignore_ascii_case(&query_seq_id) {
+                        parents.push(reference_seq_id.clone());
+                    }
+                }
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: query_seq_id.clone(),
+                    display_name: summary.dotplot_id.clone(),
+                    origin: "Dotplot".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents,
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::Dotplot),
+                    analysis_artifact_id: Some(summary.dotplot_id.clone()),
+                    analysis_reference_seq_id: reference_seq_id.clone(),
+                    analysis_mode: Some(summary.mode.as_str().to_string()),
+                    analysis_point_count: Some(summary.point_count),
+                    analysis_bin_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                let mut seen_sources: HashSet<String> = HashSet::new();
+                let source_seq_ids = std::iter::once(query_seq_id)
+                    .chain(reference_seq_id.into_iter())
+                    .collect::<Vec<_>>();
+                for source_seq_id in source_seq_ids {
+                    let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
+                        continue;
+                    };
+                    if seen_sources.insert(source_node_id.clone()) {
+                        lineage_edges.push((
+                            source_node_id.clone(),
+                            node_id.clone(),
+                            edge_op_id.clone(),
+                        ));
+                    }
+                }
+            }
+
+            let flexibility_summaries = engine.list_flexibility_tracks(None);
+            for summary in flexibility_summaries {
+                let node_id = format!("analysis:flex:{}", summary.track_id);
+                let op_binding = flex_track_op_by_id.get(&summary.track_id).cloned();
+                let created_by_op = op_binding
+                    .as_ref()
+                    .map(|(op_id, _)| op_id.clone())
+                    .unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:flex:{}", summary.track_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!("Compute flexibility track: id={}", summary.track_id)
+                });
+                let seq_id = summary.seq_id.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.track_id.clone(),
+                    origin: "FlexibilityTrack".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::FlexibilityTrack),
+                    analysis_artifact_id: Some(summary.track_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.model.as_str().to_string()),
+                    analysis_point_count: None,
+                    analysis_bin_count: Some(summary.bin_count),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
             }
 
             out.sort_by(|a, b| {
@@ -15159,6 +15600,38 @@ Error: `{err}`"
         head
     }
 
+    fn normalize_lineage_analysis_id(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        out
+    }
+
+    fn lineage_dotplot_id_for_operation(store_as: &Option<String>, op_id: &str) -> String {
+        store_as
+            .as_deref()
+            .map(Self::normalize_lineage_analysis_id)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("dotplot_{op_id}"))
+    }
+
+    fn lineage_flex_track_id_for_operation(store_as: &Option<String>, op_id: &str) -> String {
+        store_as
+            .as_deref()
+            .map(Self::normalize_lineage_analysis_id)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("flex_{op_id}"))
+    }
+
     fn lineage_operation_family(raw: &str) -> &'static str {
         let head = raw.split(':').next().unwrap_or(raw).trim();
         let lower = head.to_ascii_lowercase();
@@ -15185,6 +15658,12 @@ Error: `{err}`"
         }
         if lower.contains("annotate") {
             return "annotate";
+        }
+        if lower.contains("dotplot") {
+            return "dotplot";
+        }
+        if lower.contains("flexibility track") {
+            return "flexibility";
         }
         if lower.contains("load") || lower.contains("import") {
             return "import";
@@ -15214,6 +15693,8 @@ Error: `{err}`"
             "merge" => "M",
             "filter" => "F",
             "annotate" => "A",
+            "dotplot" => "DP",
+            "flexibility" => "FX",
             "import" => "I",
             "set_parameter" => "S",
             "branch" => "B",
@@ -15247,6 +15728,8 @@ Error: `{err}`"
             "merge" => egui::Color32::from_rgb(96, 146, 88),
             "filter" => egui::Color32::from_rgb(120, 120, 120),
             "annotate" => egui::Color32::from_rgb(74, 150, 156),
+            "dotplot" => egui::Color32::from_rgb(148, 92, 172),
+            "flexibility" => egui::Color32::from_rgb(132, 104, 186),
             "import" => egui::Color32::from_rgb(111, 131, 170),
             "set_parameter" => egui::Color32::from_rgb(128, 109, 82),
             "branch" => egui::Color32::from_rgb(130, 110, 152),
@@ -16284,7 +16767,7 @@ Error: `{err}`"
         total_available_height: f32,
         preferred_split_fraction: f32,
     ) -> (f32, f32, f32) {
-        let min_graph_height = 220.0;
+        let min_graph_height = 280.0;
         let min_container_height = 120.0;
         let min_total_height = min_graph_height + min_container_height;
         let total_height = if total_available_height.is_finite() {
@@ -16299,6 +16782,31 @@ Error: `{err}`"
             .clamp(min_container_height, total_height - min_graph_height);
         let realized_split = (graph_height / total_height.max(1.0)).clamp(0.2, 0.9);
         (graph_height, container_height, realized_split)
+    }
+
+    fn normalized_lineage_container_subpanel_heights(
+        total_available_height: f32,
+        preferred_split_fraction: f32,
+    ) -> (f32, f32, f32) {
+        let min_containers_height = 80.0;
+        let min_arrangements_height = 80.0;
+        let min_total_height = min_containers_height + min_arrangements_height;
+        let total_height = if total_available_height.is_finite() {
+            total_available_height.clamp(min_total_height, 2400.0)
+        } else {
+            min_total_height
+        };
+        let clamped_split = preferred_split_fraction.clamp(0.2, 0.8);
+        let containers_height = (total_height * clamped_split).clamp(
+            min_containers_height,
+            total_height - min_arrangements_height,
+        );
+        let arrangements_height = (total_height - containers_height).clamp(
+            min_arrangements_height,
+            total_height - min_containers_height,
+        );
+        let realized_split = (containers_height / total_height.max(1.0)).clamp(0.2, 0.8);
+        (containers_height, arrangements_height, realized_split)
     }
 
     fn render_main_lineage(&mut self, ui: &mut Ui) {
@@ -16335,8 +16843,11 @@ Error: `{err}`"
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
-        let mut graph_area_height = self.lineage_graph_area_height.clamp(220.0, 2400.0);
+        let mut graph_area_height = self.lineage_graph_area_height.clamp(280.0, 2400.0);
         let mut container_area_height = self.lineage_container_area_height.clamp(120.0, 1600.0);
+        let mut container_arrangement_split_fraction = self
+            .lineage_container_arrangement_split_fraction
+            .clamp(0.2, 0.8);
         let mut main_split_fraction = self.lineage_main_split_fraction.clamp(0.2, 0.9);
         let mut graph_scroll_offset = Vec2::new(
             if self.lineage_graph_scroll_offset.x.is_finite() {
@@ -16358,6 +16869,7 @@ Error: `{err}`"
         let seq_node_by_seq_id: HashMap<String, String> = self
             .lineage_rows
             .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence)
             .map(|row| (row.seq_id.clone(), row.node_id.clone()))
             .collect();
         let container_members_by_id: HashMap<String, Vec<String>> = self
@@ -16413,6 +16925,12 @@ Error: `{err}`"
                 genome_anchor_display: None,
                 is_full_genome_sequence: false,
                 retrieval_descriptor: None,
+                analysis_kind: None,
+                analysis_artifact_id: None,
+                analysis_reference_seq_id: None,
+                analysis_mode: None,
+                analysis_point_count: None,
+                analysis_bin_count: None,
                 macro_instance_id: None,
                 macro_routine_id: None,
                 macro_template_name: None,
@@ -16452,9 +16970,14 @@ Error: `{err}`"
             persist_workspace_after_frame = true;
         }
 
+        let mut splitter_dragging = false;
         egui::ScrollArea::vertical()
             .id_salt("lineage_main_scroll")
             .auto_shrink([false, false])
+            .scroll_source(egui::containers::scroll_area::ScrollSource {
+                drag: false,
+                ..Default::default()
+            })
             .show(ui, |ui| {
                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
                     ui,
@@ -16654,8 +17177,14 @@ Error: `{err}`"
                     }
                 }
                 // Keep graph + containers filling the lineage viewport proportionally.
+                let visible_height = ui.clip_rect().height();
+                let panel_budget_height = if visible_height.is_finite() && visible_height > 0.0 {
+                    ui.available_height().min(visible_height)
+                } else {
+                    ui.available_height()
+                };
                 let (target_graph_height, target_container_height, normalized_split) =
-                    Self::normalized_lineage_panel_heights(ui.available_height(), main_split_fraction);
+                    Self::normalized_lineage_panel_heights(panel_budget_height, main_split_fraction);
                 graph_area_height = target_graph_height;
                 container_area_height = target_container_height;
                 main_split_fraction = normalized_split;
@@ -16705,7 +17234,8 @@ Error: `{err}`"
                 ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
                 ui.colored_label(egui::Color32::from_rgb(188, 146, 48), "▣ retrieval pattern");
                 ui.colored_label(egui::Color32::from_rgb(145, 145, 145), "◻ node group");
-                ui.separator();
+            });
+            ui.horizontal_wrapped(|ui| {
                 let zoom_out_resp = self.track_hover_status(
                     ui.button("−").on_hover_text("Zoom out"),
                     "Lineage Graph > Zoom Out",
@@ -16732,8 +17262,7 @@ Error: `{err}`"
                         .on_hover_text("Fit full graph content into current graph area"),
                     "Lineage Graph > Fit",
                 );
-                if fit_resp.clicked()
-                {
+                if fit_resp.clicked() {
                     request_fit_zoom = true;
                     request_fit_origin = true;
                 }
@@ -16742,14 +17271,12 @@ Error: `{err}`"
                         .on_hover_text("Reset manually moved node positions"),
                     "Lineage Graph > Reset Layout",
                 );
-                if reset_layout_resp.clicked()
-                {
+                if reset_layout_resp.clicked() {
                     self.lineage_graph_node_offsets.clear();
                     self.lineage_graph_drag_origin = None;
                     self.lineage_graph_pan_origin = None;
                     persist_workspace_after_frame = true;
                 }
-                ui.separator();
                 if ui
                     .checkbox(&mut graph_compact_labels, "Compact labels")
                     .on_hover_text(
@@ -16759,7 +17286,6 @@ Error: `{err}`"
                 {
                     persist_workspace_after_frame = true;
                 }
-                ui.separator();
                 ui.add(
                     egui::Slider::new(&mut graph_zoom, 0.35..=4.0)
                         .logarithmic(true)
@@ -16771,21 +17297,14 @@ Error: `{err}`"
             let rows = &projected_graph_rows;
             let lineage_edges = &projected_graph_edges;
             let op_label_by_id = &graph_op_label_by_id;
-            let graph_resize_max_height = ui.available_height().max(220.0);
-            let graph_resize_width = ui.available_width().max(1.0);
-            egui::Resize::default()
-                .id_salt("lineage_graph_area_resize")
-                .default_width(graph_resize_width)
-                .min_width(graph_resize_width)
-                .max_width(graph_resize_width)
-                .default_height(graph_area_height.min(graph_resize_max_height))
-                .min_height(220.0)
-                .max_height(graph_resize_max_height)
-                .resizable(egui::Vec2b::new(false, false))
-                .show(ui, |ui| {
-                    ui.set_min_width(graph_resize_width);
-                    ui.set_max_width(graph_resize_width);
-                    graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
+            let graph_panel_width = ui.available_width().max(1.0);
+            let graph_panel_height = graph_area_height.max(280.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(graph_panel_width, graph_panel_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_min_width(graph_panel_width);
+                    ui.set_max_width(graph_panel_width);
                     ui.small(
                         "Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
                     );
@@ -16988,6 +17507,11 @@ Error: `{err}`"
                                         Vec2::new(64.0 * graph_zoom, 30.0 * graph_zoom),
                                     )
                                     .contains(pointer),
+                                    LineageNodeKind::Analysis => egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom),
+                                    )
+                                    .contains(pointer),
                                     LineageNodeKind::Sequence if row.pool_size > 1 => {
                                         egui::Rect::from_center_size(
                                             pos,
@@ -17045,6 +17569,30 @@ Error: `{err}`"
                                                 .unwrap_or("-"),
                                             row.macro_status.as_deref().unwrap_or("ok")
                                         ),
+                                        LineageNodeKind::Analysis => {
+                                            let artifact_id = row
+                                                .analysis_artifact_id
+                                                .as_deref()
+                                                .unwrap_or(&row.display_name);
+                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                            match row.analysis_kind {
+                                                Some(LineageAnalysisKind::Dotplot) => format!(
+                                                    "{} | mode={} | points={}",
+                                                    artifact_id,
+                                                    mode,
+                                                    row.analysis_point_count.unwrap_or(0)
+                                                ),
+                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                    format!(
+                                                        "{} | model={} | bins={}",
+                                                        artifact_id,
+                                                        mode,
+                                                        row.analysis_bin_count.unwrap_or(0)
+                                                    )
+                                                }
+                                                None => artifact_id.to_string(),
+                                            }
+                                        }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
                                             format!(
                                                 "{} ({} bp) | pool={}",
@@ -17289,6 +17837,27 @@ Error: `{err}`"
                                             egui::StrokeKind::Inside,
                                         );
                                     }
+                                    LineageNodeKind::Analysis => {
+                                        let rect = egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom),
+                                        );
+                                        painter.rect_filled(
+                                            rect,
+                                            4.0 * graph_zoom,
+                                            if is_selected {
+                                                egui::Color32::from_rgb(156, 112, 184)
+                                            } else {
+                                                egui::Color32::from_rgb(140, 98, 172)
+                                            },
+                                        );
+                                        painter.rect_stroke(
+                                            rect,
+                                            4.0 * graph_zoom,
+                                            highlight_stroke,
+                                            egui::StrokeKind::Inside,
+                                        );
+                                    }
                                     LineageNodeKind::Sequence if row.pool_size > 1 => {
                                         let points = vec![
                                             pos + Vec2::new(0.0, -16.0 * graph_zoom),
@@ -17329,6 +17898,13 @@ Error: `{err}`"
                                         }),
                                     LineageNodeKind::Macro => row
                                         .macro_instance_id
+                                        .as_ref()
+                                        .map(|id| Self::compact_lineage_node_label(id, 12))
+                                        .unwrap_or_else(|| {
+                                            Self::compact_lineage_node_label(&row.node_id, 12)
+                                        }),
+                                    LineageNodeKind::Analysis => row
+                                        .analysis_artifact_id
                                         .as_ref()
                                         .map(|id| Self::compact_lineage_node_label(id, 12))
                                         .unwrap_or_else(|| {
@@ -17486,6 +18062,30 @@ Error: `{err}`"
                                                 .unwrap_or("-"),
                                             row.macro_status.as_deref().unwrap_or("ok")
                                         ),
+                                        LineageNodeKind::Analysis => {
+                                            let artifact_id = row
+                                                .analysis_artifact_id
+                                                .as_deref()
+                                                .unwrap_or(&row.display_name);
+                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                            match row.analysis_kind {
+                                                Some(LineageAnalysisKind::Dotplot) => format!(
+                                                    "dotplot={} | mode={} | points={}",
+                                                    artifact_id,
+                                                    mode,
+                                                    row.analysis_point_count.unwrap_or(0)
+                                                ),
+                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                    format!(
+                                                        "track={} | model={} | bins={}",
+                                                        artifact_id,
+                                                        mode,
+                                                        row.analysis_bin_count.unwrap_or(0)
+                                                    )
+                                                }
+                                                None => format!("analysis={artifact_id}"),
+                                            }
+                                        }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
                                             format!(
                                                 "{} ({} bp) | pool={}",
@@ -17609,6 +18209,41 @@ Error: `{err}`"
                                                 ui.small(format!("status_message={status_message}"));
                                             }
                                         }
+                                        LineageNodeKind::Analysis => {
+                                            let artifact_id = row
+                                                .analysis_artifact_id
+                                                .as_deref()
+                                                .unwrap_or(&row.display_name);
+                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                            let analysis_kind = row
+                                                .analysis_kind
+                                                .map(LineageAnalysisKind::as_str)
+                                                .unwrap_or("analysis");
+                                            ui.monospace(format!(
+                                                "{} | kind={} | mode={}",
+                                                artifact_id, analysis_kind, mode
+                                            ));
+                                            match row.analysis_kind {
+                                                Some(LineageAnalysisKind::Dotplot) => {
+                                                    ui.small(format!(
+                                                        "query={} | reference={} | points={}",
+                                                        row.seq_id,
+                                                        row.analysis_reference_seq_id
+                                                            .as_deref()
+                                                            .unwrap_or(&row.seq_id),
+                                                        row.analysis_point_count.unwrap_or(0)
+                                                    ));
+                                                }
+                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                    ui.small(format!(
+                                                        "seq={} | bins={}",
+                                                        row.seq_id,
+                                                        row.analysis_bin_count.unwrap_or(0)
+                                                    ));
+                                                }
+                                                None => {}
+                                            }
+                                        }
                                         LineageNodeKind::Sequence => {
                                             ui.monospace(format!(
                                                 "{} | {} bp | {}",
@@ -17723,6 +18358,19 @@ Error: `{err}`"
                                                     .collect::<Vec<_>>()
                                                     .join(", ");
                                                 ui.small(format!("op_ids: {preview}"));
+                                            }
+                                        }
+                                        LineageNodeKind::Analysis => {
+                                            if let Some(artifact_id) =
+                                                row.analysis_artifact_id.as_deref()
+                                            {
+                                                ui.separator();
+                                                ui.small(format!("artifact_id={artifact_id}"));
+                                            }
+                                            if let Some(reference_seq_id) =
+                                                row.analysis_reference_seq_id.as_deref()
+                                            {
+                                                ui.small(format!("reference_seq_id={reference_seq_id}"));
                                             }
                                         }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -17859,6 +18507,9 @@ Error: `{err}`"
                                                     }
                                                 }
                                                 LineageNodeKind::Macro => {}
+                                                LineageNodeKind::Analysis => {
+                                                    open_seq = Some(row.seq_id.clone());
+                                                }
                                                 LineageNodeKind::Sequence if row.pool_size > 1 => {
                                                     open_pool = Some((
                                                         row.seq_id.clone(),
@@ -17901,24 +18552,18 @@ Error: `{err}`"
                         measured_offset.y = measured_offset.y.clamp(0.0, max_scroll_y);
                         graph_scroll_offset = measured_offset;
                     }
-                });
+                },
+            );
         } else {
-            let table_resize_max_height = ui.available_height().max(220.0);
-            let table_resize_width = ui.available_width().max(1.0);
+            let table_panel_width = ui.available_width().max(1.0);
+            let table_panel_height = graph_area_height.max(280.0);
             let mut toggle_group_collapse_id: Option<String> = None;
-            egui::Resize::default()
-                .id_salt("lineage_table_area_resize")
-                .default_width(table_resize_width)
-                .min_width(table_resize_width)
-                .max_width(table_resize_width)
-                .default_height(graph_area_height.min(table_resize_max_height))
-                .min_height(220.0)
-                .max_height(table_resize_max_height)
-                .resizable(egui::Vec2b::new(false, false))
-                .show(ui, |ui| {
-                    ui.set_min_width(table_resize_width);
-                    ui.set_max_width(table_resize_width);
-                    graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(table_panel_width, table_panel_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_min_width(table_panel_width);
+                    ui.set_max_width(table_panel_width);
                     egui::ScrollArea::both()
                         .id_salt("lineage_table_scroll")
                         .auto_shrink([false, false])
@@ -18022,6 +18667,24 @@ Error: `{err}`"
                                                 .to_string(),
                                         );
                                     }
+                                    LineageNodeKind::Analysis => {
+                                        ui.vertical(|ui| {
+                                            ui.monospace(
+                                                row.analysis_artifact_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.display_name),
+                                            );
+                                            if ui
+                                                .small_button(row.seq_id.clone())
+                                                .on_hover_text(
+                                                    "Open the query/source sequence in a dedicated window",
+                                                )
+                                                .clicked()
+                                            {
+                                                open_seq = Some(row.seq_id.clone());
+                                            }
+                                        });
+                                    }
                                     LineageNodeKind::Sequence => {
                                         if ui
                                             .button(&row.seq_id)
@@ -18074,6 +18737,7 @@ Error: `{err}`"
                                 }
                                 if row.kind == LineageNodeKind::Arrangement
                                     || row.kind == LineageNodeKind::Macro
+                                    || row.kind == LineageNodeKind::Analysis
                                 {
                                     ui.label("-");
                                     ui.label("-");
@@ -18096,6 +18760,18 @@ Error: `{err}`"
                                             self.lineage_graph_selected_node_id =
                                                 Some(row.node_id.clone());
                                         }
+                                    }
+                                    LineageNodeKind::Analysis => {
+                                        ui.monospace(
+                                            row.analysis_reference_seq_id
+                                                .as_ref()
+                                                .map(|reference| {
+                                                    format!("query={} ref={reference}", row.seq_id)
+                                                })
+                                                .unwrap_or_else(|| {
+                                                    format!("seq={}", row.seq_id)
+                                                }),
+                                        );
                                     }
                                     LineageNodeKind::Sequence => {
                                         let mut anchor_text = row
@@ -18161,23 +18837,79 @@ Error: `{err}`"
                                     LineageNodeKind::Macro => {
                                         ui.label("-");
                                     }
-                                    LineageNodeKind::Sequence => {
+                                    LineageNodeKind::Analysis => {
                                         if ui
-                                            .button("Select")
+                                            .button("Open Seq")
                                             .on_hover_text(
-                                                "Run candidate selection operation using this sequence as input",
+                                                "Open the query/source sequence in a dedicated window",
                                             )
                                             .clicked()
                                         {
-                                            select_candidate_from = Some(row.seq_id.clone());
+                                            open_seq = Some(row.seq_id.clone());
                                         }
+                                    }
+                                    LineageNodeKind::Sequence => {
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(280.0, ui.spacing().interact_size.y),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                if ui
+                                                    .button("Select")
+                                                    .on_hover_text(
+                                                        "Run candidate selection operation using this sequence as input",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    select_candidate_from = Some(row.seq_id.clone());
+                                                }
+                                                if ui
+                                                    .button("Copy")
+                                                    .on_hover_text(
+                                                        "Copy this sequence as plain DNA/RNA text",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.copy_project_sequence_to_clipboard(
+                                                        ui.ctx(),
+                                                        &row.seq_id,
+                                                        false,
+                                                    );
+                                                }
+                                                if ui
+                                                    .button("FASTA")
+                                                    .on_hover_text(
+                                                        "Copy this sequence as FASTA text",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.copy_project_sequence_to_clipboard(
+                                                        ui.ctx(),
+                                                        &row.seq_id,
+                                                        true,
+                                                    );
+                                                }
+                                                if ui
+                                                    .button("Remove")
+                                                    .on_hover_text(
+                                                        "Sequence-removal from lineage table is not yet implemented in engine operations.",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.app_status = format!(
+                                                        "Remove for '{}' is not yet available",
+                                                        row.seq_id
+                                                    );
+                                                }
+                                            },
+                                        );
                                     }
                                 }
                                 ui.end_row();
                             }
                         });
                 });
-                });
+                },
+            );
             if let Some(group_id) = toggle_group_collapse_id {
                 if let Some(group) = self
                     .lineage_node_groups
@@ -18308,15 +19040,68 @@ Error: `{err}`"
                             }
                         });
                     }
+                } else if selected_row.kind == LineageNodeKind::Analysis {
+                    ui.separator();
+                    ui.heading("Selected Analysis Node");
+                    let kind = selected_row
+                        .analysis_kind
+                        .map(LineageAnalysisKind::as_str)
+                        .unwrap_or("analysis");
+                    ui.small(format!(
+                        "{} ({})",
+                        selected_row
+                            .analysis_artifact_id
+                            .as_deref()
+                            .unwrap_or(&selected_row.node_id),
+                        kind
+                    ));
+                    ui.small(format!("source sequence={}", selected_row.seq_id));
+                    if let Some(reference_seq_id) = selected_row.analysis_reference_seq_id.as_deref()
+                    {
+                        ui.small(format!("reference sequence={reference_seq_id}"));
+                    }
+                    if let Some(mode) = selected_row.analysis_mode.as_deref() {
+                        ui.small(format!("mode/model={mode}"));
+                    }
+                    if let Some(points) = selected_row.analysis_point_count {
+                        ui.small(format!("point_count={points}"));
+                    }
+                    if let Some(bin_count) = selected_row.analysis_bin_count {
+                        ui.small(format!("bin_count={bin_count}"));
+                    }
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button("Open Source Sequence")
+                            .on_hover_text("Open the analysis source sequence")
+                            .clicked()
+                        {
+                            open_seq = Some(selected_row.seq_id.clone());
+                        }
+                        if let Some(reference_seq_id) =
+                            selected_row.analysis_reference_seq_id.as_deref()
+                        {
+                            if ui
+                                .button("Open Reference Sequence")
+                                .on_hover_text("Open the analysis reference sequence")
+                                .clicked()
+                            {
+                                open_seq = Some(reference_seq_id.to_string());
+                            }
+                        }
+                    });
                 }
             }
         }
         ui.separator();
         let splitter_width = ui.available_width().max(1.0);
-        let (splitter_rect, splitter_response) = ui.allocate_exact_size(
-            egui::vec2(splitter_width, 10.0),
-            egui::Sense::click_and_drag(),
-        );
+        let splitter_response = ui
+            .add_sized(
+                egui::vec2(splitter_width, 14.0),
+                egui::Label::new(egui::RichText::new("⋮⋮").monospace())
+                    .sense(egui::Sense::click_and_drag()),
+            )
+            .on_hover_text("Drag to resize graph/table and container sections");
+        let splitter_rect = splitter_response.rect;
         let splitter_active = splitter_response.hovered() || splitter_response.dragged();
         let splitter_color = if splitter_active {
             egui::Color32::from_rgb(120, 120, 120)
@@ -18340,43 +19125,59 @@ Error: `{err}`"
         if splitter_active {
             ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
         }
-        if splitter_response.dragged() {
-            let frame_delta_y = ui.input(|i| i.pointer.delta().y);
-            if frame_delta_y.is_finite() && frame_delta_y.abs() > 0.0 {
-                let total_height = (graph_area_height + container_area_height).max(340.0);
+        if splitter_response.drag_started() {
+            self.lineage_main_split_drag_origin =
+                Some(self.lineage_main_split_fraction.clamp(0.2, 0.9));
+        }
+        splitter_dragging = splitter_response.dragged();
+        let splitter_drag_finished = splitter_response.drag_stopped();
+        if splitter_dragging {
+            let drag_delta_y = splitter_response.drag_delta().y;
+            if drag_delta_y.is_finite() && drag_delta_y.abs() > 0.0 {
+                let total_height = (graph_area_height + container_area_height).max(400.0);
+                let drag_origin_split = self
+                    .lineage_main_split_drag_origin
+                    .unwrap_or(self.lineage_main_split_fraction)
+                    .clamp(0.2, 0.9);
+                let drag_base_graph_height =
+                    (total_height * drag_origin_split).clamp(280.0, total_height - 80.0);
                 let next_graph_height =
-                    (graph_area_height + frame_delta_y).clamp(220.0, total_height - 120.0);
+                    (drag_base_graph_height + drag_delta_y).clamp(280.0, total_height - 80.0);
                 if (next_graph_height - graph_area_height).abs() > f32::EPSILON {
                     graph_area_height = next_graph_height;
                     container_area_height =
-                        (total_height - graph_area_height).clamp(120.0, total_height - 220.0);
+                        (total_height - graph_area_height).clamp(80.0, total_height - 280.0);
                     main_split_fraction = (graph_area_height / total_height).clamp(0.2, 0.9);
-                    persist_workspace_after_frame = true;
+                    self.lineage_main_split_fraction = main_split_fraction;
                 }
             }
         }
+        if splitter_drag_finished {
+            self.lineage_main_split_drag_origin = None;
+            persist_workspace_after_frame = true;
+        }
         ui.small("Drag split bar to resize graph/table and container sections");
-        ui.heading("Containers");
-        ui.label("Container-level view of candidate sequence sets");
-        let container_resize_max_height = ui.available_height().max(120.0);
-        let container_resize_width = ui.available_width().max(1.0);
-        egui::Resize::default()
-            .id_salt("lineage_container_area_resize")
-            .default_width(container_resize_width)
-            .min_width(container_resize_width)
-            .max_width(container_resize_width)
-            .default_height(container_area_height.min(container_resize_max_height))
-            .min_height(120.0)
-            .max_height(container_resize_max_height)
-            .resizable(egui::Vec2b::new(false, false))
-            .show(ui, |ui| {
-                ui.set_min_width(container_resize_width);
-                ui.set_max_width(container_resize_width);
-                container_area_height = ui.max_rect().height().clamp(120.0, 1600.0);
+        let container_panel_width = ui.available_width().max(1.0);
+        let subpanel_total_height = container_area_height.max(220.0);
+        let (mut containers_panel_height, mut arrangements_panel_height, normalized_subsplit) =
+            Self::normalized_lineage_container_subpanel_heights(
+                subpanel_total_height,
+                container_arrangement_split_fraction,
+            );
+        container_arrangement_split_fraction = normalized_subsplit;
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(container_panel_width, containers_panel_height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_min_width(container_panel_width);
+                ui.set_max_width(container_panel_width);
+                ui.heading("Containers");
+                ui.label("Container-level view of candidate sequence sets");
                 egui::ScrollArea::both()
                     .id_salt("lineage_container_grid_scroll")
                     .auto_shrink([false, false])
-                    .max_height(ui.available_height())
+                    .max_height(ui.available_height().max(40.0))
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
                             ui,
@@ -18411,7 +19212,9 @@ Error: `{err}`"
                                         } else if !c.representative.is_empty() {
                                             if ui
                                                 .button("Open Seq")
-                                                .on_hover_text("Open this representative sequence")
+                                                .on_hover_text(
+                                                    "Open this representative sequence",
+                                                )
                                                 .clicked()
                                             {
                                                 open_seq = Some(c.representative.clone());
@@ -18436,9 +19239,89 @@ Error: `{err}`"
                                     ui.end_row();
                                 }
                             });
-                        ui.separator();
-                        ui.heading("Arrangements");
-                        ui.label("Serial lane setups from one or more containers");
+                    });
+            },
+        );
+
+        let sub_split_response = ui
+            .add_sized(
+                egui::vec2(container_panel_width, 14.0),
+                egui::Label::new(egui::RichText::new("⋮⋮").monospace())
+                    .sense(egui::Sense::click_and_drag()),
+            )
+            .on_hover_text("Drag to resize containers and arrangements");
+        let sub_split_rect = sub_split_response.rect;
+        let sub_split_active = sub_split_response.hovered() || sub_split_response.dragged();
+        let sub_split_color = if sub_split_active {
+            egui::Color32::from_rgb(120, 120, 120)
+        } else {
+            egui::Color32::from_rgb(150, 150, 150)
+        };
+        ui.painter().line_segment(
+            [
+                egui::pos2(sub_split_rect.left(), sub_split_rect.center().y),
+                egui::pos2(sub_split_rect.right(), sub_split_rect.center().y),
+            ],
+            egui::Stroke::new(1.2, sub_split_color),
+        );
+        ui.painter().text(
+            sub_split_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "⋮⋮",
+            egui::FontId::monospace(10.0),
+            sub_split_color,
+        );
+        if sub_split_active {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
+        }
+        if sub_split_response.drag_started() {
+            self.lineage_container_arrangement_split_drag_origin =
+                Some(container_arrangement_split_fraction.clamp(0.2, 0.8));
+        }
+        if sub_split_response.dragged() {
+            let drag_delta_y = sub_split_response.drag_delta().y;
+            if drag_delta_y.is_finite() && drag_delta_y.abs() > 0.0 {
+                let total_height = (containers_panel_height + arrangements_panel_height).max(160.0);
+                let drag_origin_split = self
+                    .lineage_container_arrangement_split_drag_origin
+                    .unwrap_or(container_arrangement_split_fraction)
+                    .clamp(0.2, 0.8);
+                let drag_base_containers_height =
+                    (total_height * drag_origin_split).clamp(80.0, total_height - 80.0);
+                let next_containers_height =
+                    (drag_base_containers_height + drag_delta_y).clamp(80.0, total_height - 80.0);
+                if (next_containers_height - containers_panel_height).abs() > f32::EPSILON {
+                    containers_panel_height = next_containers_height;
+                    arrangements_panel_height =
+                        (total_height - containers_panel_height).clamp(80.0, total_height - 80.0);
+                    container_arrangement_split_fraction =
+                        (containers_panel_height / total_height).clamp(0.2, 0.8);
+                }
+            }
+        }
+        if sub_split_response.drag_stopped() {
+            self.lineage_container_arrangement_split_drag_origin = None;
+            persist_workspace_after_frame = true;
+        }
+        ui.small("Drag split bar to resize containers and arrangements");
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(container_panel_width, arrangements_panel_height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_min_width(container_panel_width);
+                ui.set_max_width(container_panel_width);
+                ui.heading("Arrangements");
+                ui.label("Serial lane setups from one or more containers");
+                egui::ScrollArea::both()
+                    .id_salt("lineage_arrangement_grid_scroll")
+                    .auto_shrink([false, false])
+                    .max_height(ui.available_height().max(40.0))
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
                         if self.lineage_arrangements.is_empty() {
                             ui.label("No arrangements recorded");
                         } else {
@@ -18507,8 +19390,8 @@ Error: `{err}`"
                                 });
                         }
                     });
-            });
-
+            },
+        );
             });
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
@@ -18549,12 +19432,23 @@ Error: `{err}`"
             self.lineage_container_area_height = container_area_height;
             persist_workspace_after_frame = true;
         }
+        if (self.lineage_container_arrangement_split_fraction
+            - container_arrangement_split_fraction)
+            .abs()
+            > 0.0001
+        {
+            self.lineage_container_arrangement_split_fraction =
+                container_arrangement_split_fraction;
+            persist_workspace_after_frame = true;
+        }
         let combined_panel_height =
             (graph_area_height.max(0.0) + container_area_height.max(0.0)).max(1.0);
         let computed_main_split_fraction =
             (graph_area_height.max(0.0) / combined_panel_height).clamp(0.2, 0.9);
         main_split_fraction = computed_main_split_fraction;
-        if (self.lineage_main_split_fraction - main_split_fraction).abs() > 0.0001 {
+        if !splitter_dragging
+            && (self.lineage_main_split_fraction - main_split_fraction).abs() > 0.0001
+        {
             self.lineage_main_split_fraction = main_split_fraction;
             persist_workspace_after_frame = true;
         }
@@ -20642,10 +21536,9 @@ Error: `{err}`"
                         HelpDoc::Shell => self.help_shell_markdown.as_str(),
                         HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
                     };
-                    let _ = max_image_width;
-                    // Temporary compatibility fallback: render help markdown as wrapped text
-                    // when egui_commonmark and eframe egui versions diverge.
-                    ui.add(egui::Label::new(markdown).wrap());
+                    // Temporary compatibility fallback: render markdown as wrapped text and
+                    // still render discovered inline images.
+                    Self::render_help_markdown_fallback(ui, markdown, max_image_width);
                 });
         });
     }
@@ -20868,6 +21761,80 @@ Error: `{err}`"
             Operation::SetParameter { name, value } => {
                 format!("Set parameter: name={name}, value={value}")
             }
+            Operation::ComputeDotplot {
+                seq_id,
+                reference_seq_id,
+                span_start_0based,
+                span_end_0based,
+                reference_span_start_0based,
+                reference_span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                store_as,
+            } => format!(
+                "Compute dotplot: seq_id={}, reference_seq_id={}, mode={}, query_span={}..{}, reference_span={}..{}, word={}, step={}, mismatches={}, tile_bp={}, store_as={}",
+                seq_id,
+                reference_seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
+                mode.as_str(),
+                span_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                span_end_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                reference_span_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                reference_span_end_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                store_as
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-")
+            ),
+            Operation::ComputeFlexibilityTrack {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                store_as,
+            } => format!(
+                "Compute flexibility track: seq_id={}, model={}, span={}..{}, bin_bp={}, smoothing_bp={}, store_as={}",
+                seq_id,
+                model.as_str(),
+                span_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                span_end_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                bin_bp,
+                smoothing_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                store_as
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-")
+            ),
             Operation::AnnotateTfbs {
                 seq_id,
                 motifs,
@@ -21416,16 +22383,17 @@ mod tests {
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
-        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        RoutineAssistantStage,
+        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageAnalysisKind, LineageNodeKind, LineageRow,
+        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
+        PersistedLineageNodeGroup, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings,
-            GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge, LineageNode,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState, SequenceOrigin,
+            BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
+            FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
+            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
+            SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -21586,9 +22554,9 @@ mod tests {
     #[test]
     fn lineage_panel_split_clamps_for_small_height_and_round_trips_via_workspace() {
         let (graph_h, container_h, split) = GENtleApp::normalized_lineage_panel_heights(80.0, 0.95);
-        assert!((graph_h - 220.0).abs() <= 0.0001);
+        assert!((graph_h - 280.0).abs() <= 0.0001);
         assert!((container_h - 120.0).abs() <= 0.0001);
-        assert!((split - (220.0 / 340.0)).abs() <= 0.0001);
+        assert!((split - (280.0 / 400.0)).abs() <= 0.0001);
 
         let mut app = GENtleApp::default();
         app.lineage_graph_area_height = graph_h;
@@ -21615,9 +22583,49 @@ mod tests {
         reloaded.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         reloaded.load_lineage_graph_workspace_from_state();
 
-        assert!((reloaded.lineage_graph_area_height - 220.0).abs() <= 0.0001);
+        assert!((reloaded.lineage_graph_area_height - 280.0).abs() <= 0.0001);
         assert!((reloaded.lineage_container_area_height - 120.0).abs() <= 0.0001);
-        assert!((reloaded.lineage_main_split_fraction - (220.0 / 340.0)).abs() <= 0.0001);
+        assert!((reloaded.lineage_main_split_fraction - (280.0 / 400.0)).abs() <= 0.0001);
+    }
+
+    #[test]
+    fn lineage_container_subpanel_split_clamps_for_small_height() {
+        let (containers_h, arrangements_h, split) =
+            GENtleApp::normalized_lineage_container_subpanel_heights(120.0, 0.95);
+        assert!((containers_h - 80.0).abs() <= 0.0001);
+        assert!((arrangements_h - 80.0).abs() <= 0.0001);
+        assert!((split - (80.0 / 160.0)).abs() <= 0.0001);
+    }
+
+    #[test]
+    fn lineage_workspace_round_trips_container_arrangement_split_fraction() {
+        let mut app = GENtleApp::default();
+        app.lineage_container_arrangement_split_fraction = 0.63;
+        app.persist_lineage_graph_workspace_to_state();
+
+        let workspace_value = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY)
+            .cloned()
+            .expect("workspace metadata");
+        let workspace: PersistedLineageGraphWorkspace =
+            serde_json::from_value(workspace_value.clone()).expect("deserialize lineage workspace");
+        assert_eq!(workspace.container_arrangement_split_fraction, Some(0.63));
+
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(),
+            workspace_value,
+        );
+        let mut reloaded = GENtleApp::default();
+        reloaded.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        reloaded.load_lineage_graph_workspace_from_state();
+
+        assert!((reloaded.lineage_container_arrangement_split_fraction - 0.63).abs() <= 0.0001);
     }
 
     #[test]
@@ -22235,10 +23243,8 @@ mod tests {
 
         let loaded = GENtleApp::load_help_doc(markdown_path.to_str().unwrap(), "fallback");
         let abs_image = image_path.canonicalize().unwrap();
-        let expected = format!(
-            "![GUI](<{}> \"GUI Screenshot\")",
-            abs_image.to_string_lossy()
-        );
+        let image_uri = GENtleApp::file_uri_from_path(&abs_image);
+        let expected = format!("![GUI](<{}> \"GUI Screenshot\")", image_uri);
         assert!(loaded.contains(&expected), "{loaded}");
     }
 
@@ -22255,7 +23261,7 @@ mod tests {
         let markdown = "![Shot](images/gui(1).png)\n";
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, &docs_dir);
         let abs_image = image_path.canonicalize().unwrap();
-        let expected = format!("![Shot]({})", abs_image.to_string_lossy());
+        let expected = format!("![Shot]({})", GENtleApp::file_uri_from_path(&abs_image));
         assert!(rewritten.contains(&expected), "{rewritten}");
     }
 
@@ -22265,6 +23271,12 @@ mod tests {
         let temp = tempdir().unwrap();
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
         assert_eq!(rewritten, markdown);
+    }
+
+    #[test]
+    fn markdown_image_uri_for_render_normalizes_windows_drive_paths() {
+        let uri = GENtleApp::markdown_image_uri_for_render(r"C:\tmp\gui image.png");
+        assert_eq!(uri, "file:///C:/tmp/gui%20image.png");
     }
 
     #[test]
@@ -22911,6 +23923,12 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             genome_anchor_display: None,
             is_full_genome_sequence: false,
             retrieval_descriptor: None,
+            analysis_kind: None,
+            analysis_artifact_id: None,
+            analysis_reference_seq_id: None,
+            analysis_mode: None,
+            analysis_point_count: None,
+            analysis_bin_count: None,
             macro_instance_id: None,
             macro_routine_id: None,
             macro_template_name: None,
@@ -23143,6 +24161,113 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn refresh_lineage_cache_includes_dotplot_and_flexibility_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ATGCGATCGATCGATCGATC").unwrap(),
+            );
+            state.sequences.insert(
+                "seq_b".to_string(),
+                DNAsequence::from_sequence("ATGCGATCAATCGATCGATC").unwrap(),
+            );
+            insert_test_lineage_node(state, "n_seq_a", "seq_a");
+            insert_test_lineage_node(state, "n_seq_b", "seq_b");
+        }
+
+        let (dotplot_op_id, flex_op_id) = {
+            let mut engine = app.engine.write().unwrap();
+            let dotplot_result = engine
+                .apply(Operation::ComputeDotplot {
+                    seq_id: "seq_a".to_string(),
+                    reference_seq_id: Some("seq_b".to_string()),
+                    span_start_0based: Some(0),
+                    span_end_0based: Some(20),
+                    reference_span_start_0based: Some(0),
+                    reference_span_end_0based: Some(20),
+                    mode: DotplotMode::PairForward,
+                    word_size: 4,
+                    step_bp: 2,
+                    max_mismatches: 1,
+                    tile_bp: None,
+                    store_as: Some("p53_dp".to_string()),
+                })
+                .expect("compute dotplot");
+            let flex_result = engine
+                .apply(Operation::ComputeFlexibilityTrack {
+                    seq_id: "seq_a".to_string(),
+                    span_start_0based: Some(0),
+                    span_end_0based: Some(20),
+                    model: FlexibilityModel::AtRichness,
+                    bin_bp: 5,
+                    smoothing_bp: Some(10),
+                    store_as: Some("p53_fx".to_string()),
+                })
+                .expect("compute flexibility track");
+            (dotplot_result.op_id, flex_result.op_id)
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let dotplot_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:dotplot:p53_dp")
+            .expect("dotplot lineage row");
+        assert_eq!(dotplot_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            dotplot_row.analysis_kind,
+            Some(LineageAnalysisKind::Dotplot)
+        );
+        assert_eq!(dotplot_row.analysis_artifact_id.as_deref(), Some("p53_dp"));
+        assert_eq!(
+            dotplot_row.analysis_reference_seq_id.as_deref(),
+            Some("seq_b")
+        );
+        assert_eq!(dotplot_row.created_by_op, dotplot_op_id);
+        assert!(dotplot_row.analysis_point_count.unwrap_or(0) > 0);
+
+        let flex_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:flex:p53_fx")
+            .expect("flexibility lineage row");
+        assert_eq!(flex_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            flex_row.analysis_kind,
+            Some(LineageAnalysisKind::FlexibilityTrack)
+        );
+        assert_eq!(flex_row.analysis_artifact_id.as_deref(), Some("p53_fx"));
+        assert_eq!(flex_row.created_by_op, flex_op_id);
+        assert!(flex_row.analysis_bin_count.unwrap_or(0) > 0);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_a"
+                    && to == "analysis:dotplot:p53_dp"
+                    && op_id == &dotplot_op_id)
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_b"
+                    && to == "analysis:dotplot:p53_dp"
+                    && op_id == &dotplot_op_id)
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_a"
+                    && to == "analysis:flex:p53_fx"
+                    && op_id == &flex_op_id)
+        );
+    }
+
+    #[test]
     fn lineage_operation_symbol_prefers_common_operation_families() {
         assert_eq!(GENtleApp::lineage_operation_symbol("Digest: input=a"), "D");
         assert_eq!(
@@ -23161,7 +24286,59 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             GENtleApp::lineage_operation_symbol("Molecular weight filter: inputs=x"),
             "F"
         );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Compute dotplot: seq_id=a"),
+            "DP"
+        );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Compute flexibility track: seq_id=a"),
+            "FX"
+        );
         assert_eq!(GENtleApp::lineage_operation_symbol("unknown op"), "U");
+    }
+
+    #[test]
+    fn summarize_operation_compute_dotplot_includes_mode_and_spans() {
+        let op = Operation::ComputeDotplot {
+            seq_id: "seq_a".to_string(),
+            reference_seq_id: Some("seq_b".to_string()),
+            span_start_0based: Some(10),
+            span_end_0based: Some(120),
+            reference_span_start_0based: Some(20),
+            reference_span_end_0based: Some(180),
+            mode: DotplotMode::PairForward,
+            word_size: 11,
+            step_bp: 40,
+            max_mismatches: 1,
+            tile_bp: Some(500),
+            store_as: Some("family_dp".to_string()),
+        };
+        let summary = GENtleApp::summarize_operation(&op);
+        assert!(summary.contains("Compute dotplot"));
+        assert!(summary.contains("mode=pair_forward"));
+        assert!(summary.contains("query_span=10..120"));
+        assert!(summary.contains("reference_span=20..180"));
+        assert!(summary.contains("store_as=family_dp"));
+    }
+
+    #[test]
+    fn summarize_operation_compute_flexibility_track_includes_model_and_binning() {
+        let op = Operation::ComputeFlexibilityTrack {
+            seq_id: "seq_a".to_string(),
+            span_start_0based: Some(0),
+            span_end_0based: Some(250),
+            model: FlexibilityModel::AtSkew,
+            bin_bp: 25,
+            smoothing_bp: Some(75),
+            store_as: Some("family_fx".to_string()),
+        };
+        let summary = GENtleApp::summarize_operation(&op);
+        assert!(summary.contains("Compute flexibility track"));
+        assert!(summary.contains("model=at_skew"));
+        assert!(summary.contains("span=0..250"));
+        assert!(summary.contains("bin_bp=25"));
+        assert!(summary.contains("smoothing_bp=75"));
+        assert!(summary.contains("store_as=family_fx"));
     }
 
     #[test]

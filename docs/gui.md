@@ -96,6 +96,8 @@ The project main window (lineage page) supports two views:
 
 - `Table`: tabular lineage view with per-sequence actions
 - `Graph`: node/edge lineage visualization
+- analysis artifacts (dotplots/flexibility tracks) appear in lineage as
+  dedicated analysis nodes linked to their source sequences
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
 - The lineage (`Table`/`Graph`) area is split from `Containers` with a
@@ -135,6 +137,7 @@ Primary map modes (linear topology):
     - display controls:
       - `display threshold` (cell-density sensitivity)
       - `intensity gain` (contrast amplification for visible cells)
+      - `Auto contrast` (estimates threshold/gain from payload density)
       - if no cells pass visibility, the canvas shows an explicit message instead
         of a silent white panel
     - optional paired flexibility-track panel (`AT richness` / `AT skew`)
@@ -149,6 +152,10 @@ Primary map modes (linear topology):
         window counts / pair evaluations)
       - loaded payload diagnostics (point count, estimated hit fraction, latest
         operation status/messages)
+      - interpretation notes:
+        - `self_forward`: dominant diagonal is expected identity signal
+        - reverse-complement self-pair zero-hits can be valid under strict/sparse
+          sampling (not necessarily an error)
 
 Linear map zoom detail:
 
@@ -516,6 +523,8 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
+- Double-click on an analysis node (`Dotplot` / `FlexibilityTrack`): opens the
+  source sequence window.
 - Right-click context menu (graph and table node-id cells):
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
@@ -537,6 +546,12 @@ Node click behavior in lineage `Graph` view:
     - typed input/output bindings
     - emitted operation IDs with operation-label summaries
     - quick-open buttons for sequence outputs
+- Analysis nodes are rendered as dedicated rounded boxes.
+  - Table/tooltip details expose:
+    - artifact id
+    - source sequence (+ reference sequence for pairwise dotplots)
+    - mode/model
+    - point/bin count
 
 Node groups in lineage view:
 
@@ -959,6 +974,9 @@ Two About entries exist on macOS:
 - app menu `GENtle -> About GENtle`: standard macOS About panel
 
 The custom window and CLI `--version` share the same text payload.
+- On Windows/Linux, the custom About window shows:
+  - semantic package version from `Cargo.toml` (for example `0.1.0-internal.2`)
+  - build stamp on the next line (`Build <epoch-ms>`)
 
 ## Open windows and focus
 
@@ -1028,6 +1046,7 @@ Markdown image support:
 - image rendering is enabled in the help viewer
 - use standard markdown image syntax (`![alt](path-or-url)`)
 - relative image paths in `docs/*.md` are resolved relative to the markdown file location
+- relative local image paths are rewritten to `file://...` URIs for cross-platform loading
 - images are dynamically constrained to 75% of help-pane width for readability
 - screenshots in this manual include explicit caption lines (`*Figure: ...*`)
 - `Reload` in the help window reloads markdown + images from disk

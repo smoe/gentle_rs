@@ -231,6 +231,9 @@ are now maintained in `docs/roadmap.md`.
   - `edges` (parent -> child derivation edges, including multi-parent ligation)
   - `macro_instances` (shared-shell macro execution records with typed bound
     ports, emitted op ids, and status)
+- analysis artifacts (dotplots/flexibility tracks) are persisted in
+  `metadata["dotplot_analysis"]` and projected into GUI lineage as dedicated
+  analysis nodes linked from source sequence lineage nodes
 - `container_state: ContainerState`
   - `containers` (explicit singleton/pool/selection containers)
   - `seq_to_latest_container` (latest container membership index)
