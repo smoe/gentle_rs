@@ -716,7 +716,9 @@ cargo run --bin gentle_cli -- help
 cargo run --bin gentle_cli -- help candidates generate
 cargo run --bin gentle_cli -- help --format json
 cargo run --bin gentle_cli -- op '<operation-json>'
+cargo run --bin gentle_cli -- op op.json
 cargo run --bin gentle_cli -- workflow '<workflow-json>'
+cargo run --bin gentle_cli -- workflow docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/rna_reads_interpret_cdna_tp73_template.json
 cargo run --bin gentle_cli -- --progress op '<operation-json>'
@@ -808,7 +810,9 @@ cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 isoform tp53_is
 cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 exports/tp53_isoform_architecture.svg
 ```
 
-You can pass JSON from a file with `@file.json`.
+You can pass JSON from a file with `@file.json` or a bare existing file path.
+When loading from file path, an initial shebang line (`#!...`) is ignored so
+executable script files can embed JSON payloads directly.
 `workflow` accepts both raw workflow payloads (`{"run_id":"...","ops":[...]}`)
 and wrapped protocol example payloads (`{"workflow":{...}}`).
 
@@ -1368,6 +1372,7 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
 
 - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
   - Executes semicolon/newline-separated shell statements.
+  - Existing file paths are auto-loaded even without `@` (shebang-friendly).
   - Supports transactional rollback (`--transactional`) when any statement fails.
   - Designed for full cloning workflows through `op ...` and `workflow ...`
     statements (Digest/Ligation/PCR/ExtractRegion/container ops, etc.).

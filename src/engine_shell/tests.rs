@@ -151,6 +151,38 @@ fn parse_workflow_json_payload_accepts_wrapped_example() {
 }
 
 #[test]
+fn parse_json_payload_reads_existing_file_without_at_prefix() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("workflow.json");
+    fs::write(&path, r#"{"run_id":"from_file","ops":[]}"#).expect("write workflow");
+    let loaded = parse_json_payload(path.to_str().expect("utf-8 path")).expect("parse payload");
+    assert_eq!(loaded, r#"{"run_id":"from_file","ops":[]}"#);
+}
+
+#[test]
+fn parse_json_payload_strips_shebang_from_file() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("workflow.gsh");
+    fs::write(
+        &path,
+        "#!/usr/bin/env -S gentle_cli workflow\n{\"run_id\":\"from_shebang\",\"ops\":[]}\n",
+    )
+    .expect("write workflow");
+    let loaded = parse_json_payload(path.to_str().expect("utf-8 path")).expect("parse payload");
+    assert_eq!(loaded.trim(), r#"{"run_id":"from_shebang","ops":[]}"#);
+}
+
+#[test]
+fn load_macro_script_reads_existing_file_without_at_prefix() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("macro.gsh");
+    fs::write(&path, "state-summary").expect("write macro");
+    let loaded = load_macro_script(path.to_str().expect("utf-8 path"), "macros run")
+        .expect("load macro script");
+    assert_eq!(loaded, "state-summary");
+}
+
+#[test]
 fn parse_render_pool_gel_with_ladders() {
     let cmd = parse_shell_line("render-pool-gel-svg a,b out.svg --ladders 1kb,100bp")
         .expect("parse command");

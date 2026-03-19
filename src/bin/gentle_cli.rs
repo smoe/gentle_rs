@@ -433,8 +433,8 @@ fn usage() {
   gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
-  gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \
-  gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'\n  \
+  gentle_cli [--state PATH|--project PATH] op '<operation-json>'|JSON_FILE\n  \
+  gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] state-summary\n  \
   gentle_cli [--state PATH|--project PATH] export-state PATH\n  \
   gentle_cli [--state PATH|--project PATH] import-state PATH\n  \
@@ -624,11 +624,40 @@ fn parse_forwarded_shell_command(
 }
 
 fn load_json_arg(value: &str) -> Result<String, String> {
-    if let Some(path) = value.strip_prefix('@') {
-        fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))
-    } else {
-        Ok(value.to_string())
+    fn strip_shebang_line(raw: &str) -> String {
+        if !raw.starts_with("#!") {
+            return raw.to_string();
+        }
+        match raw.split_once('\n') {
+            Some((_, rest)) => rest.to_string(),
+            None => String::new(),
+        }
     }
+
+    let trimmed = value.trim();
+    if let Some(path) = trimmed.strip_prefix('@') {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err("Could not read JSON file '': empty path".to_string());
+        }
+        let text =
+            fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
+        return Ok(strip_shebang_line(&text));
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return Ok(value.to_string());
+    }
+    let candidate = Path::new(trimmed);
+    if candidate.is_file() {
+        let text = fs::read_to_string(candidate).map_err(|e| {
+            format!(
+                "Could not read JSON file '{}': {e}",
+                candidate.to_string_lossy()
+            )
+        })?;
+        return Ok(strip_shebang_line(&text));
+    }
+    Ok(value.to_string())
 }
 
 fn read_text_input(path_or_url: &str) -> Result<String, String> {
@@ -2469,6 +2498,35 @@ T [ 0 0 0 10 ]
         assert_eq!(motifs.len(), 1);
         assert_eq!(motifs[0].id, "MA0001.1");
         assert_eq!(motifs[0].consensus_iupac, "ACGT");
+    }
+
+    #[test]
+    fn test_load_json_arg_reads_existing_file_without_at_prefix() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("workflow.json");
+        fs::write(&path, r#"{"run_id":"from_file","ops":[]}"#).expect("write workflow");
+        let loaded = load_json_arg(path.to_str().expect("utf-8 path")).expect("load json");
+        assert_eq!(loaded, r#"{"run_id":"from_file","ops":[]}"#);
+    }
+
+    #[test]
+    fn test_load_json_arg_strips_shebang_from_file() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("workflow.gsh");
+        fs::write(
+            &path,
+            "#!/usr/bin/env -S gentle_cli workflow\n{\"run_id\":\"with_shebang\",\"ops\":[]}\n",
+        )
+        .expect("write workflow");
+        let loaded = load_json_arg(path.to_str().expect("utf-8 path")).expect("load json");
+        assert_eq!(loaded.trim(), r#"{"run_id":"with_shebang","ops":[]}"#);
+    }
+
+    #[test]
+    fn test_load_json_arg_keeps_inline_json_payload() {
+        let payload = r#"{"run_id":"inline","ops":[]}"#;
+        let loaded = load_json_arg(payload).expect("load inline json");
+        assert_eq!(loaded, payload);
     }
 
     #[test]
