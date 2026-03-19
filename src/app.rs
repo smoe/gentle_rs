@@ -86,6 +86,7 @@ const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_PROJECTS: usize = 12;
 const MAX_BACKGROUND_JOB_EVENTS: usize = 200;
 const MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS: usize = 120;
+const MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES: usize = 240;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
@@ -700,6 +701,8 @@ pub struct GENtleApp {
     job_event_log: Vec<BackgroundJobEvent>,
     next_retry_snapshot_id: u64,
     retry_argument_snapshots: Vec<BackgroundJobRetrySnapshot>,
+    next_retry_cleanup_audit_id: u64,
+    retry_snapshot_cleanup_audit: Vec<RetrySnapshotCleanupAuditEntry>,
     retry_snapshot_retain_count: usize,
     retry_snapshot_kind_filter: RetrySnapshotKindFilter,
     retry_snapshot_text_filter: String,
@@ -1012,6 +1015,75 @@ impl BackgroundJobRetrySnapshot {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct RetrySnapshotCleanupAuditEntry {
+    audit_id: u64,
+    action: String,
+    performed_at_unix_ms: u128,
+    target_count: usize,
+    removed_count: usize,
+    retained_before: usize,
+    retained_after: usize,
+    filter_kind: String,
+    filter_text: String,
+    archive_path: Option<String>,
+    summary: String,
+}
+
+impl Default for RetrySnapshotCleanupAuditEntry {
+    fn default() -> Self {
+        Self {
+            audit_id: 0,
+            action: String::new(),
+            performed_at_unix_ms: 0,
+            target_count: 0,
+            removed_count: 0,
+            retained_before: 0,
+            retained_after: 0,
+            filter_kind: String::new(),
+            filter_text: String::new(),
+            archive_path: None,
+            summary: String::new(),
+        }
+    }
+}
+
+impl RetrySnapshotCleanupAuditEntry {
+    fn to_line(&self) -> String {
+        let mut summary = self.summary.replace('\n', " ");
+        if summary.len() > 180 {
+            summary.truncate(180);
+            summary.push_str("...");
+        }
+        let filter_text = if self.filter_text.trim().is_empty() {
+            "-".to_string()
+        } else {
+            self.filter_text.trim().to_string()
+        };
+        let archive_token = self
+            .archive_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("-");
+        format!(
+            "[audit#{} {} @{} removed={} retained {}->{} target={} filter(kind={}, text={}) archive={}] {}",
+            self.audit_id,
+            self.action,
+            self.performed_at_unix_ms,
+            self.removed_count,
+            self.retained_before,
+            self.retained_after,
+            self.target_count,
+            self.filter_kind,
+            filter_text,
+            archive_token,
+            summary
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedBackgroundJobHistory {
@@ -1020,6 +1092,8 @@ struct PersistedBackgroundJobHistory {
     events: Vec<BackgroundJobEvent>,
     next_retry_snapshot_id: u64,
     retry_snapshots: Vec<BackgroundJobRetrySnapshot>,
+    next_retry_cleanup_audit_id: u64,
+    retry_cleanup_audit: Vec<RetrySnapshotCleanupAuditEntry>,
 }
 
 impl Default for PersistedBackgroundJobHistory {
@@ -1030,6 +1104,8 @@ impl Default for PersistedBackgroundJobHistory {
             events: vec![],
             next_retry_snapshot_id: 1,
             retry_snapshots: vec![],
+            next_retry_cleanup_audit_id: 1,
+            retry_cleanup_audit: vec![],
         }
     }
 }
@@ -1756,6 +1832,8 @@ impl Default for GENtleApp {
             job_event_log: vec![],
             next_retry_snapshot_id: 1,
             retry_argument_snapshots: vec![],
+            next_retry_cleanup_audit_id: 1,
+            retry_snapshot_cleanup_audit: vec![],
             retry_snapshot_retain_count: MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS,
             retry_snapshot_kind_filter: RetrySnapshotKindFilter::All,
             retry_snapshot_text_filter: String::new(),
@@ -3159,6 +3237,48 @@ Error: `{err}`"
         normalized
     }
 
+    fn normalize_retry_snapshot_cleanup_audit_entries(
+        entries: Vec<RetrySnapshotCleanupAuditEntry>,
+    ) -> Vec<RetrySnapshotCleanupAuditEntry> {
+        let mut normalized = entries
+            .into_iter()
+            .filter_map(|entry| {
+                if entry.audit_id == 0 {
+                    return None;
+                }
+                let action = entry.action.trim().to_string();
+                if action.is_empty() {
+                    return None;
+                }
+                let filter_kind = entry.filter_kind.trim().to_string();
+                if filter_kind.is_empty() {
+                    return None;
+                }
+                let summary = entry.summary.trim().to_string();
+                let filter_text = entry.filter_text.trim().to_string();
+                let archive_path = entry
+                    .archive_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string);
+                Some(RetrySnapshotCleanupAuditEntry {
+                    action,
+                    filter_kind,
+                    summary,
+                    filter_text,
+                    archive_path,
+                    ..entry
+                })
+            })
+            .collect::<Vec<_>>();
+        if normalized.len() > MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES {
+            let drain_len = normalized.len() - MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES;
+            normalized.drain(0..drain_len);
+        }
+        normalized
+    }
+
     fn capture_retry_snapshot(
         &mut self,
         kind: BackgroundJobKind,
@@ -3182,6 +3302,50 @@ Error: `{err}`"
         }
         self.persist_background_job_history_to_state();
         snapshot_id
+    }
+
+    fn record_retry_snapshot_cleanup_audit(
+        &mut self,
+        action: &str,
+        summary: &str,
+        target_count: usize,
+        removed_count: usize,
+        retained_before: usize,
+        retained_after: usize,
+        archive_path: Option<&str>,
+    ) -> u64 {
+        let action = action.trim();
+        let action = if action.is_empty() {
+            "unknown_cleanup_action"
+        } else {
+            action
+        };
+        let audit_id = self.next_retry_cleanup_audit_id.max(1);
+        self.next_retry_cleanup_audit_id = audit_id.saturating_add(1);
+        self.retry_snapshot_cleanup_audit
+            .push(RetrySnapshotCleanupAuditEntry {
+                audit_id,
+                action: action.to_string(),
+                performed_at_unix_ms: Self::now_unix_ms(),
+                target_count,
+                removed_count,
+                retained_before,
+                retained_after,
+                filter_kind: self.retry_snapshot_kind_filter.export_token().to_string(),
+                filter_text: self.retry_snapshot_text_filter.trim().to_string(),
+                archive_path: archive_path
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string),
+                summary: summary.trim().to_string(),
+            });
+        if self.retry_snapshot_cleanup_audit.len() > MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES {
+            let drain_len =
+                self.retry_snapshot_cleanup_audit.len() - MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES;
+            self.retry_snapshot_cleanup_audit.drain(0..drain_len);
+        }
+        self.persist_background_job_history_to_state();
+        audit_id
     }
 
     fn retry_snapshot_retention_limit(&self) -> usize {
@@ -3429,6 +3593,48 @@ Error: `{err}`"
         input.trim().eq_ignore_ascii_case(expected.as_str())
     }
 
+    fn build_retry_cleanup_audit_report_payload(
+        &self,
+        entries: Vec<RetrySnapshotCleanupAuditEntry>,
+    ) -> serde_json::Value {
+        let entry_count = entries.len();
+        let mut action_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for entry in entries.iter() {
+            let key = entry.action.trim().to_string();
+            *action_counts.entry(key).or_insert(0usize) += 1;
+        }
+        serde_json::json!({
+            "schema": "gentle.gui_retry_cleanup_audit_report.v1",
+            "exported_at_unix_ms": Self::now_unix_ms(),
+            "entry_count": entry_count,
+            "action_counts": action_counts,
+            "entries": entries
+        })
+    }
+
+    fn export_retry_cleanup_audit_report_to_path(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<usize, String> {
+        let entries = Self::normalize_retry_snapshot_cleanup_audit_entries(
+            self.retry_snapshot_cleanup_audit.clone(),
+        );
+        if entries.is_empty() {
+            return Err("No retry cleanup audit entries to export".to_string());
+        }
+        let entry_count = entries.len();
+        let payload = self.build_retry_cleanup_audit_report_payload(entries);
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize cleanup audit report JSON: {e}"))?;
+        fs::write(path, json).map_err(|e| {
+            format!(
+                "Could not write cleanup audit report '{}': {e}",
+                path.display()
+            )
+        })?;
+        Ok(entry_count)
+    }
+
     fn build_retry_snapshot_archive_payload(
         &self,
         snapshots: Vec<BackgroundJobRetrySnapshot>,
@@ -3504,6 +3710,8 @@ Error: `{err}`"
             self.job_event_log.clear();
             self.next_retry_snapshot_id = 1;
             self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
             return;
         };
         let Ok(mut parsed) = serde_json::from_value::<PersistedBackgroundJobHistory>(raw) else {
@@ -3511,6 +3719,8 @@ Error: `{err}`"
             self.job_event_log.clear();
             self.next_retry_snapshot_id = 1;
             self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
             return;
         };
         if parsed.schema.trim().is_empty() {
@@ -3521,6 +3731,8 @@ Error: `{err}`"
             self.job_event_log.clear();
             self.next_retry_snapshot_id = 1;
             self.retry_argument_snapshots.clear();
+            self.next_retry_cleanup_audit_id = 1;
+            self.retry_snapshot_cleanup_audit.clear();
             return;
         }
         self.next_background_job_id = parsed.next_background_job_id.max(1);
@@ -3528,6 +3740,9 @@ Error: `{err}`"
         self.next_retry_snapshot_id = parsed.next_retry_snapshot_id.max(1);
         self.retry_argument_snapshots =
             Self::normalize_background_job_retry_snapshots(parsed.retry_snapshots);
+        self.next_retry_cleanup_audit_id = parsed.next_retry_cleanup_audit_id.max(1);
+        self.retry_snapshot_cleanup_audit =
+            Self::normalize_retry_snapshot_cleanup_audit_entries(parsed.retry_cleanup_audit);
     }
 
     fn persist_background_job_history_to_state(&mut self) {
@@ -3538,6 +3753,10 @@ Error: `{err}`"
             next_retry_snapshot_id: self.next_retry_snapshot_id.max(1),
             retry_snapshots: Self::normalize_background_job_retry_snapshots(
                 self.retry_argument_snapshots.clone(),
+            ),
+            next_retry_cleanup_audit_id: self.next_retry_cleanup_audit_id.max(1),
+            retry_cleanup_audit: Self::normalize_retry_snapshot_cleanup_audit_entries(
+                self.retry_snapshot_cleanup_audit.clone(),
             ),
         };
         let Ok(value) = serde_json::to_value(payload) else {
@@ -4973,10 +5192,39 @@ Error: `{err}`"
         }
     }
 
-    fn prompt_archive_and_delete_filtered_retry_snapshots(&mut self) {
+    fn prompt_export_retry_cleanup_audit_report(&mut self) {
+        if self.retry_snapshot_cleanup_audit.is_empty() {
+            self.app_status = "No retry cleanup audit entries to export".to_string();
+            return;
+        }
+        let path = rfd::FileDialog::new()
+            .set_file_name("retry_cleanup_audit_report.json")
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Retry cleanup audit export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        match self.export_retry_cleanup_audit_report_to_path(path.as_path()) {
+            Ok(count) => {
+                // Exporting the audit report is read-only and intentionally not self-audited.
+                self.app_status =
+                    format!("Exported {count} retry cleanup audit entries to '{path_text}'");
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not export retry cleanup audit report '{}': {err}",
+                    path_text
+                );
+            }
+        }
+    }
+
+    fn prompt_archive_and_delete_filtered_retry_snapshots(&mut self) -> Option<(usize, String)> {
         if self.filtered_retry_snapshots().is_empty() {
             self.app_status = "No retry snapshots match current filters".to_string();
-            return;
+            return None;
         }
         let default_file_name = format!(
             "retry_snapshots_archive_{}.json",
@@ -4988,19 +5236,21 @@ Error: `{err}`"
             .save_file();
         let Some(path) = path else {
             self.app_status = "Retry snapshot archive canceled".to_string();
-            return;
+            return None;
         };
         let path_text = path.display().to_string();
         match self.archive_and_delete_filtered_retry_snapshots_to_path(path.as_path()) {
             Ok(count) => {
                 self.app_status =
                     format!("Archived and removed {count} retry snapshot(s) to '{path_text}'");
+                Some((count, path_text))
             }
             Err(err) => {
                 self.app_status = format!(
                     "Could not archive/delete retry snapshots '{}': {err}",
                     path_text
                 );
+                None
             }
         }
     }
@@ -22082,14 +22332,27 @@ Error: `{err}`"
                         .on_hover_text("Drop oldest snapshots until retained count is reached")
                         .clicked()
                     {
+                        let before = self.retry_argument_snapshots.len();
                         let removed =
                             self.prune_retry_snapshots_to_limit(self.retry_snapshot_retain_count);
+                        let after = self.retry_argument_snapshots.len();
                         self.retry_snapshot_pending_cleanup_action = None;
                         self.retry_snapshot_cleanup_confirm_text.clear();
                         self.app_status = if removed == 0 {
                             "Retry snapshot prune: no snapshots removed".to_string()
                         } else {
-                            format!("Retry snapshot prune: removed {removed} oldest snapshot(s)")
+                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                "prune_oldest",
+                                "Pruned oldest retry snapshots via retention control",
+                                self.retry_snapshot_retain_count,
+                                removed,
+                                before,
+                                after,
+                                None,
+                            );
+                            format!(
+                                "Retry snapshot prune: removed {removed} oldest snapshot(s) (audit #{audit_id})"
+                            )
                         };
                     }
                     if ui
@@ -22100,10 +22363,25 @@ Error: `{err}`"
                         .on_hover_text("Delete all retained retry snapshots")
                         .clicked()
                     {
+                        let before = self.retry_argument_snapshots.len();
                         let removed = self.clear_retry_snapshots();
+                        let after = self.retry_argument_snapshots.len();
                         self.retry_snapshot_pending_cleanup_action = None;
                         self.retry_snapshot_cleanup_confirm_text.clear();
-                        self.app_status = format!("Cleared {removed} retry snapshot(s)");
+                        self.app_status = if removed == 0 {
+                            "Cleared 0 retry snapshot(s)".to_string()
+                        } else {
+                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                "clear_all",
+                                "Cleared all retained retry snapshots",
+                                before,
+                                removed,
+                                before,
+                                after,
+                                None,
+                            );
+                            format!("Cleared {removed} retry snapshot(s) (audit #{audit_id})")
+                        };
                     }
                 });
                 ui.horizontal(|ui| {
@@ -22271,26 +22549,54 @@ Error: `{err}`"
                                     RetrySnapshotPendingCleanupAction::DeleteFiltered => {
                                         let removed = self.remove_filtered_retry_snapshots();
                                         let after = self.retry_argument_snapshots.len();
-                                        self.app_status = format!(
-                                            "{}; {}",
-                                            Self::format_retry_snapshot_cleanup_status(
-                                                action, removed, before, after
-                                            ),
-                                            preview_summary
-                                        );
-                                    }
-                                    RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
-                                        self.prompt_archive_and_delete_filtered_retry_snapshots();
-                                        let after = self.retry_argument_snapshots.len();
-                                        let removed = before.saturating_sub(after);
                                         if removed > 0 {
+                                            let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                                "delete_filtered",
+                                                &preview_summary,
+                                                filtered_snapshots.len(),
+                                                removed,
+                                                before,
+                                                after,
+                                                None,
+                                            );
                                             self.app_status = format!(
-                                                "{}; {}",
+                                                "{} (audit #{}); {}",
                                                 Self::format_retry_snapshot_cleanup_status(
                                                     action, removed, before, after
                                                 ),
+                                                audit_id,
                                                 preview_summary
                                             );
+                                        } else {
+                                            self.app_status = "Delete filtered confirmed: no snapshots removed"
+                                                .to_string();
+                                        }
+                                    }
+                                    RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
+                                        let archive_result =
+                                            self.prompt_archive_and_delete_filtered_retry_snapshots();
+                                        if let Some((removed, archive_path)) = archive_result {
+                                            let after = self.retry_argument_snapshots.len();
+                                            if removed > 0 {
+                                                let audit_id = self
+                                                    .record_retry_snapshot_cleanup_audit(
+                                                        "archive_delete_filtered",
+                                                        &preview_summary,
+                                                        filtered_snapshots.len(),
+                                                        removed,
+                                                        before,
+                                                        after,
+                                                        Some(archive_path.as_str()),
+                                                    );
+                                                self.app_status = format!(
+                                                    "{} (audit #{}); {}",
+                                                    Self::format_retry_snapshot_cleanup_status(
+                                                        action, removed, before, after
+                                                    ),
+                                                    audit_id,
+                                                    preview_summary
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -22325,6 +22631,41 @@ Error: `{err}`"
                         } else {
                             for snapshot in filtered_snapshots.iter().rev().take(40) {
                                 ui.small(snapshot.to_line());
+                            }
+                        }
+                    });
+                ui.separator();
+                ui.strong("Retry cleanup audit");
+                ui.horizontal(|ui| {
+                    ui.small(format!(
+                        "{} retained audit entries",
+                        self.retry_snapshot_cleanup_audit.len()
+                    ));
+                    if ui
+                        .add_enabled(
+                            !self.retry_snapshot_cleanup_audit.is_empty(),
+                            egui::Button::new("Export report..."),
+                        )
+                        .on_hover_text(
+                            "Export cleanup-audit report JSON (read-only; does not append new audit entries)",
+                        )
+                        .clicked()
+                    {
+                        self.prompt_export_retry_cleanup_audit_report();
+                    }
+                });
+                egui::ScrollArea::vertical()
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        if self.retry_snapshot_cleanup_audit.is_empty() {
+                            ui.small("No retry cleanup audit entries yet");
+                        } else {
+                            for entry in self.retry_snapshot_cleanup_audit.iter().rev().take(30) {
+                                ui.small(entry.to_line());
                             }
                         }
                     });
@@ -23836,6 +24177,8 @@ mod tests {
         assert_eq!(app.job_event_log[1].phase, BackgroundJobEventPhase::Failed);
         assert_eq!(app.next_retry_snapshot_id, 1);
         assert!(app.retry_argument_snapshots.is_empty());
+        assert_eq!(app.next_retry_cleanup_audit_id, 1);
+        assert!(app.retry_snapshot_cleanup_audit.is_empty());
     }
 
     #[test]
@@ -23893,6 +24236,8 @@ mod tests {
             app.retry_argument_snapshots[1].kind,
             BackgroundJobKind::BlastGenome
         );
+        assert_eq!(app.next_retry_cleanup_audit_id, 1);
+        assert!(app.retry_snapshot_cleanup_audit.is_empty());
     }
 
     #[test]
@@ -23938,6 +24283,180 @@ mod tests {
             snapshots[0].get("kind").and_then(|value| value.as_str()),
             Some("track_import")
         );
+    }
+
+    #[test]
+    fn load_background_job_history_from_state_restores_retry_cleanup_audit() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            BACKGROUND_JOB_HISTORY_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "schema": BACKGROUND_JOB_HISTORY_SCHEMA,
+                "next_background_job_id": 3,
+                "events": [],
+                "next_retry_snapshot_id": 2,
+                "retry_snapshots": [],
+                "next_retry_cleanup_audit_id": 8,
+                "retry_cleanup_audit": [
+                    {
+                        "audit_id": 6,
+                        "action": "delete_filtered",
+                        "performed_at_unix_ms": 3000,
+                        "target_count": 4,
+                        "removed_count": 3,
+                        "retained_before": 10,
+                        "retained_after": 7,
+                        "filter_kind": "blast_genome",
+                        "filter_text": "origin:panel",
+                        "archive_path": null,
+                        "summary": "deleted filtered snapshots"
+                    }
+                ]
+            }),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_background_job_history_from_state();
+
+        assert_eq!(app.next_retry_cleanup_audit_id, 8);
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), 1);
+        assert_eq!(app.retry_snapshot_cleanup_audit[0].audit_id, 6);
+        assert_eq!(
+            app.retry_snapshot_cleanup_audit[0].action,
+            "delete_filtered"
+        );
+        assert_eq!(
+            app.retry_snapshot_cleanup_audit[0].filter_kind,
+            "blast_genome".to_string()
+        );
+    }
+
+    #[test]
+    fn record_retry_snapshot_cleanup_audit_persists_background_job_history_metadata() {
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+        let audit_id = app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "deleted filtered snapshots",
+            4,
+            3,
+            10,
+            7,
+            None,
+        );
+        assert_eq!(audit_id, 1);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        assert_eq!(
+            history
+                .get("next_retry_cleanup_audit_id")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        let audits = history
+            .get("retry_cleanup_audit")
+            .and_then(|value| value.as_array())
+            .expect("retry cleanup audit array");
+        assert_eq!(audits.len(), 1);
+        assert_eq!(
+            audits[0].get("action").and_then(|value| value.as_str()),
+            Some("delete_filtered")
+        );
+        assert_eq!(
+            audits[0]
+                .get("filter_kind")
+                .and_then(|value| value.as_str()),
+            Some("blast_genome")
+        );
+        assert_eq!(
+            audits[0]
+                .get("removed_count")
+                .and_then(|value| value.as_u64()),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_writes_report_payload_without_self_audit() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report.json");
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "deleted filtered snapshots",
+            4,
+            3,
+            10,
+            7,
+            None,
+        );
+        app.record_retry_snapshot_cleanup_audit(
+            "archive_delete_filtered",
+            "archived and removed filtered snapshots",
+            2,
+            2,
+            7,
+            5,
+            Some("/tmp/retry_archive.json"),
+        );
+        let audit_len_before = app.retry_snapshot_cleanup_audit.len();
+
+        let exported = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect("export retry cleanup audit report");
+        assert_eq!(exported, 2);
+        assert_eq!(app.retry_snapshot_cleanup_audit.len(), audit_len_before);
+        assert_eq!(app.next_retry_cleanup_audit_id, 3);
+
+        let payload = fs::read_to_string(&output_path).expect("read retry cleanup audit report");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse audit report");
+        assert_eq!(
+            payload_json.get("schema").and_then(|value| value.as_str()),
+            Some("gentle.gui_retry_cleanup_audit_report.v1")
+        );
+        assert_eq!(
+            payload_json
+                .get("entry_count")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            payload_json
+                .get("action_counts")
+                .and_then(|value| value.get("delete_filtered"))
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        let entries = payload_json
+            .get("entries")
+            .and_then(|value| value.as_array())
+            .expect("entries array");
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_rejects_empty_audit() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report.json");
+        let app = GENtleApp::default();
+        let err = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect_err("export should fail when audit is empty");
+        assert!(err.contains("No retry cleanup audit entries to export"));
+        assert!(!output_path.exists());
     }
 
     #[test]

@@ -1172,6 +1172,10 @@ In `Main window -> Graph` view:
     "would remove" and "would remain" snapshot previews before confirm
   - destructive cleanup confirm now requires typing an action-specific
     phrase (for example `delete 3`) before the confirm button is enabled
+  - successful destructive cleanup actions append persisted audit entries
+    (action/filter/counts/archive path) visible in-panel for traceability
+  - cleanup audit section provides a dedicated JSON report export action;
+    report export is read-only and does not append additional audit entries
 
 ## Linear map conventions
 

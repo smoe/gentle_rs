@@ -1862,9 +1862,13 @@ Post-baseline follow-ups:
       "would remove" vs "would remain" snapshot rows before confirm.
     - destructive cleanup confirm now requires an action-specific type-to-confirm
       phrase before confirm is enabled.
+    - successful destructive cleanup actions now append persisted cleanup-audit
+      entries (action/filter/counts/archive path) rendered in the Jobs panel.
+    - cleanup-audit history now has a dedicated JSON report export action; this
+      export is intentionally read-only and does not self-append audit entries.
   - Next:
-    - optionally add cleanup audit entries (operation log/report artifact) for
-      destructive retry-snapshot actions
+    - optionally add filter/search controls and retention policy tuning for
+      cleanup-audit history in the Jobs panel
 
 ### Current branch blockers (must clear first)
 
