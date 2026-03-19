@@ -1162,6 +1162,8 @@ In `Main window -> Graph` view:
     persist them with project metadata for restart-safe debugging
   - retry snapshot list supports kind/text filtering and filtered JSON export
     for triage handoff or offline analysis
+  - retry snapshot retention controls support "retain newest N", explicit prune,
+    and clear-all cleanup for long-running sessions
 
 ## Linear map conventions
 

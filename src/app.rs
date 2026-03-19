@@ -700,6 +700,7 @@ pub struct GENtleApp {
     job_event_log: Vec<BackgroundJobEvent>,
     next_retry_snapshot_id: u64,
     retry_argument_snapshots: Vec<BackgroundJobRetrySnapshot>,
+    retry_snapshot_retain_count: usize,
     retry_snapshot_kind_filter: RetrySnapshotKindFilter,
     retry_snapshot_text_filter: String,
     genome_track_preflight_track_subscription: bool,
@@ -1715,6 +1716,7 @@ impl Default for GENtleApp {
             job_event_log: vec![],
             next_retry_snapshot_id: 1,
             retry_argument_snapshots: vec![],
+            retry_snapshot_retain_count: MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS,
             retry_snapshot_kind_filter: RetrySnapshotKindFilter::All,
             retry_snapshot_text_filter: String::new(),
             genome_track_preflight_track_subscription: true,
@@ -3131,13 +3133,39 @@ Error: `{err}`"
                 captured_at_unix_ms: Self::now_unix_ms(),
                 arguments,
             });
-        if self.retry_argument_snapshots.len() > MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS {
-            let drain_len =
-                self.retry_argument_snapshots.len() - MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS;
+        let retention_limit = self.retry_snapshot_retention_limit();
+        if self.retry_argument_snapshots.len() > retention_limit {
+            let drain_len = self.retry_argument_snapshots.len() - retention_limit;
             self.retry_argument_snapshots.drain(0..drain_len);
         }
         self.persist_background_job_history_to_state();
         snapshot_id
+    }
+
+    fn retry_snapshot_retention_limit(&self) -> usize {
+        self.retry_snapshot_retain_count
+            .clamp(1, MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS)
+    }
+
+    fn prune_retry_snapshots_to_limit(&mut self, retain_count: usize) -> usize {
+        let retain_count = retain_count.clamp(1, MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS);
+        self.retry_snapshot_retain_count = retain_count;
+        let before = self.retry_argument_snapshots.len();
+        if before > retain_count {
+            let drain_len = before - retain_count;
+            self.retry_argument_snapshots.drain(0..drain_len);
+            self.persist_background_job_history_to_state();
+        }
+        before.saturating_sub(self.retry_argument_snapshots.len())
+    }
+
+    fn clear_retry_snapshots(&mut self) -> usize {
+        let removed = self.retry_argument_snapshots.len();
+        if removed > 0 {
+            self.retry_argument_snapshots.clear();
+            self.persist_background_job_history_to_state();
+        }
+        removed
     }
 
     fn retry_snapshot_filter_help_text() -> &'static str {
@@ -21798,6 +21826,43 @@ Error: `{err}`"
 
                 ui.separator();
                 ui.strong("Recent retry snapshots");
+                self.retry_snapshot_retain_count = self.retry_snapshot_retention_limit();
+                ui.horizontal(|ui| {
+                    ui.label("Retain newest");
+                    ui.add(
+                        egui::DragValue::new(&mut self.retry_snapshot_retain_count)
+                            .range(1..=MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS)
+                            .speed(1.0),
+                    )
+                    .on_hover_text(
+                        "Retention cap for future retry captures (up to in-memory maximum)",
+                    );
+                    ui.small(format!("max {}", MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS));
+                    if ui
+                        .button("Prune oldest")
+                        .on_hover_text("Drop oldest snapshots until retained count is reached")
+                        .clicked()
+                    {
+                        let removed =
+                            self.prune_retry_snapshots_to_limit(self.retry_snapshot_retain_count);
+                        self.app_status = if removed == 0 {
+                            "Retry snapshot prune: no snapshots removed".to_string()
+                        } else {
+                            format!("Retry snapshot prune: removed {removed} oldest snapshot(s)")
+                        };
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.retry_argument_snapshots.is_empty(),
+                            egui::Button::new("Clear all"),
+                        )
+                        .on_hover_text("Delete all retained retry snapshots")
+                        .clicked()
+                    {
+                        let removed = self.clear_retry_snapshots();
+                        self.app_status = format!("Cleared {removed} retry snapshot(s)");
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label("Kind");
                     egui::ComboBox::from_id_salt("retry_snapshot_kind_filter")
@@ -23619,6 +23684,126 @@ mod tests {
             .expect_err("export should fail when no snapshots match filters");
         assert!(err.contains("No retry snapshots match current filters"));
         assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn capture_retry_snapshot_honors_retention_limit() {
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_retain_count = 2;
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.prepare.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.blast.v1",
+                "genome_id": "hg38"
+            }),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "background jobs panel",
+            serde_json::json!({
+                "schema": "gentle.gui_retry_snapshot.track_import.v1",
+                "selected_sequence_id": "seq_1"
+            }),
+        );
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 2);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+    }
+
+    #[test]
+    fn prune_retry_snapshots_to_limit_removes_oldest_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::TrackImport,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.track_import.v1"}),
+        );
+
+        let removed = app.prune_retry_snapshots_to_limit(2);
+        assert_eq!(removed, 1);
+        assert_eq!(app.retry_argument_snapshots.len(), 2);
+        assert_eq!(app.retry_argument_snapshots[0].snapshot_id, 2);
+        assert_eq!(app.retry_argument_snapshots[1].snapshot_id, 3);
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let snapshots = history
+            .get("retry_snapshots")
+            .and_then(|value| value.as_array())
+            .expect("retry snapshots array");
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(
+            snapshots[0]
+                .get("snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            snapshots[1]
+                .get("snapshot_id")
+                .and_then(|value| value.as_u64()),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn clear_retry_snapshots_removes_all_and_persists_metadata() {
+        let mut app = GENtleApp::default();
+        app.capture_retry_snapshot(
+            BackgroundJobKind::PrepareGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.prepare.v1"}),
+        );
+        app.capture_retry_snapshot(
+            BackgroundJobKind::BlastGenome,
+            "background jobs panel",
+            serde_json::json!({"schema": "gentle.gui_retry_snapshot.blast.v1"}),
+        );
+
+        let removed = app.clear_retry_snapshots();
+        assert_eq!(removed, 2);
+        assert!(app.retry_argument_snapshots.is_empty());
+
+        let history = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(BACKGROUND_JOB_HISTORY_METADATA_KEY)
+            .cloned()
+            .expect("background job history metadata");
+        let snapshots = history
+            .get("retry_snapshots")
+            .and_then(|value| value.as_array())
+            .expect("retry snapshots array");
+        assert!(snapshots.is_empty());
     }
 
     #[test]

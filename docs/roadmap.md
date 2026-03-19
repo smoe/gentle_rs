@@ -1850,9 +1850,12 @@ Post-baseline follow-ups:
       for reproducibility/debugging across restarts.
     - background-jobs retry snapshot list now supports kind/text filtering and
       filtered JSON export for larger-history triage handoff.
+    - background-jobs retry snapshot retention controls now support retain-count
+      cap, explicit oldest-first prune, and clear-all cleanup (persisted via the
+      same metadata payload).
   - Next:
-    - optionally add snapshot pruning/retention controls for long-running
-      projects with large retry histories
+    - optionally add filtered bulk-delete/archival workflows for retry snapshots
+      (for example per kind/origin cleanup)
 
 ### Current branch blockers (must clear first)
 
