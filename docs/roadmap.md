@@ -511,6 +511,9 @@ order. Durable architecture constraints and decisions remain in
 - Help viewer image handling:
   - markdown images render at constrained width
   - image captions are authored inline in markdown (`*Figure: ...*`)
+  - CommonMark rendering path is re-enabled on the current `egui/eframe` stack
+    (`egui_commonmark 0.22` aligned with `egui 0.33`), replacing the temporary
+    plain-text fallback
 - Experimental window backdrop styling path:
   - optional per-window-type accent tint (`main`, `sequence`, `splicing`,
     `pool`, `configuration`, `help`)

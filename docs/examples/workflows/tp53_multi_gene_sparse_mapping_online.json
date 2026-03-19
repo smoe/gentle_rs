@@ -6,7 +6,7 @@
   "test_mode": "online",
   "required_files": [
     "assets/genomes.json",
-    "test_files/SRR32957124_10000.fasta"
+    "test_files/mapping/SRR32957124_10000.fasta.gz"
   ],
   "tags": [
     "genome",
@@ -42,7 +42,7 @@
           "seq_id": "grch38_tp53",
           "seed_feature_id": 0,
           "profile": "nanopore_cdna_v1",
-          "input_path": "test_files/SRR32957124_10000.fasta",
+          "input_path": "test_files/mapping/SRR32957124_10000.fasta.gz",
           "input_format": "fasta",
           "scope": "all_overlapping_both_strands",
           "origin_mode": "multi_gene_sparse",

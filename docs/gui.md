@@ -1043,7 +1043,7 @@ Help content loading behavior:
 
 Markdown image support:
 
-- image rendering is enabled in the help viewer
+- help content is rendered via CommonMark (headings/lists/tables/code blocks + images)
 - use standard markdown image syntax (`![alt](path-or-url)`)
 - relative image paths in `docs/*.md` are resolved relative to the markdown file location
 - relative local image paths are rewritten to `file://...` URIs for cross-platform loading

@@ -71,7 +71,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
-use egui_commonmark::CommonMarkCache;
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -518,7 +518,9 @@ pub struct GENtleApp {
     lineage_graph_pan_origin: Option<Vec2>,
     lineage_graph_compact_labels: bool,
     lineage_main_split_drag_origin: Option<f32>,
+    lineage_main_split_drag_start_y: Option<f32>,
     lineage_container_arrangement_split_drag_origin: Option<f32>,
+    lineage_container_arrangement_split_drag_start_y: Option<f32>,
     lineage_graph_selected_node_id: Option<String>,
     lineage_graph_node_offsets: HashMap<String, Vec2>,
     lineage_graph_drag_origin: Option<(String, Vec2)>,
@@ -1406,7 +1408,9 @@ impl Default for GENtleApp {
             lineage_graph_pan_origin: None,
             lineage_graph_compact_labels: true,
             lineage_main_split_drag_origin: None,
+            lineage_main_split_drag_start_y: None,
             lineage_container_arrangement_split_drag_origin: None,
+            lineage_container_arrangement_split_drag_start_y: None,
             lineage_graph_selected_node_id: None,
             lineage_graph_node_offsets: HashMap::new(),
             lineage_graph_drag_origin: None,
@@ -2245,66 +2249,6 @@ impl GENtleApp {
         };
         let encoded = Self::percent_encode_file_uri_path(&rooted);
         format!("file://{encoded}")
-    }
-
-    fn markdown_image_uri_for_render(dest: &str) -> String {
-        let trimmed = dest.trim();
-        if trimmed.is_empty() {
-            return String::new();
-        }
-        if Self::has_uri_scheme(trimmed) || trimmed.starts_with('#') {
-            return trimmed.to_string();
-        }
-        if Self::is_windows_drive_path(trimmed) {
-            return Self::file_uri_from_path(Path::new(trimmed));
-        }
-        let path = Path::new(trimmed);
-        if path.is_absolute() {
-            return Self::file_uri_from_path(path);
-        }
-        trimmed.to_string()
-    }
-
-    fn collect_markdown_inline_image_destinations(markdown: &str) -> Vec<String> {
-        let mut destinations = Vec::new();
-        for event in Parser::new(markdown) {
-            let Event::Start(Tag::Image {
-                link_type,
-                dest_url,
-                ..
-            }) = event
-            else {
-                continue;
-            };
-            if link_type == LinkType::Inline {
-                destinations.push(dest_url.to_string());
-            }
-        }
-        destinations
-    }
-
-    fn render_help_markdown_fallback(ui: &mut Ui, markdown: &str, max_image_width: f32) {
-        ui.add(egui::Label::new(markdown).wrap());
-
-        let images = Self::collect_markdown_inline_image_destinations(markdown);
-        if images.is_empty() {
-            return;
-        }
-
-        ui.separator();
-        for image_dest in images {
-            let image_uri = Self::markdown_image_uri_for_render(&image_dest);
-            if image_uri.is_empty() {
-                continue;
-            }
-            ui.add(
-                egui::Image::from_uri(image_uri)
-                    .max_width(max_image_width)
-                    .max_height(1200.0)
-                    .shrink_to_fit(),
-            );
-            ui.add_space(6.0);
-        }
     }
 
     fn load_help_doc(path: &str, fallback: &'static str) -> String {
@@ -3934,7 +3878,9 @@ Error: `{err}`"
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
         self.lineage_main_split_drag_origin = None;
+        self.lineage_main_split_drag_start_y = None;
         self.lineage_container_arrangement_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_start_y = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
@@ -13610,7 +13556,9 @@ Error: `{err}`"
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
         self.lineage_main_split_drag_origin = None;
+        self.lineage_main_split_drag_start_y = None;
         self.lineage_container_arrangement_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_start_y = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
@@ -13684,7 +13632,9 @@ Error: `{err}`"
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
         self.lineage_main_split_drag_origin = None;
+        self.lineage_main_split_drag_start_y = None;
         self.lineage_container_arrangement_split_drag_origin = None;
+        self.lineage_container_arrangement_split_drag_start_y = None;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_node_groups.clear();
@@ -19128,19 +19078,25 @@ Error: `{err}`"
         if splitter_response.drag_started() {
             self.lineage_main_split_drag_origin =
                 Some(self.lineage_main_split_fraction.clamp(0.2, 0.9));
+            self.lineage_main_split_drag_start_y =
+                ui.input(|i| i.pointer.interact_pos().map(|pos| pos.y));
         }
-        splitter_dragging = splitter_response.dragged();
+        let pointer_down = ui.input(|i| i.pointer.primary_down());
+        let pointer_y = ui.input(|i| i.pointer.interact_pos().map(|pos| pos.y));
+        splitter_dragging =
+            splitter_response.dragged() || (pointer_down && self.lineage_main_split_drag_origin.is_some());
         let splitter_drag_finished = splitter_response.drag_stopped();
-        if splitter_dragging {
-            let drag_delta_y = splitter_response.drag_delta().y;
-            if drag_delta_y.is_finite() && drag_delta_y.abs() > 0.0 {
+        let splitter_drag_active = splitter_dragging || splitter_drag_finished;
+        if splitter_drag_active {
+            if let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
+                self.lineage_main_split_drag_origin,
+                self.lineage_main_split_drag_start_y,
+                pointer_y,
+            ) {
+                let drag_delta_y = current_y - start_y;
                 let total_height = (graph_area_height + container_area_height).max(400.0);
-                let drag_origin_split = self
-                    .lineage_main_split_drag_origin
-                    .unwrap_or(self.lineage_main_split_fraction)
-                    .clamp(0.2, 0.9);
                 let drag_base_graph_height =
-                    (total_height * drag_origin_split).clamp(280.0, total_height - 80.0);
+                    (total_height * drag_origin_split.clamp(0.2, 0.9)).clamp(280.0, total_height - 80.0);
                 let next_graph_height =
                     (drag_base_graph_height + drag_delta_y).clamp(280.0, total_height - 80.0);
                 if (next_graph_height - graph_area_height).abs() > f32::EPSILON {
@@ -19152,8 +19108,9 @@ Error: `{err}`"
                 }
             }
         }
-        if splitter_drag_finished {
+        if splitter_drag_finished || (!pointer_down && self.lineage_main_split_drag_origin.is_some()) {
             self.lineage_main_split_drag_origin = None;
+            self.lineage_main_split_drag_start_y = None;
             persist_workspace_after_frame = true;
         }
         ui.small("Drag split bar to resize graph/table and container sections");
@@ -19277,17 +19234,25 @@ Error: `{err}`"
         if sub_split_response.drag_started() {
             self.lineage_container_arrangement_split_drag_origin =
                 Some(container_arrangement_split_fraction.clamp(0.2, 0.8));
+            self.lineage_container_arrangement_split_drag_start_y =
+                ui.input(|i| i.pointer.interact_pos().map(|pos| pos.y));
         }
-        if sub_split_response.dragged() {
-            let drag_delta_y = sub_split_response.drag_delta().y;
-            if drag_delta_y.is_finite() && drag_delta_y.abs() > 0.0 {
+        let sub_pointer_down = ui.input(|i| i.pointer.primary_down());
+        let sub_pointer_y = ui.input(|i| i.pointer.interact_pos().map(|pos| pos.y));
+        let sub_split_dragging = sub_split_response.dragged()
+            || (sub_pointer_down && self.lineage_container_arrangement_split_drag_origin.is_some());
+        let sub_split_finished = sub_split_response.drag_stopped();
+        let sub_split_active_drag = sub_split_dragging || sub_split_finished;
+        if sub_split_active_drag {
+            if let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
+                self.lineage_container_arrangement_split_drag_origin,
+                self.lineage_container_arrangement_split_drag_start_y,
+                sub_pointer_y,
+            ) {
+                let drag_delta_y = current_y - start_y;
                 let total_height = (containers_panel_height + arrangements_panel_height).max(160.0);
-                let drag_origin_split = self
-                    .lineage_container_arrangement_split_drag_origin
-                    .unwrap_or(container_arrangement_split_fraction)
-                    .clamp(0.2, 0.8);
                 let drag_base_containers_height =
-                    (total_height * drag_origin_split).clamp(80.0, total_height - 80.0);
+                    (total_height * drag_origin_split.clamp(0.2, 0.8)).clamp(80.0, total_height - 80.0);
                 let next_containers_height =
                     (drag_base_containers_height + drag_delta_y).clamp(80.0, total_height - 80.0);
                 if (next_containers_height - containers_panel_height).abs() > f32::EPSILON {
@@ -19299,8 +19264,12 @@ Error: `{err}`"
                 }
             }
         }
-        if sub_split_response.drag_stopped() {
+        if sub_split_finished
+            || (!sub_pointer_down
+                && self.lineage_container_arrangement_split_drag_origin.is_some())
+        {
             self.lineage_container_arrangement_split_drag_origin = None;
+            self.lineage_container_arrangement_split_drag_start_y = None;
             persist_workspace_after_frame = true;
         }
         ui.small("Drag split bar to resize containers and arrangements");
@@ -21536,9 +21505,9 @@ Error: `{err}`"
                         HelpDoc::Shell => self.help_shell_markdown.as_str(),
                         HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
                     };
-                    // Temporary compatibility fallback: render markdown as wrapped text and
-                    // still render discovered inline images.
-                    Self::render_help_markdown_fallback(ui, markdown, max_image_width);
+                    CommonMarkViewer::new()
+                        .max_image_width(Some(max_image_width as usize))
+                        .show(ui, &mut self.help_markdown_cache, markdown);
                 });
         });
     }
@@ -23271,12 +23240,6 @@ mod tests {
         let temp = tempdir().unwrap();
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
         assert_eq!(rewritten, markdown);
-    }
-
-    #[test]
-    fn markdown_image_uri_for_render_normalizes_windows_drive_paths() {
-        let uri = GENtleApp::markdown_image_uri_for_render(r"C:\tmp\gui image.png");
-        assert_eq!(uri, "file:///C:/tmp/gui%20image.png");
     }
 
     #[test]
