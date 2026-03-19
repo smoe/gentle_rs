@@ -3356,6 +3356,29 @@ impl MainAreaDna {
         self.op_status = "Opened from lineage pool node".to_string();
     }
 
+    pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
+        let normalized_id = dotplot_id.trim();
+        if !normalized_id.is_empty() {
+            self.dotplot_ui.dotplot_id = normalized_id.to_string();
+        }
+        self.primary_map_mode = PrimaryMapMode::Dotplot;
+        self.invalidate_dotplot_cache();
+        self.ensure_dotplot_cache_current();
+        self.open_dotplot_window();
+    }
+
+    pub fn focus_flexibility_track_analysis(&mut self, track_id: &str) {
+        let normalized_id = track_id.trim();
+        if !normalized_id.is_empty() {
+            self.dotplot_ui.flex_track_id = normalized_id.to_string();
+        }
+        self.dotplot_ui.show_flexibility_track = true;
+        self.primary_map_mode = PrimaryMapMode::Dotplot;
+        self.invalidate_dotplot_cache();
+        self.ensure_dotplot_cache_current();
+        self.open_dotplot_window();
+    }
+
     pub fn opened_from_pool_context(&self) -> bool {
         self.opened_from_pool_context
     }
@@ -9552,7 +9575,7 @@ impl MainAreaDna {
                     );
                 } else if diag.max_mismatches > 0
                     && diag.estimated_pair_evaluations
-                    > MAX_DOTPLOT_PAIR_EVALUATIONS.saturating_mul(9) / 10
+                        > MAX_DOTPLOT_PAIR_EVALUATIONS.saturating_mul(9) / 10
                 {
                     ui.colored_label(
                         egui::Color32::from_rgb(180, 83, 9),
@@ -9613,14 +9636,21 @@ impl MainAreaDna {
             } else {
                 (view.point_count as f64 / estimated_pair_evaluations as f64) * 100.0
             };
+            let non_empty_box_bins = view
+                .boxplot_bins
+                .iter()
+                .filter(|bin| bin.hit_count > 0)
+                .count();
             ui.label(
                 egui::RichText::new(format!(
-                    "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% | query={} [{}..{}] reference={} [{}..{}]",
+                    "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} | query={} [{}..{}] reference={} [{}..{}]",
                     view.dotplot_id,
                     view.generated_at_unix_ms,
                     view.mode.as_str(),
                     view.point_count,
                     estimated_hit_fraction,
+                    non_empty_box_bins,
+                    view.boxplot_bin_count,
                     view.seq_id,
                     view.span_start_0based.saturating_add(1),
                     view.span_end_0based,
@@ -10138,6 +10168,247 @@ impl MainAreaDna {
                 egui::FontId::monospace(9.5),
                 egui::Color32::from_rgb(15, 23, 42),
             );
+        }
+    }
+
+    fn render_dotplot_boxplot_summary_ui(&self, ui: &mut egui::Ui, view: &DotplotView) {
+        if view.boxplot_bins.is_empty() {
+            ui.small(
+                "No boxplot summary stored in this payload. Recompute dotplot to generate bin summaries.",
+            );
+            return;
+        }
+        ui.label(egui::RichText::new("Reference distribution by query bins (boxplot)").strong())
+            .on_hover_text(
+                "Per-query-bin distribution of reference hit positions: whiskers=min/max, box=Q1..Q3, center line=median.",
+            );
+        let desired_w = ui.available_width().max(740.0);
+        let desired_h = 220.0;
+        let (canvas_rect, response) =
+            ui.allocate_exact_size(Vec2::new(desired_w, desired_h), egui::Sense::hover());
+        let painter = ui.painter_at(canvas_rect);
+        painter.rect_filled(canvas_rect, 6.0, egui::Color32::from_rgb(248, 250, 252));
+        painter.rect_stroke(
+            canvas_rect,
+            6.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+
+        let top_margin = 22.0;
+        let left_margin = 56.0;
+        let right_margin = 16.0;
+        let bottom_margin = 20.0;
+        let plot_rect = egui::Rect::from_min_max(
+            egui::pos2(
+                canvas_rect.left() + left_margin,
+                canvas_rect.top() + top_margin,
+            ),
+            egui::pos2(
+                canvas_rect.right() - right_margin,
+                canvas_rect.bottom() - bottom_margin,
+            ),
+        );
+        painter.rect_filled(plot_rect, 4.0, egui::Color32::from_rgb(255, 255, 255));
+        painter.rect_stroke(
+            plot_rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+        for tick_idx in 1..10 {
+            let frac = tick_idx as f32 / 10.0;
+            let x = plot_rect.left() + frac * plot_rect.width();
+            let y = plot_rect.top() + frac * plot_rect.height();
+            painter.line_segment(
+                [
+                    egui::pos2(x, plot_rect.top()),
+                    egui::pos2(x, plot_rect.bottom()),
+                ],
+                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(plot_rect.left(), y),
+                    egui::pos2(plot_rect.right(), y),
+                ],
+                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+            );
+        }
+
+        let query_span = view
+            .span_end_0based
+            .saturating_sub(view.span_start_0based)
+            .max(1);
+        let query_span_max = query_span.saturating_sub(1).max(1);
+        let ref_span = view
+            .reference_span_end_0based
+            .saturating_sub(view.reference_span_start_0based)
+            .max(1);
+        let ref_span_max = ref_span.saturating_sub(1).max(1);
+        let max_hits = view
+            .boxplot_bins
+            .iter()
+            .map(|bin| bin.hit_count)
+            .max()
+            .unwrap_or(1)
+            .max(1) as f32;
+
+        let y_from_ref = |value_0based: usize| -> f32 {
+            let local = value_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(ref_span_max);
+            plot_rect.top() + (local as f32 / ref_span_max as f32) * plot_rect.height()
+        };
+        for bin in &view.boxplot_bins {
+            if bin.hit_count == 0 {
+                continue;
+            }
+            let bin_start_local = bin
+                .query_start_0based
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max);
+            let bin_end_local = bin
+                .query_end_0based_exclusive
+                .saturating_sub(view.span_start_0based)
+                .min(query_span);
+            let x0 = plot_rect.left()
+                + (bin_start_local as f32 / query_span_max as f32) * plot_rect.width();
+            let x1_raw =
+                plot_rect.left() + (bin_end_local as f32 / query_span as f32) * plot_rect.width();
+            let x1 = (x1_raw.max(x0 + 1.0)).min(plot_rect.right());
+            let x_center = (x0 + x1) * 0.5;
+            let density = (bin.hit_count as f32 / max_hits).clamp(0.0, 1.0);
+            let fill_alpha = (60.0 + 120.0 * density).round() as u8;
+            if let (Some(q1), Some(q3)) = (bin.q1_reference_0based, bin.q3_reference_0based) {
+                let y1 = y_from_ref(q1);
+                let y3 = y_from_ref(q3);
+                let y_top = y1.min(y3);
+                let y_bottom = y1.max(y3).max(y_top + 1.0);
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(x0, y_top), egui::pos2(x1, y_bottom)),
+                    0.5,
+                    egui::Color32::from_rgba_unmultiplied(37, 99, 235, fill_alpha),
+                );
+                painter.rect_stroke(
+                    egui::Rect::from_min_max(egui::pos2(x0, y_top), egui::pos2(x1, y_bottom)),
+                    0.5,
+                    egui::Stroke::new(0.9, egui::Color32::from_rgb(29, 78, 216)),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if let (Some(min_ref), Some(max_ref)) =
+                (bin.min_reference_0based, bin.max_reference_0based)
+            {
+                let y_min = y_from_ref(min_ref);
+                let y_max = y_from_ref(max_ref);
+                painter.line_segment(
+                    [egui::pos2(x_center, y_min), egui::pos2(x_center, y_max)],
+                    egui::Stroke::new(0.9, egui::Color32::from_rgb(15, 23, 42)),
+                );
+            }
+            if let Some(median) = bin.median_reference_0based {
+                let y_median = y_from_ref(median);
+                painter.line_segment(
+                    [egui::pos2(x0, y_median), egui::pos2(x1, y_median)],
+                    egui::Stroke::new(1.2, egui::Color32::from_rgb(190, 24, 93)),
+                );
+            }
+        }
+
+        painter.text(
+            egui::pos2(plot_rect.left(), canvas_rect.top() + 4.0),
+            egui::Align2::LEFT_TOP,
+            format!(
+                "query bins={} (non-empty={})",
+                view.boxplot_bin_count,
+                view.boxplot_bins
+                    .iter()
+                    .filter(|bin| bin.hit_count > 0)
+                    .count()
+            ),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(51, 65, 85),
+        );
+        painter.text(
+            egui::pos2(plot_rect.left(), plot_rect.bottom() + 2.0),
+            egui::Align2::LEFT_TOP,
+            format!("{}", view.span_start_0based.saturating_add(1)),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(plot_rect.right(), plot_rect.bottom() + 2.0),
+            egui::Align2::RIGHT_TOP,
+            format!("{}", view.span_end_0based),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(plot_rect.left() - 4.0, plot_rect.top()),
+            egui::Align2::RIGHT_TOP,
+            format!("{}", view.reference_span_start_0based.saturating_add(1)),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(plot_rect.left() - 4.0, plot_rect.bottom()),
+            egui::Align2::RIGHT_BOTTOM,
+            format!("{}", view.reference_span_end_0based),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        if response.hovered()
+            && let Some(pointer) = response.hover_pos()
+            && plot_rect.contains(pointer)
+        {
+            let fx = ((pointer.x - plot_rect.left()) / plot_rect.width()).clamp(0.0, 1.0);
+            let query_0based =
+                view.span_start_0based + (fx * query_span_max as f32).round() as usize;
+            if let Some(bin) = view.boxplot_bins.iter().find(|bin| {
+                query_0based >= bin.query_start_0based
+                    && query_0based < bin.query_end_0based_exclusive
+            }) {
+                response.clone().on_hover_ui_at_pointer(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "query [{}..{}] hits={}",
+                            bin.query_start_0based.saturating_add(1),
+                            bin.query_end_0based_exclusive,
+                            bin.hit_count
+                        ))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                    );
+                    let summary = if bin.hit_count == 0 {
+                        "No hits in this bin".to_string()
+                    } else {
+                        format!(
+                            "ref min={} q1={} median={} q3={} max={}",
+                            bin.min_reference_0based
+                                .map(|v| v.saturating_add(1).to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            bin.q1_reference_0based
+                                .map(|v| v.saturating_add(1).to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            bin.median_reference_0based
+                                .map(|v| v.saturating_add(1).to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            bin.q3_reference_0based
+                                .map(|v| v.saturating_add(1).to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            bin.max_reference_0based
+                                .map(|v| v.saturating_add(1).to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                    };
+                    ui.label(
+                        egui::RichText::new(summary)
+                            .monospace()
+                            .size(self.feature_details_font_size()),
+                    );
+                });
+            }
         }
     }
 
@@ -11121,6 +11392,8 @@ impl MainAreaDna {
                                 self.dotplot_ui.display_density_threshold,
                                 self.dotplot_ui.display_intensity_gain,
                             );
+                            ui.add_space(6.0);
+                            self.render_dotplot_boxplot_summary_ui(ui, view);
                         }
                         None => {
                             ui.add_space(6.0);

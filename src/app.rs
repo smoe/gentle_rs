@@ -3481,6 +3481,90 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_dotplot_analysis(&mut self, seq_id: &str, dotplot_id: &str) {
+        if dotplot_id.trim().is_empty() {
+            self.open_sequence_window(seq_id);
+            return;
+        }
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.focus_dotplot_analysis(dotplot_id);
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_dotplot_analysis(dotplot_id);
+            return;
+        }
+        let exists = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if exists {
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            window.focus_dotplot_analysis(dotplot_id);
+            self.new_windows.push(window);
+        }
+    }
+
+    fn open_sequence_window_for_flexibility_track_analysis(
+        &mut self,
+        seq_id: &str,
+        track_id: &str,
+    ) {
+        if track_id.trim().is_empty() {
+            self.open_sequence_window(seq_id);
+            return;
+        }
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.focus_flexibility_track_analysis(track_id);
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_flexibility_track_analysis(track_id);
+            return;
+        }
+        let exists = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if exists {
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            window.focus_flexibility_track_analysis(track_id);
+            self.new_windows.push(window);
+        }
+    }
+
+    fn open_lineage_analysis_artifact(
+        &mut self,
+        kind: LineageAnalysisKind,
+        seq_id: &str,
+        artifact_id: &str,
+    ) {
+        match kind {
+            LineageAnalysisKind::Dotplot => {
+                self.open_sequence_window_for_dotplot_analysis(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::FlexibilityTrack => {
+                self.open_sequence_window_for_flexibility_track_analysis(seq_id, artifact_id);
+            }
+        }
+    }
+
     fn open_pool_window(&mut self, representative_seq_id: &str, pool_seq_ids: Vec<String>) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(representative_seq_id) {
             if let Some(window) = self.windows.get(&viewport_id) {
@@ -16763,6 +16847,66 @@ Error: `{err}`"
         (containers_height, arrangements_height, realized_split)
     }
 
+    fn infer_lineage_analysis_kind_from_row(row: &LineageRow) -> Option<LineageAnalysisKind> {
+        if let Some(kind) = row.analysis_kind {
+            return Some(kind);
+        }
+        if row.node_id.starts_with("analysis:dotplot:")
+            || row.origin.eq_ignore_ascii_case("dotplot")
+        {
+            return Some(LineageAnalysisKind::Dotplot);
+        }
+        if row.node_id.starts_with("analysis:flex:")
+            || row.node_id.starts_with("analysis:flexibility:")
+            || row.origin.eq_ignore_ascii_case("flexibilitytrack")
+        {
+            return Some(LineageAnalysisKind::FlexibilityTrack);
+        }
+        None
+    }
+
+    fn infer_lineage_analysis_artifact_id_from_row(row: &LineageRow) -> Option<String> {
+        if let Some(artifact_id) = row
+            .analysis_artifact_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+        {
+            return Some(artifact_id.to_string());
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:dotplot:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:flex:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:flexibility:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        let display_name = row.display_name.trim();
+        if !display_name.is_empty() {
+            return Some(display_name.to_string());
+        }
+        None
+    }
+
+    fn lineage_analysis_open_payload(
+        row: &LineageRow,
+    ) -> Option<(LineageAnalysisKind, String, String)> {
+        let kind = Self::infer_lineage_analysis_kind_from_row(row)?;
+        let artifact_id = Self::infer_lineage_analysis_artifact_id_from_row(row)?;
+        Some((kind, row.seq_id.clone(), artifact_id))
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
@@ -16791,6 +16935,7 @@ Error: `{err}`"
 
         let mut open_seq: Option<String> = None;
         let mut open_pool: Option<(String, Vec<String>)> = None;
+        let mut open_lineage_analysis: Option<(LineageAnalysisKind, String, String)> = None;
         let mut open_lineage_retrieval: Option<LineageRetrievalDescriptor> = None;
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
@@ -18464,7 +18609,14 @@ Error: `{err}`"
                                                 }
                                                 LineageNodeKind::Macro => {}
                                                 LineageNodeKind::Analysis => {
-                                                    open_seq = Some(row.seq_id.clone());
+                                                    if let Some((kind, seq_id, artifact_id)) =
+                                                        Self::lineage_analysis_open_payload(row)
+                                                    {
+                                                        open_lineage_analysis =
+                                                            Some((kind, seq_id, artifact_id));
+                                                    } else {
+                                                        open_seq = Some(row.seq_id.clone());
+                                                    }
                                                 }
                                                 LineageNodeKind::Sequence if row.pool_size > 1 => {
                                                     open_pool = Some((
@@ -18794,14 +18946,38 @@ Error: `{err}`"
                                         ui.label("-");
                                     }
                                     LineageNodeKind::Analysis => {
-                                        if ui
-                                            .button("Open Seq")
-                                            .on_hover_text(
+                                        let analysis_payload =
+                                            Self::lineage_analysis_open_payload(row);
+                                        let (label, hover) = match analysis_payload
+                                            .as_ref()
+                                            .map(|(kind, _, _)| *kind)
+                                        {
+                                            Some(LineageAnalysisKind::Dotplot) => (
+                                                "Open Dotplot",
+                                                "Open the dotplot analysis view for this sequence",
+                                            ),
+                                            Some(LineageAnalysisKind::FlexibilityTrack) => (
+                                                "Open Track",
+                                                "Open the flexibility-track analysis view for this sequence",
+                                            ),
+                                            None => (
+                                                "Open Seq",
                                                 "Open the query/source sequence in a dedicated window",
-                                            )
+                                            ),
+                                        };
+                                        if ui
+                                            .button(label)
+                                            .on_hover_text(hover)
                                             .clicked()
                                         {
-                                            open_seq = Some(row.seq_id.clone());
+                                            if let Some((kind, seq_id, artifact_id)) =
+                                                analysis_payload.clone()
+                                            {
+                                                open_lineage_analysis =
+                                                    Some((kind, seq_id, artifact_id));
+                                            } else {
+                                                open_seq = Some(row.seq_id.clone());
+                                            }
                                         }
                                     }
                                     LineageNodeKind::Sequence => {
@@ -18999,16 +19175,13 @@ Error: `{err}`"
                 } else if selected_row.kind == LineageNodeKind::Analysis {
                     ui.separator();
                     ui.heading("Selected Analysis Node");
-                    let kind = selected_row
-                        .analysis_kind
+                    let kind = Self::infer_lineage_analysis_kind_from_row(&selected_row)
                         .map(LineageAnalysisKind::as_str)
                         .unwrap_or("analysis");
                     ui.small(format!(
                         "{} ({})",
-                        selected_row
-                            .analysis_artifact_id
-                            .as_deref()
-                            .unwrap_or(&selected_row.node_id),
+                        Self::infer_lineage_analysis_artifact_id_from_row(&selected_row)
+                            .unwrap_or_else(|| selected_row.node_id.clone()),
                         kind
                     ));
                     ui.small(format!("source sequence={}", selected_row.seq_id));
@@ -19026,6 +19199,27 @@ Error: `{err}`"
                         ui.small(format!("bin_count={bin_count}"));
                     }
                     ui.horizontal(|ui| {
+                        let analysis_payload =
+                            Self::lineage_analysis_open_payload(&selected_row);
+                        let open_analysis_button_label = match analysis_payload
+                            .as_ref()
+                            .map(|(kind, _, _)| *kind)
+                        {
+                            Some(LineageAnalysisKind::Dotplot) => "Open Dotplot View",
+                            Some(LineageAnalysisKind::FlexibilityTrack) => "Open Track View",
+                            None => "Open Analysis View",
+                        };
+                        if ui
+                            .button(open_analysis_button_label)
+                            .on_hover_text("Open this analysis artifact view for the sequence")
+                            .clicked()
+                        {
+                            if let Some((kind, seq_id, artifact_id)) = analysis_payload.clone() {
+                                open_lineage_analysis = Some((kind, seq_id, artifact_id));
+                            } else {
+                                open_seq = Some(selected_row.seq_id.clone());
+                            }
+                        }
                         if ui
                             .button("Open Source Sequence")
                             .on_hover_text("Open the analysis source sequence")
@@ -19467,6 +19661,9 @@ Error: `{err}`"
 
         if let Some(descriptor) = open_lineage_retrieval {
             self.open_lineage_retrieval_descriptor(&descriptor);
+        }
+        if let Some((kind, seq_id, artifact_id)) = open_lineage_analysis {
+            self.open_lineage_analysis_artifact(kind, &seq_id, &artifact_id);
         }
         if let Some(seq_id) = open_seq {
             self.open_sequence_window(&seq_id);
@@ -23927,6 +24124,37 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             .lineage
             .seq_to_node
             .insert(seq_id.to_string(), node_id.to_string());
+    }
+
+    #[test]
+    fn lineage_analysis_open_payload_infers_missing_metadata_from_node_id() {
+        let mut dotplot_row = make_lineage_row("analysis:dotplot:tp73_dp", "seq_dotplot");
+        dotplot_row.kind = LineageNodeKind::Analysis;
+        dotplot_row.display_name.clear();
+        dotplot_row.analysis_kind = None;
+        dotplot_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&dotplot_row),
+            Some((
+                LineageAnalysisKind::Dotplot,
+                "seq_dotplot".to_string(),
+                "tp73_dp".to_string(),
+            ))
+        );
+
+        let mut flex_row = make_lineage_row("analysis:flex:tp73_fx", "seq_flex");
+        flex_row.kind = LineageNodeKind::Analysis;
+        flex_row.display_name.clear();
+        flex_row.analysis_kind = None;
+        flex_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&flex_row),
+            Some((
+                LineageAnalysisKind::FlexibilityTrack,
+                "seq_flex".to_string(),
+                "tp73_fx".to_string(),
+            ))
+        );
     }
 
     #[test]

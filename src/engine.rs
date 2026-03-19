@@ -138,7 +138,7 @@ const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
-const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v1";
+const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v2";
 const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
 pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
 const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
@@ -164,11 +164,13 @@ const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS: usize = 96;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_OBSERVATIONS: usize = 256;
 const MAX_DOTPLOT_POINTS: usize = 250_000;
+const DOTPLOT_BOXPLOT_DEFAULT_BINS: usize = 96;
 pub const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 100_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
 const DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP: usize = 5_000;
+const EXON_CONCAT_SPACER_BP: usize = 24;
 const HELPER_MCS_GENERATED_TAG: &str = "helper_mcs";
 const PUC19_MCS_SEQUENCE: &str = "GAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTT";
 const PUC18_MCS_SEQUENCE: &str = "AAGCTTGCATGCCTGCAGGTCGACTCTAGAGGATCCCCGGGTACCGAGCTCGAATTC";
@@ -3707,6 +3709,19 @@ pub struct DotplotMatchPoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct DotplotBoxplotBin {
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub hit_count: usize,
+    pub min_reference_0based: Option<usize>,
+    pub q1_reference_0based: Option<usize>,
+    pub median_reference_0based: Option<usize>,
+    pub q3_reference_0based: Option<usize>,
+    pub max_reference_0based: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct DotplotView {
     pub schema: String,
     pub dotplot_id: String,
@@ -3724,6 +3739,8 @@ pub struct DotplotView {
     pub tile_bp: Option<usize>,
     pub point_count: usize,
     pub points: Vec<DotplotMatchPoint>,
+    pub boxplot_bin_count: usize,
+    pub boxplot_bins: Vec<DotplotBoxplotBin>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5023,6 +5040,20 @@ impl ExtractRegionAnnotationProjectionBatch {
     fn feature_count(&self) -> usize {
         self.features.len()
     }
+}
+
+#[derive(Debug, Clone)]
+struct ExonConcatenatedBlock {
+    genomic_start_1based: usize,
+    genomic_end_1based: usize,
+    local_start_0based: usize,
+    local_end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ExonConcatenatedProjection {
+    sequence: String,
+    blocks: Vec<ExonConcatenatedBlock>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7326,6 +7357,93 @@ impl GentleEngine {
         batch
     }
 
+    fn build_exon_concatenated_projection(
+        extracted_sequence: &str,
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+        strand: Option<char>,
+        transcripts: &[GenomeTranscriptRecord],
+        spacer_bp: usize,
+    ) -> Option<ExonConcatenatedProjection> {
+        if extracted_end_1based < extracted_start_1based || extracted_sequence.is_empty() {
+            return None;
+        }
+        let mut clipped_exons_1based: Vec<(usize, usize)> = transcripts
+            .iter()
+            .flat_map(|record| record.exons_1based.iter())
+            .filter_map(|(start, end)| {
+                let clipped_start = (*start).max(extracted_start_1based);
+                let clipped_end = (*end).min(extracted_end_1based);
+                (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+            })
+            .collect();
+        if clipped_exons_1based.is_empty() {
+            return None;
+        }
+        clipped_exons_1based.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged_exons_1based: Vec<(usize, usize)> = vec![];
+        for (start, end) in clipped_exons_1based {
+            if let Some(last) = merged_exons_1based.last_mut()
+                && start <= last.1
+            {
+                last.1 = last.1.max(end);
+            } else {
+                merged_exons_1based.push((start, end));
+            }
+        }
+        if merged_exons_1based.is_empty() {
+            return None;
+        }
+
+        let sequence_bytes = extracted_sequence.as_bytes();
+        let mut assembled: Vec<u8> = Vec::with_capacity(sequence_bytes.len());
+        let mut blocks: Vec<ExonConcatenatedBlock> = vec![];
+        for (index, (start, end)) in merged_exons_1based.iter().enumerate() {
+            let local_start = start.saturating_sub(extracted_start_1based);
+            let local_end_exclusive = end.saturating_sub(extracted_start_1based).saturating_add(1);
+            if local_end_exclusive <= local_start || local_end_exclusive > sequence_bytes.len() {
+                continue;
+            }
+            if index > 0 && spacer_bp > 0 {
+                for _ in 0..spacer_bp {
+                    assembled.push(b'N');
+                }
+            }
+            let out_start = assembled.len();
+            assembled.extend_from_slice(&sequence_bytes[local_start..local_end_exclusive]);
+            let out_end = assembled.len();
+            blocks.push(ExonConcatenatedBlock {
+                genomic_start_1based: *start,
+                genomic_end_1based: *end,
+                local_start_0based: out_start,
+                local_end_0based_exclusive: out_end,
+            });
+        }
+        if blocks.is_empty() {
+            return None;
+        }
+
+        let mut sequence = String::from_utf8(assembled).ok()?;
+        if strand == Some('-') {
+            let total_len = sequence.len();
+            sequence = Self::reverse_complement(&sequence);
+            for block in &mut blocks {
+                let new_start = total_len.saturating_sub(block.local_end_0based_exclusive);
+                let new_end = total_len.saturating_sub(block.local_start_0based);
+                block.local_start_0based = new_start;
+                block.local_end_0based_exclusive = new_end;
+            }
+            blocks.sort_unstable_by(|a, b| {
+                a.local_start_0based.cmp(&b.local_start_0based).then(
+                    a.local_end_0based_exclusive
+                        .cmp(&b.local_end_0based_exclusive),
+                )
+            });
+        }
+
+        Some(ExonConcatenatedProjection { sequence, blocks })
+    }
+
     fn transcript_feature_from_genome_record(
         record: &GenomeTranscriptRecord,
         extracted_start_1based: usize,
@@ -8782,6 +8900,75 @@ impl GentleEngine {
             }
         }
         mismatches
+    }
+
+    fn dotplot_boxplot_quantile(sorted: &[usize], q: f64) -> Option<usize> {
+        if sorted.is_empty() {
+            return None;
+        }
+        let q = q.clamp(0.0, 1.0);
+        let idx = ((sorted.len().saturating_sub(1)) as f64 * q).round() as usize;
+        sorted.get(idx.min(sorted.len().saturating_sub(1))).copied()
+    }
+
+    fn compute_dotplot_boxplot_bins(
+        points: &[DotplotMatchPoint],
+        query_span_start_0based: usize,
+        query_span_end_0based: usize,
+        requested_bins: usize,
+    ) -> Vec<DotplotBoxplotBin> {
+        if points.is_empty() || query_span_end_0based <= query_span_start_0based {
+            return vec![];
+        }
+        let query_span = query_span_end_0based.saturating_sub(query_span_start_0based);
+        let bin_count = requested_bins.clamp(1, 512).min(query_span.max(1));
+        let bin_width = query_span.div_ceil(bin_count);
+        if bin_width == 0 {
+            return vec![];
+        }
+        let mut bins: Vec<Vec<usize>> = vec![vec![]; bin_count];
+        for point in points {
+            if point.x_0based < query_span_start_0based || point.x_0based >= query_span_end_0based {
+                continue;
+            }
+            let local = point.x_0based.saturating_sub(query_span_start_0based);
+            let idx = local
+                .checked_div(bin_width)
+                .unwrap_or(0)
+                .min(bin_count.saturating_sub(1));
+            bins[idx].push(point.y_0based);
+        }
+        let mut out = Vec::with_capacity(bin_count);
+        for (idx, mut values) in bins.into_iter().enumerate() {
+            let start = query_span_start_0based.saturating_add(idx.saturating_mul(bin_width));
+            let end = (start + bin_width).min(query_span_end_0based);
+            if values.is_empty() {
+                out.push(DotplotBoxplotBin {
+                    query_start_0based: start,
+                    query_end_0based_exclusive: end,
+                    hit_count: 0,
+                    min_reference_0based: None,
+                    q1_reference_0based: None,
+                    median_reference_0based: None,
+                    q3_reference_0based: None,
+                    max_reference_0based: None,
+                });
+                continue;
+            }
+            values.sort_unstable();
+            let hit_count = values.len();
+            out.push(DotplotBoxplotBin {
+                query_start_0based: start,
+                query_end_0based_exclusive: end,
+                hit_count,
+                min_reference_0based: values.first().copied(),
+                q1_reference_0based: Self::dotplot_boxplot_quantile(&values, 0.25),
+                median_reference_0based: Self::dotplot_boxplot_quantile(&values, 0.50),
+                q3_reference_0based: Self::dotplot_boxplot_quantile(&values, 0.75),
+                max_reference_0based: values.last().copied(),
+            });
+        }
+        out
     }
 
     fn compute_dotplot_points(

@@ -19,10 +19,17 @@ use std::sync::{
 use std::thread;
 
 #[derive(Clone, Debug)]
+enum DeferredAnalysisFocus {
+    Dotplot(String),
+    FlexibilityTrack(String),
+}
+
+#[derive(Clone, Debug)]
 pub struct WindowDna {
     main_area: MainAreaDna,
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
     deferred_load_message: Option<String>,
+    deferred_analysis_focus: Option<DeferredAnalysisFocus>,
 }
 
 impl WindowDna {
@@ -31,6 +38,7 @@ impl WindowDna {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
             pending_dna_load: None,
             deferred_load_message: None,
+            deferred_analysis_focus: None,
         }
     }
 
@@ -64,6 +72,21 @@ impl WindowDna {
             main_area,
             pending_dna_load: Some(Arc::new(Mutex::new(rx))),
             deferred_load_message: None,
+            deferred_analysis_focus: None,
+        }
+    }
+
+    fn apply_deferred_analysis_focus(&mut self) {
+        let Some(request) = self.deferred_analysis_focus.take() else {
+            return;
+        };
+        match request {
+            DeferredAnalysisFocus::Dotplot(dotplot_id) => {
+                self.main_area.focus_dotplot_analysis(&dotplot_id);
+            }
+            DeferredAnalysisFocus::FlexibilityTrack(track_id) => {
+                self.main_area.focus_flexibility_track_analysis(&track_id);
+            }
         }
     }
 
@@ -78,6 +101,7 @@ impl WindowDna {
                     self.main_area.replace_loaded_sequence(dna);
                     self.pending_dna_load = None;
                     self.deferred_load_message = None;
+                    self.apply_deferred_analysis_focus();
                 }
                 Ok(Ok(Err(message))) => {
                     self.pending_dna_load = None;
@@ -204,6 +228,25 @@ impl WindowDna {
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
         self.main_area.set_pool_context(pool_seq_ids);
+    }
+
+    pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus =
+                Some(DeferredAnalysisFocus::Dotplot(dotplot_id.to_string()));
+            return;
+        }
+        self.main_area.focus_dotplot_analysis(dotplot_id);
+    }
+
+    pub fn focus_flexibility_track_analysis(&mut self, track_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::FlexibilityTrack(
+                track_id.to_string(),
+            ));
+            return;
+        }
+        self.main_area.focus_flexibility_track_analysis(track_id);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

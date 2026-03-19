@@ -313,6 +313,10 @@ Why this works with your CLI concern:
   `ProjectState.metadata["provenance"]["genome_extractions"]` for
   `ExtractGenomeRegion` and `ExtractGenomeGene`, including source descriptors,
   checksum fields, and anchor-strand context (`anchor_strand`) when available.
+- `ExtractGenomeGene` now also auto-derives an exon-concatenated synthetic
+  companion sequence (`<seq_id>__exons`) when transcript exon annotation is
+  available; this derived sequence is lineage-linked to the extracted genomic
+  gene sequence and intentionally not recorded as one contiguous genome anchor.
 
 Practical rule:
 
@@ -1290,7 +1294,7 @@ Design constraints:
 - GUI/CLI/JS/Lua/SVG must consume the same engine payloads.
 - Feature geometry remains authoritative; analysis overlays are additive.
 
-Status (2026-03-18):
+Status (2026-03-19):
 
 - Implemented baseline:
   - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
@@ -1305,7 +1309,7 @@ Status (2026-03-18):
 Engine objects and operations:
 
 - Dotplot payload schema:
-  - `gentle.dotplot_view.v1`
+  - `gentle.dotplot_view.v2`
   - typed fields:
     - `seq_id`
     - `reference_seq_id?` (self mode keeps this `null`)
@@ -1315,6 +1319,9 @@ Engine objects and operations:
       `pair_reverse_complement`)
     - `word_size`, `step_bp`, `max_mismatches`
     - sparse/packed match points in deterministic order
+    - per-query-bin boxplot summary over reference-hit coordinates:
+      - `boxplot_bin_count`
+      - `boxplot_bins[]` with `min/q1/median/q3/max` and `hit_count`
     - optional aggregated density tiles (multiresolution)
 - Flexibility payload schema:
   - `gentle.flexibility_track.v1`

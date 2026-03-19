@@ -1129,6 +1129,139 @@ impl GentleEngine {
                     }
                 }
 
+                if let Some(extracted_sequence) = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .map(|dna| dna.get_forward_string())
+                    && let Some(exon_projection) = Self::build_exon_concatenated_projection(
+                        &extracted_sequence,
+                        selected_gene.start_1based,
+                        selected_gene.end_1based,
+                        selected_gene.strand,
+                        &transcript_records,
+                        EXON_CONCAT_SPACER_BP,
+                    )
+                {
+                    let exon_default_id = format!("{seq_id}__exons");
+                    let exon_seq_id = self.unique_seq_id(&exon_default_id);
+                    let mut exon_dna = DNAsequence::from_sequence(&exon_projection.sequence)
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not construct exon-concatenated sequence for '{}': {e}",
+                                seq_id
+                            ),
+                        })?;
+                    exon_dna.set_name(exon_seq_id.clone());
+                    let sequence_len = exon_projection.sequence.len();
+                    if sequence_len > 0 {
+                        let mut transcript_qualifiers = vec![
+                            ("chromosome".into(), Some(selected_gene.chromosome.clone())),
+                            (
+                                "genomic_start_1based".into(),
+                                Some(selected_gene.start_1based.to_string()),
+                            ),
+                            (
+                                "genomic_end_1based".into(),
+                                Some(selected_gene.end_1based.to_string()),
+                            ),
+                            (
+                                "synthetic_origin".into(),
+                                Some("exon_concatenated".to_string()),
+                            ),
+                            (
+                                "synthetic_spacer_bp".into(),
+                                Some(EXON_CONCAT_SPACER_BP.to_string()),
+                            ),
+                        ];
+                        if let Some(gene_name) = selected_gene.gene_name.as_ref() {
+                            transcript_qualifiers.push(("gene".into(), Some(gene_name.clone())));
+                            transcript_qualifiers.push(("label".into(), Some(gene_name.clone())));
+                        }
+                        if let Some(gene_id) = selected_gene.gene_id.as_ref() {
+                            transcript_qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+                            if selected_gene.gene_name.is_none() {
+                                transcript_qualifiers.push(("label".into(), Some(gene_id.clone())));
+                            }
+                        }
+                        if let Some(strand) = selected_gene.strand {
+                            transcript_qualifiers.push(("strand".into(), Some(strand.to_string())));
+                        }
+                        exon_dna.features_mut().push(gb_io::seq::Feature {
+                            kind: gb_io::seq::FeatureKind::from("mRNA"),
+                            location: gb_io::seq::Location::simple_range(0, sequence_len as i64),
+                            qualifiers: transcript_qualifiers,
+                        });
+                    }
+                    for (index, block) in exon_projection.blocks.iter().enumerate() {
+                        if block.local_end_0based_exclusive <= block.local_start_0based {
+                            continue;
+                        }
+                        let mut qualifiers = vec![
+                            (
+                                "exon_number".into(),
+                                Some((index.saturating_add(1)).to_string()),
+                            ),
+                            ("chromosome".into(), Some(selected_gene.chromosome.clone())),
+                            (
+                                "genomic_start_1based".into(),
+                                Some(block.genomic_start_1based.to_string()),
+                            ),
+                            (
+                                "genomic_end_1based".into(),
+                                Some(block.genomic_end_1based.to_string()),
+                            ),
+                            (
+                                "synthetic_origin".into(),
+                                Some("exon_concatenated".to_string()),
+                            ),
+                        ];
+                        if let Some(gene_name) = selected_gene.gene_name.as_ref() {
+                            qualifiers.push(("gene".into(), Some(gene_name.clone())));
+                            qualifiers.push(("label".into(), Some(gene_name.clone())));
+                        }
+                        if let Some(gene_id) = selected_gene.gene_id.as_ref() {
+                            qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+                            if selected_gene.gene_name.is_none() {
+                                qualifiers.push(("label".into(), Some(gene_id.clone())));
+                            }
+                        }
+                        if let Some(strand) = selected_gene.strand {
+                            qualifiers.push(("strand".into(), Some(strand.to_string())));
+                        }
+                        exon_dna.features_mut().push(gb_io::seq::Feature {
+                            kind: gb_io::seq::FeatureKind::from("exon"),
+                            location: gb_io::seq::Location::simple_range(
+                                block.local_start_0based as i64,
+                                block.local_end_0based_exclusive as i64,
+                            ),
+                            qualifiers,
+                        });
+                    }
+                    Self::prepare_sequence(&mut exon_dna);
+                    self.state.sequences.insert(exon_seq_id.clone(), exon_dna);
+                    self.add_lineage_node(
+                        &exon_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
+                    self.add_lineage_edges(
+                        &[seq_id.clone()],
+                        std::slice::from_ref(&exon_seq_id),
+                        &result.op_id,
+                        run_id,
+                    );
+                    result.created_seq_ids.push(exon_seq_id.clone());
+                    result.messages.push(format!(
+                        "Created exon-concatenated synthetic sequence '{}' from '{}' ({} merged exon block(s), spacer={} bp).",
+                        exon_seq_id,
+                        seq_id,
+                        exon_projection.blocks.len(),
+                        EXON_CONCAT_SPACER_BP
+                    ));
+                }
+
                 let requested_scope = Self::resolve_extract_region_annotation_scope(
                     annotation_scope,
                     include_genomic_annotation,
@@ -3949,6 +4082,12 @@ impl GentleEngine {
                     max_mismatches,
                     MAX_DOTPLOT_POINTS,
                 )?;
+                let boxplot_bins = Self::compute_dotplot_boxplot_bins(
+                    &points,
+                    span_start_0based,
+                    span_end_0based,
+                    DOTPLOT_BOXPLOT_DEFAULT_BINS,
+                );
                 let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
                     Self::normalize_analysis_id(raw_id, "dotplot")?
                 } else {
@@ -3971,6 +4110,8 @@ impl GentleEngine {
                     tile_bp,
                     point_count: points.len(),
                     points,
+                    boxplot_bin_count: boxplot_bins.len(),
+                    boxplot_bins,
                 };
                 let replaced = self
                     .read_dotplot_analysis_store()

@@ -1659,14 +1659,14 @@ Planned upgrades:
 
 #### D) Dotplot + promoter-flexibility view track (new, high value)
 
-Status (2026-03-18):
+Status (2026-03-19):
 
 - Implemented baseline:
   - engine operations:
     - `ComputeDotplot`
     - `ComputeFlexibilityTrack`
   - persisted metadata schemas:
-    - `gentle.dotplot_view.v1`
+    - `gentle.dotplot_view.v2`
     - `gentle.flexibility_track.v1`
   - shared-shell/CLI commands:
     - `dotplot compute|list|show`
@@ -1686,6 +1686,15 @@ Status (2026-03-18):
       as analysis nodes
     - analysis nodes are linked to query/reference source sequences by operation
       edges and carry artifact id + mode/model + count metadata in tooltips/details
+  - mapping-summary refinement (2026-03-19):
+    - dotplot payload now stores per-query-bin boxplot summaries of reference-hit
+      distributions (`boxplot_bin_count`, `boxplot_bins`)
+    - standalone Dotplot workspace renders these boxplots below the density map
+      for rapid exon-band distribution inspection
+  - gene-extraction refinement (2026-03-19):
+    - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
+      companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
+      between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
   - `RenderDotplotSvg`
   - additional overlay controls beyond crosshair baseline
@@ -1734,7 +1743,7 @@ Why now:
 Phase 1 (engine payload + compute baseline):
 
 - Add typed payload schemas:
-  - `gentle.dotplot_view.v1`
+  - `gentle.dotplot_view.v2`
   - `gentle.flexibility_track.v1`
 - Add compute operations:
   - `ComputeDotplot` (self-forward, self-revcomp, parameterized seed/mismatch)

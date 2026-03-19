@@ -36,6 +36,18 @@ impl Window {
         }
     }
 
+    pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_dotplot_analysis(dotplot_id),
+        }
+    }
+
+    pub fn focus_flexibility_track_analysis(&mut self, track_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_flexibility_track_analysis(track_id),
+        }
+    }
+
     pub fn sequence_id(&self) -> Option<String> {
         match self {
             Self::Dna(window) => window.sequence_id(),

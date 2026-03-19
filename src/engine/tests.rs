@@ -5113,7 +5113,12 @@ fn test_prepare_genome_and_extract_region_operations() {
             cache_dir: None,
         })
         .unwrap();
-    assert_eq!(extract_gene.created_seq_ids, vec!["toy_gene".to_string()]);
+    assert!(
+        extract_gene
+            .created_seq_ids
+            .iter()
+            .any(|id| id == "toy_gene")
+    );
     let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
     assert_eq!(loaded_gene.get_forward_string(), "ACGTACGTACGT");
     let provenance = engine
@@ -5284,6 +5289,12 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
             cache_dir: None,
         })
         .unwrap();
+    assert!(
+        extract_gene
+            .created_seq_ids
+            .iter()
+            .any(|id| id == "toy_gene__exons")
+    );
     assert!(extract_gene.messages.iter().any(|m| m.contains("Attached")));
     let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
     assert_eq!(loaded_gene.name().as_deref(), Some("toy_gene"));
@@ -5323,6 +5334,104 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
             .iter()
             .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("cds"))
     );
+    let exon_concat = engine
+        .state()
+        .sequences
+        .get("toy_gene__exons")
+        .expect("expected exon-concatenated synthetic sequence");
+    assert_eq!(
+        exon_concat.get_forward_string(),
+        format!("ACGT{}ACGT", "N".repeat(24))
+    );
+    assert_eq!(
+        exon_concat
+            .features()
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let ann = root.join("toy.gtf");
+    fs::write(&fasta, ">chr1\nAAAACCCCGGGGTTTT\n").unwrap();
+    fs::write(
+        &ann,
+        concat!(
+            "chr1\tsrc\tgene\t1\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t1\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t1\t4\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t9\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+        ),
+    )
+    .unwrap();
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        ann.display(),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).unwrap();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::ExtractGenomeGene {
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "NEG1".to_string(),
+            occurrence: None,
+            output_id: Some("toy_gene_neg".to_string()),
+            annotation_scope: Some(GenomeAnnotationScope::Core),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+        })
+        .unwrap();
+    let exon_concat = engine
+        .state()
+        .sequences
+        .get("toy_gene_neg__exons")
+        .expect("expected negative-strand exon-concatenated synthetic sequence");
+    assert_eq!(
+        exon_concat.get_forward_string(),
+        format!("CCCC{}TTTT", " ".repeat(24))
+    );
+    let exon_features: Vec<_> = exon_concat
+        .features()
+        .iter()
+        .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+        .collect();
+    assert_eq!(exon_features.len(), 2);
+    let first_genomic_start = exon_features[0]
+        .qualifier_values("genomic_start_1based".into())
+        .next()
+        .unwrap_or_default();
+    assert_eq!(first_genomic_start, "9");
 }
 
 #[test]
@@ -7221,7 +7330,12 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
             cache_dir: None,
         })
         .unwrap();
-    assert_eq!(extract_gene.created_seq_ids, vec!["helper_bla".to_string()]);
+    assert!(
+        extract_gene
+            .created_seq_ids
+            .iter()
+            .any(|id| id == "helper_bla")
+    );
     let seq = engine.state().sequences.get("helper_bla").unwrap();
     assert!(seq.len() > 0);
 
@@ -9215,6 +9329,9 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert_eq!(view.word_size, 4);
     assert!(!view.points.is_empty());
     assert_eq!(view.point_count, view.points.len());
+    assert_eq!(view.boxplot_bin_count, view.boxplot_bins.len());
+    assert!(view.boxplot_bin_count > 0);
+    assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
 }
 
 #[test]
@@ -9262,6 +9379,8 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
     assert_eq!(view.reference_span_end_0based, 15);
     assert_eq!(view.mode, DotplotMode::PairForward);
     assert!(!view.points.is_empty());
+    assert_eq!(view.boxplot_bin_count, view.boxplot_bins.len());
+    assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
 }
 
 #[test]
@@ -9362,7 +9481,10 @@ fn test_compute_dotplot_exact_seed_large_pair_grid_bypasses_pair_eval_guard() {
     let view = engine
         .get_dotplot_view("pair_exact_large")
         .expect("pair exact large view");
-    assert!(view.point_count > 0, "expected deterministic exact-seed hits");
+    assert!(
+        view.point_count > 0,
+        "expected deterministic exact-seed hits"
+    );
 }
 
 #[test]

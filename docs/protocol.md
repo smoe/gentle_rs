@@ -1342,7 +1342,12 @@ Dotplot + flexibility operation contract (implemented baseline):
   - pair modes require `reference_seq_id` and use the optional
     `reference_span_start_0based` / `reference_span_end_0based` for the
     y/reference axis.
-  - stores payload schema `gentle.dotplot_view.v1`
+  - stores payload schema `gentle.dotplot_view.v2`
+  - payload includes:
+    - sparse match points (`points[]`)
+    - per-query-bin reference-distribution boxplot summary
+      (`boxplot_bin_count`, `boxplot_bins[]` with
+      `min/q1/median/q3/max + hit_count`)
   - guardrails:
     - `word_size >= 1`
     - `step_bp >= 1`

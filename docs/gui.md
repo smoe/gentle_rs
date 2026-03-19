@@ -143,6 +143,11 @@ Primary map modes (linear topology):
       - if no cells pass visibility, the canvas shows an explicit message instead
         of a silent white panel
     - optional paired flexibility-track panel (`AT richness` / `AT skew`)
+    - boxplot summary panel:
+      - rendered below the density map
+      - each query bin shows reference-hit distribution
+        (`min/q1/median/q3/max` + hit count)
+      - useful for quickly spotting exon-band structure in cDNA-vs-genomic maps
     - linked crosshair:
       - hover for live `x/y` coordinates in the plotted span
       - click to lock crosshair
@@ -1584,6 +1589,10 @@ Recommended flow:
      - default (`annotation scope=core`) attaches gene + transcript context
      - `annotation scope=full` additionally attaches exon + CDS subfeatures
      - `annotation scope=none` (or unchecked include flag) disables transfer
+   - when transcript exon annotation is available, extraction also auto-creates
+     an exon-concatenated synthetic companion sequence (`<seq_id>__exons`) with
+     deterministic `N` spacers between merged exon blocks; this is useful as a
+     lower-noise reference for cDNA dotplot workflows
    - coordinates are 1-based and inclusive
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
