@@ -1841,9 +1841,18 @@ Post-baseline follow-ups:
     - stale worker-message rejection by `job_id`
     - idempotent cancellation handlers reused by dialogs and jobs panel
     - explicit retry events from jobs panel actions
+    - recent job-event history now persists in project metadata
+      (`gui.background_job_history`, schema
+      `gentle.gui_background_job_history.v1`) and is restored on project load
+      / reset paths.
+    - retry actions from the Jobs panel now capture deterministic argument
+      snapshots (per job family) and persist them in the same metadata payload
+      for reproducibility/debugging across restarts.
+    - background-jobs retry snapshot list now supports kind/text filtering and
+      filtered JSON export for larger-history triage handoff.
   - Next:
-    - optionally persist recent job-event history across restarts
-    - track retry argument snapshots for reproducibility/debugging
+    - optionally add snapshot pruning/retention controls for long-running
+      projects with large retry histories
 
 ### Current branch blockers (must clear first)
 

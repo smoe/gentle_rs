@@ -459,6 +459,18 @@ Tool-parity rule:
   contracts.
 - No MCP-only biology/UI logic branches are allowed.
 
+Data-boundary and trust model:
+
+- `gentle_mcp` reads/writes project state via the resolved `state_path`
+  (default `.gentle_state.json`).
+- It does not attach to another running GUI process's in-memory engine state.
+- Unsaved GUI-only edits are therefore not visible to MCP until they are
+  persisted to disk and read from that same state path.
+- If MCP is pointed at the same project state file used by active GUI/CLI
+  workflows, that shared visibility is intentional.
+- Treat connected MCP clients as trusted local operators; `confirm=true`
+  expresses explicit mutating intent but is not an authentication boundary.
+
 Run:
 
 ```bash

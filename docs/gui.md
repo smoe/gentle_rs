@@ -1158,6 +1158,10 @@ In `Main window -> Graph` view:
 - Background Jobs panel:
   - open via `Window -> Show Background Jobs`
   - central place for progress, cancel/retry actions, and recent completion/error events
+  - retry actions capture structured argument snapshots (shown in-panel) and
+    persist them with project metadata for restart-safe debugging
+  - retry snapshot list supports kind/text filtering and filtered JSON export
+    for triage handoff or offline analysis
 
 ## Linear map conventions
 
