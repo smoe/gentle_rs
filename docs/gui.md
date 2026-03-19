@@ -1176,6 +1176,9 @@ In `Main window -> Graph` view:
     (action/filter/counts/archive path) visible in-panel for traceability
   - cleanup audit section provides a dedicated JSON report export action;
     report export is read-only and does not append additional audit entries
+  - cleanup audit history supports action/text filtering plus independent
+    retention tuning (`retain newest N`, `prune oldest`, `clear all`) for
+    bounded, searchable long-running session traces
 
 ## Linear map conventions
 

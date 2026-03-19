@@ -1866,9 +1866,12 @@ Post-baseline follow-ups:
       entries (action/filter/counts/archive path) rendered in the Jobs panel.
     - cleanup-audit history now has a dedicated JSON report export action; this
       export is intentionally read-only and does not self-append audit entries.
+    - cleanup-audit history now supports action/text filtering and independent
+      retention controls (`retain newest N`, prune oldest, clear-all) so
+      long-running sessions can keep bounded, searchable audit trails.
   - Next:
-    - optionally add filter/search controls and retention policy tuning for
-      cleanup-audit history in the Jobs panel
+    - optionally add filtered cleanup-audit report export and a staged
+      type-to-confirm gate for audit `clear all`
 
 ### Current branch blockers (must clear first)
 
