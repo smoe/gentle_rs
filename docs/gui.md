@@ -1174,11 +1174,14 @@ In `Main window -> Graph` view:
     phrase (for example `delete 3`) before the confirm button is enabled
   - successful destructive cleanup actions append persisted audit entries
     (action/filter/counts/archive path) visible in-panel for traceability
-  - cleanup audit section provides a dedicated JSON report export action;
-    report export is read-only and does not append additional audit entries
+  - cleanup audit section provides filtered JSON report export using current
+    action/text filters; report export is read-only and does not append
+    additional audit entries
   - cleanup audit history supports action/text filtering plus independent
     retention tuning (`retain newest N`, `prune oldest`, `clear all`) for
     bounded, searchable long-running session traces
+  - cleanup audit `clear all` now uses staged type-to-confirm before final
+    removal
 
 ## Linear map conventions
 

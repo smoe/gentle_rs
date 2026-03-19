@@ -1869,9 +1869,12 @@ Post-baseline follow-ups:
     - cleanup-audit history now supports action/text filtering and independent
       retention controls (`retain newest N`, prune oldest, clear-all) so
       long-running sessions can keep bounded, searchable audit trails.
+    - cleanup-audit report export now respects current audit filters (action +
+      text), and audit `clear all` now uses staged type-to-confirm before
+      removal.
   - Next:
-    - optionally add filtered cleanup-audit report export and a staged
-      type-to-confirm gate for audit `clear all`
+    - optionally add dual-mode cleanup-audit export (`filtered` vs `full`) and
+      quick-filter chips for common audit actions
 
 ### Current branch blockers (must clear first)
 
