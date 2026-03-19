@@ -8,13 +8,14 @@ use crate::{
         CandidateRecord, CandidateSetOperator, DisplayTarget, DotplotMode, DotplotView, Engine,
         EngineError, ErrorCode, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PcrPrimerSpec,
-        PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
-        PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationProfile,
-        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
-        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary,
-        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
+        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
+        OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
+        PrimerDesignPairConstraint, PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset,
+        TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -322,8 +323,10 @@ struct DotplotComputeDiagnostics {
     mode: DotplotMode,
     query_span_start_0based: usize,
     query_span_end_0based: usize,
+    query_span_bp: usize,
     reference_span_start_0based: usize,
     reference_span_end_0based: usize,
+    reference_span_bp: usize,
     word_size: usize,
     step_bp: usize,
     max_mismatches: usize,
@@ -770,8 +773,8 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            DotplotMode, Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation,
-            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
+            DotplotMode, DotplotView, Engine, GentleEngine, LinearSequenceLetterLayoutMode,
+            Operation, PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
             ProjectState, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
@@ -2461,6 +2464,40 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_reference_hit_envelope_applies_padding_and_clamp() {
+        let mut view = DotplotView::default();
+        view.reference_span_start_0based = 1_000;
+        view.reference_span_end_0based = 2_000;
+        view.points = vec![
+            crate::engine::DotplotMatchPoint {
+                x_0based: 20,
+                y_0based: 1_120,
+                mismatches: 0,
+            },
+            crate::engine::DotplotMatchPoint {
+                x_0based: 40,
+                y_0based: 1_360,
+                mismatches: 1,
+            },
+        ];
+        assert_eq!(
+            MainAreaDna::dotplot_reference_hit_envelope(&view, 50),
+            Some((1_070, 1_411))
+        );
+    }
+
+    #[test]
+    fn dotplot_reference_hit_envelope_returns_none_without_points() {
+        let mut view = DotplotView::default();
+        view.reference_span_start_0based = 1_000;
+        view.reference_span_end_0based = 2_000;
+        assert_eq!(
+            MainAreaDna::dotplot_reference_hit_envelope(&view, 100),
+            None
+        );
+    }
+
+    #[test]
     fn splicing_lane_index_at_y_returns_expected_lane() {
         assert_eq!(
             MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
@@ -2579,6 +2616,9 @@ const SPLICING_TRANSITION_EAGER_CELL_THRESHOLD: usize = 6_400;
 const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
 const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
 const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
+const DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS: usize = 80_000;
+const DOTPLOT_SPARSE_POINT_HINT_THRESHOLD: usize = 80;
+const DOTPLOT_HIT_ENVELOPE_PADDING_BP: usize = 250;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
     ("NEB 100bp + 1kb", "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"),
@@ -8620,6 +8660,32 @@ impl MainAreaDna {
         ids
     }
 
+    fn comparable_pair_forward_point_count(&self, view: &DotplotView) -> Option<usize> {
+        if !matches!(view.mode, DotplotMode::PairReverseComplement) {
+            return None;
+        }
+        let Some(engine) = self.engine.as_ref() else {
+            return None;
+        };
+        let Ok(guard) = engine.read() else {
+            return None;
+        };
+        guard
+            .list_dotplot_views(Some(view.seq_id.as_str()))
+            .into_iter()
+            .filter(|row| row.mode == DotplotMode::PairForward)
+            .filter(|row| row.reference_seq_id == view.reference_seq_id)
+            .filter(|row| row.span_start_0based == view.span_start_0based)
+            .filter(|row| row.span_end_0based == view.span_end_0based)
+            .filter(|row| row.reference_span_start_0based == view.reference_span_start_0based)
+            .filter(|row| row.reference_span_end_0based == view.reference_span_end_0based)
+            .filter(|row| row.word_size == view.word_size)
+            .filter(|row| row.step_bp == view.step_bp)
+            .filter(|row| row.max_mismatches == view.max_mismatches)
+            .max_by_key(|row| (row.generated_at_unix_ms, row.dotplot_id.clone()))
+            .map(|row| row.point_count)
+    }
+
     fn dotplot_mode_requires_reference(mode: DotplotMode) -> bool {
         matches!(
             mode,
@@ -8650,6 +8716,65 @@ impl MainAreaDna {
                 .unwrap_or(0)
                 .saturating_add(1)
         }
+    }
+
+    fn dotplot_reference_hit_envelope(
+        view: &DotplotView,
+        padding_bp: usize,
+    ) -> Option<(usize, usize)> {
+        if view.points.is_empty()
+            || view.reference_span_end_0based <= view.reference_span_start_0based
+        {
+            return None;
+        }
+        let mut min_hit = usize::MAX;
+        let mut max_hit = 0usize;
+        for point in &view.points {
+            min_hit = min_hit.min(point.y_0based);
+            max_hit = max_hit.max(point.y_0based);
+        }
+        if min_hit == usize::MAX {
+            return None;
+        }
+        let ref_start = view.reference_span_start_0based;
+        let ref_end = view.reference_span_end_0based;
+        let padded_start = min_hit.saturating_sub(padding_bp).max(ref_start);
+        let padded_end = max_hit
+            .saturating_add(1)
+            .saturating_add(padding_bp)
+            .min(ref_end);
+        if padded_end <= padded_start {
+            return None;
+        }
+        Some((padded_start, padded_end))
+    }
+
+    fn fit_dotplot_reference_span_to_loaded_hits(&mut self) -> bool {
+        self.ensure_dotplot_cache_current();
+        let Some(view) = self.dotplot_cached_view.clone() else {
+            self.op_status = "No loaded dotplot payload to fit.".to_string();
+            return false;
+        };
+        if !Self::dotplot_mode_requires_reference(view.mode) {
+            self.op_status =
+                "Reference span fitting is only available in pair dotplot modes.".to_string();
+            return false;
+        }
+        let Some((fit_start, fit_end)) =
+            Self::dotplot_reference_hit_envelope(&view, DOTPLOT_HIT_ENVELOPE_PADDING_BP)
+        else {
+            self.op_status = format!("Dotplot '{}' has no hit envelope to fit.", view.dotplot_id);
+            return false;
+        };
+        self.dotplot_ui.reference_span_start_0based = fit_start.to_string();
+        self.dotplot_ui.reference_span_end_0based = fit_end.to_string();
+        self.dotplot_last_compute_status = format!(
+            "Fitted reference span to hit envelope: [{}..{}] (padding={} bp). Recompute to refresh payload.",
+            fit_start.saturating_add(1),
+            fit_end,
+            DOTPLOT_HIT_ENVELOPE_PADDING_BP
+        );
+        true
     }
 
     fn dotplot_quantile(sorted_values: &[f32], q: f32) -> f32 {
@@ -8889,8 +9014,10 @@ impl MainAreaDna {
             mode,
             query_span_start_0based,
             query_span_end_0based,
+            query_span_bp,
             reference_span_start_0based,
             reference_span_end_0based,
+            reference_span_bp,
             word_size,
             step_bp,
             max_mismatches,
@@ -9423,6 +9550,34 @@ impl MainAreaDna {
                         egui::Color32::from_rgb(180, 83, 9),
                         "Estimated pair evaluations are zero; reduce word size or increase span.",
                     );
+                } else if diag.max_mismatches > 0
+                    && diag.estimated_pair_evaluations
+                    > MAX_DOTPLOT_PAIR_EVALUATIONS.saturating_mul(9) / 10
+                {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        format!(
+                            "Request is near compute guardrail ({} of {} pair evaluations). If this fails, increase step_bp or reduce query/reference span.",
+                            diag.estimated_pair_evaluations, MAX_DOTPLOT_PAIR_EVALUATIONS
+                        ),
+                    );
+                } else if diag.max_mismatches == 0
+                    && diag.estimated_pair_evaluations > MAX_DOTPLOT_PAIR_EVALUATIONS
+                {
+                    ui.small(
+                        "Large exact-seed request detected. Engine uses indexed exact matching for mismatches=0, so this can still complete without brute-force pair loops.",
+                    );
+                }
+                if Self::dotplot_mode_requires_reference(diag.mode)
+                    && diag.reference_span_bp > diag.query_span_bp.saturating_mul(6)
+                    && diag.word_size >= 10
+                    && diag.step_bp >= 10
+                    && diag.max_mismatches == 0
+                {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        "Current settings are very strict for a wide reference span. For cDNA-vs-genomic controls, try smaller word/step or allow mismatches.",
+                    );
                 }
             }
             Err(message) => {
@@ -9497,6 +9652,42 @@ impl MainAreaDna {
                         egui::Color32::from_rgb(180, 83, 9),
                         "Reverse-complement self-pair mode is an inverted-repeat scan. Zero hits can be valid with sparse sampling/strict seeds; try smaller step and word for sensitivity.",
                     );
+                }
+            } else if Self::dotplot_mode_requires_reference(view.mode)
+                && view.point_count <= DOTPLOT_SPARSE_POINT_HINT_THRESHOLD
+            {
+                if matches!(view.mode, DotplotMode::PairForward) {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        "Sparse pair_forward hits can indicate strand/orientation mismatch (common for cDNA vs genomic). Try pair_reverse_complement.",
+                    );
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        "Pair reverse-complement is still sparse. Increase sensitivity (smaller word/step, allow mismatches) or restrict reference span.",
+                    );
+                    if let Some(forward_hits) = self.comparable_pair_forward_point_count(view)
+                        && forward_hits > 0
+                    {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            format!(
+                                "Pair-forward has {forward_hits} hits for identical spans/seed settings. This typically means query and reference are already oriented in the same biological direction for this extraction."
+                            ),
+                        );
+                    }
+                }
+                if let Some((hit_start, hit_end)) = Self::dotplot_reference_hit_envelope(view, 0) {
+                    let left_gap = hit_start.saturating_sub(view.reference_span_start_0based);
+                    let right_gap = view.reference_span_end_0based.saturating_sub(hit_end);
+                    if left_gap <= DOTPLOT_HIT_ENVELOPE_PADDING_BP / 2
+                        || right_gap <= DOTPLOT_HIT_ENVELOPE_PADDING_BP / 2
+                    {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            "Detected hits are near reference-span edge. Use 'Fit ref span to hits' and recompute for a less edge-compressed map.",
+                        );
+                    }
                 }
             }
         } else {
@@ -9654,6 +9845,7 @@ impl MainAreaDna {
         let density_threshold = density_threshold.clamp(0.0, 0.99);
         let intensity_gain = intensity_gain.clamp(0.1, 16.0);
         let mut rendered_cells = 0usize;
+        let mut visible_cells: HashMap<(i32, i32), egui::Color32> = HashMap::new();
         for ((x_cell, y_cell), (count, min_mismatch)) in &cells {
             let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
             if density_raw < density_threshold {
@@ -9684,7 +9876,28 @@ impl MainAreaDna {
                 0.0,
                 color,
             );
+            visible_cells.insert((*x_cell, *y_cell), color);
             rendered_cells = rendered_cells.saturating_add(1);
+        }
+        if !visible_cells.is_empty() && visible_cells.len() <= DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS {
+            let cell_w = dotplot_rect.width() / cols as f32;
+            let cell_h = dotplot_rect.height() / rows as f32;
+            let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+            for ((x_cell, y_cell), color) in &visible_cells {
+                for dy in [-1, 0, 1] {
+                    let neighbor = (*x_cell + 1, *y_cell + dy);
+                    if visible_cells.contains_key(&neighbor) {
+                        let x0 = dotplot_rect.left() + (*x_cell as f32 + 0.5) * cell_w;
+                        let y0 = dotplot_rect.top() + (*y_cell as f32 + 0.5) * cell_h;
+                        let x1 = dotplot_rect.left() + (neighbor.0 as f32 + 0.5) * cell_w;
+                        let y1 = dotplot_rect.top() + (neighbor.1 as f32 + 0.5) * cell_h;
+                        painter.line_segment(
+                            [egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                            egui::Stroke::new(stroke_width, color.gamma_multiply(0.55)),
+                        );
+                    }
+                }
+            }
         }
         if rendered_cells == 0 {
             painter.text(
@@ -10142,6 +10355,16 @@ impl MainAreaDna {
                                     "Choose reference sequence from currently loaded project sequences",
                                 );
                             }
+                            if ui
+                                .small_button("Fit ref span")
+                                .on_hover_text(
+                                    "Adjust hidden ref_start/ref_end to loaded hit envelope (+padding). Use Dotplot Window to inspect exact values, then recompute.",
+                                )
+                                .clicked()
+                                && self.fit_dotplot_reference_span_to_loaded_hits()
+                            {
+                                save_state = true;
+                            }
                         });
                     }
 
@@ -10595,6 +10818,16 @@ impl MainAreaDna {
                                     "Leave empty to use full reference length as end",
                                 )
                                 .changed()
+                            {
+                                save_state = true;
+                            }
+                            if ui
+                                .small_button("Fit ref span to hits")
+                                .on_hover_text(
+                                    "Set ref_start/ref_end to the loaded hit envelope (+padding) so exon blocks are not pinned to the plot margin. Recompute afterwards.",
+                                )
+                                .clicked()
+                                && self.fit_dotplot_reference_span_to_loaded_hits()
                             {
                                 save_state = true;
                             }

@@ -86,6 +86,7 @@ const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
+const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 220.0;
 const DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION: f32 = 420.0 / (420.0 + 220.0);
 const DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION: f32 = 0.58;
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
@@ -13650,8 +13651,9 @@ Error: `{err}`"
                     .filter(|value| value.is_finite())
                     .map(|value| value.clamp(0.2, 0.9));
                 if workspace.graph_area_height.is_finite() {
-                    self.lineage_graph_area_height =
-                        workspace.graph_area_height.clamp(280.0, 2400.0);
+                    self.lineage_graph_area_height = workspace
+                        .graph_area_height
+                        .clamp(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, 2400.0);
                 }
                 if workspace.container_area_height.is_finite() {
                     self.lineage_container_area_height =
@@ -13740,7 +13742,9 @@ Error: `{err}`"
                     .clamp(0.2, 0.8),
             ),
             zoom: self.lineage_graph_zoom.clamp(0.35, 4.0),
-            graph_area_height: self.lineage_graph_area_height.clamp(280.0, 2400.0),
+            graph_area_height: self
+                .lineage_graph_area_height
+                .clamp(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, 2400.0),
             container_area_height: self.lineage_container_area_height.clamp(120.0, 1600.0),
             scroll_offset: [
                 self.lineage_graph_scroll_offset.x.max(0.0),
@@ -16717,7 +16721,7 @@ Error: `{err}`"
         total_available_height: f32,
         preferred_split_fraction: f32,
     ) -> (f32, f32, f32) {
-        let min_graph_height = 280.0;
+        let min_graph_height = LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT;
         let min_container_height = 120.0;
         let min_total_height = min_graph_height + min_container_height;
         let total_height = if total_available_height.is_finite() {
@@ -16793,7 +16797,9 @@ Error: `{err}`"
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
-        let mut graph_area_height = self.lineage_graph_area_height.clamp(280.0, 2400.0);
+        let mut graph_area_height = self
+            .lineage_graph_area_height
+            .clamp(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, 2400.0);
         let mut container_area_height = self.lineage_container_area_height.clamp(120.0, 1600.0);
         let mut container_arrangement_split_fraction = self
             .lineage_container_arrangement_split_fraction
@@ -17248,7 +17254,7 @@ Error: `{err}`"
             let lineage_edges = &projected_graph_edges;
             let op_label_by_id = &graph_op_label_by_id;
             let graph_panel_width = ui.available_width().max(1.0);
-            let graph_panel_height = graph_area_height.max(280.0);
+            let graph_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
             ui.allocate_ui_with_layout(
                 egui::vec2(graph_panel_width, graph_panel_height),
                 egui::Layout::top_down(egui::Align::Min),
@@ -18506,7 +18512,7 @@ Error: `{err}`"
             );
         } else {
             let table_panel_width = ui.available_width().max(1.0);
-            let table_panel_height = graph_area_height.max(280.0);
+            let table_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
             let mut toggle_group_collapse_id: Option<String> = None;
             ui.allocate_ui_with_layout(
                 egui::vec2(table_panel_width, table_panel_height),
@@ -19096,13 +19102,16 @@ Error: `{err}`"
                 let drag_delta_y = current_y - start_y;
                 let total_height = (graph_area_height + container_area_height).max(400.0);
                 let drag_base_graph_height =
-                    (total_height * drag_origin_split.clamp(0.2, 0.9)).clamp(280.0, total_height - 80.0);
+                    (total_height * drag_origin_split.clamp(0.2, 0.9))
+                        .clamp(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, total_height - 80.0);
                 let next_graph_height =
-                    (drag_base_graph_height + drag_delta_y).clamp(280.0, total_height - 80.0);
+                    (drag_base_graph_height + drag_delta_y)
+                        .clamp(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, total_height - 80.0);
                 if (next_graph_height - graph_area_height).abs() > f32::EPSILON {
                     graph_area_height = next_graph_height;
                     container_area_height =
-                        (total_height - graph_area_height).clamp(80.0, total_height - 280.0);
+                        (total_height - graph_area_height)
+                            .clamp(80.0, total_height - LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
                     main_split_fraction = (graph_area_height / total_height).clamp(0.2, 0.9);
                     self.lineage_main_split_fraction = main_split_fraction;
                 }
@@ -22523,9 +22532,9 @@ mod tests {
     #[test]
     fn lineage_panel_split_clamps_for_small_height_and_round_trips_via_workspace() {
         let (graph_h, container_h, split) = GENtleApp::normalized_lineage_panel_heights(80.0, 0.95);
-        assert!((graph_h - 280.0).abs() <= 0.0001);
+        assert!((graph_h - 220.0).abs() <= 0.0001);
         assert!((container_h - 120.0).abs() <= 0.0001);
-        assert!((split - (280.0 / 400.0)).abs() <= 0.0001);
+        assert!((split - (220.0 / 340.0)).abs() <= 0.0001);
 
         let mut app = GENtleApp::default();
         app.lineage_graph_area_height = graph_h;
@@ -22552,9 +22561,9 @@ mod tests {
         reloaded.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         reloaded.load_lineage_graph_workspace_from_state();
 
-        assert!((reloaded.lineage_graph_area_height - 280.0).abs() <= 0.0001);
+        assert!((reloaded.lineage_graph_area_height - 220.0).abs() <= 0.0001);
         assert!((reloaded.lineage_container_area_height - 120.0).abs() <= 0.0001);
-        assert!((reloaded.lineage_main_split_fraction - (280.0 / 400.0)).abs() <= 0.0001);
+        assert!((reloaded.lineage_main_split_fraction - (220.0 / 340.0)).abs() <= 0.0001);
     }
 
     #[test]

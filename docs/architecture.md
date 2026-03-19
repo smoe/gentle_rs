@@ -1339,6 +1339,9 @@ Low-latency strategy (engine-first):
 
 - Use indexed seeds (k-mer/minimizer style) for candidate match discovery, not
   O(n^2) brute-force raster loops.
+- Implemented baseline optimization:
+  - when `ComputeDotplot.max_mismatches == 0`, engine uses indexed exact-seed
+    matching over sampled windows instead of brute-force pairwise comparisons.
 - Build multiresolution tiles so initial view is coarse+fast; refine only for
   visible region/zoom level.
 - Cache results in project metadata keyed by `(seq_id, span, params_hash)`.
@@ -1353,9 +1356,12 @@ GUI contract (implemented baseline + follow-ups):
   - sequence-window `Dotplot map` compact launcher (separate from map background)
   - dedicated standalone `Dotplot` workspace window (full controls + rendering)
   - bounded-span compute controls (compact launcher + workspace)
+  - pair-mode helper to fit `ref_start/ref_end` to loaded hit envelope (+padding)
   - linked hover/locked crosshair behavior
   - pair-mode rendering with separate query/reference axis spans
   - query-axis selection sync in pair mode
+  - sparse pairwise diagnostics (orientation hinting, strict-parameter warning,
+    reference-edge warning)
 - Follow-ups:
   - optional overlay mode with low alpha while keeping dedicated panel mode as
     primary for readability

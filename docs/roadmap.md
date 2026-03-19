@@ -1707,6 +1707,14 @@ Latest GUI baseline (2026-03-09):
   - optional paired flexibility-track panel (`flex_track_id`, model/bin/smooth)
   - linked crosshair baseline (hover + click-to-lock + sequence-selection sync)
   - density-render safeguards (point sampling cap for responsive redraws)
+  - pairwise sparse-result diagnostics (orientation hinting, strict-parameter
+    warnings, reference-edge warnings)
+  - `Fit ref span to hits` helper to center pairwise signal without manual
+    coordinate trial-and-error
+  - expanded engine pair-evaluation guardrail (now `100,000,000`) for larger
+    pairwise spans before requiring coarser sampling
+  - exact-seed acceleration for `mismatches=0` requests (indexed k-mer matching
+    path avoids brute-force pair loops at low step sizes)
 
 Goal:
 

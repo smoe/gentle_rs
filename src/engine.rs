@@ -164,7 +164,7 @@ const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS: usize = 96;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_OBSERVATIONS: usize = 256;
 const MAX_DOTPLOT_POINTS: usize = 250_000;
-const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 5_000_000;
+pub const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 100_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -8831,6 +8831,51 @@ impl GentleEngine {
         let reference_positions: Vec<usize> = (0..=reference_sequence.len() - word_size)
             .step_by(step_bp)
             .collect();
+
+        if max_mismatches == 0 {
+            let mut reference_index: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+            for y_start in &reference_positions {
+                let key: Vec<u8> = match mode {
+                    DotplotMode::SelfForward | DotplotMode::PairForward => reference_sequence
+                        [*y_start..*y_start + word_size]
+                        .iter()
+                        .map(|b| b.to_ascii_uppercase())
+                        .collect(),
+                    DotplotMode::SelfReverseComplement | DotplotMode::PairReverseComplement => {
+                        Self::reverse_complement_bytes(
+                            &reference_sequence[*y_start..*y_start + word_size],
+                        )
+                        .into_iter()
+                        .map(|b| b.to_ascii_uppercase())
+                        .collect()
+                    }
+                };
+                reference_index.entry(key).or_default().push(*y_start);
+            }
+            let mut points: Vec<DotplotMatchPoint> = vec![];
+            let mut truncated = false;
+            for x_start in &query_positions {
+                let left_key: Vec<u8> = query_sequence[*x_start..*x_start + word_size]
+                    .iter()
+                    .map(|b| b.to_ascii_uppercase())
+                    .collect();
+                if let Some(y_hits) = reference_index.get(&left_key) {
+                    for y_start in y_hits {
+                        points.push(DotplotMatchPoint {
+                            x_0based: query_span_start_0based + *x_start,
+                            y_0based: reference_span_start_0based + *y_start,
+                            mismatches: 0,
+                        });
+                        if points.len() >= max_points {
+                            truncated = true;
+                            return Ok((points, truncated));
+                        }
+                    }
+                }
+            }
+            return Ok((points, truncated));
+        }
+
         let pair_evaluations = query_positions
             .len()
             .saturating_mul(reference_positions.len())

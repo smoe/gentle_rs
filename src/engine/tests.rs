@@ -9265,6 +9265,107 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
 }
 
 #[test]
+fn test_compute_pair_reverse_complement_maps_expected_antidiagonal_hits() {
+    let query = "ACGTTGCAAGTC";
+    let reference = GentleEngine::reverse_complement(query);
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence(query).expect("query"),
+    );
+    state.sequences.insert(
+        "ref".to_string(),
+        DNAsequence::from_sequence(&reference).expect("reference"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "query".to_string(),
+            reference_seq_id: Some("ref".to_string()),
+            span_start_0based: Some(0),
+            span_end_0based: Some(query.len()),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(reference.len()),
+            mode: DotplotMode::PairReverseComplement,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("pair_revcomp".to_string()),
+        })
+        .expect("compute pair reverse-complement dotplot");
+
+    let view = engine
+        .get_dotplot_view("pair_revcomp")
+        .expect("pair reverse-complement view");
+    assert_eq!(view.mode, DotplotMode::PairReverseComplement);
+    let expected_windows = query.len().saturating_sub(4).saturating_add(1);
+    assert_eq!(view.point_count, expected_windows);
+    for x in 0..expected_windows {
+        let expected_y = query.len().saturating_sub(4).saturating_sub(x);
+        assert!(
+            view.points
+                .iter()
+                .any(|point| point.x_0based == x && point.y_0based == expected_y),
+            "missing expected anti-diagonal hit for x={x}, y={expected_y}"
+        );
+    }
+}
+
+#[test]
+fn test_compute_dotplot_exact_seed_large_pair_grid_bypasses_pair_eval_guard() {
+    let len = 12_500usize;
+    let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+    let mut query = String::with_capacity(len);
+    for _ in 0..len {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let base = match (seed & 0b11) as u8 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        };
+        query.push(base);
+    }
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence(&query).expect("query"),
+    );
+    state.sequences.insert(
+        "ref".to_string(),
+        DNAsequence::from_sequence(&query).expect("reference"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine.apply(Operation::ComputeDotplot {
+        seq_id: "query".to_string(),
+        reference_seq_id: Some("ref".to_string()),
+        span_start_0based: Some(0),
+        span_end_0based: Some(len),
+        reference_span_start_0based: Some(0),
+        reference_span_end_0based: Some(len),
+        mode: DotplotMode::PairForward,
+        word_size: 10,
+        step_bp: 1,
+        max_mismatches: 0,
+        tile_bp: None,
+        store_as: Some("pair_exact_large".to_string()),
+    });
+    assert!(
+        result.is_ok(),
+        "exact-seed mode should bypass brute-force pair-evaluation guard"
+    );
+    let view = engine
+        .get_dotplot_view("pair_exact_large")
+        .expect("pair exact large view");
+    assert!(view.point_count > 0, "expected deterministic exact-seed hits");
+}
+
+#[test]
 fn test_compute_flexibility_track_stores_and_retrieves_track() {
     let mut state = ProjectState::default();
     state.sequences.insert(

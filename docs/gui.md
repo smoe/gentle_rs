@@ -134,6 +134,8 @@ Primary map modes (linear topology):
     - pair modes: `pair_forward`, `pair_reverse_complement`
       - pair modes require `reference_seq_id`
       - optional `ref_start` / `ref_end` set y-axis reference span
+      - `Fit ref span to hits` narrows `ref_start/ref_end` to the detected hit
+        envelope (+padding) to avoid edge-compressed exon stripes
     - display controls:
       - `display threshold` (cell-density sensitivity)
       - `intensity gain` (contrast amplification for visible cells)
@@ -150,8 +152,17 @@ Primary map modes (linear topology):
     - status panel:
       - deterministic request diagnostics (mode, spans, seed parameters, estimated
         window counts / pair evaluations)
+      - for `mismatches=0`, large pairwise requests use indexed exact-seed
+        matching (not brute-force pair loops), so low-step runs can remain practical
       - loaded payload diagnostics (point count, estimated hit fraction, latest
         operation status/messages)
+      - sparse pairwise payload guidance:
+        - suggests `pair_reverse_complement` when `pair_forward` is sparse
+          (common for cDNA vs genomic comparisons)
+        - warns when strict settings (`word`/`step`/`mismatches`) are likely too
+          aggressive for wide reference spans
+        - warns when computed hits sit near reference-span edges and recommends
+          ref-span fitting
       - interpretation notes:
         - `self_forward`: dominant diagonal is expected identity signal
         - reverse-complement self-pair zero-hits can be valid under strict/sparse
