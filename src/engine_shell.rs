@@ -11926,6 +11926,7 @@ pub fn execute_shell_command_with_options(
             cache_dir,
             timeout_seconds,
         } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
             let op = Operation::PrepareGenome {
                 genome_id: genome_id.clone(),
                 catalog_path: operation_catalog_path(catalog_path, *helper_mode),
@@ -11935,7 +11936,10 @@ pub fn execute_shell_command_with_options(
             let op_result = engine.apply(op).map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: true,
-                output: json!({ "result": op_result }),
+                output: json!({
+                    "binary_preflight": binary_preflight,
+                    "result": op_result
+                }),
             }
         }
         ShellCommand::ReferenceBlast {
@@ -11949,6 +11953,7 @@ pub fn execute_shell_command_with_options(
             catalog_path,
             cache_dir,
         } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let report = if *helper_mode {
                 engine.blast_helper_genome_with_project_and_request_options(
@@ -11984,6 +11989,7 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: false,
                 output: json!({
+                    "binary_preflight": binary_preflight,
                     "catalog_path": effective_catalog,
                     "cache_dir": cache_dir,
                     "report": report,
@@ -12001,6 +12007,7 @@ pub fn execute_shell_command_with_options(
             catalog_path,
             cache_dir,
         } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
             let engine_snapshot = engine.clone();
             let (status, state_changed) = with_blast_async_registry(engine, true, |jobs| {
                 start_blast_async_job(
@@ -12021,6 +12028,7 @@ pub fn execute_shell_command_with_options(
                 state_changed,
                 output: json!({
                     "schema": "gentle.blast_async_start.v1",
+                    "binary_preflight": binary_preflight,
                     "job": status,
                 }),
             }
@@ -12087,6 +12095,7 @@ pub fn execute_shell_command_with_options(
             catalog_path,
             cache_dir,
         } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let report = if *helper_mode {
                 engine.blast_helper_genome_with_project_and_request_options(
@@ -12167,6 +12176,7 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed,
                 output: json!({
+                    "binary_preflight": binary_preflight,
                     "catalog_path": effective_catalog,
                     "cache_dir": cache_dir,
                     "report": report,

@@ -1867,7 +1867,7 @@ Post-baseline follow-ups:
 - None currently blocking on this branch. Latest local run: `cargo test -q`
   passed (`528 passed, 1 ignored` in main suite; additional suites green).
 
-### Stability TODO (queued: 7, 6; items 4, 5 done)
+### Stability TODO (queued: none; items 4, 5, 6, 7 done)
 
 - Done (2026-03-04): 5) malformed-annotation reporting now summarizes non-fatal
   GTF/GFF parse issues with file/line context and surfaces the warnings through
@@ -1885,10 +1885,30 @@ Post-baseline follow-ups:
   - conformance tests now cover restart recovery and stale-snapshot
     race-transition normalization behavior.
 
-- 7) Extend cancellation/timebox controls beyond current genome-track import flow
-  (BLAST now supported; continue hardening prepare + future long-running jobs).
-- 6) Add external-binary preflight diagnostics (BLAST and related tools) with
-  explicit "found/missing/version/path" reporting before long jobs start.
+- Done (2026-03-19): 7) cancellation/timebox hardening extended to prepare jobs:
+  - prepare worker progress now routes timeout enforcement through one source
+    of truth (engine-level `timeout_seconds`) instead of duplicate app-side
+    timebox checks,
+  - prepare completion status now uses explicit cancellation-request +
+    configured-timebox context to classify terminal outcomes
+    (`cancelled` vs `timed out` vs `failed`) deterministically,
+  - prepare progress/completion UI/status summaries now include
+    cancellation-request context, including success-after-cancel-request cases,
+  - conformance tests now cover cancel-request classification, timebox
+    precedence over cancellation wording, and completion reporting after a
+    cancel request.
+- Done (2026-03-19): 6) external-binary preflight diagnostics added for BLAST
+  and related tooling before long jobs start:
+  - shared engine/genomes preflight schema
+    `gentle.blast_external_binary_preflight.v1` now reports per-tool
+    `found/missing`, `version`, configured executable token, and resolved path
+    for `blastn` + `makeblastdb`,
+  - shared-shell routes now include deterministic `binary_preflight` payloads
+    for `prepare`, `blast`, `blast-track`, and async `blast-start`,
+  - GUI prepare/BLAST background-job startup status now surfaces the same
+    preflight diagnostics before long-running execution proceeds,
+  - conformance tests now cover missing-tool and configured-tool preflight
+    reporting plus shell-output payload coverage.
 
 ### Missing test coverage (current priority list)
 

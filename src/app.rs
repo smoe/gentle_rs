@@ -7165,6 +7165,66 @@ Error: `{err}`"
         Ok(Some(parsed))
     }
 
+    fn summarize_binary_probe(
+        probe: &crate::genomes::ExternalBinaryPreflightProbe,
+        include_version: bool,
+    ) -> String {
+        let version = if include_version {
+            probe
+                .version
+                .as_ref()
+                .map(|v| format!(" version={}", v))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if probe.found {
+            let path = probe
+                .resolved_path
+                .as_deref()
+                .unwrap_or(probe.executable.as_str());
+            let probe_note = if probe.version_probe_ok {
+                ""
+            } else {
+                " (version probe failed)"
+            };
+            format!("found path={}{}{}", path, version, probe_note)
+        } else {
+            let error = probe.error.as_deref().unwrap_or("not found");
+            format!("missing executable={} ({})", probe.executable, error)
+        }
+    }
+
+    fn format_prepare_failure_status(
+        message: &str,
+        elapsed_secs: f64,
+        cancellation_requested: bool,
+        timeout_seconds: Option<u64>,
+    ) -> String {
+        let lower = message.to_ascii_lowercase();
+        let timed_out_hint = lower.contains("timed out") || lower.contains("timeout");
+        let cancelled_hint = lower.contains("cancelled") || lower.contains("canceled");
+        let timebox_elapsed = timeout_seconds
+            .map(|limit| elapsed_secs >= limit as f64)
+            .unwrap_or(false);
+        if timed_out_hint || (!cancellation_requested && cancelled_hint && timebox_elapsed) {
+            format!(
+                "Prepare genome timed out after {:.1}s: {}",
+                elapsed_secs, message
+            )
+        } else if cancellation_requested || cancelled_hint {
+            format!(
+                "Prepare genome cancelled after {:.1}s: {}",
+                elapsed_secs, message
+            )
+        } else {
+            format!(
+                "Prepare genome failed after {:.1}s: {}",
+                elapsed_secs, message
+            )
+        }
+    }
+
     fn start_prepare_reference_genome(&mut self) {
         if self.genome_prepare_task.is_some() {
             self.genome_prepare_status = "Genome preparation is already running".to_string();
@@ -7182,6 +7242,13 @@ Error: `{err}`"
                 return;
             }
         };
+        let binary_preflight = self
+            .engine
+            .read()
+            .unwrap()
+            .blast_external_binary_preflight_report();
+        let makeblastdb_preflight =
+            Self::summarize_binary_probe(&binary_preflight.makeblastdb, true);
         let catalog_path = self.genome_catalog_path_opt();
         let cache_dir = self.genome_cache_dir_opt();
         let cancel_requested = Arc::new(AtomicBool::new(false));
@@ -7190,17 +7257,23 @@ Error: `{err}`"
         self.genome_prepare_progress = None;
         self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
             format!(
-                "Preparing genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.",
-                timeout
+                "Preparing genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.\npreflight makeblastdb: {}",
+                timeout, makeblastdb_preflight
             )
         } else {
-            format!("Preparing genome '{genome_id}' in background. You can keep using the UI.")
+            format!(
+                "Preparing genome '{genome_id}' in background. You can keep using the UI.\npreflight makeblastdb: {}",
+                makeblastdb_preflight
+            )
         };
         self.push_job_event(
             BackgroundJobKind::PrepareGenome,
             BackgroundJobEventPhase::Started,
             Some(job_id),
-            format!("Prepare genome started: {}", genome_id),
+            format!(
+                "Prepare genome started: {} (makeblastdb preflight: {})",
+                genome_id, makeblastdb_preflight
+            ),
         );
         self.genome_prepare_task = Some(GenomePrepareTask {
             job_id,
@@ -7212,18 +7285,12 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
             let cancel_flag = cancel_requested.clone();
-            let started = Instant::now();
             let mut last_phase = String::new();
             let mut last_percent_tenths: Option<i64> = None;
             let mut last_bytes_bucket: u64 = 0;
             let mut progress_forwarder = move |p: PrepareGenomeProgress| -> bool {
                 if cancel_flag.load(Ordering::Relaxed) {
                     return false;
-                }
-                if let Some(limit) = timeout_seconds {
-                    if started.elapsed() >= Duration::from_secs(limit) {
-                        return false;
-                    }
                 }
                 let phase_changed = p.phase != last_phase;
                 let percent_tenths = p.percent.map(|v| (v * 10.0).floor() as i64);
@@ -7295,9 +7362,17 @@ Error: `{err}`"
                             continue;
                         }
                         self.genome_prepare_progress = Some(progress.clone());
+                        let canceling = task.cancel_requested.load(Ordering::Relaxed);
                         self.genome_prepare_status = format!(
-                            "Preparing genome '{}': {} ({})",
-                            progress.genome_id, progress.phase, progress.item
+                            "Preparing genome '{}': {} ({}){}",
+                            progress.genome_id,
+                            progress.phase,
+                            progress.item,
+                            if canceling {
+                                " (cancellation requested)"
+                            } else {
+                                ""
+                            }
                         );
                     }
                     Ok(GenomePrepareTaskMessage::Done { job_id, result }) => {
@@ -7333,21 +7408,32 @@ Error: `{err}`"
             );
         }
         if let Some((job_id, outcome)) = done {
-            let elapsed = self
+            let (elapsed, cancellation_requested, timeout_seconds) = self
                 .genome_prepare_task
                 .as_ref()
-                .map(|task| task.started.elapsed().as_secs_f64())
-                .unwrap_or(0.0);
+                .map(|task| {
+                    (
+                        task.started.elapsed().as_secs_f64(),
+                        task.cancel_requested.load(Ordering::Relaxed),
+                        task.timeout_seconds,
+                    )
+                })
+                .unwrap_or((0.0, false, None));
             self.genome_prepare_task = None;
             match outcome {
                 Ok(result) => {
+                    let prefix = if cancellation_requested {
+                        "Prepare genome finished after cancellation request"
+                    } else {
+                        "Prepare genome: ok"
+                    };
                     self.genome_prepare_status = format!(
                         "{}\nelapsed: {:.1}s",
                         Self::format_op_result_status(
-                            "Prepare genome: ok",
+                            prefix,
                             &result.created_seq_ids,
                             &result.warnings,
-                            &result.messages,
+                            &result.messages
                         ),
                         elapsed
                     );
@@ -7356,25 +7442,16 @@ Error: `{err}`"
                         BackgroundJobKind::PrepareGenome,
                         BackgroundJobEventPhase::Completed,
                         Some(job_id),
-                        format!("Prepare genome completed in {:.1}s", elapsed),
+                        format!("{prefix} in {:.1}s", elapsed),
                     );
                 }
                 Err(e) => {
-                    let lower = e.message.to_ascii_lowercase();
-                    if lower.contains("timed out") {
-                        self.genome_prepare_status = format!(
-                            "Prepare genome timed out after {:.1}s: {}",
-                            elapsed, e.message
-                        );
-                    } else if lower.contains("cancelled") || lower.contains("canceled") {
-                        self.genome_prepare_status = format!(
-                            "Prepare genome cancelled after {:.1}s: {}",
-                            elapsed, e.message
-                        );
-                    } else {
-                        self.genome_prepare_status =
-                            format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
-                    }
+                    self.genome_prepare_status = Self::format_prepare_failure_status(
+                        &e.message,
+                        elapsed,
+                        cancellation_requested,
+                        timeout_seconds,
+                    );
                     self.push_job_event(
                         BackgroundJobKind::PrepareGenome,
                         BackgroundJobEventPhase::Failed,
@@ -7812,6 +7889,15 @@ Error: `{err}`"
                     return;
                 }
             };
+        let binary_preflight = self
+            .engine
+            .read()
+            .unwrap()
+            .blast_external_binary_preflight_report();
+        let blastn_preflight = Self::summarize_binary_probe(&binary_preflight.blastn, true);
+        let makeblastdb_preflight =
+            Self::summarize_binary_probe(&binary_preflight.makeblastdb, false);
+        let blastn_bin_for_status = binary_preflight.blastn.executable.clone();
         let project_state_snapshot = self.engine.read().unwrap().state().clone();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
@@ -7821,16 +7907,18 @@ Error: `{err}`"
         self.genome_blast_progress_fraction = Some(0.0);
         self.genome_blast_progress_label = format!("0 / {total_queries}");
         self.genome_blast_status = format!(
-            "Running BLAST for {} quer{} in background",
+            "Running BLAST for {} quer{} in background\npreflight blastn: {}\npreflight makeblastdb: {}",
             total_queries,
-            if total_queries == 1 { "y" } else { "ies" }
+            if total_queries == 1 { "y" } else { "ies" },
+            blastn_preflight,
+            makeblastdb_preflight
         );
         self.push_job_event(
             BackgroundJobKind::BlastGenome,
             BackgroundJobEventPhase::Started,
             Some(job_id),
             format!(
-                "BLAST started: genome='{}', queries={}, task='{}', max_hits={}, thresholds={}, request_override={}",
+                "BLAST started: genome='{}', queries={}, task='{}', max_hits={}, thresholds={}, request_override={}, blastn_preflight={}, makeblastdb_preflight={}",
                 genome_id,
                 total_queries,
                 resolved_preview.task,
@@ -7840,7 +7928,9 @@ Error: `{err}`"
                     "yes"
                 } else {
                     "no"
-                }
+                },
+                blastn_preflight,
+                makeblastdb_preflight
             ),
         );
         self.genome_blast_task = Some(GenomeBlastTask {
@@ -7856,11 +7946,6 @@ Error: `{err}`"
             let cancel_flag = cancel_requested.clone();
             let task_name_for_status = resolved_preview.task.clone();
             let max_hits_for_status = resolved_preview.max_hits;
-            let blastn_bin_for_status = env::var(BLASTN_ENV_BIN)
-                .ok()
-                .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| DEFAULT_BLASTN_BIN.to_string());
 
             for (idx, (label, query)) in blast_queries.into_iter().enumerate() {
                 if cancel_flag.load(Ordering::Relaxed) {
@@ -22582,7 +22667,7 @@ mod tests {
             atomic::{AtomicBool, Ordering},
             mpsc,
         },
-        time::Instant,
+        time::{Duration, Instant},
     };
     use tempfile::tempdir;
 
@@ -23779,6 +23864,111 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             event.kind == BackgroundJobKind::PrepareGenome
                 && event.phase == BackgroundJobEventPhase::Failed
                 && event.job_id == Some(7)
+        }));
+    }
+
+    #[test]
+    fn poll_prepare_uses_cancel_request_signal_for_failure_classification() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        app.genome_prepare_task = Some(GenomePrepareTask {
+            job_id: 52,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(true)),
+            timeout_seconds: Some(600),
+            receiver: rx,
+        });
+        tx.send(GenomePrepareTaskMessage::Done {
+            job_id: 52,
+            result: Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "worker interrupted".to_string(),
+            }),
+        })
+        .expect("send prepare done");
+
+        app.poll_prepare_reference_genome_task(&egui::Context::default());
+
+        assert!(app.genome_prepare_task.is_none());
+        assert!(
+            app.genome_prepare_status
+                .contains("Prepare genome cancelled after"),
+            "status was: {}",
+            app.genome_prepare_status
+        );
+    }
+
+    #[test]
+    fn poll_prepare_timebox_overrides_cancel_wording_for_worker_failure() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        app.genome_prepare_task = Some(GenomePrepareTask {
+            job_id: 53,
+            started: Instant::now() - Duration::from_secs(3),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            timeout_seconds: Some(1),
+            receiver: rx,
+        });
+        tx.send(GenomePrepareTaskMessage::Done {
+            job_id: 53,
+            result: Err(EngineError {
+                code: ErrorCode::Io,
+                message: "Genome preparation cancelled for 'toy_genome'".to_string(),
+            }),
+        })
+        .expect("send prepare done");
+
+        app.poll_prepare_reference_genome_task(&egui::Context::default());
+
+        assert!(app.genome_prepare_task.is_none());
+        assert!(
+            app.genome_prepare_status
+                .contains("Prepare genome timed out after"),
+            "status was: {}",
+            app.genome_prepare_status
+        );
+    }
+
+    #[test]
+    fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        app.genome_prepare_task = Some(GenomePrepareTask {
+            job_id: 54,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(true)),
+            timeout_seconds: None,
+            receiver: rx,
+        });
+        tx.send(GenomePrepareTaskMessage::Done {
+            job_id: 54,
+            result: Ok(OpResult {
+                op_id: "background-prepare-genome".to_string(),
+                created_seq_ids: vec![],
+                changed_seq_ids: vec![],
+                warnings: vec![],
+                messages: vec!["prepare completed quickly".to_string()],
+                genome_annotation_projection: None,
+            }),
+        })
+        .expect("send prepare done");
+
+        app.poll_prepare_reference_genome_task(&egui::Context::default());
+
+        assert!(app.genome_prepare_task.is_none());
+        assert!(
+            app.genome_prepare_status
+                .contains("Prepare genome finished after cancellation request"),
+            "status was: {}",
+            app.genome_prepare_status
+        );
+        assert!(app.job_event_log.iter().any(|event| {
+            event.kind == BackgroundJobKind::PrepareGenome
+                && event.phase == BackgroundJobEventPhase::Completed
+                && event.job_id == Some(54)
+                && event
+                    .summary
+                    .contains("finished after cancellation request")
         }));
     }
 

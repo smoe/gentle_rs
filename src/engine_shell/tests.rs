@@ -4909,6 +4909,10 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     )
     .expect("start async blast");
     assert!(start.state_changed);
+    assert_eq!(
+        start.output["binary_preflight"]["schema"].as_str(),
+        Some("gentle.blast_external_binary_preflight.v1")
+    );
     let job_id = start
         .output
         .get("job")
@@ -6227,7 +6231,7 @@ fn execute_genomes_extend_anchor_creates_sequence() {
     let catalog_path = catalog.to_string_lossy().to_string();
 
     let mut engine = GentleEngine::new();
-    execute_shell_command(
+    let prepare = execute_shell_command(
         &mut engine,
         &ShellCommand::ReferencePrepare {
             helper_mode: false,
@@ -6238,6 +6242,10 @@ fn execute_genomes_extend_anchor_creates_sequence() {
         },
     )
     .expect("prepare genome");
+    assert_eq!(
+        prepare.output["binary_preflight"]["schema"].as_str(),
+        Some("gentle.blast_external_binary_preflight.v1")
+    );
 
     execute_shell_command(
         &mut engine,
