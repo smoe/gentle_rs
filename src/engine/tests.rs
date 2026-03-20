@@ -11861,6 +11861,22 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert_eq!(inspection.rows[1].header_id, "aligned_hi_id");
 
     let td = tempdir().expect("tempdir");
+    let tsv_path = td.path().join("alignment_rows.tsv");
+    let tsv_export = engine
+        .export_rna_read_alignments_tsv(
+            "rna_reads_alignment_rank",
+            tsv_path.to_str().expect("tsv path"),
+            RnaReadHitSelection::All,
+            Some(1),
+        )
+        .expect("export alignment tsv");
+    assert_eq!(tsv_export.row_count, 1);
+    assert_eq!(tsv_export.aligned_count, 2);
+    assert_eq!(tsv_export.limit, Some(1));
+    let tsv_text = fs::read_to_string(&tsv_path).expect("read alignment tsv");
+    assert!(tsv_text.contains("alignment_mode"));
+    assert!(tsv_text.contains("aligned_hi_cov"));
+
     let svg_path = td.path().join("alignment_dotplot.svg");
     let export = engine
         .export_rna_read_alignment_dotplot_svg(

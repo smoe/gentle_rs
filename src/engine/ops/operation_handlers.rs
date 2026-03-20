@@ -5772,6 +5772,28 @@ impl GentleEngine {
                     ));
                 }
             }
+            Operation::ExportRnaReadAlignmentsTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+            } => {
+                let export =
+                    self.export_rna_read_alignments_tsv(&report_id, &path, selection, limit)?;
+                let limit_text = export
+                    .limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string());
+                result.messages.push(format!(
+                    "Exported RNA-read alignment TSV '{}' to '{}' (selection={}, rows={}, aligned_total={}, limit={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.row_count,
+                    export.aligned_count,
+                    limit_text
+                ));
+            }
             Operation::ExportRnaReadAlignmentDotplotSvg {
                 report_id,
                 path,

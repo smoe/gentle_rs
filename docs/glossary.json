@@ -1,5 +1,5 @@
 {
-   "command_count": 224,
+   "command_count": 225,
    "commands": [
       {
          "aliases": [
@@ -1431,6 +1431,20 @@
          "path": "rna-reads export-score-density-svg",
          "summary": "Export RNA-read seed-hit score-density chart to SVG.",
          "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadAlignmentsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-alignments-tsv",
+         "summary": "Export ranked RNA-read alignment rows to TSV.",
+         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
       },
       {
          "aliases": [],

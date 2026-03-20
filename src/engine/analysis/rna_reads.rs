@@ -447,6 +447,94 @@ impl GentleEngine {
         })
     }
 
+    pub fn export_rna_read_alignments_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+    ) -> Result<RnaReadAlignmentTsvExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment TSV export requires non-empty path".to_string(),
+            });
+        }
+        if let Some(value) = limit {
+            if value == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
+                });
+            }
+        }
+        let inspection =
+            self.inspect_rna_read_alignments(report_id, selection, limit.unwrap_or(usize::MAX))?;
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create RNA-read alignment TSV export '{}': {e}",
+                path
+            ),
+        })?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "report_id\tseq_id\trank\trecord_index\theader_id\ttranscript_id\ttranscript_label\tstrand\talignment_mode\tscore\tidentity_fraction\tquery_coverage_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class"
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read alignment TSV header to '{}': {e}",
+                path
+            ),
+        })?;
+        for row in &inspection.rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&inspection.report_id),
+                Self::sanitize_tsv_cell(&inspection.seq_id),
+                row.rank,
+                row.record_index,
+                Self::sanitize_tsv_cell(&row.header_id),
+                Self::sanitize_tsv_cell(&row.transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_label),
+                Self::sanitize_tsv_cell(&row.strand),
+                row.alignment_mode.as_str(),
+                row.score,
+                row.identity_fraction,
+                row.query_coverage_fraction,
+                row.seed_hit_fraction,
+                row.weighted_seed_hit_fraction,
+                row.passed_seed_filter,
+                row.msa_eligible,
+                row.origin_class.as_str(),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read alignment TSV row to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA-read alignment TSV '{}': {e}", path),
+        })?;
+        Ok(RnaReadAlignmentTsvExport {
+            schema: RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: inspection.report_id,
+            selection,
+            row_count: inspection.row_count,
+            aligned_count: inspection.aligned_count,
+            limit,
+        })
+    }
+
     pub(super) fn alignment_scatter_color_hex(
         score: isize,
         min_score: isize,

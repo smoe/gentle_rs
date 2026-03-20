@@ -943,6 +943,10 @@ Status:
   - Added non-mutating alignment inspection route:
     `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]`
     returns ranked aligned-hit rows for report triage without mutating state.
+  - Added ranked alignment TSV export for downstream tabular analysis:
+    `ExportRnaReadAlignmentsTsv` /
+    `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv
+    [--selection ...] [--limit N]`.
   - Added dotplot-style alignment inspection export:
     `ExportRnaReadAlignmentDotplotSvg` /
     `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg

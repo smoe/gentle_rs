@@ -205,12 +205,13 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
+  - `rna-reads export-alignments-tsv`
   - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
   `ListRnaReadReports`, `ShowRnaReadReport`, `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
   `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`,
-  `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`, and
-  `ExportRnaReadAlignmentDotplotSvg`.
+  `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
+  `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
@@ -225,6 +226,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       when provided, this overrides `--selection`.
   - `inspect-alignments`: non-mutating ranked alignment inspection
     (`--selection` + `--limit`) over persisted report hits.
+  - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
+    downstream table-based triage.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
     (coverage vs identity, score-colored points) for aligned report hits.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
@@ -1007,11 +1010,14 @@ Shared shell command:
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+    - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
     - `rna-reads align-report` re-ranks retained hits by alignment-aware
       retention rank after mapping refresh.
     - `rna-reads inspect-alignments` returns ranked aligned rows suitable for
       read-level inspection without mutating report payloads.
+    - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
+      in TSV form for downstream filtering/sorting.
     - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
       scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path

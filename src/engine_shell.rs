@@ -1202,6 +1202,12 @@ pub enum ShellCommand {
         path: String,
         scale: RnaReadScoreDensityScale,
     },
+    RnaReadsExportAlignmentsTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+    },
     RnaReadsExportAlignmentDotplotSvg {
         report_id: String,
         path: String,
@@ -5932,6 +5938,20 @@ impl ShellCommand {
                 report_id,
                 path,
                 scale.as_str()
+            ),
+            Self::RnaReadsExportAlignmentsTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+            } => format!(
+                "export RNA-read alignments TSV from '{}' to '{}' (selection={}, limit={})",
+                report_id,
+                path,
+                selection.as_str(),
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string())
             ),
             Self::RnaReadsExportAlignmentDotplotSvg {
                 report_id,
@@ -14678,6 +14698,28 @@ pub fn execute_shell_command_with_options(
                     "max_bin_count": export.max_bin_count,
                     "total_scored_reads": export.total_scored_reads,
                     "derived_from_report_hits_only": export.derived_from_report_hits_only,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id,
+            path,
+            selection,
+            limit,
+        } => {
+            let export = engine
+                .export_rna_read_alignments_tsv(report_id, path, *selection, *limit)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "row_count": export.row_count,
+                    "aligned_count": export.aligned_count,
+                    "limit": export.limit,
                 }),
             }
         }

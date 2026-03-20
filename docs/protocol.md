@@ -127,6 +127,7 @@ Current draft operations:
 - `ExportRnaReadExonPathsTsv { report_id, path, selection }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
+- `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
@@ -1538,6 +1539,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+  - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
   - shell output convenience fields:
     - `rna-reads list-reports` includes `summary_rows[]` with concise
@@ -1547,6 +1549,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       framing for one report
     - `rna-reads inspect-alignments` returns top aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics)
+- Alignment-TSV export:
+  - operation:
+    `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
+  - export schema: `gentle.rna_read_alignment_tsv_export.v1`
+  - output: ranked alignment rows as TSV (`rank`, mapping metrics, and seed
+    metrics) with optional top-`N` truncation via `limit`.
 - Alignment-dotplot export:
   - operation:
     `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`

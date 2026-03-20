@@ -155,6 +155,7 @@ const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_expo
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
+const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
 const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_alignment_dotplot_svg_export.v1";
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
@@ -3379,6 +3380,18 @@ pub struct RnaReadAlignmentDotplotSvgExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadAlignmentTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadAlignmentInspectionRow {
     pub rank: usize,
     pub record_index: usize,
@@ -4416,6 +4429,14 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         scale: RnaReadScoreDensityScale,
+    },
+    ExportRnaReadAlignmentsTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default)]
+        limit: Option<usize>,
     },
     ExportRnaReadAlignmentDotplotSvg {
         report_id: String,
@@ -5889,6 +5910,7 @@ impl GentleEngine {
                 "ExportRnaReadExonPathsTsv".to_string(),
                 "ExportRnaReadExonAbundanceTsv".to_string(),
                 "ExportRnaReadScoreDensitySvg".to_string(),
+                "ExportRnaReadAlignmentsTsv".to_string(),
                 "ExportRnaReadAlignmentDotplotSvg".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
@@ -6889,6 +6911,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
+                | Operation::ExportRnaReadAlignmentsTsv { .. }
                 | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
                 | Operation::AlignSequences { .. }
         )

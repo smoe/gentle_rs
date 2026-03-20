@@ -745,6 +745,7 @@ impl GentleEngine {
         | Operation::ExportRnaReadExonPathsTsv { path, .. }
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
+        | Operation::ExportRnaReadAlignmentsTsv { path, .. }
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
@@ -776,6 +777,7 @@ impl GentleEngine {
             | Operation::ExportRnaReadExonPathsTsv { path, .. }
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
             | Operation::ExportRnaReadScoreDensitySvg { path, .. }
+            | Operation::ExportRnaReadAlignmentsTsv { path, .. }
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }

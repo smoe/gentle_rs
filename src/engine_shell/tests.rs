@@ -7751,6 +7751,23 @@ fn parse_rna_reads_commands() {
                 && scale == RnaReadScoreDensityScale::Linear
     ));
 
+    let export_alignments_tsv = parse_shell_line(
+        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200",
+    )
+    .expect("parse rna-reads export-alignments-tsv");
+    assert!(matches!(
+        export_alignments_tsv,
+        ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id,
+            path,
+            selection,
+            limit
+        } if report_id == "tp73_reads"
+            && path == "alignments.tsv"
+            && selection == RnaReadHitSelection::Aligned
+            && limit == Some(200)
+    ));
+
     let export_alignment_dotplot = parse_shell_line(
         "rna-reads export-alignment-dotplot-svg tp73_reads alignment_dotplot.svg --selection aligned --max-points 500",
     )
@@ -8291,6 +8308,25 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     let density_text = fs::read_to_string(exported_density_svg).expect("read density svg");
     assert!(density_text.contains("<svg"));
     assert!(density_text.contains("seed-hit score density"));
+
+    let exported_alignments_tsv = fasta_dir.path().join("alignments.tsv");
+    let export_alignments_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_alignments_tsv.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: Some(50),
+        },
+    )
+    .expect("export rna-read alignments tsv");
+    assert_eq!(
+        export_alignments_result.output["selection"].as_str(),
+        Some("aligned")
+    );
+    let alignments_text = fs::read_to_string(exported_alignments_tsv).expect("read alignments tsv");
+    assert!(alignments_text.contains("alignment_mode"));
+    assert!(alignments_text.contains("identity_fraction"));
 
     let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
     let export_alignment_dotplot_result = execute_shell_command(
