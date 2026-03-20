@@ -7,21 +7,22 @@
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Queue multiple ROIs from one template and run deterministic primer-pair reports with optional extracted-region artifacts.
+Capture current-selection and feature-derived ROIs, then run deterministic batch primer-pair reports with optional extracted-region copies.
 
-Regular PCR planning often starts from visual selections in the DNA window rather than manual coordinate typing. This chapter focuses that selection-first workflow: choose two regions, optionally materialize extracted-region copies for downstream handoff, and run one primer-design report per region with deterministic naming (`..._r01`, `..._r02`).
+Regular PCR planning often starts in the DNA window: one drag/text selection plus one or more selected features define practical assay targets. This chapter makes that flow explicit. Queue mixed ROI sources, run one shared constraint set across all queued regions, optionally create extracted-region copies, and review/export each result from the batch-results table with deterministic report naming (`..._r01`, `..._r02`).
 
 ## When This Routine Is Useful
 
+- You want to combine one ad hoc mouse/text selection with one or more annotated features in one PCR batch run.
 - You want to design primer pairs for several selected regions without retyping ROI coordinates.
 - You need copied sequence artifacts for each PCR target before forwarding to other workflows.
 - You want deterministic report IDs for review and export.
 
 ## What You Learn
 
-- Use DNA-window selections as first-class PCR queue inputs.
-- Run deterministic multi-region primer design in one batch action.
-- Understand optional extraction-copy artifacts as downstream handoff objects.
+- Capture PCR queue regions from both ad hoc selection and selected features.
+- Run deterministic multi-region primer design in one batch action with stable `_rNN` report suffixes.
+- Use batch-results actions (`Show`, `Export`, `Open`) for validation and downstream handoff.
 
 ## Concepts and Recurrence
 
@@ -38,9 +39,11 @@ Regular PCR planning often starts from visual selections in the DNA window rathe
 ## GUI First
 
 1. Load `test_files/pGEX_3X.fa` and open `Engine Ops -> Primer and qPCR design reports`.
-2. Use DNA-window `PCR ROI` actions to add current selection and selected features to the PCR region queue.
-3. In `Design primer pairs`, set shared constraints once and run `Design Primer Pairs for queued regions`.
-4. Optionally enable `Also create extracted region copies`, then export one generated report via `Export report_id...`.
+2. Create one map/text ROI selection, then use DNA-window `PCR ROI -> Add current selection to queue`.
+3. Select one or more annotation features, then use DNA-window `PCR ROI -> Add selected feature(s) to queue`.
+4. In `Design primer pairs`, set shared constraints and a `report_id` base (for example `pcr_batch_demo`).
+5. Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.
+6. In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off).
 
 ## Command Equivalent (After GUI)
 
@@ -53,25 +56,31 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/pcr_selec
 
 ## Parameters That Matter
 
+- `PCR ROI source action (`Add current selection` vs `Add selected feature(s)`)` (where used: DNA-window `PCR ROI` menu before queue execution)
+  - Why it matters: Defines whether region bounds come from manual selection or feature coordinates and keeps queue-source labels interpretable.
+  - How to derive it: Use current selection for ad hoc boundaries; use selected features for annotation-driven boundaries.
 - `DesignPrimerPairs.report_id base` (where used: batch execution in Design primer pairs form)
   - Why it matters: Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.
   - How to derive it: Pick one short base tied to experiment context (for example `tp73_promoter_batch`).
 - `PCR queue copy toggle (`Also create extracted region copies`)` (where used: batch execution in Design primer pairs form)
   - Why it matters: Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.
-  - How to derive it: Enable when downstream steps need sequence artifacts; leave off for report-only planning.
+  - How to derive it: Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).
 
 ## Follow-up Commands
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
 cargo run --bin gentle_cli -- shell 'primers list-reports'
+cargo run --bin gentle_cli -- shell 'primers show-report pcr_batch_demo_r01'
+cargo run --bin gentle_cli -- shell 'primers export-report pcr_batch_demo_r01 pcr_batch_demo_r01.json'
 ```
 
 ## Checkpoints
 
-- Two primer reports are created with deterministic `_r01`/`_r02` suffixes.
-- Optional extracted-region copy artifacts are created when the queue toggle is enabled.
-- At least one report can be exported from GUI report helpers without manual JSON editing.
+- PCR queue rows include both current-selection and selected-feature source labels.
+- Two primer reports are created with deterministic `_r01`/`_r02` suffixes and appear in batch results.
+- If copy toggle is enabled, each batch-results row includes a copy ID and `Open` jumps to that extracted sequence.
+- At least one report can be shown and exported from the batch-results row actions without manual JSON editing.
 
 ## Retained Outputs
 

@@ -201,16 +201,18 @@ Background references:
 GUI:
 
 1. open construct preview sequence
-2. Engine Operations panel -> `Primer and qPCR design reports`
-3. set the region of interest (ROI) around the planned promoter/vector junction
-4. run `Design Primer Pairs`
-5. optionally run `Design qPCR Assays`
-6. review and export reports
+2. set one ROI around the planned promoter/vector junction
+3. use DNA-window `PCR ROI -> Add current selection to queue`
+4. optionally select one or more features and use `PCR ROI -> Add selected feature(s) to queue`
+5. open Engine Operations panel -> `Primer and qPCR design reports`
+6. run `Design Primer Pairs for queued regions` (or `Design Primer Pairs` for one ROI only)
+7. optionally run `Design qPCR Assays`
+8. review/export results (`Show` / `Export` / `Open` in PCR batch results, or report helpers by `report_id`)
 
 For a dedicated selection-first walkthrough (multi-region queueing, optional
 `ExtractRegion` copy artifacts, deterministic batch report naming), see:
 
-- `docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md`
+- [`docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md`](./generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md)
 
 GUI/CLI mapping:
 

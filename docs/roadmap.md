@@ -363,6 +363,11 @@ order. Durable architecture constraints and decisions remain in
     `pcr_selection_batch_primer_pairs_offline` (backed by canonical
     `pcr_selection_batch_primer_pairs_offline` workflow example with
     deterministic multi-region primer report IDs)
+    - chapter walkthrough now includes explicit mixed-source ROI queue capture
+      checklist (current selection + selected features), plus row-level
+      batch-results action guidance (`Show`/`Export`/`Open`)
+    - TP73 promoter GUI tutorial Step 5 now references the dedicated PCR chapter
+      and mirrors the same queue-first flow
   - dedicated Gibson planning chapter added:
     `gibson_two_fragment_overlap_preview` (backed by canonical
     `gibson_two_fragment_overlap_preview` workflow example and routine-catalog
@@ -679,6 +684,9 @@ Notes:
    - tutorial/executable-guidance UX still needs an explicit per-step checklist
      with state-verifiable completion markers inside GUI walkthrough flows
      (including promoter cloning walkthroughs such as TP73)
+     - PCR selection-first chapter and TP73 Step 5 now include explicit
+       queue-capture and batch-results checklists; broader chapter coverage
+       remains pending
    - TP73 cDNA-vs-genomic dotplot tutorial now has an explicit screenshot
      coverage checklist in `docs/tutorial/two_sequence_dotplot_gui.md`; pending
      additions are focused on dotplot-stage captures (`10..11`) to complete the
