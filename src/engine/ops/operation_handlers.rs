@@ -4,6 +4,393 @@ use super::*;
 use crate::uniprot::UniprotNucleotideXref;
 
 impl GentleEngine {
+    fn dotplot_svg_xml_escape(raw: &str) -> String {
+        raw.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    fn dotplot_svg_mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
+        let t = t.clamp(0.0, 1.0);
+        let lerp = |a: u8, b: u8| -> u8 {
+            ((a as f32) + ((b as f32) - (a as f32)) * t)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        [
+            lerp(from[0], to[0]),
+            lerp(from[1], to[1]),
+            lerp(from[2], to[2]),
+        ]
+    }
+
+    fn build_dotplot_svg_document_for_export(
+        view: &DotplotView,
+        flex_track: Option<&FlexibilityTrack>,
+        density_threshold: f32,
+        intensity_gain: f32,
+    ) -> String {
+        const RENDER_MAX_POINTS: usize = 120_000;
+        const CONNECT_DIAGONALS_MAX_CELLS: usize = 80_000;
+        let density_threshold = density_threshold.clamp(0.0, 0.99);
+        let intensity_gain = intensity_gain.clamp(0.1, 16.0);
+        let query_span = view
+            .span_end_0based
+            .saturating_sub(view.span_start_0based)
+            .max(1);
+        let query_span_max = query_span.saturating_sub(1).max(1);
+        let reference_span = view
+            .reference_span_end_0based
+            .saturating_sub(view.reference_span_start_0based)
+            .max(1);
+        let reference_span_max = reference_span.saturating_sub(1).max(1);
+        let reference_seq_label = view
+            .reference_seq_id
+            .as_deref()
+            .unwrap_or(view.seq_id.as_str());
+
+        let outer_margin = 18.0_f32;
+        let left_margin = 56.0_f32;
+        let right_margin = 16.0_f32;
+        let top_margin = 26.0_f32;
+        let bottom_margin = 24.0_f32;
+        let dotplot_width = 1600.0_f32;
+        let dotplot_height = (dotplot_width * (reference_span as f32 / query_span as f32))
+            .clamp(420.0, 1280.0);
+        let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
+        let gap = if flex_track.is_some() { 10.0 } else { 0.0 };
+        let canvas_width = outer_margin + left_margin + dotplot_width + right_margin + outer_margin;
+        let canvas_height = outer_margin
+            + top_margin
+            + dotplot_height
+            + gap
+            + flex_height
+            + bottom_margin
+            + outer_margin;
+        let dotplot_left = outer_margin + left_margin;
+        let dotplot_top = outer_margin + top_margin;
+        let dotplot_right = dotplot_left + dotplot_width;
+        let dotplot_bottom = dotplot_top + dotplot_height;
+        let cols = dotplot_width.max(2.0).round() as i32;
+        let rows = dotplot_height.max(2.0).round() as i32;
+        let sample_stride = (view.points.len() / RENDER_MAX_POINTS).max(1);
+
+        let mut cells: HashMap<(i32, i32), (usize, usize)> = HashMap::new();
+        for point in view.points.iter().step_by(sample_stride) {
+            let x_local = point
+                .x_0based
+                .saturating_sub(view.span_start_0based)
+                .min(query_span_max);
+            let y_local = point
+                .y_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span_max);
+            let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+            let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+            let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+            let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+            let entry = cells
+                .entry((x_cell, y_cell))
+                .or_insert((0, point.mismatches));
+            entry.0 = entry.0.saturating_add(1);
+            entry.1 = entry.1.min(point.mismatches);
+        }
+        let max_cell_count = cells.values().map(|(count, _)| *count).max().unwrap_or(1) as f32;
+        let mut visible_cells: Vec<((i32, i32), [u8; 3], f32)> = vec![];
+        for ((x_cell, y_cell), (count, min_mismatch)) in &cells {
+            let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
+            if density_raw < density_threshold {
+                continue;
+            }
+            let normalized = if density_threshold <= 0.0 {
+                density_raw
+            } else {
+                ((density_raw - density_threshold) / (1.0 - density_threshold)).clamp(0.0, 1.0)
+            };
+            let density = (normalized * intensity_gain).clamp(0.0, 1.0).sqrt();
+            let mismatch_frac = if view.max_mismatches == 0 {
+                0.0
+            } else {
+                (*min_mismatch as f32 / view.max_mismatches as f32).clamp(0.0, 1.0)
+            };
+            let rgb = Self::dotplot_svg_mix_rgb([29, 78, 216], [180, 83, 9], mismatch_frac);
+            let opacity = ((90.0 + 165.0 * density) / 255.0).clamp(0.0, 1.0);
+            visible_cells.push(((*x_cell, *y_cell), rgb, opacity));
+        }
+        visible_cells.sort_by_key(|((x, y), _, _)| (*y, *x));
+        let visible_lookup: HashMap<(i32, i32), ([u8; 3], f32)> = visible_cells
+            .iter()
+            .map(|(cell, rgb, opacity)| (*cell, (*rgb, *opacity)))
+            .collect();
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+            canvas_width, canvas_height, canvas_width, canvas_height
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.0}\" fill=\"#ffffff\"/>",
+            canvas_width, canvas_height
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"6\" ry=\"6\"/>",
+            outer_margin,
+            outer_margin,
+            canvas_width - outer_margin * 2.0,
+            canvas_height - outer_margin * 2.0
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"4\" ry=\"4\"/>",
+            dotplot_left, dotplot_top, dotplot_width, dotplot_height
+        ));
+
+        for tick_idx in 1..10 {
+            let frac = tick_idx as f32 / 10.0;
+            let gx = dotplot_left + frac * dotplot_width;
+            let gy = dotplot_top + frac * dotplot_height;
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#f1f5f9\" stroke-width=\"1\"/>",
+                gx, dotplot_top, gx, dotplot_bottom
+            ));
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#f1f5f9\" stroke-width=\"1\"/>",
+                dotplot_left, gy, dotplot_right, gy
+            ));
+        }
+
+        let cell_w = dotplot_width / cols as f32;
+        let cell_h = dotplot_height / rows as f32;
+        for ((x_cell, y_cell), rgb, opacity) in &visible_cells {
+            let x0 = dotplot_left + (*x_cell as f32 / cols as f32) * dotplot_width;
+            let y0 = dotplot_top + (*y_cell as f32 / rows as f32) * dotplot_height;
+            let x1 = dotplot_left + ((*x_cell + 1) as f32 / cols as f32) * dotplot_width;
+            let y1 = dotplot_top + ((*y_cell + 1) as f32 / rows as f32) * dotplot_height;
+            let width = (x1 - x0).max(0.8);
+            let height = (y1 - y0).max(0.8);
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgb({},{},{})\" fill-opacity=\"{:.4}\"/>",
+                x0, y0, width, height, rgb[0], rgb[1], rgb[2], opacity
+            ));
+        }
+
+        if !visible_cells.is_empty() && visible_cells.len() <= CONNECT_DIAGONALS_MAX_CELLS {
+            let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+            for ((x_cell, y_cell), rgb, opacity) in &visible_cells {
+                for dy in [-1, 0, 1] {
+                    let neighbor = (*x_cell + 1, *y_cell + dy);
+                    if visible_lookup.contains_key(&neighbor) {
+                        let x0 = dotplot_left + (*x_cell as f32 + 0.5) * cell_w;
+                        let y0 = dotplot_top + (*y_cell as f32 + 0.5) * cell_h;
+                        let x1 = dotplot_left + (neighbor.0 as f32 + 0.5) * cell_w;
+                        let y1 = dotplot_top + (neighbor.1 as f32 + 0.5) * cell_h;
+                        svg.push_str(&format!(
+                            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"rgb({},{},{})\" stroke-opacity=\"{:.4}\" stroke-width=\"{:.2}\"/>",
+                            x0, y0, x1, y1, rgb[0], rgb[1], rgb[2], (opacity * 0.55).clamp(0.0, 1.0), stroke_width
+                        ));
+                    }
+                }
+            }
+        }
+
+        if visible_cells.is_empty() {
+            svg.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"14\" fill=\"#64748b\">{}</text>",
+                (dotplot_left + dotplot_right) * 0.5,
+                (dotplot_top + dotplot_bottom) * 0.5,
+                Self::dotplot_svg_xml_escape(&format!(
+                    "No visible cells (threshold={:.2}, points={})",
+                    density_threshold, view.point_count
+                ))
+            ));
+        }
+
+        let header = format!(
+            "Dotplot workspace export: {} | mode={} | query={} [{}..{}] | reference={} [{}..{}] | word={} step={} mismatches={} | points={} | threshold={:.2} gain={:.2}",
+            view.dotplot_id,
+            view.mode.as_str(),
+            view.seq_id,
+            view.span_start_0based.saturating_add(1),
+            view.span_end_0based,
+            reference_seq_label,
+            view.reference_span_start_0based.saturating_add(1),
+            view.reference_span_end_0based,
+            view.word_size,
+            view.step_bp,
+            view.max_mismatches,
+            view.point_count,
+            density_threshold,
+            intensity_gain
+        );
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",
+            dotplot_left,
+            outer_margin + 16.0,
+            Self::dotplot_svg_xml_escape(&header)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">rendered_cells={} sampled_points={} sample_stride={}</text>",
+            dotplot_left,
+            outer_margin + 31.0,
+            visible_cells.len(),
+            view.points.len().div_ceil(sample_stride),
+            sample_stride
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">x: {}</text>",
+            dotplot_left,
+            outer_margin + 45.0,
+            Self::dotplot_svg_xml_escape(view.seq_id.as_str())
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">y: {}</text>",
+            dotplot_right,
+            outer_margin + 45.0,
+            Self::dotplot_svg_xml_escape(reference_seq_label)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left,
+            dotplot_bottom + 14.0,
+            view.span_start_0based.saturating_add(1)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_right,
+            dotplot_bottom + 14.0,
+            view.span_end_0based
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left - 6.0,
+            dotplot_top + 10.0,
+            view.reference_span_start_0based.saturating_add(1)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+            dotplot_left - 6.0,
+            dotplot_bottom,
+            view.reference_span_end_0based
+        ));
+
+        if let Some(track) = flex_track {
+            let flex_top = dotplot_bottom + gap;
+            let flex_bottom = canvas_height - (outer_margin + bottom_margin);
+            let flex_height_px = (flex_bottom - flex_top).max(10.0);
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"4\" ry=\"4\"/>",
+                dotplot_left, flex_top, dotplot_width, flex_height_px
+            ));
+            let score_span = (track.max_score - track.min_score).abs().max(1e-12);
+            let span_bp = track
+                .span_end_0based
+                .saturating_sub(track.span_start_0based)
+                .max(1) as f32;
+            let mut bins: Vec<&_> = track.bins.iter().collect();
+            bins.sort_by_key(|bin| bin.start_0based);
+            let mut points: Vec<(f32, f32)> = Vec::with_capacity(bins.len());
+            for bin in bins {
+                let x_fraction =
+                    (bin.start_0based.saturating_sub(track.span_start_0based) as f32 / span_bp)
+                        .clamp(0.0, 1.0);
+                let y_fraction =
+                    ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
+                let x = dotplot_left + x_fraction * dotplot_width;
+                let y = flex_bottom - y_fraction * flex_height_px;
+                points.push((x, y));
+            }
+            for pair in points.windows(2) {
+                let (left_x, left_y) = pair[0];
+                let (right_x, right_y) = pair[1];
+                svg.push_str(&format!(
+                    "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#166534\" stroke-width=\"1.5\"/>",
+                    left_x, left_y, right_x, right_y
+                ));
+            }
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#0f172a\">{}</text>",
+                dotplot_left + 6.0,
+                flex_top + 14.0,
+                Self::dotplot_svg_xml_escape(&format!(
+                    "{} [{}..{}] min={:.3} max={:.3}",
+                    track.model.as_str(),
+                    track.span_start_0based.saturating_add(1),
+                    track.span_end_0based,
+                    track.min_score,
+                    track.max_score
+                ))
+            ));
+        }
+
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">GENtle dotplot SVG export</text>",
+            canvas_width - outer_margin,
+            canvas_height - 6.0
+        ));
+        svg.push_str("</svg>");
+        svg
+    }
+
+    fn render_dotplot_svg_to_path(
+        &self,
+        seq_id: &str,
+        dotplot_id: &str,
+        path: &str,
+        flex_track_id: Option<&str>,
+        display_density_threshold: Option<f32>,
+        display_intensity_gain: Option<f32>,
+    ) -> Result<(), EngineError> {
+        let normalized_dotplot_id = dotplot_id.trim();
+        if normalized_dotplot_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RenderDotplotSvg requires dotplot_id".to_string(),
+            });
+        }
+        let view = self.get_dotplot_view(normalized_dotplot_id)?;
+        if !view.seq_id.eq_ignore_ascii_case(seq_id) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Dotplot '{}' belongs to seq_id='{}', not '{}'",
+                    normalized_dotplot_id, view.seq_id, seq_id
+                ),
+            });
+        }
+        let flex_track = if let Some(flex_track_id) = flex_track_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let track = self.get_flexibility_track(flex_track_id)?;
+            if !track.seq_id.eq_ignore_ascii_case(seq_id) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Flexibility track '{}' belongs to seq_id='{}', not '{}'",
+                        flex_track_id, track.seq_id, seq_id
+                    ),
+                });
+            }
+            Some(track)
+        } else {
+            None
+        };
+        let density_threshold = display_density_threshold.unwrap_or(0.0);
+        let intensity_gain = display_intensity_gain.unwrap_or(1.0);
+        let svg = Self::build_dotplot_svg_document_for_export(
+            &view,
+            flex_track.as_ref(),
+            density_threshold,
+            intensity_gain,
+        );
+        std::fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write SVG output '{path}': {e}"),
+        })?;
+        Ok(())
+    }
+
     fn is_transcript_feature_for_derivation(feature: &gb_io::seq::Feature) -> bool {
         let kind = feature.kind.to_string();
         kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
@@ -773,6 +1160,27 @@ impl GentleEngine {
                 result.messages.push(format!(
                     "Wrote {:?} SVG for '{}' to '{}'",
                     mode, seq_id, path
+                ));
+            }
+            Operation::RenderDotplotSvg {
+                seq_id,
+                dotplot_id,
+                path,
+                flex_track_id,
+                display_density_threshold,
+                display_intensity_gain,
+            } => {
+                self.render_dotplot_svg_to_path(
+                    &seq_id,
+                    &dotplot_id,
+                    &path,
+                    flex_track_id.as_deref(),
+                    display_density_threshold,
+                    display_intensity_gain,
+                )?;
+                result.messages.push(format!(
+                    "Wrote dotplot SVG for '{}' dotplot='{}' to '{}'",
+                    seq_id, dotplot_id, path
                 ));
             }
             Operation::RenderFeatureExpertSvg {

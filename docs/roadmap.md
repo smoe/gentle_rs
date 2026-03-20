@@ -1718,6 +1718,12 @@ Status (2026-03-19):
   - GUI export baseline (2026-03-19):
     - compact Dotplot map panel and standalone Dotplot workspace now expose
       `Export Dotplot SVG...`
+    - Dotplot SVG export now routes through engine operation
+      `RenderDotplotSvg` (GUI/CLI/shared-shell parity path)
+    - main lineage table/details now expose `Dotplot SVG` action on dotplot
+      analysis rows (analogous to gel export)
+    - SVG export operations are projected into lineage table/graph as analysis
+      nodes linked to source sequences
     - default export filename now encodes active dotplot parameters (`mode`,
       spans, `word`, `step`, `mismatches`, optional `tile`) and display controls
       (`threshold`, `gain`; plus flexibility parameters when enabled)
@@ -1726,7 +1732,6 @@ Status (2026-03-19):
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
       between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
-  - engine-level `RenderDotplotSvg` operation for shell/CLI/adapter parity
   - additional overlay controls beyond crosshair baseline
   - JS/Lua/Python convenience wrappers beyond generic operation calls
 
@@ -1806,7 +1811,7 @@ Phase 3 (CLI/JS/Lua parity + export):
 - Add shared-shell commands:
   - `dotplot compute ...`
   - `dotplot show ...`
-  - `dotplot render-svg ...`
+  - `render-dotplot-svg ...`
   - `flex compute ...`
   - `flex show ...`
 - Add adapter wrappers in JS/Lua/Python over the same operation payloads.
@@ -1814,9 +1819,9 @@ Phase 3 (CLI/JS/Lua parity + export):
   - `RenderDotplotSvg` (optional flexibility-track panels on same coordinate axis).
 - Status: partial.
   - implemented: `dotplot compute|list|show`, `flex compute|list|show`, GUI
-    `Export Dotplot SVG...`
-  - pending: engine/shared-shell `dotplot render-svg`, adapter convenience
-    wrappers.
+    `Export Dotplot SVG...`, engine op `RenderDotplotSvg`, shared-shell/CLI
+    `render-dotplot-svg`
+  - pending: adapter convenience wrappers.
 
 Phase 4 (latency hardening):
 

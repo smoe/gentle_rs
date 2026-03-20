@@ -35,6 +35,7 @@ use crate::{
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        RenderSvgMode,
         SequenceGenomeAnchorSummary,
     },
     engine_shell::{
@@ -5398,6 +5399,62 @@ Error: `{err}`"
                 .apply(Operation::RenderLineageSvg { path: path.clone() });
             if let Err(e) = result {
                 eprintln!("Could not export lineage SVG to '{}': {}", path, e.message);
+            }
+        }
+    }
+
+    fn prompt_export_dotplot_svg_from_lineage(
+        &mut self,
+        seq_id: &str,
+        dotplot_id: &str,
+        reference_seq_id: Option<&str>,
+    ) {
+        let default_stem = if let Some(reference_seq_id) = reference_seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            format!(
+                "{}_vs_{}_{}",
+                seq_id.trim(),
+                reference_seq_id,
+                dotplot_id.trim()
+            )
+        } else {
+            format!("{}_{}", seq_id.trim(), dotplot_id.trim())
+        };
+        let stem = Self::sanitize_file_stem(&default_stem, "dotplot");
+        let default_file_name = format!("{stem}.dotplot.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Dotplot SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::RenderDotplotSvg {
+                seq_id: seq_id.to_string(),
+                dotplot_id: dotplot_id.to_string(),
+                path: path_text.clone(),
+                flex_track_id: None,
+                display_density_threshold: None,
+                display_intensity_gain: None,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote dotplot SVG to '{path_text}'"));
+            }
+            Err(e) => {
+                self.app_status = format!("Could not export dotplot SVG: {}", e.message);
             }
         }
     }
@@ -16217,6 +16274,27 @@ Error: `{err}`"
             let mut dotplot_op_by_id: HashMap<String, (String, String, Option<String>)> =
                 HashMap::new();
             let mut flex_track_op_by_id: HashMap<String, (String, String)> = HashMap::new();
+            #[derive(Clone)]
+            struct PendingSvgExportRow {
+                source_seq_ids: Vec<String>,
+                seq_id: String,
+                display_name: String,
+                origin: String,
+                created_by_op: String,
+                analysis_kind: Option<LineageAnalysisKind>,
+                analysis_artifact_id: Option<String>,
+                analysis_reference_seq_id: Option<String>,
+                analysis_mode: Option<String>,
+            }
+            let mut pending_svg_export_rows: Vec<PendingSvgExportRow> = vec![];
+            let path_file_name = |path: &str| -> String {
+                Path::new(path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.to_string())
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| path.to_string())
+            };
             for rec in engine.operation_log() {
                 op_created_count.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.len());
                 op_created_ids.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.clone());
@@ -16250,6 +16328,148 @@ Error: `{err}`"
                             Self::lineage_flex_track_id_for_operation(store_as, &rec.result.op_id);
                         flex_track_op_by_id
                             .insert(track_id, (rec.result.op_id.clone(), seq_id.clone()));
+                    }
+                    Operation::RenderSequenceSvg { seq_id, mode, path } => {
+                        let mode_label = match mode {
+                            RenderSvgMode::Linear => "linear",
+                            RenderSvgMode::Circular => "circular",
+                        };
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids: vec![seq_id.clone()],
+                            seq_id: seq_id.clone(),
+                            display_name: path_file_name(path),
+                            origin: "SequenceSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: None,
+                            analysis_artifact_id: None,
+                            analysis_reference_seq_id: None,
+                            analysis_mode: Some(mode_label.to_string()),
+                        });
+                    }
+                    Operation::RenderDotplotSvg {
+                        seq_id,
+                        dotplot_id,
+                        path,
+                        ..
+                    } => {
+                        let mut source_seq_ids = vec![seq_id.clone()];
+                        let reference_seq_id = engine
+                            .get_dotplot_view(dotplot_id)
+                            .ok()
+                            .and_then(|view| view.reference_seq_id);
+                        if let Some(reference_seq_id) = reference_seq_id.as_ref() {
+                            if !reference_seq_id.eq_ignore_ascii_case(seq_id) {
+                                source_seq_ids.push(reference_seq_id.clone());
+                            }
+                        }
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids,
+                            seq_id: seq_id.clone(),
+                            display_name: path_file_name(path),
+                            origin: "DotplotSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: Some(LineageAnalysisKind::Dotplot),
+                            analysis_artifact_id: Some(dotplot_id.clone()),
+                            analysis_reference_seq_id: reference_seq_id,
+                            analysis_mode: Some("svg_export".to_string()),
+                        });
+                    }
+                    Operation::RenderFeatureExpertSvg {
+                        seq_id,
+                        target,
+                        path,
+                    } => {
+                        let target_label = target.describe();
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids: vec![seq_id.clone()],
+                            seq_id: seq_id.clone(),
+                            display_name: path_file_name(path),
+                            origin: "FeatureExpertSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: None,
+                            analysis_artifact_id: None,
+                            analysis_reference_seq_id: None,
+                            analysis_mode: Some(target_label),
+                        });
+                    }
+                    Operation::RenderIsoformArchitectureSvg {
+                        seq_id,
+                        panel_id,
+                        path,
+                    } => {
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids: vec![seq_id.clone()],
+                            seq_id: seq_id.clone(),
+                            display_name: path_file_name(path),
+                            origin: "IsoformArchitectureSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: None,
+                            analysis_artifact_id: None,
+                            analysis_reference_seq_id: None,
+                            analysis_mode: Some(panel_id.clone()),
+                        });
+                    }
+                    Operation::RenderRnaStructureSvg { seq_id, path } => {
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids: vec![seq_id.clone()],
+                            seq_id: seq_id.clone(),
+                            display_name: path_file_name(path),
+                            origin: "RnaStructureSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: None,
+                            analysis_artifact_id: None,
+                            analysis_reference_seq_id: None,
+                            analysis_mode: None,
+                        });
+                    }
+                    Operation::RenderPoolGelSvg {
+                        inputs,
+                        path,
+                        container_ids,
+                        arrangement_id,
+                        ..
+                    } => {
+                        let mut source_seq_ids: Vec<String> = inputs.clone();
+                        if let Some(container_ids) = container_ids {
+                            for container_id in container_ids {
+                                if let Some(container) =
+                                    state.container_state.containers.get(container_id)
+                                {
+                                    source_seq_ids.extend(container.members.iter().cloned());
+                                }
+                            }
+                        }
+                        if let Some(arrangement_id) = arrangement_id {
+                            if let Some(arrangement) =
+                                state.container_state.arrangements.get(arrangement_id)
+                            {
+                                for container_id in &arrangement.lane_container_ids {
+                                    if let Some(container) =
+                                        state.container_state.containers.get(container_id)
+                                    {
+                                        source_seq_ids.extend(container.members.iter().cloned());
+                                    }
+                                }
+                            }
+                        }
+                        source_seq_ids.retain(|seq_id| !seq_id.trim().is_empty());
+                        source_seq_ids.sort();
+                        source_seq_ids.dedup();
+                        let seq_id = source_seq_ids
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "-".to_string());
+                        pending_svg_export_rows.push(PendingSvgExportRow {
+                            source_seq_ids,
+                            seq_id,
+                            display_name: path_file_name(path),
+                            origin: "GelSvgExport".to_string(),
+                            created_by_op: rec.result.op_id.clone(),
+                            analysis_kind: None,
+                            analysis_artifact_id: None,
+                            analysis_reference_seq_id: None,
+                            analysis_mode: Some("serial_gel".to_string()),
+                        });
                     }
                     _ => {}
                 }
@@ -16652,6 +16872,61 @@ Error: `{err}`"
                         node_id.clone(),
                         edge_op_id.clone(),
                     ));
+                }
+            }
+
+            let export_created_at_base = out.iter().map(|row| row.created_at).max().unwrap_or(0);
+            for (index, pending) in pending_svg_export_rows.iter().enumerate() {
+                let node_id = format!("analysis:export:{}", pending.created_by_op);
+                let created_at = export_created_at_base.saturating_add(index as u128 + 1);
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: pending.seq_id.clone(),
+                    display_name: pending.display_name.clone(),
+                    origin: pending.origin.clone(),
+                    created_by_op: pending.created_by_op.clone(),
+                    created_at,
+                    parents: pending.source_seq_ids.clone(),
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: pending.analysis_kind,
+                    analysis_artifact_id: pending.analysis_artifact_id.clone(),
+                    analysis_reference_seq_id: pending.analysis_reference_seq_id.clone(),
+                    analysis_mode: pending.analysis_mode.clone(),
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                let mut seen_source_nodes: HashSet<String> = HashSet::new();
+                for source_seq_id in &pending.source_seq_ids {
+                    let Some(source_node_id) = state.lineage.seq_to_node.get(source_seq_id) else {
+                        continue;
+                    };
+                    if seen_source_nodes.insert(source_node_id.clone()) {
+                        lineage_edges.push((
+                            source_node_id.clone(),
+                            node_id.clone(),
+                            pending.created_by_op.clone(),
+                        ));
+                    }
                 }
             }
 
@@ -18269,6 +18544,7 @@ Error: `{err}`"
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
+        let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
         let mut graph_area_height = self
@@ -20294,20 +20570,50 @@ Error: `{err}`"
                                                 "Open the query/source sequence in a dedicated window",
                                             ),
                                         };
-                                        if ui
-                                            .button(label)
-                                            .on_hover_text(hover)
-                                            .clicked()
-                                        {
-                                            if let Some((kind, seq_id, artifact_id)) =
-                                                analysis_payload.clone()
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .button(label)
+                                                .on_hover_text(hover)
+                                                .clicked()
                                             {
-                                                open_lineage_analysis =
-                                                    Some((kind, seq_id, artifact_id));
-                                            } else {
-                                                open_seq = Some(row.seq_id.clone());
+                                                if let Some((kind, seq_id, artifact_id)) =
+                                                    analysis_payload.clone()
+                                                {
+                                                    open_lineage_analysis =
+                                                        Some((kind, seq_id, artifact_id));
+                                                } else {
+                                                    open_seq = Some(row.seq_id.clone());
+                                                }
                                             }
-                                        }
+                                            if matches!(
+                                                analysis_payload.as_ref().map(|(kind, _, _)| *kind),
+                                                Some(LineageAnalysisKind::Dotplot)
+                                            ) {
+                                                let dotplot_id = row
+                                                    .analysis_artifact_id
+                                                    .clone()
+                                                    .or_else(|| {
+                                                        Self::infer_lineage_analysis_artifact_id_from_row(
+                                                            row,
+                                                        )
+                                                    })
+                                                    .unwrap_or_default();
+                                                if !dotplot_id.trim().is_empty()
+                                                    && ui
+                                                        .button("Dotplot SVG")
+                                                        .on_hover_text(
+                                                            "Export this dotplot analysis as an SVG artifact",
+                                                        )
+                                                        .clicked()
+                                                {
+                                                    export_lineage_dotplot_svg = Some((
+                                                        row.seq_id.clone(),
+                                                        dotplot_id,
+                                                        row.analysis_reference_seq_id.clone(),
+                                                    ));
+                                                }
+                                            }
+                                        });
                                     }
                                     LineageNodeKind::Sequence => {
                                         ui.allocate_ui_with_layout(
@@ -20530,6 +20836,12 @@ Error: `{err}`"
                     ui.horizontal(|ui| {
                         let analysis_payload =
                             Self::lineage_analysis_open_payload(&selected_row);
+                        let inferred_dotplot_id = selected_row
+                            .analysis_artifact_id
+                            .clone()
+                            .or_else(|| {
+                                Self::infer_lineage_analysis_artifact_id_from_row(&selected_row)
+                            });
                         let open_analysis_button_label = match analysis_payload
                             .as_ref()
                             .map(|(kind, _, _)| *kind)
@@ -20565,6 +20877,31 @@ Error: `{err}`"
                                 .clicked()
                             {
                                 open_seq = Some(reference_seq_id.to_string());
+                            }
+                        }
+                        if matches!(
+                            analysis_payload.as_ref().map(|(kind, _, _)| *kind),
+                            Some(LineageAnalysisKind::Dotplot)
+                        ) {
+                            let dotplot_id = inferred_dotplot_id
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(|value| value.to_string());
+                            if let Some(dotplot_id) = dotplot_id {
+                                if ui
+                                    .button("Dotplot SVG")
+                                    .on_hover_text(
+                                        "Export this dotplot analysis as an SVG artifact",
+                                    )
+                                    .clicked()
+                                {
+                                    export_lineage_dotplot_svg = Some((
+                                        selected_row.seq_id.clone(),
+                                        dotplot_id,
+                                        selected_row.analysis_reference_seq_id.clone(),
+                                    ));
+                                }
                             }
                         }
                     });
@@ -20900,6 +21237,13 @@ Error: `{err}`"
         }
         if let Some((stem, arrangement_id)) = export_arrangement_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None);
+        }
+        if let Some((seq_id, dotplot_id, reference_seq_id)) = export_lineage_dotplot_svg.take() {
+            self.prompt_export_dotplot_svg_from_lineage(
+                &seq_id,
+                &dotplot_id,
+                reference_seq_id.as_deref(),
+            );
         }
         if let Some(container_ids) = open_lane_containers.take() {
             for container_id in &container_ids {
@@ -23864,6 +24208,30 @@ Error: `{err}`"
             Operation::RenderSequenceSvg { seq_id, mode, path } => {
                 format!("Render sequence SVG: seq_id={seq_id}, mode={mode:?}, path={path}")
             }
+            Operation::RenderDotplotSvg {
+                seq_id,
+                dotplot_id,
+                path,
+                flex_track_id,
+                display_density_threshold,
+                display_intensity_gain,
+            } => format!(
+                "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}",
+                seq_id,
+                dotplot_id,
+                path,
+                flex_track_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-"),
+                display_density_threshold
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "default(0.000)".to_string()),
+                display_intensity_gain
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "default(1.000)".to_string())
+            ),
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 format!("Render RNA structure SVG: seq_id={seq_id}, path={path}")
             }
@@ -24364,6 +24732,7 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
             FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
             LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
+            RenderSvgMode,
             SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
@@ -27367,6 +27736,124 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 .any(|(from, to, op_id)| from == "n_seq_a"
                     && to == "analysis:flex:p53_fx"
                     && op_id == &flex_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_svg_export_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ATGCGATCGATCGATCGATC").unwrap(),
+            );
+            state.sequences.insert(
+                "seq_b".to_string(),
+                DNAsequence::from_sequence("ATGCGATCAATCGATCGATC").unwrap(),
+            );
+            insert_test_lineage_node(state, "n_seq_a", "seq_a");
+            insert_test_lineage_node(state, "n_seq_b", "seq_b");
+        }
+        let temp_sequence_svg = tempfile::NamedTempFile::new().expect("temp sequence svg");
+        let sequence_svg_path = temp_sequence_svg.path().with_extension("seq.linear.svg");
+        let sequence_svg_path_text = sequence_svg_path.display().to_string();
+        let temp_dotplot_svg = tempfile::NamedTempFile::new().expect("temp dotplot svg");
+        let dotplot_svg_path = temp_dotplot_svg.path().with_extension("seq.dotplot.svg");
+        let dotplot_svg_path_text = dotplot_svg_path.display().to_string();
+
+        let (render_sequence_op_id, render_dotplot_op_id) = {
+            let mut engine = app.engine.write().unwrap();
+            let dotplot_result = engine
+                .apply(Operation::ComputeDotplot {
+                    seq_id: "seq_a".to_string(),
+                    reference_seq_id: Some("seq_b".to_string()),
+                    span_start_0based: Some(0),
+                    span_end_0based: Some(20),
+                    reference_span_start_0based: Some(0),
+                    reference_span_end_0based: Some(20),
+                    mode: DotplotMode::PairForward,
+                    word_size: 4,
+                    step_bp: 2,
+                    max_mismatches: 1,
+                    tile_bp: None,
+                    store_as: Some("svg_dp".to_string()),
+                })
+                .expect("compute dotplot");
+            let render_sequence_result = engine
+                .apply(Operation::RenderSequenceSvg {
+                    seq_id: "seq_a".to_string(),
+                    mode: RenderSvgMode::Linear,
+                    path: sequence_svg_path_text.clone(),
+                })
+                .expect("render sequence svg");
+            let render_dotplot_result = engine
+                .apply(Operation::RenderDotplotSvg {
+                    seq_id: "seq_a".to_string(),
+                    dotplot_id: "svg_dp".to_string(),
+                    path: dotplot_svg_path_text.clone(),
+                    flex_track_id: None,
+                    display_density_threshold: None,
+                    display_intensity_gain: None,
+                })
+                .expect("render dotplot svg");
+            assert!(dotplot_result.messages.iter().any(|m| m.contains("svg_dp")));
+            (
+                render_sequence_result.op_id,
+                render_dotplot_result.op_id,
+            )
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let sequence_export_node = format!("analysis:export:{render_sequence_op_id}");
+        let sequence_export_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == sequence_export_node)
+            .expect("sequence SVG export row");
+        assert_eq!(sequence_export_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(sequence_export_row.origin, "SequenceSvgExport");
+        assert_eq!(sequence_export_row.seq_id, "seq_a");
+        assert_eq!(sequence_export_row.analysis_mode.as_deref(), Some("linear"));
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_a"
+                    && to == &sequence_export_node
+                    && op_id == &render_sequence_op_id)
+        );
+
+        let dotplot_export_node = format!("analysis:export:{render_dotplot_op_id}");
+        let dotplot_export_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == dotplot_export_node)
+            .expect("dotplot SVG export row");
+        assert_eq!(dotplot_export_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(dotplot_export_row.origin, "DotplotSvgExport");
+        assert_eq!(
+            dotplot_export_row.analysis_kind,
+            Some(LineageAnalysisKind::Dotplot)
+        );
+        assert_eq!(
+            dotplot_export_row.analysis_artifact_id.as_deref(),
+            Some("svg_dp")
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_a"
+                    && to == &dotplot_export_node
+                    && op_id == &render_dotplot_op_id)
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_seq_b"
+                    && to == &dotplot_export_node
+                    && op_id == &render_dotplot_op_id)
         );
     }
 

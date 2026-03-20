@@ -441,6 +441,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
@@ -1921,6 +1922,93 @@ fn run() -> Result<(), String> {
                     seq_id: seq_id.to_string(),
                     mode,
                     path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "render-dotplot-svg" => {
+            if args.len() <= cmd_idx + 3 {
+                usage();
+                return Err(
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]".to_string(),
+                );
+            }
+            let seq_id = args[cmd_idx + 1].trim();
+            let dotplot_id = args[cmd_idx + 2].trim();
+            if seq_id.is_empty() {
+                return Err("render-dotplot-svg requires non-empty SEQ_ID".to_string());
+            }
+            if dotplot_id.is_empty() {
+                return Err("render-dotplot-svg requires non-empty DOTPLOT_ID".to_string());
+            }
+            let output = &args[cmd_idx + 3];
+            let mut flex_track_id: Option<String> = None;
+            let mut display_density_threshold: Option<f32> = None;
+            let mut display_intensity_gain: Option<f32> = None;
+            let mut idx = cmd_idx + 4;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--flex-track" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --flex-track".to_string());
+                        }
+                        let value = args[idx + 1].trim();
+                        if !value.is_empty() {
+                            flex_track_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--display-threshold" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --display-threshold".to_string());
+                        }
+                        let raw = args[idx + 1].trim();
+                        let parsed = raw.parse::<f32>().map_err(|_| {
+                            format!(
+                                "Invalid --display-threshold '{}': expected decimal number",
+                                raw
+                            )
+                        })?;
+                        display_density_threshold = Some(parsed);
+                        idx += 2;
+                    }
+                    "--intensity-gain" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --intensity-gain".to_string());
+                        }
+                        let raw = args[idx + 1].trim();
+                        let parsed = raw.parse::<f32>().map_err(|_| {
+                            format!(
+                                "Invalid --intensity-gain '{}': expected decimal number",
+                                raw
+                            )
+                        })?;
+                        display_intensity_gain = Some(parsed);
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain)"
+                        ));
+                    }
+                }
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderDotplotSvg {
+                    seq_id: seq_id.to_string(),
+                    dotplot_id: dotplot_id.to_string(),
+                    path: output.to_string(),
+                    flex_track_id,
+                    display_density_threshold,
+                    display_intensity_gain,
                 })
                 .map_err(|e| e.to_string())?;
             engine

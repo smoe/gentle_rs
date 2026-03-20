@@ -98,6 +98,9 @@ The project main window (lineage page) supports two views:
 - `Graph`: node/edge lineage visualization
 - analysis artifacts (dotplots/flexibility tracks) appear in lineage as
   dedicated analysis nodes linked to their source sequences
+- SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
+  also materialized as lineage analysis nodes, linked by operation edges for
+  provenance/script parity
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
 - The lineage (`Table`/`Graph`) area is split from `Containers` with a
@@ -129,7 +132,10 @@ Primary map modes (linear topology):
     - `Compute dotplot`
     - `Compute flexibility`
     - `Export Dotplot SVG...`
-      - exports the currently loaded dotplot/flexibility rendering from GUI
+      - exports the currently loaded dotplot/flexibility rendering through engine
+        operation `RenderDotplotSvg` (shared GUI/CLI/scripting parity path)
+      - each export is recorded in operation history and appears in lineage
+        table/graph as an export analysis node
       - default filename includes dotplot parameters (`mode`, query/reference
         spans, `word`, `step`, `mismatches`, optional `tile`) and display
         controls (`threshold`, `gain`; plus flexibility model/bin/smoothing when
@@ -188,6 +194,9 @@ Primary map modes (linear topology):
         - `self_forward`: dominant diagonal is expected identity signal
         - reverse-complement self-pair zero-hits can be valid under strict/sparse
           sampling (not necessarily an error)
+  - main lineage table/analysis details:
+    - dotplot analysis rows include `Dotplot SVG` action (analogous to gel export)
+      for direct export from the main project window
 
 Linear map zoom detail:
 

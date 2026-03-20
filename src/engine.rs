@@ -3826,6 +3826,17 @@ pub enum Operation {
         mode: RenderSvgMode,
         path: String,
     },
+    RenderDotplotSvg {
+        seq_id: SeqId,
+        dotplot_id: String,
+        path: String,
+        #[serde(default)]
+        flex_track_id: Option<String>,
+        #[serde(default)]
+        display_density_threshold: Option<f32>,
+        #[serde(default)]
+        display_intensity_gain: Option<f32>,
+    },
     RenderFeatureExpertSvg {
         seq_id: SeqId,
         target: FeatureExpertTarget,
@@ -5618,6 +5629,7 @@ impl GentleEngine {
                 "LoadFile".to_string(),
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
+                "RenderDotplotSvg".to_string(),
                 "RenderFeatureExpertSvg".to_string(),
                 "RenderIsoformArchitectureSvg".to_string(),
                 "RenderRnaStructureSvg".to_string(),
@@ -6649,6 +6661,7 @@ impl GentleEngine {
             op,
             Operation::SaveFile { .. }
                 | Operation::RenderSequenceSvg { .. }
+                | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }

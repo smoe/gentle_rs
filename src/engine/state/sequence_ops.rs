@@ -581,6 +581,7 @@ impl GentleEngine {
             }
             Operation::SaveFile { seq_id, .. }
             | Operation::RenderSequenceSvg { seq_id, .. }
+            | Operation::RenderDotplotSvg { seq_id, .. }
             | Operation::RenderFeatureExpertSvg { seq_id, .. }
             | Operation::RenderIsoformArchitectureSvg { seq_id, .. }
             | Operation::RenderRnaStructureSvg { seq_id, .. }
@@ -747,6 +748,7 @@ impl GentleEngine {
         match op {
             Operation::SaveFile { path, .. }
             | Operation::RenderSequenceSvg { path, .. }
+            | Operation::RenderDotplotSvg { path, .. }
             | Operation::RenderFeatureExpertSvg { path, .. }
             | Operation::RenderIsoformArchitectureSvg { path, .. }
             | Operation::RenderRnaStructureSvg { path, .. }

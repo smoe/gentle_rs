@@ -93,6 +93,7 @@ Current draft operations:
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
+- `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
   - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
@@ -991,6 +992,20 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - from explicit `ladders` list when provided
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lane as SVG artifact.
+
+`RenderDotplotSvg` semantics:
+
+- Inputs:
+  - `seq_id` (owner/query sequence id for the stored dotplot payload)
+  - `dotplot_id` (stored payload id from `ComputeDotplot`)
+  - `path` (output SVG)
+  - optional `flex_track_id` (adds flexibility panel in same SVG)
+  - optional `display_density_threshold` and `display_intensity_gain` (display tuning)
+- Ownership checks:
+  - dotplot payload must belong to `seq_id`
+  - optional flexibility track must also belong to `seq_id`
+- Output:
+  - deterministic SVG dotplot artifact; operation is non-mutating.
 
 `ExportProcessRunBundle` semantics:
 

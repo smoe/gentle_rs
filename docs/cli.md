@@ -736,6 +736,8 @@ cargo run --bin gentle_cli -- save-project project.gentle.json
 cargo run --bin gentle_cli -- load-project project.gentle.json
 cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
+cargo run --bin gentle_cli -- render-dotplot-svg tp73_cdna dotplot_primary tp73.dotplot.svg
+cargo run --bin gentle_cli -- render-dotplot-svg tp73_cdna dotplot_primary tp73.dotplot.svg --flex-track flex_primary --display-threshold 0.2 --intensity-gain 1.8
 cargo run --bin gentle_cli -- render-rna-svg rna_seq rna.secondary.svg
 cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
@@ -855,6 +857,7 @@ Shared shell command:
     - `load-project PATH`
     - `save-project PATH`
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
+    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
@@ -1131,6 +1134,11 @@ Rendering export commands:
 
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
+- `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+  - Calls engine operation `RenderDotplotSvg`.
+  - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
+  - `--flex-track` optionally overlays one stored flexibility track in the same SVG.
+  - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
 - `render-rna-svg SEQ_ID OUTPUT.svg`
   - Calls engine operation `RenderRnaStructureSvg`.
   - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).

@@ -17358,6 +17358,7 @@ impl MainAreaDna {
         format!("{stem}.svg")
     }
 
+    #[allow(dead_code)]
     fn build_dotplot_svg_document(
         view: &DotplotView,
         flex_track: Option<&FlexibilityTrack>,
@@ -17732,25 +17733,16 @@ impl MainAreaDna {
             self.op_status = "Dotplot SVG export canceled".to_string();
             return;
         };
-        let svg = Self::build_dotplot_svg_document(
-            &view,
-            selected_flex_track.as_ref(),
-            density_threshold,
-            intensity_gain,
-            self.dotplot_locked_crosshair_bp,
-        );
         let path_text = path.display().to_string();
-        match fs::write(&path, svg) {
-            Ok(()) => {
-                self.op_status = format!(
-                    "Exported dotplot SVG '{}' to '{}'",
-                    view.dotplot_id, path_text
-                );
-            }
-            Err(error) => {
-                self.op_status = format!("Could not write dotplot SVG '{}': {}", path_text, error);
-            }
-        }
+        let flex_track_id = selected_flex_track.as_ref().map(|track| track.track_id.clone());
+        self.apply_operation_with_feedback(Operation::RenderDotplotSvg {
+            seq_id: view.seq_id.clone(),
+            dotplot_id: view.dotplot_id.clone(),
+            path: path_text.clone(),
+            flex_track_id,
+            display_density_threshold: Some(density_threshold),
+            display_intensity_gain: Some(intensity_gain),
+        });
     }
 
     fn xml_escape(text: &str) -> String {

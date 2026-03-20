@@ -4093,6 +4093,54 @@ fn test_render_sequence_svg_operation() {
 }
 
 #[test]
+fn test_render_dotplot_svg_operation() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence("ATGCATGCATGCATGC").expect("query sequence"),
+    );
+    state.sequences.insert(
+        "ref".to_string(),
+        DNAsequence::from_sequence("TTTATGCATGCATGCAAAA").expect("reference sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "query".to_string(),
+            reference_seq_id: Some("ref".to_string()),
+            span_start_0based: Some(0),
+            span_end_0based: Some(16),
+            reference_span_start_0based: Some(3),
+            reference_span_end_0based: Some(19),
+            mode: DotplotMode::PairForward,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("pair_dotplot".to_string()),
+        })
+        .expect("compute dotplot");
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("dotplot.svg");
+    let path_text = path.display().to_string();
+    let res = engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "query".to_string(),
+            dotplot_id: "pair_dotplot".to_string(),
+            path: path_text.clone(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+        })
+        .expect("render dotplot svg");
+    assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("<svg"));
+    assert!(text.contains("Dotplot workspace export"));
+}
+
+#[test]
 fn test_render_lineage_svg_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));

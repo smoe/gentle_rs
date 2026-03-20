@@ -1317,8 +1317,15 @@ Status (2026-03-19):
   - shared-shell/CLI read/write command surfaces:
     - `dotplot compute|list|show`
     - `flex compute|list|show`
+  - engine SVG export parity:
+    - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
+    - shared-shell/CLI command route: `render-dotplot-svg ...`
+    - GUI `Export Dotplot SVG...` now uses the same engine operation (no
+      GUI-only renderer path for persisted exports)
+  - lineage projection parity:
+    - SVG export operations are materialized as analysis nodes in the main
+      lineage table/graph and linked to source sequences via operation edges
 - Pending follow-ups:
-  - `RenderDotplotSvg`
   - JS/Lua/Python convenience wrappers beyond generic `apply_operation`
 
 Engine objects and operations:
@@ -1350,8 +1357,7 @@ Engine objects and operations:
   - implemented:
     - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches, tile_bp?, store_as? }`
     - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }`
-  - planned:
-    - `RenderDotplotSvg { seq_id, dotplot_id, flexibility_ids?, path }`
+    - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
   - optional later:
     - explicit inspect operations (`InspectDotplot`, `InspectFlexibilityTrack`)
       if adapter-neutral retrieval routes need to be operation-based instead of

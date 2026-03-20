@@ -480,6 +480,14 @@ pub enum ShellCommand {
         mode: RenderSvgMode,
         output: String,
     },
+    RenderDotplotSvg {
+        seq_id: String,
+        dotplot_id: String,
+        output: String,
+        flex_track_id: Option<String>,
+        display_density_threshold: Option<f32>,
+        display_intensity_gain: Option<f32>,
+    },
     InspectFeatureExpert {
         seq_id: String,
         target: FeatureExpertTarget,
@@ -4099,6 +4107,30 @@ impl ShellCommand {
                 mode,
                 output,
             } => format!("render {mode:?} SVG for '{seq_id}' to '{output}'"),
+            Self::RenderDotplotSvg {
+                seq_id,
+                dotplot_id,
+                output,
+                flex_track_id,
+                display_density_threshold,
+                display_intensity_gain,
+            } => format!(
+                "render dotplot SVG for '{}' dotplot='{}' to '{}' (flex_track={}, threshold={}, gain={})",
+                seq_id,
+                dotplot_id,
+                output,
+                flex_track_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
+                display_density_threshold
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "default(0.000)".to_string()),
+                display_intensity_gain
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "default(1.000)".to_string())
+            ),
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
                     "inspect feature expert view for '{seq_id}' target={}",
@@ -8777,6 +8809,81 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 output: tokens[3].clone(),
             })
         }
+        "render-dotplot-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]".to_string(),
+                );
+            }
+            let seq_id = tokens[1].trim();
+            let dotplot_id = tokens[2].trim();
+            if seq_id.is_empty() {
+                return Err("render-dotplot-svg requires non-empty SEQ_ID".to_string());
+            }
+            if dotplot_id.is_empty() {
+                return Err("render-dotplot-svg requires non-empty DOTPLOT_ID".to_string());
+            }
+            let output = tokens[3].clone();
+            let mut flex_track_id: Option<String> = None;
+            let mut display_density_threshold: Option<f32> = None;
+            let mut display_intensity_gain: Option<f32> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--flex-track" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --flex-track".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            flex_track_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--display-threshold" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --display-threshold".to_string());
+                        }
+                        let raw = tokens[idx + 1].trim();
+                        let parsed = raw.parse::<f32>().map_err(|_| {
+                            format!(
+                                "Invalid --display-threshold '{}': expected decimal number",
+                                raw
+                            )
+                        })?;
+                        display_density_threshold = Some(parsed);
+                        idx += 2;
+                    }
+                    "--intensity-gain" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --intensity-gain".to_string());
+                        }
+                        let raw = tokens[idx + 1].trim();
+                        let parsed = raw.parse::<f32>().map_err(|_| {
+                            format!(
+                                "Invalid --intensity-gain '{}': expected decimal number",
+                                raw
+                            )
+                        })?;
+                        display_intensity_gain = Some(parsed);
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for render-dotplot-svg"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RenderDotplotSvg {
+                seq_id: seq_id.to_string(),
+                dotplot_id: dotplot_id.to_string(),
+                output,
+                flex_track_id,
+                display_density_threshold,
+                display_intensity_gain,
+            })
+        }
         "inspect-feature-expert" => {
             if tokens.len() < 4 {
                 return Err(token_error(cmd));
@@ -10282,6 +10389,29 @@ pub fn execute_shell_command_with_options(
                     seq_id: seq_id.clone(),
                     mode: mode.clone(),
                     path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RenderDotplotSvg {
+            seq_id,
+            dotplot_id,
+            output,
+            flex_track_id,
+            display_density_threshold,
+            display_intensity_gain,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderDotplotSvg {
+                    seq_id: seq_id.clone(),
+                    dotplot_id: dotplot_id.clone(),
+                    path: output.clone(),
+                    flex_track_id: flex_track_id.clone(),
+                    display_density_threshold: *display_density_threshold,
+                    display_intensity_gain: *display_intensity_gain,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
