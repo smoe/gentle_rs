@@ -19,3 +19,4 @@ mapped to an in silico representation of the same.
 - Protocol: [`docs/protocol.md`](docs/protocol.md)
 - GUI manual: [`docs/gui.md`](docs/gui.md)
 - CLI manual: [`docs/cli.md`](docs/cli.md)
+- Acknowledgements: [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)
