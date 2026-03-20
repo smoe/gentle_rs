@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-19
+Last updated: 2026-03-20
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -146,6 +146,13 @@ order. Durable architecture constraints and decisions remain in
     - `inspect-feature-expert` / `render-feature-expert-svg`
     - `panels import-isoform` / `panels inspect-isoform` /
       `panels render-isoform-svg`
+- New sequence-analysis operation baseline:
+  - `DeriveSplicingReferences` derives a sequence-window DNA slice, transcript-
+    oriented mRNA isoforms, and an exon-consecutive artificial reference in one
+    deterministic engine operation.
+  - `AlignSequences` adds deterministic local/global pairwise alignment
+    reporting (score/identity/coverage/CIGAR-like ops) as structured
+    `OpResult.sequence_alignment` payloads.
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)

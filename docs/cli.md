@@ -165,13 +165,15 @@ Dotplot/flexibility capability status:
   - `dotplot compute|list|show`
   - `flex compute|list|show`
   backed by `ComputeDotplot` and `ComputeFlexibilityTrack`.
+  Pairwise sequence alignment is also available as operation-level contract
+  (`AlignSequences`) via `gentle_cli op` / `gentle_cli workflow`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+  `ComputeFlexibilityTrack`, `AlignSequences`); dedicated convenience wrappers pending.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+  `ComputeFlexibilityTrack`, `AlignSequences`); dedicated convenience wrappers pending.
 
 RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
@@ -1676,6 +1678,19 @@ Extract region (`from` inclusive, `to` exclusive):
 
 ```json
 {"ExtractRegion":{"input":"pgex","from":100,"to":900,"output_id":"insert_candidate"}}
+```
+
+Derive splicing references from a sequence window (DNA window + mRNA isoforms +
+exon-reference):
+
+```json
+{"DeriveSplicingReferences":{"seq_id":"tp73_window","span_start_0based":1200,"span_end_0based":2600,"seed_feature_id":null,"scope":"target_group_target_strand","output_prefix":"tp73_refs"}}
+```
+
+Pairwise sequence alignment (global/local) with structured result payload:
+
+```json
+{"AlignSequences":{"query_seq_id":"tp73_refs_mrna_NM_001204186","target_seq_id":"tp73_refs_exon_reference","mode":"local","match_score":2,"mismatch_score":-3,"gap_open":-5,"gap_extend":-1}}
 ```
 
 Extract anchored region with flexible 5' boundary and fixed anchor side:

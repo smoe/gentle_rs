@@ -596,11 +596,20 @@ impl GentleEngine {
             | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }
             | Operation::ComputeDotplot { seq_id, .. }
             | Operation::ComputeFlexibilityTrack { seq_id, .. }
+            | Operation::DeriveSplicingReferences { seq_id, .. }
             | Operation::InterpretRnaReads { seq_id, .. }
             | Operation::SetTopology { seq_id, .. }
             | Operation::RecomputeFeatures { seq_id, .. }
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+            }
+            Operation::AlignSequences {
+                query_seq_id,
+                target_seq_id,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.sequence_ids, query_seq_id);
+                Self::push_unique_token(&mut summary.sequence_ids, target_seq_id);
             }
             Operation::ListRnaReadReports { seq_id } => {
                 if let Some(seq_id) = seq_id.as_deref() {

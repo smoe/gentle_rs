@@ -114,6 +114,8 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
+- `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
+- `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields)
 - `ListRnaReadReports { seq_id? }`
@@ -1372,6 +1374,23 @@ Dotplot + flexibility operation contract (implemented baseline):
   - `flex list [SEQ_ID]`
   - `flex show TRACK_ID`
 
+Splicing-reference derivation + pairwise alignment operation contract (implemented baseline):
+
+- Splicing-reference derivation operation:
+  - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }`
+  - emits multiple derived sequence outputs from one genomic window:
+    - DNA window (`..._dna`)
+    - one mRNA sequence per transcript lane (`..._mrna_*`, transcript orientation, `T->U`)
+    - exon-consecutive artificial reference sequence (`..._exon_reference`)
+  - if `seed_feature_id` is omitted, engine selects one overlapping mRNA feature deterministically from the requested span
+  - default `scope`: `target_group_target_strand`
+- Pairwise alignment operation:
+  - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
+  - `mode`: `global | local` (default `global`)
+  - scoring defaults: `match=2`, `mismatch=-3`, `gap_open=-5`, `gap_extend=-1`
+  - returns structured payload `sequence_alignment` with spans, score, coverage, identity, and CIGAR-like compact operations string
+  - non-mutating operation (no sequence/container state mutation)
+
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 
 - Operations:
@@ -1590,7 +1609,9 @@ Notes:
   "created_seq_ids": ["..."],
   "changed_seq_ids": ["..."],
   "warnings": ["..."],
-  "messages": ["..."]
+  "messages": ["..."],
+  "genome_annotation_projection": null,
+  "sequence_alignment": null
 }
 ```
 

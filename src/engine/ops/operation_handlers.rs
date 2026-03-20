@@ -275,6 +275,7 @@ impl GentleEngine {
             warnings: vec![],
             messages: vec![],
             genome_annotation_projection: None,
+            sequence_alignment: None,
         };
 
         match op {
@@ -4075,6 +4076,499 @@ impl GentleEngine {
                     span_start_0based,
                     span_end_0based,
                     track.bins.len()
+                ));
+            }
+            Operation::DeriveSplicingReferences {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id,
+                scope,
+                output_prefix,
+            } => {
+                parent_seq_ids.push(seq_id.clone());
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .clone();
+                let forward = dna.forward_bytes();
+                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                    forward.len(),
+                    Some(span_start_0based),
+                    Some(span_end_0based),
+                )?;
+                let resolved_seed_feature_id = if let Some(feature_id) = seed_feature_id {
+                    feature_id
+                } else {
+                    let mut best: Option<(usize, usize, usize)> = None;
+                    for (feature_idx, feature) in dna.features().iter().enumerate() {
+                        if !Self::is_mrna_feature(feature) {
+                            continue;
+                        }
+                        let mut ranges = vec![];
+                        collect_location_ranges_usize(&feature.location, &mut ranges);
+                        if ranges.is_empty() {
+                            if let Ok((from, to)) = feature.location.find_bounds() {
+                                if from >= 0 && to >= 0 {
+                                    ranges.push((from as usize, to as usize));
+                                }
+                            }
+                        }
+                        if ranges.is_empty() {
+                            continue;
+                        }
+                        let mut overlap_bp = 0usize;
+                        let mut min_start = usize::MAX;
+                        for range in ranges {
+                            min_start = min_start.min(range.0);
+                            if let Some((overlap_start, overlap_end)) =
+                                Self::range_intersection_0based(
+                                    range,
+                                    (span_start_0based, span_end_0based),
+                                )
+                            {
+                                overlap_bp =
+                                    overlap_bp.saturating_add(overlap_end.saturating_sub(overlap_start));
+                            }
+                        }
+                        if overlap_bp == 0 {
+                            continue;
+                        }
+                        match best {
+                            None => best = Some((overlap_bp, min_start, feature_idx)),
+                            Some((best_overlap, best_start, best_idx)) => {
+                                if overlap_bp > best_overlap
+                                    || (overlap_bp == best_overlap
+                                        && (min_start < best_start
+                                            || (min_start == best_start
+                                                && feature_idx < best_idx)))
+                                {
+                                    best = Some((overlap_bp, min_start, feature_idx));
+                                }
+                            }
+                        }
+                    }
+                    best.map(|(_, _, feature_idx)| feature_idx)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "DeriveSplicingReferences requires a seed mRNA feature id or at least one mRNA feature overlapping span {}..{} in '{}'",
+                                span_start_0based, span_end_0based, seq_id
+                            ),
+                        })?
+                };
+                let splicing =
+                    self.build_splicing_expert_view(&seq_id, resolved_seed_feature_id, scope)?;
+                let prefix = output_prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| format!("{seq_id}_splicing_refs"));
+
+                let mut dna_window = dna
+                    .extract_region_preserving_features(span_start_0based, span_end_0based)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not derive DNA window {}..{} from '{}'",
+                            span_start_0based, span_end_0based, seq_id
+                        ),
+                    })?;
+                if dna_window.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not derive DNA window {}..{} from '{}'",
+                            span_start_0based, span_end_0based, seq_id
+                        ),
+                    });
+                }
+                dna_window.set_circular(false);
+                let dna_window_seq_id = self.unique_seq_id(&format!("{prefix}_dna"));
+                dna_window.set_name(dna_window_seq_id.clone());
+                Self::prepare_sequence(&mut dna_window);
+                self.state
+                    .sequences
+                    .insert(dna_window_seq_id.clone(), dna_window);
+                self.add_lineage_node(
+                    &dna_window_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(dna_window_seq_id.clone());
+                result.messages.push(format!(
+                    "Derived DNA window '{}' from '{}' span {}..{}",
+                    dna_window_seq_id, seq_id, span_start_0based, span_end_0based
+                ));
+                if let Some(container_id) = self.add_container(
+                    std::slice::from_ref(&dna_window_seq_id),
+                    ContainerKind::Singleton,
+                    Some("Derived splicing DNA window".to_string()),
+                    Some(&result.op_id),
+                ) {
+                    result.messages.push(format!(
+                        "Created DNA-window container '{}'",
+                        container_id
+                    ));
+                }
+
+                let mut mrna_seq_ids: Vec<SeqId> = vec![];
+                for (lane_index, lane) in splicing.transcripts.iter().enumerate() {
+                    let template = Self::make_transcript_template(&dna, lane, 0);
+                    if template.sequence.is_empty() {
+                        continue;
+                    }
+                    let rna_bytes = template
+                        .sequence
+                        .iter()
+                        .map(|base| match base.to_ascii_uppercase() {
+                            b'T' => b'U',
+                            b'A' | b'C' | b'G' | b'U' | b'N' => base.to_ascii_uppercase(),
+                            _ => b'N',
+                        })
+                        .collect::<Vec<_>>();
+                    let rna_sequence = String::from_utf8(rna_bytes).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not render mRNA sequence bytes: {e}"),
+                    })?;
+                    let mut mrna = DNAsequence::from_sequence(&rna_sequence).map_err(|e| {
+                        EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not create mRNA sequence '{}' from transcript '{}': {e}",
+                                lane.transcript_id, lane.label
+                            ),
+                        }
+                    })?;
+                    mrna.set_circular(false);
+                    let transcript_token = lane
+                        .transcript_id
+                        .chars()
+                        .map(|ch| {
+                            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                                ch
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect::<String>()
+                        .trim_matches('_')
+                        .to_string();
+                    let transcript_token = if transcript_token.is_empty() {
+                        format!("tx{}", lane_index + 1)
+                    } else {
+                        transcript_token
+                    };
+                    let mrna_seq_id =
+                        self.unique_seq_id(&format!("{prefix}_mrna_{transcript_token}"));
+                    mrna.set_name(mrna_seq_id.clone());
+                    Self::prepare_sequence(&mut mrna);
+                    self.state.sequences.insert(mrna_seq_id.clone(), mrna);
+                    self.add_lineage_node(&mrna_seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(mrna_seq_id.clone());
+                    mrna_seq_ids.push(mrna_seq_id);
+                }
+                if mrna_seq_ids.is_empty() {
+                    result.warnings.push(format!(
+                        "No transcript-derived mRNA sequences were generated for '{}' (seed feature {}, scope={})",
+                        seq_id,
+                        resolved_seed_feature_id,
+                        scope.as_str()
+                    ));
+                } else {
+                    result.messages.push(format!(
+                        "Derived {} mRNA sequence(s): {}",
+                        mrna_seq_ids.len(),
+                        mrna_seq_ids.join(", ")
+                    ));
+                    if let Some(container_id) = self.add_container(
+                        &mrna_seq_ids,
+                        ContainerKind::Pool,
+                        Some("Derived splicing mRNA isoforms".to_string()),
+                        Some(&result.op_id),
+                    ) {
+                        result.messages.push(format!(
+                            "Created mRNA-isoform container '{}'",
+                            container_id
+                        ));
+                    }
+                }
+
+                let mut unique_exons: Vec<(usize, usize)> = splicing
+                    .unique_exons
+                    .iter()
+                    .map(|exon| (exon.start_1based.saturating_sub(1), exon.end_1based))
+                    .collect();
+                if splicing.strand.trim() == "-" {
+                    unique_exons.reverse();
+                }
+                let mut exon_reference_bytes: Vec<u8> = vec![];
+                for (start_0based, end_1based) in unique_exons {
+                    if start_0based >= forward.len() {
+                        continue;
+                    }
+                    let end_0based_exclusive = end_1based.min(forward.len());
+                    if end_0based_exclusive <= start_0based {
+                        continue;
+                    }
+                    let segment = &forward[start_0based..end_0based_exclusive];
+                    if splicing.strand.trim() == "-" {
+                        exon_reference_bytes.extend(
+                            Self::reverse_complement_bytes(segment)
+                                .into_iter()
+                                .map(|base| base.to_ascii_uppercase()),
+                        );
+                    } else {
+                        exon_reference_bytes.extend(
+                            segment
+                                .iter()
+                                .copied()
+                                .map(Self::normalize_nucleotide_base),
+                        );
+                    }
+                }
+                if exon_reference_bytes.is_empty() {
+                    result.warnings.push(format!(
+                        "Could not derive an exon-reference sequence for '{}' (seed feature {}, scope={})",
+                        seq_id,
+                        resolved_seed_feature_id,
+                        scope.as_str()
+                    ));
+                } else {
+                    let exon_reference_sequence =
+                        String::from_utf8(exon_reference_bytes).map_err(|e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!("Could not render exon-reference sequence bytes: {e}"),
+                        })?;
+                    let mut exon_reference =
+                        DNAsequence::from_sequence(&exon_reference_sequence).map_err(|e| {
+                            EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not create exon-reference sequence from '{}' transcripts: {e}",
+                                    seq_id
+                                ),
+                            }
+                        })?;
+                    exon_reference.set_circular(false);
+                    let exon_reference_seq_id =
+                        self.unique_seq_id(&format!("{prefix}_exon_reference"));
+                    exon_reference.set_name(exon_reference_seq_id.clone());
+                    Self::prepare_sequence(&mut exon_reference);
+                    self.state
+                        .sequences
+                        .insert(exon_reference_seq_id.clone(), exon_reference);
+                    self.add_lineage_node(
+                        &exon_reference_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(exon_reference_seq_id.clone());
+                    result.messages.push(format!(
+                        "Derived exon-reference sequence '{}' (seed feature {}, scope={}, unique_exons={})",
+                        exon_reference_seq_id,
+                        resolved_seed_feature_id,
+                        scope.as_str(),
+                        splicing.unique_exons.len()
+                    ));
+                    if let Some(container_id) = self.add_container(
+                        std::slice::from_ref(&exon_reference_seq_id),
+                        ContainerKind::Singleton,
+                        Some("Derived exon-reference sequence".to_string()),
+                        Some(&result.op_id),
+                    ) {
+                        result.messages.push(format!(
+                            "Created exon-reference container '{}'",
+                            container_id
+                        ));
+                    }
+                }
+            }
+            Operation::AlignSequences {
+                query_seq_id,
+                target_seq_id,
+                query_span_start_0based,
+                query_span_end_0based,
+                target_span_start_0based,
+                target_span_end_0based,
+                mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+            } => {
+                if match_score <= 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "AlignSequences requires match_score > 0".to_string(),
+                    });
+                }
+                if gap_open > 0 || gap_extend > 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "AlignSequences requires gap_open and gap_extend to be <= 0"
+                            .to_string(),
+                    });
+                }
+                let query_dna =
+                    self.state
+                        .sequences
+                        .get(&query_seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{query_seq_id}' not found"),
+                        })?;
+                let target_dna =
+                    self.state
+                        .sequences
+                        .get(&target_seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{target_seq_id}' not found"),
+                        })?;
+                let query_text = query_dna.get_forward_string().to_ascii_uppercase();
+                let target_text = target_dna.get_forward_string().to_ascii_uppercase();
+                let query_bytes = query_text.as_bytes();
+                let target_bytes = target_text.as_bytes();
+                let (query_span_start_0based, query_span_end_0based) = Self::resolve_analysis_span(
+                    query_bytes.len(),
+                    query_span_start_0based,
+                    query_span_end_0based,
+                )?;
+                let (target_span_start_0based, target_span_end_0based) = Self::resolve_analysis_span(
+                    target_bytes.len(),
+                    target_span_start_0based,
+                    target_span_end_0based,
+                )?;
+                let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
+                let target_span = &target_bytes[target_span_start_0based..target_span_end_0based];
+
+                let score = |a: u8, b: u8| {
+                    if a.eq_ignore_ascii_case(&b) {
+                        match_score
+                    } else {
+                        mismatch_score
+                    }
+                };
+                let mut aligner =
+                    bio::alignment::pairwise::Aligner::new(gap_open, gap_extend, &score);
+                let alignment = match mode {
+                    PairwiseAlignmentMode::Global => aligner.global(query_span, target_span),
+                    PairwiseAlignmentMode::Local => aligner.local(query_span, target_span),
+                };
+
+                let mut matches = 0usize;
+                let mut mismatches = 0usize;
+                let mut insertions = 0usize;
+                let mut deletions = 0usize;
+                let mut cigar = String::new();
+                let mut run_len = 0usize;
+                let mut run_code = 'M';
+                for op in &alignment.operations {
+                    let code = match op {
+                        bio::alignment::AlignmentOperation::Match => {
+                            matches += 1;
+                            Some('=')
+                        }
+                        bio::alignment::AlignmentOperation::Subst => {
+                            mismatches += 1;
+                            Some('X')
+                        }
+                        bio::alignment::AlignmentOperation::Ins => {
+                            insertions += 1;
+                            Some('I')
+                        }
+                        bio::alignment::AlignmentOperation::Del => {
+                            deletions += 1;
+                            Some('D')
+                        }
+                        bio::alignment::AlignmentOperation::Xclip(_) => Some('S'),
+                        bio::alignment::AlignmentOperation::Yclip(_) => None,
+                    };
+                    let Some(code) = code else {
+                        continue;
+                    };
+                    if run_len == 0 {
+                        run_code = code;
+                        run_len = 1;
+                    } else if run_code == code {
+                        run_len += 1;
+                    } else {
+                        cigar.push_str(&format!("{run_len}{run_code}"));
+                        run_code = code;
+                        run_len = 1;
+                    }
+                }
+                if run_len > 0 {
+                    cigar.push_str(&format!("{run_len}{run_code}"));
+                }
+                if cigar.is_empty() {
+                    cigar = "*".to_string();
+                }
+
+                let aligned_columns = matches + mismatches + insertions + deletions;
+                let query_covered = alignment.xend.saturating_sub(alignment.xstart);
+                let target_covered = alignment.yend.saturating_sub(alignment.ystart);
+                let identity_fraction = if aligned_columns == 0 {
+                    0.0
+                } else {
+                    matches as f64 / aligned_columns as f64
+                };
+                let query_coverage_fraction = if query_span.is_empty() {
+                    0.0
+                } else {
+                    query_covered as f64 / query_span.len() as f64
+                };
+                let target_coverage_fraction = if target_span.is_empty() {
+                    0.0
+                } else {
+                    target_covered as f64 / target_span.len() as f64
+                };
+                let report = SequenceAlignmentReport {
+                    schema: SEQUENCE_ALIGNMENT_REPORT_SCHEMA.to_string(),
+                    mode,
+                    query_seq_id: query_seq_id.clone(),
+                    target_seq_id: target_seq_id.clone(),
+                    query_span_start_0based,
+                    query_span_end_0based,
+                    target_span_start_0based,
+                    target_span_end_0based,
+                    aligned_query_start_0based: query_span_start_0based + alignment.xstart,
+                    aligned_query_end_0based_exclusive: query_span_start_0based + alignment.xend,
+                    aligned_target_start_0based: target_span_start_0based + alignment.ystart,
+                    aligned_target_end_0based_exclusive: target_span_start_0based + alignment.yend,
+                    score: alignment.score,
+                    match_score,
+                    mismatch_score,
+                    gap_open,
+                    gap_extend,
+                    aligned_columns,
+                    matches,
+                    mismatches,
+                    insertions,
+                    deletions,
+                    identity_fraction,
+                    query_coverage_fraction,
+                    target_coverage_fraction,
+                    cigar,
+                };
+                result.sequence_alignment = Some(report.clone());
+                result.messages.push(format!(
+                    "Computed {} alignment '{}' vs '{}' (score={}, identity={:.3}, query_cov={:.3}, target_cov={:.3}, cigar={})",
+                    mode.as_str(),
+                    query_seq_id,
+                    target_seq_id,
+                    report.score,
+                    report.identity_fraction,
+                    report.query_coverage_fraction,
+                    report.target_coverage_fraction,
+                    report.cigar
                 ));
             }
             Operation::InterpretRnaReads {

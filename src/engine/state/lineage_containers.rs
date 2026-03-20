@@ -261,6 +261,9 @@ impl GentleEngine {
             | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),
             Operation::ExtractRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
+            Operation::DeriveSplicingReferences { .. } => {
+                Some("Derived splicing references".to_string())
+            }
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::FetchGenBankAccession { .. } => Some("Fetched GenBank sequence".to_string()),

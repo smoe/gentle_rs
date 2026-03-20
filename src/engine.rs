@@ -141,6 +141,7 @@ pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
 const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v1";
 const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
+const SEQUENCE_ALIGNMENT_REPORT_SCHEMA: &str = "gentle.sequence_alignment_report.v1";
 pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
 const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
 const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
@@ -2841,6 +2842,24 @@ impl DotplotMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Pairwise alignment mode for `AlignSequences`.
+pub enum PairwiseAlignmentMode {
+    #[default]
+    Global,
+    Local,
+}
+
+impl PairwiseAlignmentMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Local => "local",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Flexibility score model for `ComputeFlexibilityTrack`.
 pub enum FlexibilityModel {
     #[default]
@@ -3045,6 +3064,26 @@ fn default_min_transition_support_fraction() -> f64 {
 
 fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
+}
+
+fn default_splicing_reference_scope() -> SplicingScopePreset {
+    SplicingScopePreset::TargetGroupTargetStrand
+}
+
+fn default_pairwise_match_score() -> i32 {
+    2
+}
+
+fn default_pairwise_mismatch_score() -> i32 {
+    -3
+}
+
+fn default_pairwise_gap_open() -> i32 {
+    -5
+}
+
+fn default_pairwise_gap_extend() -> i32 {
+    -1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -3746,6 +3785,37 @@ pub struct DotplotViewSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct SequenceAlignmentReport {
+    pub schema: String,
+    pub mode: PairwiseAlignmentMode,
+    pub query_seq_id: String,
+    pub target_seq_id: String,
+    pub query_span_start_0based: usize,
+    pub query_span_end_0based: usize,
+    pub target_span_start_0based: usize,
+    pub target_span_end_0based: usize,
+    pub aligned_query_start_0based: usize,
+    pub aligned_query_end_0based_exclusive: usize,
+    pub aligned_target_start_0based: usize,
+    pub aligned_target_end_0based_exclusive: usize,
+    pub score: i32,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open: i32,
+    pub gap_extend: i32,
+    pub aligned_columns: usize,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    pub target_coverage_fraction: f64,
+    pub cigar: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct FlexibilityBinScore {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
@@ -4118,6 +4188,39 @@ pub enum Operation {
         smoothing_bp: Option<usize>,
         #[serde(default)]
         store_as: Option<String>,
+    },
+    DeriveSplicingReferences {
+        seq_id: SeqId,
+        span_start_0based: usize,
+        span_end_0based: usize,
+        #[serde(default)]
+        seed_feature_id: Option<usize>,
+        #[serde(default = "default_splicing_reference_scope")]
+        scope: SplicingScopePreset,
+        #[serde(default)]
+        output_prefix: Option<SeqId>,
+    },
+    AlignSequences {
+        query_seq_id: SeqId,
+        target_seq_id: SeqId,
+        #[serde(default)]
+        query_span_start_0based: Option<usize>,
+        #[serde(default)]
+        query_span_end_0based: Option<usize>,
+        #[serde(default)]
+        target_span_start_0based: Option<usize>,
+        #[serde(default)]
+        target_span_end_0based: Option<usize>,
+        #[serde(default)]
+        mode: PairwiseAlignmentMode,
+        #[serde(default = "default_pairwise_match_score")]
+        match_score: i32,
+        #[serde(default = "default_pairwise_mismatch_score")]
+        mismatch_score: i32,
+        #[serde(default = "default_pairwise_gap_open")]
+        gap_open: i32,
+        #[serde(default = "default_pairwise_gap_extend")]
+        gap_extend: i32,
     },
     InterpretRnaReads {
         seq_id: SeqId,
@@ -4991,6 +5094,8 @@ pub struct OpResult {
     pub messages: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_annotation_projection: Option<GenomeAnnotationProjectionTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_alignment: Option<SequenceAlignmentReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5613,6 +5718,8 @@ impl GentleEngine {
                 "DesignQpcrAssays".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
+                "DeriveSplicingReferences".to_string(),
+                "AlignSequences".to_string(),
                 "InterpretRnaReads".to_string(),
                 "AlignRnaReadReport".to_string(),
                 "ListRnaReadReports".to_string(),
@@ -6621,6 +6728,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
+                | Operation::AlignSequences { .. }
         )
     }
 

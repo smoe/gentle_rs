@@ -4090,6 +4090,7 @@ impl GentleEngine {
             warnings: vec![],
             messages: vec![],
             genome_annotation_projection: None,
+            sequence_alignment: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
@@ -4123,6 +4124,7 @@ impl GentleEngine {
             warnings: vec![],
             messages: vec![],
             genome_annotation_projection: None,
+            sequence_alignment: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
