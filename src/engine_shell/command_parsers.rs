@@ -2029,9 +2029,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                         })?);
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown option '{other}' for dotplot render-svg"
-                        ));
+                        return Err(format!("Unknown option '{other}' for dotplot render-svg"));
                     }
                 }
             }
@@ -2347,7 +2345,7 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -2840,6 +2838,57 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id: tokens[2].clone(),
             })
         }
+        "inspect-alignments" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads inspect-alignments requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads inspect-alignments REPORT_ID must not be empty".to_string());
+            }
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut limit = 50usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        limit = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads inspect-alignments: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads inspect-alignments"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsInspectAlignments {
+                report_id,
+                selection,
+                limit,
+            })
+        }
         "export-report" => {
             if tokens.len() != 4 {
                 return Err("rna-reads export-report requires REPORT_ID OUTPUT.json".to_string());
@@ -3039,8 +3088,108 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 scale,
             })
         }
+        "export-alignments-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-alignments-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut limit: Option<usize> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-alignments-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads export-alignments-tsv",
+                        )?;
+                        limit = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads export-alignments-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-alignments-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportAlignmentsTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+            })
+        }
+        "export-alignment-dotplot-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-alignment-dotplot-svg requires REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut max_points = 2_500usize;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-alignment-dotplot-svg",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--max-points" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-points",
+                            "rna-reads export-alignment-dotplot-svg",
+                        )?;
+                        max_points = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-points value '{raw}' for rna-reads export-alignment-dotplot-svg: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-alignment-dotplot-svg"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+                report_id,
+                path,
+                selection,
+                max_points,
+            })
+        }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

@@ -4486,6 +4486,76 @@ fn test_export_pool_operation() {
 fn test_export_process_run_bundle_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
+    state.metadata.insert(
+        ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+        serde_json::to_value(RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces: vec![RoutineDecisionTrace {
+                schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                trace_id: "trace_1".to_string(),
+                source: "gui_routine_assistant".to_string(),
+                status: "executed".to_string(),
+                created_at_unix_ms: 10,
+                updated_at_unix_ms: 20,
+                goal_text: "Assemble reporter".to_string(),
+                query_text: "golden gate".to_string(),
+                candidate_routine_ids: vec!["golden_gate.type_iis_single_insert".to_string()],
+                selected_routine_id: Some("golden_gate.type_iis_single_insert".to_string()),
+                selected_routine_title: Some("Golden Gate Type IIS Single Insert".to_string()),
+                selected_routine_family: Some("golden_gate".to_string()),
+                alternatives_presented: vec!["gibson.two_fragment_overlap_preview".to_string()],
+                comparisons: vec![RoutineDecisionTraceComparison {
+                    left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
+                    right_routine_id: "gibson.two_fragment_overlap_preview".to_string(),
+                }],
+                disambiguation_questions_presented: vec![
+                    RoutineDecisionTraceDisambiguationQuestion {
+                        question_id: "termini_expectation".to_string(),
+                        question_text:
+                            "What molecule types and termini are expected for insert and vector?"
+                                .to_string(),
+                    },
+                    RoutineDecisionTraceDisambiguationQuestion {
+                        question_id: "directionality_constraints".to_string(),
+                        question_text:
+                            "Do you need directionality constraints or compatible overhang control?"
+                                .to_string(),
+                    },
+                ],
+                disambiguation_answers: vec![RoutineDecisionTraceDisambiguationAnswer {
+                    question_id: "termini_expectation".to_string(),
+                    answer_text: "vector and insert are type IIS compatible".to_string(),
+                }],
+                bindings_snapshot: std::collections::BTreeMap::from([(
+                    "vector_seq_id".to_string(),
+                    "s".to_string(),
+                )]),
+                preflight_history: vec![RoutineDecisionTracePreflightSnapshot {
+                    can_execute: true,
+                    warnings: vec!["no additional warnings".to_string()],
+                    errors: vec![],
+                    contract_source: Some("routine_catalog".to_string()),
+                }],
+                preflight_snapshot: Some(RoutineDecisionTracePreflightSnapshot {
+                    can_execute: true,
+                    warnings: vec![],
+                    errors: vec![],
+                    contract_source: Some("routine_catalog".to_string()),
+                }),
+                execution_attempted: true,
+                execution_success: Some(true),
+                transactional: Some(true),
+                macro_instance_id: Some("macro_1".to_string()),
+                emitted_operation_ids: vec!["op_1".to_string()],
+                execution_error: None,
+                export_events: vec![RoutineDecisionTraceExportEvent {
+                    run_bundle_path: "run_bundle.json".to_string(),
+                    exported_at_unix_ms: 25,
+                }],
+            }],
+        })
+        .expect("trace store json"),
+    );
     let mut engine = GentleEngine::from_state(state);
     let reverse = engine
         .apply(Operation::Reverse {
@@ -4547,6 +4617,131 @@ fn test_export_process_run_bundle_operation() {
             .root_sequence_ids
             .iter()
             .any(|seq_id| seq_id == "s")
+    );
+    assert_eq!(bundle.decision_traces.len(), 1);
+    assert_eq!(bundle.decision_traces[0].trace_id, "trace_1");
+    assert_eq!(
+        bundle.decision_traces[0]
+            .disambiguation_questions_presented
+            .len(),
+        2
+    );
+    assert_eq!(bundle.decision_traces[0].disambiguation_answers.len(), 1);
+    assert_eq!(bundle.decision_traces[0].preflight_history.len(), 1);
+    assert_eq!(
+        bundle.decision_traces[0]
+            .preflight_snapshot
+            .as_ref()
+            .map(|row| row.contract_source.as_deref()),
+        Some(Some("routine_catalog"))
+    );
+}
+
+#[test]
+fn test_export_process_run_bundle_decision_trace_partial_statuses_and_ordering() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), seq("ATGCCA"));
+    state.metadata.insert(
+        ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+        serde_json::to_value(RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces: vec![
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_z".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "execution_failed".to_string(),
+                    created_at_unix_ms: 30,
+                    updated_at_unix_ms: 31,
+                    disambiguation_answers: vec![
+                        RoutineDecisionTraceDisambiguationAnswer {
+                            question_id: "question_b".to_string(),
+                            answer_text: "answer b".to_string(),
+                        },
+                        RoutineDecisionTraceDisambiguationAnswer {
+                            question_id: "question_a".to_string(),
+                            answer_text: "answer a".to_string(),
+                        },
+                    ],
+                    ..RoutineDecisionTrace::default()
+                },
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_a".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "preflight_failed".to_string(),
+                    created_at_unix_ms: 10,
+                    updated_at_unix_ms: 11,
+                    preflight_history: vec![RoutineDecisionTracePreflightSnapshot {
+                        can_execute: false,
+                        warnings: vec![],
+                        errors: vec!["missing sequence".to_string()],
+                        contract_source: Some("routine_catalog".to_string()),
+                    }],
+                    preflight_snapshot: None,
+                    ..RoutineDecisionTrace::default()
+                },
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_m".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "aborted".to_string(),
+                    created_at_unix_ms: 10,
+                    updated_at_unix_ms: 12,
+                    ..RoutineDecisionTrace::default()
+                },
+            ],
+        })
+        .expect("trace store json"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::Reverse {
+            input: "s".to_string(),
+            output_id: Some("s_rev".to_string()),
+        })
+        .expect("reverse");
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("run.bundle.partial_traces.json");
+    let path_text = path.display().to_string();
+    let export = engine
+        .apply(Operation::ExportProcessRunBundle {
+            path: path_text.clone(),
+            run_id: Some("interactive".to_string()),
+        })
+        .expect("export run bundle");
+    assert!(
+        export
+            .messages
+            .iter()
+            .any(|line| line.contains("process run bundle"))
+    );
+
+    let text = std::fs::read_to_string(path_text).expect("read bundle");
+    let bundle: ProcessRunBundleExport =
+        serde_json::from_str(&text).expect("parse run bundle json");
+    assert_eq!(bundle.decision_traces.len(), 3);
+    assert_eq!(bundle.decision_traces[0].trace_id, "trace_a");
+    assert_eq!(bundle.decision_traces[0].status, "preflight_failed");
+    assert_eq!(bundle.decision_traces[1].trace_id, "trace_m");
+    assert_eq!(bundle.decision_traces[1].status, "aborted");
+    assert_eq!(bundle.decision_traces[2].trace_id, "trace_z");
+    assert_eq!(bundle.decision_traces[2].status, "execution_failed");
+    assert_eq!(
+        bundle.decision_traces[0]
+            .preflight_snapshot
+            .as_ref()
+            .expect("preflight snapshot from history")
+            .errors,
+        vec!["missing sequence".to_string()]
+    );
+    assert_eq!(
+        bundle.decision_traces[2]
+            .disambiguation_answers
+            .iter()
+            .map(|row| row.question_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["question_a", "question_b"]
     );
 }
 
@@ -11714,6 +11909,184 @@ fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
     assert_eq!(fraction_none, 0.0);
     assert!(!perfect_none);
     assert!(!passed_none);
+}
+
+#[test]
+fn test_rna_read_retention_rank_prefers_aligned_hits_over_unaligned_seed_only_hits() {
+    let aligned = RnaReadInterpretationHit {
+        record_index: 2,
+        header_id: "aligned_read".to_string(),
+        sequence: "ACGTACGT".to_string(),
+        read_length_bp: 8,
+        tested_kmers: 6,
+        matched_kmers: 2,
+        seed_hit_fraction: 0.33,
+        weighted_seed_hit_fraction: 0.20,
+        weighted_matched_kmers: 1.2,
+        passed_seed_filter: true,
+        best_mapping: Some(RnaReadMappingHit {
+            transcript_id: "tx_aligned".to_string(),
+            transcript_label: "TX_ALIGNED".to_string(),
+            strand: "+".to_string(),
+            query_start_0based: 0,
+            query_end_0based_exclusive: 8,
+            target_start_1based: 101,
+            target_end_1based: 108,
+            score: 75,
+            identity_fraction: 0.95,
+            query_coverage_fraction: 0.95,
+            ..RnaReadMappingHit::default()
+        }),
+        ..RnaReadInterpretationHit::default()
+    };
+    let unaligned_seed_heavy = RnaReadInterpretationHit {
+        record_index: 1,
+        header_id: "seed_heavy_unaligned".to_string(),
+        sequence: "ACGTACGT".to_string(),
+        read_length_bp: 8,
+        tested_kmers: 6,
+        matched_kmers: 6,
+        seed_hit_fraction: 1.0,
+        weighted_seed_hit_fraction: 1.0,
+        weighted_matched_kmers: 6.0,
+        passed_seed_filter: true,
+        best_mapping: None,
+        ..RnaReadInterpretationHit::default()
+    };
+    let mut hits = vec![unaligned_seed_heavy, aligned];
+    GentleEngine::sort_rna_read_hits_by_retention_rank(&mut hits);
+    assert_eq!(hits[0].header_id, "aligned_read");
+    assert_eq!(hits[1].header_id, "seed_heavy_unaligned");
+}
+
+#[test]
+fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
+    let mut engine = GentleEngine::default();
+    let report = RnaReadInterpretationReport {
+        schema: "gentle.rna_read_report.v1".to_string(),
+        report_id: "rna_reads_alignment_rank".to_string(),
+        seq_id: "seq_alignment".to_string(),
+        align_config: RnaReadAlignConfig {
+            min_identity_fraction: 0.6,
+            max_secondary_mappings: 0,
+            ..RnaReadAlignConfig::default()
+        },
+        hits: vec![
+            RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "aligned_hi_id".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 8,
+                seed_hit_fraction: 0.88,
+                weighted_seed_hit_fraction: 0.82,
+                weighted_matched_kmers: 7.4,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_id: "tx_hi_id".to_string(),
+                    transcript_label: "TX_HI_ID".to_string(),
+                    strand: "+".to_string(),
+                    query_start_0based: 0,
+                    query_end_0based_exclusive: 12,
+                    target_start_1based: 201,
+                    target_end_1based: 212,
+                    score: 150,
+                    identity_fraction: 0.98,
+                    query_coverage_fraction: 0.72,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                record_index: 1,
+                header_id: "aligned_hi_cov".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 3,
+                seed_hit_fraction: 0.33,
+                weighted_seed_hit_fraction: 0.27,
+                weighted_matched_kmers: 2.5,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_id: "tx_hi_cov".to_string(),
+                    transcript_label: "TX_HI_COV".to_string(),
+                    strand: "+".to_string(),
+                    query_start_0based: 0,
+                    query_end_0based_exclusive: 12,
+                    target_start_1based: 301,
+                    target_end_1based: 312,
+                    score: 90,
+                    identity_fraction: 0.84,
+                    query_coverage_fraction: 0.96,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                record_index: 2,
+                header_id: "seed_only".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 9,
+                seed_hit_fraction: 1.0,
+                weighted_seed_hit_fraction: 1.0,
+                weighted_matched_kmers: 9.0,
+                passed_seed_filter: true,
+                best_mapping: None,
+                ..RnaReadInterpretationHit::default()
+            },
+        ],
+        ..RnaReadInterpretationReport::default()
+    };
+    engine
+        .upsert_rna_read_report(report)
+        .expect("upsert synthetic RNA-read report");
+
+    let inspection = engine
+        .inspect_rna_read_alignments("rna_reads_alignment_rank", RnaReadHitSelection::All, 10)
+        .expect("inspect alignment rows");
+    assert_eq!(inspection.aligned_count, 2);
+    assert_eq!(inspection.row_count, 2);
+    assert_eq!(inspection.rows[0].rank, 1);
+    assert_eq!(inspection.rows[0].header_id, "aligned_hi_cov");
+    assert_eq!(inspection.rows[1].rank, 2);
+    assert_eq!(inspection.rows[1].header_id, "aligned_hi_id");
+
+    let td = tempdir().expect("tempdir");
+    let tsv_path = td.path().join("alignment_rows.tsv");
+    let tsv_export = engine
+        .export_rna_read_alignments_tsv(
+            "rna_reads_alignment_rank",
+            tsv_path.to_str().expect("tsv path"),
+            RnaReadHitSelection::All,
+            Some(1),
+        )
+        .expect("export alignment tsv");
+    assert_eq!(tsv_export.row_count, 1);
+    assert_eq!(tsv_export.aligned_count, 2);
+    assert_eq!(tsv_export.limit, Some(1));
+    let tsv_text = fs::read_to_string(&tsv_path).expect("read alignment tsv");
+    assert!(tsv_text.contains("alignment_mode"));
+    assert!(tsv_text.contains("aligned_hi_cov"));
+
+    let svg_path = td.path().join("alignment_dotplot.svg");
+    let export = engine
+        .export_rna_read_alignment_dotplot_svg(
+            "rna_reads_alignment_rank",
+            svg_path.to_str().expect("svg path"),
+            RnaReadHitSelection::All,
+            1,
+        )
+        .expect("export alignment dotplot svg");
+    assert_eq!(export.point_count, 2);
+    assert_eq!(export.rendered_point_count, 1);
+    let svg_text = fs::read_to_string(&svg_path).expect("read alignment dotplot svg");
+    assert!(svg_text.contains("alignment dotplot"));
+    assert!(svg_text.contains("rendered_points=1"));
+    assert!(svg_text.contains("total_points=2"));
 }
 
 #[test]

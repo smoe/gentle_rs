@@ -57,6 +57,52 @@ fn primer3_fixture_path(name: &str) -> String {
     )
 }
 
+fn decision_trace_fixture_state() -> ProjectState {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        DNAsequence::from_sequence("ATGCCA").expect("sequence"),
+    );
+    state.metadata.insert(
+        crate::engine::ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+        serde_json::to_value(crate::engine::RoutineDecisionTraceStore {
+            schema: crate::engine::ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces: vec![crate::engine::RoutineDecisionTrace {
+                schema: crate::engine::ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                trace_id: "adapter_trace_1".to_string(),
+                source: "gui_routine_assistant".to_string(),
+                status: "preflight_failed".to_string(),
+                created_at_unix_ms: 10,
+                updated_at_unix_ms: 20,
+                goal_text: "Assemble insert".to_string(),
+                query_text: "golden gate".to_string(),
+                disambiguation_questions_presented: vec![
+                    crate::engine::RoutineDecisionTraceDisambiguationQuestion {
+                        question_id: "question_a".to_string(),
+                        question_text: "Question A?".to_string(),
+                    },
+                ],
+                disambiguation_answers: vec![
+                    crate::engine::RoutineDecisionTraceDisambiguationAnswer {
+                        question_id: "question_a".to_string(),
+                        answer_text: "Answer A".to_string(),
+                    },
+                ],
+                preflight_history: vec![crate::engine::RoutineDecisionTracePreflightSnapshot {
+                    can_execute: false,
+                    warnings: vec![],
+                    errors: vec!["missing sequence".to_string()],
+                    contract_source: Some("routine_catalog".to_string()),
+                }],
+                preflight_snapshot: None,
+                ..crate::engine::RoutineDecisionTrace::default()
+            }],
+        })
+        .expect("trace store"),
+    );
+    state
+}
+
 #[cfg(unix)]
 fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
@@ -5030,6 +5076,57 @@ fn execute_export_run_bundle_writes_schema_json() {
 }
 
 #[test]
+fn execute_export_run_bundle_matches_engine_decision_traces() {
+    let td = tempdir().expect("tempdir");
+    let shell_path = td.path().join("shell.run_bundle.json");
+    let engine_path = td.path().join("engine.run_bundle.json");
+
+    let mut shell_engine = GentleEngine::from_state(decision_trace_fixture_state());
+    let shell_out = execute_shell_command(
+        &mut shell_engine,
+        &ShellCommand::ExportRunBundle {
+            output: shell_path.to_string_lossy().to_string(),
+            run_id: None,
+        },
+    )
+    .expect("shell export run bundle");
+    assert!(!shell_out.state_changed);
+
+    let shell_bundle_text = fs::read_to_string(&shell_path).expect("read shell bundle output");
+    let shell_bundle: crate::engine::ProcessRunBundleExport =
+        serde_json::from_str(&shell_bundle_text).expect("parse shell bundle");
+
+    let mut engine = GentleEngine::from_state(decision_trace_fixture_state());
+    engine
+        .apply(crate::engine::Operation::ExportProcessRunBundle {
+            path: engine_path.to_string_lossy().to_string(),
+            run_id: None,
+        })
+        .expect("engine export run bundle");
+    let engine_bundle_text = fs::read_to_string(&engine_path).expect("read engine bundle");
+    let engine_bundle: crate::engine::ProcessRunBundleExport =
+        serde_json::from_str(&engine_bundle_text).expect("parse engine bundle");
+
+    assert_eq!(
+        serde_json::to_value(&shell_bundle.decision_traces).expect("serialize shell traces"),
+        serde_json::to_value(&engine_bundle.decision_traces).expect("serialize engine traces")
+    );
+    assert_eq!(shell_bundle.decision_traces.len(), 1);
+    assert_eq!(
+        shell_bundle.decision_traces[0].status,
+        "preflight_failed".to_string()
+    );
+    assert_eq!(
+        shell_bundle.decision_traces[0]
+            .preflight_snapshot
+            .as_ref()
+            .expect("snapshot derived from history")
+            .errors,
+        vec!["missing sequence".to_string()]
+    );
+}
+
+#[test]
 fn execute_async_blast_start_queues_when_capacity_is_reached() {
     with_blast_async_test_overrides(1, 200, || {
         let mut engine = GentleEngine::new();
@@ -7677,6 +7774,17 @@ fn parse_rna_reads_commands() {
         ShellCommand::RnaReadsShowReport { report_id } if report_id == "tp73_reads"
     ));
 
+    let inspect =
+        parse_shell_line("rna-reads inspect-alignments tp73_reads --selection aligned --limit 25")
+            .expect("parse rna-reads inspect-alignments");
+    assert!(matches!(
+        inspect,
+        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit }
+            if report_id == "tp73_reads"
+                && selection == RnaReadHitSelection::Aligned
+                && limit == 25
+    ));
+
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
         .expect("parse rna-reads export-report");
     assert!(matches!(
@@ -7738,6 +7846,40 @@ fn parse_rna_reads_commands() {
             if report_id == "tp73_reads"
                 && path == "score_density.svg"
                 && scale == RnaReadScoreDensityScale::Linear
+    ));
+
+    let export_alignments_tsv = parse_shell_line(
+        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200",
+    )
+    .expect("parse rna-reads export-alignments-tsv");
+    assert!(matches!(
+        export_alignments_tsv,
+        ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id,
+            path,
+            selection,
+            limit
+        } if report_id == "tp73_reads"
+            && path == "alignments.tsv"
+            && selection == RnaReadHitSelection::Aligned
+            && limit == Some(200)
+    ));
+
+    let export_alignment_dotplot = parse_shell_line(
+        "rna-reads export-alignment-dotplot-svg tp73_reads alignment_dotplot.svg --selection aligned --max-points 500",
+    )
+    .expect("parse rna-reads export-alignment-dotplot-svg");
+    assert!(matches!(
+        export_alignment_dotplot,
+        ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id,
+            path,
+            selection,
+            max_points
+        } if report_id == "tp73_reads"
+            && path == "alignment_dotplot.svg"
+            && selection == RnaReadHitSelection::Aligned
+            && max_points == 500
     ));
 
     let align = parse_shell_line(
@@ -8144,6 +8286,24 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene"))
     );
 
+    let inspected = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInspectAlignments {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: 10,
+        },
+    )
+    .expect("inspect rna-read alignments");
+    assert_eq!(
+        inspected.output["inspection"]["report_id"].as_str(),
+        Some(report_id.as_str())
+    );
+    assert_eq!(
+        inspected.output["inspection"]["selection"].as_str(),
+        Some("aligned")
+    );
+
     let exported_report = fasta_dir.path().join("report.json");
     let export_result = execute_shell_command(
         &mut engine,
@@ -8245,6 +8405,45 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     let density_text = fs::read_to_string(exported_density_svg).expect("read density svg");
     assert!(density_text.contains("<svg"));
     assert!(density_text.contains("seed-hit score density"));
+
+    let exported_alignments_tsv = fasta_dir.path().join("alignments.tsv");
+    let export_alignments_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_alignments_tsv.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: Some(50),
+        },
+    )
+    .expect("export rna-read alignments tsv");
+    assert_eq!(
+        export_alignments_result.output["selection"].as_str(),
+        Some("aligned")
+    );
+    let alignments_text = fs::read_to_string(exported_alignments_tsv).expect("read alignments tsv");
+    assert!(alignments_text.contains("alignment_mode"));
+    assert!(alignments_text.contains("identity_fraction"));
+
+    let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
+    let export_alignment_dotplot_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_alignment_dotplot_svg.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            max_points: 1_000,
+        },
+    )
+    .expect("export rna-read alignment dotplot svg");
+    assert_eq!(
+        export_alignment_dotplot_result.output["selection"].as_str(),
+        Some("aligned")
+    );
+    let alignment_dotplot_text =
+        fs::read_to_string(exported_alignment_dotplot_svg).expect("read alignment dotplot svg");
+    assert!(alignment_dotplot_text.contains("<svg"));
+    assert!(alignment_dotplot_text.contains("alignment dotplot"));
 }
 
 #[test]

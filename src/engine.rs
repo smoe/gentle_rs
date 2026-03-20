@@ -141,6 +141,9 @@ const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projection
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
+pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
+pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
+pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
 const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v2";
@@ -155,6 +158,10 @@ const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_expo
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
+const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
+const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_alignment_dotplot_svg_export.v1";
+const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
@@ -3072,6 +3079,10 @@ fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
 }
 
+fn default_rna_read_alignment_dotplot_max_points() -> usize {
+    2_500
+}
+
 fn default_splicing_reference_scope() -> SplicingScopePreset {
     SplicingScopePreset::TargetGroupTargetStrand
 }
@@ -3358,6 +3369,67 @@ pub struct RnaReadScoreDensitySvgExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadAlignmentDotplotSvgExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub point_count: usize,
+    pub rendered_point_count: usize,
+    pub max_points: usize,
+    pub min_score: isize,
+    pub max_score: isize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspectionRow {
+    pub rank: usize,
+    pub record_index: usize,
+    pub header_id: String,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub alignment_mode: RnaReadAlignmentMode,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    pub seed_hit_fraction: f64,
+    pub weighted_seed_hit_fraction: f64,
+    pub passed_seed_filter: bool,
+    pub msa_eligible: bool,
+    pub origin_class: RnaReadOriginClass,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspection {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub limit: usize,
+    pub align_min_identity_fraction: f64,
+    pub max_secondary_mappings: usize,
+    pub rows: Vec<RnaReadAlignmentInspectionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaSeedHashCatalogEntry {
     pub seed_bits: u32,
     pub kmer_sequence: String,
@@ -3494,6 +3566,10 @@ impl<R: Read> Read for CountingReader<R> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RnaReadRetentionRank {
     passed_seed_filter: bool,
+    has_alignment: bool,
+    alignment_identity_ppm: u32,
+    alignment_query_coverage_ppm: u32,
+    alignment_score: i64,
     weighted_support_milli: u64,
     weighted_seed_hit_ppm: u32,
     seed_hit_ppm: u32,
@@ -3507,6 +3583,16 @@ impl Ord for RnaReadRetentionRank {
     fn cmp(&self, other: &Self) -> Ordering {
         self.passed_seed_filter
             .cmp(&other.passed_seed_filter)
+            .then(self.has_alignment.cmp(&other.has_alignment))
+            .then(
+                self.alignment_query_coverage_ppm
+                    .cmp(&other.alignment_query_coverage_ppm),
+            )
+            .then(
+                self.alignment_identity_ppm
+                    .cmp(&other.alignment_identity_ppm),
+            )
+            .then(self.alignment_score.cmp(&other.alignment_score))
             .then(
                 self.weighted_support_milli
                     .cmp(&other.weighted_support_milli),
@@ -4347,6 +4433,22 @@ pub enum Operation {
         #[serde(default)]
         scale: RnaReadScoreDensityScale,
     },
+    ExportRnaReadAlignmentsTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+    ExportRnaReadAlignmentDotplotSvg {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default = "default_rna_read_alignment_dotplot_max_points")]
+        max_points: usize,
+    },
     ExtractRegion {
         input: SeqId,
         from: usize,
@@ -4685,6 +4787,81 @@ pub struct ProcessRunBundleOutputs {
     pub exported_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceComparison {
+    pub left_routine_id: String,
+    pub right_routine_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationQuestion {
+    pub question_id: String,
+    pub question_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationAnswer {
+    pub question_id: String,
+    pub answer_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTracePreflightSnapshot {
+    pub can_execute: bool,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub contract_source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceExportEvent {
+    pub run_bundle_path: String,
+    pub exported_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTrace {
+    pub schema: String,
+    pub trace_id: String,
+    pub source: String,
+    pub status: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub goal_text: String,
+    pub query_text: String,
+    pub candidate_routine_ids: Vec<String>,
+    pub selected_routine_id: Option<String>,
+    pub selected_routine_title: Option<String>,
+    pub selected_routine_family: Option<String>,
+    pub alternatives_presented: Vec<String>,
+    pub comparisons: Vec<RoutineDecisionTraceComparison>,
+    pub disambiguation_questions_presented: Vec<RoutineDecisionTraceDisambiguationQuestion>,
+    pub disambiguation_answers: Vec<RoutineDecisionTraceDisambiguationAnswer>,
+    pub bindings_snapshot: BTreeMap<String, String>,
+    pub preflight_history: Vec<RoutineDecisionTracePreflightSnapshot>,
+    pub preflight_snapshot: Option<RoutineDecisionTracePreflightSnapshot>,
+    pub execution_attempted: bool,
+    pub execution_success: Option<bool>,
+    pub transactional: Option<bool>,
+    pub macro_instance_id: Option<String>,
+    pub emitted_operation_ids: Vec<String>,
+    pub execution_error: Option<String>,
+    pub export_events: Vec<RoutineDecisionTraceExportEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceStore {
+    pub schema: String,
+    pub traces: Vec<RoutineDecisionTrace>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessRunBundleExport {
     pub schema: String,
@@ -4695,6 +4872,8 @@ pub struct ProcessRunBundleExport {
     pub inputs: ProcessRunBundleInputs,
     #[serde(default)]
     pub parameter_overrides: Vec<ProcessRunBundleParameterOverride>,
+    #[serde(default)]
+    pub decision_traces: Vec<RoutineDecisionTrace>,
     pub operation_log: Vec<OperationRecord>,
     pub outputs: ProcessRunBundleOutputs,
     pub parameter_snapshot: serde_json::Value,
@@ -5811,6 +5990,8 @@ impl GentleEngine {
                 "ExportRnaReadExonPathsTsv".to_string(),
                 "ExportRnaReadExonAbundanceTsv".to_string(),
                 "ExportRnaReadScoreDensitySvg".to_string(),
+                "ExportRnaReadAlignmentsTsv".to_string(),
+                "ExportRnaReadAlignmentDotplotSvg".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -6810,6 +6991,8 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
+                | Operation::ExportRnaReadAlignmentsTsv { .. }
+                | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
                 | Operation::AlignSequences { .. }
         )
     }

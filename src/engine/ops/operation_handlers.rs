@@ -57,8 +57,8 @@ impl GentleEngine {
         let top_margin = 26.0_f32;
         let bottom_margin = 24.0_f32;
         let dotplot_width = 1600.0_f32;
-        let dotplot_height = (dotplot_width * (reference_span as f32 / query_span as f32))
-            .clamp(420.0, 1280.0);
+        let dotplot_height =
+            (dotplot_width * (reference_span as f32 / query_span as f32)).clamp(420.0, 1280.0);
         let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
         let gap = if flex_track.is_some() { 10.0 } else { 0.0 };
         let canvas_width = outer_margin + left_margin + dotplot_width + right_margin + outer_margin;
@@ -291,9 +291,9 @@ impl GentleEngine {
             bins.sort_by_key(|bin| bin.start_0based);
             let mut points: Vec<(f32, f32)> = Vec::with_capacity(bins.len());
             for bin in bins {
-                let x_fraction =
-                    (bin.start_0based.saturating_sub(track.span_start_0based) as f32 / span_bp)
-                        .clamp(0.0, 1.0);
+                let x_fraction = (bin.start_0based.saturating_sub(track.span_start_0based) as f32
+                    / span_bp)
+                    .clamp(0.0, 1.0);
                 let y_fraction =
                     ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
                 let x = dotplot_left + x_fraction * dotplot_width;
@@ -5771,6 +5771,47 @@ impl GentleEngine {
                         export.report_id
                     ));
                 }
+            }
+            Operation::ExportRnaReadAlignmentsTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+            } => {
+                let export =
+                    self.export_rna_read_alignments_tsv(&report_id, &path, selection, limit)?;
+                let limit_text = export
+                    .limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string());
+                result.messages.push(format!(
+                    "Exported RNA-read alignment TSV '{}' to '{}' (selection={}, rows={}, aligned_total={}, limit={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.row_count,
+                    export.aligned_count,
+                    limit_text
+                ));
+            }
+            Operation::ExportRnaReadAlignmentDotplotSvg {
+                report_id,
+                path,
+                selection,
+                max_points,
+            } => {
+                let export = self.export_rna_read_alignment_dotplot_svg(
+                    &report_id, &path, selection, max_points,
+                )?;
+                result.messages.push(format!(
+                    "Exported RNA-read alignment dotplot SVG '{}' to '{}' (selection={}, rendered_points={}, total_points={}, max_points={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.rendered_point_count,
+                    export.point_count,
+                    export.max_points
+                ));
             }
             Operation::ExtractRegion {
                 input,

@@ -1,5 +1,5 @@
 {
-   "command_count": 218,
+   "command_count": 225,
    "commands": [
       {
          "aliases": [
@@ -1300,6 +1300,20 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "AlignRnaReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads align-report",
+         "summary": "Run retained-hit alignment phase and refresh report mappings/support summaries.",
+         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
@@ -1321,6 +1335,18 @@
          "path": "rna-reads show-report",
          "summary": "Inspect one persisted RNA-read interpretation report by ID.",
          "usage": "rna-reads show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-alignments",
+         "summary": "Inspect ranked aligned hits from one RNA-read report.",
+         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]"
       },
       {
          "aliases": [],
@@ -1353,6 +1379,48 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportRnaReadSampleSheet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-sample-sheet",
+         "summary": "Export RNA-read report cohort summaries to TSV sample sheet.",
+         "usage": "rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadExonPathsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-paths-tsv",
+         "summary": "Export per-read exon-path rows from one RNA-read report.",
+         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadExonAbundanceTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-abundance-tsv",
+         "summary": "Export exon/junction abundance tables from one RNA-read report.",
+         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadScoreDensitySvg"
          ],
          "interfaces": [
@@ -1363,6 +1431,34 @@
          "path": "rna-reads export-score-density-svg",
          "summary": "Export RNA-read seed-hit score-density chart to SVG.",
          "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadAlignmentsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-alignments-tsv",
+         "summary": "Export ranked RNA-read alignment rows to TSV.",
+         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadAlignmentDotplotSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-alignment-dotplot-svg",
+         "summary": "Export dotplot-style alignment scatter (coverage vs identity) to SVG.",
+         "usage": "rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]"
       },
       {
          "aliases": [],

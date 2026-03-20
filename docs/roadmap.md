@@ -595,17 +595,19 @@ Notes:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
      depth is still incomplete
-   - richer preflight semantics are now baseline (generic +
-     Gibson + restriction), but protocol-specific constraints remain incomplete
-     for remaining families (Golden Gate, Gateway, TOPO, TA/GC, In-Fusion,
-     NEBuilder HiFi, and deeper restriction variants)
+   - richer preflight semantics are now baseline (generic + Gibson +
+     restriction + Golden Gate + Gateway + TOPO + TA/GC + In-Fusion +
+     NEBuilder HiFi), but deeper protocol-specific constraints/edge cases
+     remain incomplete (including deeper restriction variants)
    - macro-instance lineage recording now covers success and failure/cancel and
      supports shell introspection, but replay-oriented helpers are still pending
      (for example per-instance re-run from recorded bindings)
    - macro-node drill-down now has a persistent detail panel in GUI lineage
      view, but dense-view controls are still pending (edge-density/aggregation)
-   - protocol-family template packs are still incomplete (restriction-only,
-     Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi)
+   - protocol-family template packs now include baseline coverage for
+     restriction, Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, and
+     NEBuilder HiFi; advanced variants and richer family-specific templates are
+     still incomplete
    - cross-tool benchmarking (Serial Cloner + MacVector + SnapGene synthesis)
      confirms additional repeated gaps are not yet first-class:
      primer design/validation workflows, auto-annotation library scans,
@@ -936,6 +938,22 @@ Status:
     `Run alignment phase (retained report)`), refreshing per-hit mappings,
     `msa_eligible` diagnostics, transition/isoform support, and exon/junction
     abundance frequencies.
+  - Phase-2 alignment now deterministically re-ranks retained hits by
+    alignment-aware retention rank (alignment identity/coverage/score first,
+    seed metrics as tie-breakers) so downstream candidate ranking reflects
+    mapping quality.
+  - Added non-mutating alignment inspection route:
+    `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]`
+    returns ranked aligned-hit rows for report triage without mutating state.
+  - Added ranked alignment TSV export for downstream tabular analysis:
+    `ExportRnaReadAlignmentsTsv` /
+    `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv
+    [--selection ...] [--limit N]`.
+  - Added dotplot-style alignment inspection export:
+    `ExportRnaReadAlignmentDotplotSvg` /
+    `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg
+    [--selection ...] [--max-points N]` renders coverage-vs-identity scatter
+    with score-based coloring.
   - Phase-1 seed filtering now hashes full read span for every read (replacing
     prior sampled-window behavior) to improve filtering sensitivity.
   - Runtime panel now reports detailed compute breakdown
@@ -1222,17 +1240,18 @@ Current baseline:
   `Remove (leaf only)` for sequence nodes, with strict leaf guards to avoid
   downstream-edge/container breakage in this first iteration.
 - routine-family coverage and deeper semantic validation are still incomplete
-  beyond current Gibson + restriction baselines.
+  beyond the current family baselines (Gibson, restriction, Golden Gate,
+  Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 
 Planned work:
 
-1. Extend semantic preflight from baseline generic checks +
-   Gibson/restriction checks to additional routine-family-specific rules
-   (protocol-aware compatibility models).
+1. Extend semantic preflight from the current baseline family checks to deeper
+   routine-family-specific rules (protocol-aware compatibility models and edge
+   cases).
 2. Expand macro-node dense-view controls (edge-density filtering/aggregation,
    compact operation summaries for large projects).
-3. Fill protocol-family packs incrementally (restriction and Gibson baseline
-   shipped; next: Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
+3. Expand protocol-family packs beyond current baseline coverage (advanced
+   family variants, richer constraints, and higher-depth templates).
 4. Harden GUI Routine Assistant:
    - decision-trace capture/export integration
    - richer comparison guidance for missing/weak metadata rows
@@ -1243,10 +1262,18 @@ Planned work:
 Concrete patch plan (architecture-aligned): routine-application assistant +
 self-describing alternatives
 
-Status (2026-03-07): metadata schema extension + shared `routines explain` /
+Status (2026-03-20): metadata schema extension + shared `routines explain` /
 `routines compare` command surfaces are implemented; GUI staged Routine
-Assistant baseline is implemented; decision-trace export wiring remains in
-progress.
+Assistant baseline is implemented; decision-trace export wiring now includes
+deterministic run-bundle inclusion plus `disambiguation_questions_presented`,
+`disambiguation_answers`, and ordered `preflight_history` capture from GUI
+Routine Assistant flows (including explicit compare-stage answer entry), with
+deterministic lifecycle tests now covering `preflight_failed`,
+`execution_failed`, and `aborted` trace statuses; JS/Lua adapter fixtures now
+assert `ExportProcessRunBundle` decision-trace payload equivalence with direct
+engine execution for equivalent staged decisions, and shared-shell
+`export-run-bundle` fixtures now assert the same equivalence for CLI shell
+routing.
 
 1. Metadata contract extension (`assets/cloning_routines.json`)
 - Add additive explanation fields for routine-selection clarity:
@@ -1314,10 +1341,10 @@ progress.
       equivalent staged decisions.
 
 5. Milestone order and acceptance gates
-- M1: Golden Gate pack + family preflight + explain/compare rows.
-- M2: Gateway/TOPO/TA-GC packs + family preflight + confusion mapping.
-- M3: In-Fusion/NEBuilder packs + overlap-family preflight + confusion mapping.
-- M4: GUI Routine Assistant + decision-trace export wiring.
+- M1: Golden Gate pack + family preflight + explain/compare rows. (Done)
+- M2: Gateway/TOPO/TA-GC packs + family preflight + confusion mapping. (Done)
+- M3: In-Fusion/NEBuilder packs + overlap-family preflight + confusion mapping. (Done)
+- M4: GUI Routine Assistant + decision-trace export wiring. (In progress)
 - Gate per milestone:
   - one validate-only success + one deterministic failure per family/mode
   - one transactional run creating outputs + macro-instance lineage rows

@@ -878,9 +878,9 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
-            LinearSequenceLetterLayoutMode,
-            Operation, PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
-            ProjectState, SplicingScopePreset,
+            LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
+            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+            SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -18414,10 +18414,11 @@ impl MainAreaDna {
             bins.sort_by_key(|bin| bin.start_0based);
             let mut points: Vec<(f32, f32)> = Vec::with_capacity(bins.len());
             for bin in bins {
-                let x_fraction =
-                    (bin.start_0based.saturating_sub(track.span_start_0based) as f32 / span_bp)
-                        .clamp(0.0, 1.0);
-                let y_fraction = ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
+                let x_fraction = (bin.start_0based.saturating_sub(track.span_start_0based) as f32
+                    / span_bp)
+                    .clamp(0.0, 1.0);
+                let y_fraction =
+                    ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
                 let x = dotplot_left + x_fraction * dotplot_width;
                 let y = flex_bottom - y_fraction * flex_height_px;
                 points.push((x, y));
@@ -18482,7 +18483,9 @@ impl MainAreaDna {
             return;
         };
         let path_text = path.display().to_string();
-        let flex_track_id = selected_flex_track.as_ref().map(|track| track.track_id.clone());
+        let flex_track_id = selected_flex_track
+            .as_ref()
+            .map(|track| track.track_id.clone());
         self.apply_operation_with_feedback(Operation::RenderDotplotSvg {
             seq_id: view.seq_id.clone(),
             dotplot_id: view.dotplot_id.clone(),

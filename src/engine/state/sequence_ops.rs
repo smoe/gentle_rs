@@ -744,7 +744,9 @@ impl GentleEngine {
         | Operation::ExportRnaReadSampleSheet { path, .. }
         | Operation::ExportRnaReadExonPathsTsv { path, .. }
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
-        | Operation::ExportRnaReadScoreDensitySvg { path, .. } = op
+        | Operation::ExportRnaReadScoreDensitySvg { path, .. }
+        | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+        | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
@@ -774,12 +776,314 @@ impl GentleEngine {
             | Operation::ExportRnaReadSampleSheet { path, .. }
             | Operation::ExportRnaReadExonPathsTsv { path, .. }
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
-            | Operation::ExportRnaReadScoreDensitySvg { path, .. } => {
+            | Operation::ExportRnaReadScoreDensitySvg { path, .. }
+            | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+            | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
             _ => {}
         }
         paths
+    }
+
+    fn normalize_routine_decision_trace_preflight_snapshot(
+        snapshot: &mut RoutineDecisionTracePreflightSnapshot,
+    ) {
+        let mut warnings = vec![];
+        for warning in std::mem::take(&mut snapshot.warnings) {
+            let warning = warning.trim();
+            if warning.is_empty() {
+                continue;
+            }
+            Self::push_unique_token(&mut warnings, warning);
+        }
+        snapshot.warnings = warnings;
+
+        let mut errors = vec![];
+        for error in std::mem::take(&mut snapshot.errors) {
+            let error = error.trim();
+            if error.is_empty() {
+                continue;
+            }
+            Self::push_unique_token(&mut errors, error);
+        }
+        snapshot.errors = errors;
+
+        snapshot.contract_source = snapshot
+            .contract_source
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    fn normalize_routine_decision_disambiguation_question_id_from_text(text: &str) -> String {
+        let mut out = String::new();
+        let mut last_was_sep = false;
+        for ch in text.trim().chars().flat_map(|c| c.to_lowercase()) {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                last_was_sep = false;
+            } else if !last_was_sep {
+                out.push('_');
+                last_was_sep = true;
+            }
+            if out.len() >= 48 {
+                break;
+            }
+        }
+        let compact = out.trim_matches('_').to_string();
+        if compact.is_empty() {
+            "question".to_string()
+        } else {
+            compact
+        }
+    }
+
+    fn normalize_routine_decision_trace(
+        mut trace: RoutineDecisionTrace,
+    ) -> Option<RoutineDecisionTrace> {
+        let schema = trace.schema.trim();
+        if schema.is_empty() {
+            trace.schema = ROUTINE_DECISION_TRACE_SCHEMA.to_string();
+        } else if !schema.eq_ignore_ascii_case(ROUTINE_DECISION_TRACE_SCHEMA) {
+            return None;
+        } else {
+            trace.schema = ROUTINE_DECISION_TRACE_SCHEMA.to_string();
+        }
+
+        trace.trace_id = trace.trace_id.trim().to_string();
+        if trace.trace_id.is_empty() {
+            return None;
+        }
+        trace.source = trace.source.trim().to_string();
+        if trace.source.is_empty() {
+            trace.source = "unknown".to_string();
+        }
+        trace.status = trace.status.trim().to_string();
+        if trace.status.is_empty() {
+            trace.status = "draft".to_string();
+        }
+        trace.goal_text = trace.goal_text.trim().to_string();
+        trace.query_text = trace.query_text.trim().to_string();
+        if trace.created_at_unix_ms == 0 {
+            trace.created_at_unix_ms = trace.updated_at_unix_ms;
+        }
+        if trace.updated_at_unix_ms == 0 {
+            trace.updated_at_unix_ms = trace.created_at_unix_ms;
+        }
+
+        let normalize_opt = |value: &mut Option<String>| {
+            *value = value
+                .take()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+        };
+        normalize_opt(&mut trace.selected_routine_id);
+        normalize_opt(&mut trace.selected_routine_title);
+        normalize_opt(&mut trace.selected_routine_family);
+        normalize_opt(&mut trace.macro_instance_id);
+        normalize_opt(&mut trace.execution_error);
+
+        let mut dedup_candidates = vec![];
+        for token in std::mem::take(&mut trace.candidate_routine_ids) {
+            Self::push_unique_token(&mut dedup_candidates, &token);
+        }
+        trace.candidate_routine_ids = dedup_candidates;
+
+        let mut dedup_alternatives = vec![];
+        for token in std::mem::take(&mut trace.alternatives_presented) {
+            Self::push_unique_token(&mut dedup_alternatives, &token);
+        }
+        trace.alternatives_presented = dedup_alternatives;
+
+        let mut normalized_questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
+        let mut used_question_ids: HashMap<String, usize> = HashMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_questions_presented) {
+            row.question_id = row.question_id.trim().to_string();
+            row.question_text = row.question_text.trim().to_string();
+            if row.question_text.is_empty() {
+                continue;
+            }
+            let base_id = if row.question_id.is_empty() {
+                Self::normalize_routine_decision_disambiguation_question_id_from_text(
+                    &row.question_text,
+                )
+            } else {
+                row.question_id.clone()
+            };
+            let count = used_question_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            row.question_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{}_{}", base_id, *count)
+            };
+            if normalized_questions.iter().any(|existing| {
+                existing.question_id.eq_ignore_ascii_case(&row.question_id)
+                    || existing
+                        .question_text
+                        .eq_ignore_ascii_case(&row.question_text)
+            }) {
+                continue;
+            }
+            normalized_questions.push(row);
+        }
+        trace.disambiguation_questions_presented = normalized_questions;
+
+        let mut normalized_answers_by_question: BTreeMap<String, String> = BTreeMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_answers) {
+            row.question_id = row.question_id.trim().to_string();
+            row.answer_text = row.answer_text.trim().to_string();
+            if row.question_id.is_empty() || row.answer_text.is_empty() {
+                continue;
+            }
+            normalized_answers_by_question.insert(row.question_id, row.answer_text);
+        }
+        trace.disambiguation_answers = normalized_answers_by_question
+            .into_iter()
+            .map(
+                |(question_id, answer_text)| RoutineDecisionTraceDisambiguationAnswer {
+                    question_id,
+                    answer_text,
+                },
+            )
+            .collect();
+
+        let mut dedup_emitted_op_ids = vec![];
+        for token in std::mem::take(&mut trace.emitted_operation_ids) {
+            Self::push_unique_token(&mut dedup_emitted_op_ids, &token);
+        }
+        trace.emitted_operation_ids = dedup_emitted_op_ids;
+
+        let mut comparisons_out: Vec<RoutineDecisionTraceComparison> = vec![];
+        let mut seen_comparisons: HashSet<String> = HashSet::new();
+        for mut row in std::mem::take(&mut trace.comparisons) {
+            row.left_routine_id = row.left_routine_id.trim().to_string();
+            row.right_routine_id = row.right_routine_id.trim().to_string();
+            if row.left_routine_id.is_empty() || row.right_routine_id.is_empty() {
+                continue;
+            }
+            let key = format!("{}\u{1f}{}", row.left_routine_id, row.right_routine_id);
+            if !seen_comparisons.insert(key) {
+                continue;
+            }
+            comparisons_out.push(row);
+        }
+        trace.comparisons = comparisons_out;
+
+        let mut normalized_bindings: BTreeMap<String, String> = BTreeMap::new();
+        for (key, value) in std::mem::take(&mut trace.bindings_snapshot) {
+            let key = key.trim().to_string();
+            let value = value.trim().to_string();
+            if key.is_empty() || value.is_empty() {
+                continue;
+            }
+            normalized_bindings.insert(key, value);
+        }
+        trace.bindings_snapshot = normalized_bindings;
+
+        let mut preflight_history: Vec<RoutineDecisionTracePreflightSnapshot> = vec![];
+        for mut snapshot in std::mem::take(&mut trace.preflight_history) {
+            Self::normalize_routine_decision_trace_preflight_snapshot(&mut snapshot);
+            preflight_history.push(snapshot);
+        }
+        trace.preflight_history = preflight_history;
+
+        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
+            Self::normalize_routine_decision_trace_preflight_snapshot(snapshot);
+        }
+        if trace.preflight_history.is_empty() {
+            if let Some(snapshot) = trace.preflight_snapshot.clone() {
+                trace.preflight_history.push(snapshot);
+            }
+        }
+        trace.preflight_snapshot = trace.preflight_history.last().cloned();
+
+        let mut export_events_out: Vec<RoutineDecisionTraceExportEvent> = vec![];
+        let mut seen_export_events: HashSet<String> = HashSet::new();
+        for mut event in std::mem::take(&mut trace.export_events) {
+            event.run_bundle_path = event.run_bundle_path.trim().to_string();
+            if event.run_bundle_path.is_empty() {
+                continue;
+            }
+            let key = format!(
+                "{}\u{1f}{}",
+                event.exported_at_unix_ms, event.run_bundle_path
+            );
+            if !seen_export_events.insert(key) {
+                continue;
+            }
+            export_events_out.push(event);
+        }
+        export_events_out.sort_by(|left, right| {
+            left.exported_at_unix_ms
+                .cmp(&right.exported_at_unix_ms)
+                .then_with(|| left.run_bundle_path.cmp(&right.run_bundle_path))
+        });
+        trace.export_events = export_events_out;
+        Some(trace)
+    }
+
+    fn normalize_routine_decision_traces(
+        traces: Vec<RoutineDecisionTrace>,
+    ) -> Vec<RoutineDecisionTrace> {
+        let mut by_trace_id: HashMap<String, RoutineDecisionTrace> = HashMap::new();
+        for trace in traces {
+            let Some(normalized) = Self::normalize_routine_decision_trace(trace) else {
+                continue;
+            };
+            let replace_existing = by_trace_id
+                .get(&normalized.trace_id)
+                .map(|existing| {
+                    (
+                        normalized.updated_at_unix_ms,
+                        normalized.created_at_unix_ms,
+                        normalized.trace_id.as_str(),
+                    ) > (
+                        existing.updated_at_unix_ms,
+                        existing.created_at_unix_ms,
+                        existing.trace_id.as_str(),
+                    )
+                })
+                .unwrap_or(true);
+            if replace_existing {
+                by_trace_id.insert(normalized.trace_id.clone(), normalized);
+            }
+        }
+        let mut out = by_trace_id.into_values().collect::<Vec<_>>();
+        out.sort_by(|left, right| {
+            left.created_at_unix_ms
+                .cmp(&right.created_at_unix_ms)
+                .then_with(|| left.trace_id.cmp(&right.trace_id))
+        });
+        out
+    }
+
+    fn read_routine_decision_traces_from_metadata(&self) -> Vec<RoutineDecisionTrace> {
+        let Some(raw) = self
+            .state
+            .metadata
+            .get(ROUTINE_DECISION_TRACES_METADATA_KEY)
+            .cloned()
+        else {
+            return vec![];
+        };
+        if let Ok(mut store) = serde_json::from_value::<RoutineDecisionTraceStore>(raw.clone()) {
+            if store.schema.trim().is_empty() {
+                store.schema = ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string();
+            }
+            if !store
+                .schema
+                .trim()
+                .eq_ignore_ascii_case(ROUTINE_DECISION_TRACE_STORE_SCHEMA)
+            {
+                return vec![];
+            }
+            return Self::normalize_routine_decision_traces(store.traces);
+        }
+        serde_json::from_value::<Vec<RoutineDecisionTrace>>(raw)
+            .map(Self::normalize_routine_decision_traces)
+            .unwrap_or_default()
     }
 
     pub(super) fn export_process_run_bundle_file(
@@ -935,6 +1239,8 @@ impl GentleEngine {
                 .then_with(|| left.id.cmp(&right.id))
         });
 
+        let decision_traces = self.read_routine_decision_traces_from_metadata();
+
         let bundle = ProcessRunBundleExport {
             schema: PROCESS_RUN_BUNDLE_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
@@ -952,6 +1258,7 @@ impl GentleEngine {
                 operation_inputs,
             },
             parameter_overrides,
+            decision_traces,
             operation_log: selected_records,
             outputs: ProcessRunBundleOutputs {
                 created_seq_ids: created_seq_ids.into_iter().collect(),
