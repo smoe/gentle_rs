@@ -7036,11 +7036,37 @@ fn capture_active_window_screenshot(_output: &str) -> Result<ScreenshotReport, S
 }
 
 fn parse_json_payload(raw: &str) -> Result<String, String> {
-    if let Some(path) = raw.strip_prefix('@') {
-        fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))
-    } else {
-        Ok(raw.to_string())
+    fn strip_shebang_line(text: &str) -> String {
+        if !text.starts_with("#!") {
+            return text.to_string();
+        }
+        match text.split_once('\n') {
+            Some((_, rest)) => rest.to_string(),
+            None => String::new(),
+        }
     }
+
+    let trimmed = raw.trim();
+    if let Some(path) = trimmed.strip_prefix('@') {
+        let path = path.trim();
+        let text =
+            fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
+        return Ok(strip_shebang_line(&text));
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return Ok(raw.to_string());
+    }
+    let candidate = Path::new(trimmed);
+    if candidate.is_file() {
+        let text = fs::read_to_string(candidate).map_err(|e| {
+            format!(
+                "Could not read JSON file '{}': {e}",
+                candidate.to_string_lossy()
+            )
+        })?;
+        return Ok(strip_shebang_line(&text));
+    }
+    Ok(raw.to_string())
 }
 
 fn parse_optional_json_payload<T>(raw: &str, context: &str) -> Result<Option<T>, String>
@@ -9792,10 +9818,19 @@ fn load_macro_script(script_or_ref: &str, label: &str) -> Result<String, String>
         if path.is_empty() {
             return Err(format!("{label} @FILE requires a non-empty file path"));
         }
-        fs::read_to_string(path).map_err(|e| format!("Could not read {label} file '{path}': {e}"))
-    } else {
-        Ok(trimmed.to_string())
+        return fs::read_to_string(path)
+            .map_err(|e| format!("Could not read {label} file '{path}': {e}"));
     }
+    let candidate = Path::new(trimmed);
+    if candidate.is_file() {
+        return fs::read_to_string(candidate).map_err(|e| {
+            format!(
+                "Could not read {label} file '{}': {e}",
+                candidate.to_string_lossy()
+            )
+        });
+    }
+    Ok(trimmed.to_string())
 }
 
 fn load_candidates_macro_script(script_or_ref: &str) -> Result<String, String> {
