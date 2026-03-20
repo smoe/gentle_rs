@@ -1315,7 +1315,8 @@ Status (2026-03-19):
   - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
   - persisted analysis payloads in project metadata (`dotplot_analysis`)
   - shared-shell/CLI read/write command surfaces:
-    - `dotplot compute|list|show`
+    - `dotplot compute|list|show|render-svg`
+    - `render-dotplot-svg`
     - `flex compute|list|show`
   - engine SVG export parity:
     - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
@@ -1325,8 +1326,10 @@ Status (2026-03-19):
   - lineage projection parity:
     - SVG export operations are materialized as analysis nodes in the main
       lineage table/graph and linked to source sequences via operation edges
-- Pending follow-ups:
-  - JS/Lua/Python convenience wrappers beyond generic `apply_operation`
+  - adapter convenience wrapper parity:
+    - JS: `render_dotplot_svg(...)`
+    - Lua: `render_dotplot_svg(...)`
+    - Python: `render_dotplot_svg(...)`
 
 Engine objects and operations:
 

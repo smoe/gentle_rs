@@ -294,6 +294,7 @@ external coding agent runtime, see:
     - `op(operation)`
     - `workflow(workflow|workflow_path)`
     - `shell(line, expect_json=False)`
+    - `render_dotplot_svg(seq_id, dotplot_id, output_svg, ...)`
   - raises structured `GentleCliError` with:
     - `code` (best-effort extracted stable code token)
     - `command`, `exit_code`, `stdout`, `stderr`
@@ -1388,6 +1389,8 @@ Dotplot + flexibility operation contract (implemented baseline):
   - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
   - `dotplot list [SEQ_ID]`
   - `dotplot show DOTPLOT_ID`
+  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]` (alias)
   - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
   - `flex list [SEQ_ID]`
   - `flex show TRACK_ID`

@@ -1786,7 +1786,7 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
 
 pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("dotplot requires a subcommand: compute, list, show".to_string());
+        return Err("dotplot requires a subcommand: compute, list, show, render-svg".to_string());
     }
     match tokens[1].as_str() {
         "compute" => {
@@ -1936,8 +1936,84 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                 dotplot_id: tokens[2].clone(),
             })
         }
+        "render-svg" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "dotplot render-svg requires SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim();
+            let dotplot_id = tokens[3].trim();
+            if seq_id.is_empty() {
+                return Err("dotplot render-svg requires non-empty SEQ_ID".to_string());
+            }
+            if dotplot_id.is_empty() {
+                return Err("dotplot render-svg requires non-empty DOTPLOT_ID".to_string());
+            }
+            let output = tokens[4].clone();
+            let mut flex_track_id: Option<String> = None;
+            let mut display_density_threshold: Option<f32> = None;
+            let mut display_intensity_gain: Option<f32> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--flex-track" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--flex-track",
+                            "dotplot render-svg",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            flex_track_id = Some(trimmed.to_string());
+                        }
+                    }
+                    "--display-threshold" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--display-threshold",
+                            "dotplot render-svg",
+                        )?;
+                        display_density_threshold = Some(raw.parse::<f32>().map_err(|e| {
+                            format!(
+                                "Invalid --display-threshold value '{raw}' for dotplot render-svg: {e}"
+                            )
+                        })?);
+                    }
+                    "--intensity-gain" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--intensity-gain",
+                            "dotplot render-svg",
+                        )?;
+                        display_intensity_gain = Some(raw.parse::<f32>().map_err(|e| {
+                            format!(
+                                "Invalid --intensity-gain value '{raw}' for dotplot render-svg: {e}"
+                            )
+                        })?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for dotplot render-svg"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RenderDotplotSvg {
+                seq_id: seq_id.to_string(),
+                dotplot_id: dotplot_id.to_string(),
+                output,
+                flex_track_id,
+                display_density_threshold,
+                display_intensity_gain,
+            })
+        }
         other => Err(format!(
-            "Unknown dotplot subcommand '{other}' (expected compute, list, show)"
+            "Unknown dotplot subcommand '{other}' (expected compute, list, show, render-svg)"
         )),
     }
 }

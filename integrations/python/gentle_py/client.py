@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -160,6 +161,67 @@ class GentleClient:
         if not isinstance(line, str) or not line.strip():
             raise GentleCliError("shell(...) requires non-empty command line text")
         return self.run(["shell", line.strip()], expect_json=expect_json, timeout_secs=timeout_secs)
+
+    def render_dotplot_svg(
+        self,
+        seq_id: str,
+        dotplot_id: str,
+        output_svg: str,
+        *,
+        flex_track_id: str | None = None,
+        display_density_threshold: float | None = None,
+        display_intensity_gain: float | None = None,
+        timeout_secs: int | None = None,
+    ) -> dict[str, Any]:
+        """Convenience wrapper over engine operation ``RenderDotplotSvg``."""
+
+        seq_value = str(seq_id).strip()
+        if not seq_value:
+            raise GentleCliError("render_dotplot_svg(...) requires non-empty seq_id")
+        dotplot_value = str(dotplot_id).strip()
+        if not dotplot_value:
+            raise GentleCliError("render_dotplot_svg(...) requires non-empty dotplot_id")
+        output_value = str(output_svg).strip()
+        if not output_value:
+            raise GentleCliError("render_dotplot_svg(...) requires non-empty output_svg")
+
+        def _optional_finite_float(value: float | None, field_name: str) -> float | None:
+            if value is None:
+                return None
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError) as exc:
+                raise GentleCliError(
+                    f"render_dotplot_svg(...) {field_name} must be numeric"
+                ) from exc
+            if not math.isfinite(parsed):
+                raise GentleCliError(
+                    f"render_dotplot_svg(...) {field_name} must be finite"
+                )
+            return parsed
+
+        flex_track_value: str | None
+        if flex_track_id is None:
+            flex_track_value = None
+        else:
+            trimmed = str(flex_track_id).strip()
+            flex_track_value = trimmed or None
+
+        payload: dict[str, Any] = {
+            "RenderDotplotSvg": {
+                "seq_id": seq_value,
+                "dotplot_id": dotplot_value,
+                "path": output_value,
+                "flex_track_id": flex_track_value,
+                "display_density_threshold": _optional_finite_float(
+                    display_density_threshold, "display_density_threshold"
+                ),
+                "display_intensity_gain": _optional_finite_float(
+                    display_intensity_gain, "display_intensity_gain"
+                ),
+            }
+        }
+        return self.op(payload, timeout_secs=timeout_secs)
 
     def run(
         self,

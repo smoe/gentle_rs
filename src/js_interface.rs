@@ -712,6 +712,36 @@ impl JavaScriptInterface {
           			}
           		});
           	}
+          	function render_dotplot_svg(state, seq_id, dotplot_id, path, options) {
+          		const opts = options ?? {};
+          		const flexTrack = opts.flex_track_id ?? opts.flexTrackId ?? null;
+          		let density = null;
+          		if (opts.display_density_threshold !== undefined && opts.display_density_threshold !== null) {
+          			const parsed = Number(opts.display_density_threshold);
+          			if (!Number.isFinite(parsed)) {
+          				throw new Error("render_dotplot_svg options.display_density_threshold must be numeric");
+          			}
+          			density = parsed;
+          		}
+          		let gain = null;
+          		if (opts.display_intensity_gain !== undefined && opts.display_intensity_gain !== null) {
+          			const parsed = Number(opts.display_intensity_gain);
+          			if (!Number.isFinite(parsed)) {
+          				throw new Error("render_dotplot_svg options.display_intensity_gain must be numeric");
+          			}
+          			gain = parsed;
+          		}
+          		return apply_operation(state, {
+          			RenderDotplotSvg: {
+          				seq_id: seq_id,
+          				dotplot_id: dotplot_id,
+          				path: path,
+          				flex_track_id: flexTrack,
+          				display_density_threshold: density,
+          				display_intensity_gain: gain
+          			}
+          		});
+          	}
           	function sync_rebase(input, output, commercial_only) {
           		return Deno.core.ops.sync_rebase_resource(input, output ?? "", commercial_only ?? false);
           	}
@@ -1195,5 +1225,19 @@ mod tests {
             "#
         ))
         .expect("ask agent with null state");
+    }
+
+    #[test]
+    fn js_dotplot_svg_wrapper_is_registered() {
+        let mut js = JavaScriptInterface::default();
+        js.run_checked(
+            r#"
+                if (typeof render_dotplot_svg !== "function") {
+                    throw new Error("render_dotplot_svg wrapper is missing");
+                }
+            "#
+            .to_string(),
+        )
+        .expect("render_dotplot_svg wrapper should be registered");
     }
 }

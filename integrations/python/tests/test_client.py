@@ -111,6 +111,33 @@ class GentleClientTests(unittest.TestCase):
         self.assertIn("--state", log)
         self.assertIn(".gentle_state.json", log)
 
+    def test_render_dotplot_svg_wrapper_uses_op_payload(self) -> None:
+        client = self._client()
+        out = client.render_dotplot_svg(
+            "seq_a",
+            "dotplot_primary",
+            "/tmp/dotplot.svg",
+            flex_track_id="flex_primary",
+            display_density_threshold=0.2,
+            display_intensity_gain=1.8,
+        )
+        self.assertTrue(out["state_changed"])
+        log = self.log_path.read_text(encoding="utf-8")
+        self.assertIn("\"RenderDotplotSvg\"", log)
+        self.assertIn("\"seq_id\":\"seq_a\"", log)
+        self.assertIn("\"dotplot_id\":\"dotplot_primary\"", log)
+        self.assertIn("\"path\":\"/tmp/dotplot.svg\"", log)
+        self.assertIn("\"flex_track_id\":\"flex_primary\"", log)
+        self.assertIn("\"display_density_threshold\":0.2", log)
+        self.assertIn("\"display_intensity_gain\":1.8", log)
+
+    def test_render_dotplot_svg_wrapper_validates_inputs(self) -> None:
+        client = self._client()
+        with self.assertRaises(GentleCliError):
+            client.render_dotplot_svg("", "dp", "/tmp/out.svg")
+        with self.assertRaises(GentleCliError):
+            client.render_dotplot_svg("seq", "dp", "/tmp/out.svg", display_density_threshold=float("nan"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7440,6 +7440,29 @@ fn parse_dotplot_and_flex_commands() {
         other => panic!("expected DotplotCompute, got {other:?}"),
     }
 
+    let render_dotplot = parse_shell_line(
+        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.svg --flex-track flex_1 --display-threshold 0.2 --intensity-gain 1.7",
+    )
+    .expect("parse dotplot render-svg");
+    match render_dotplot {
+        ShellCommand::RenderDotplotSvg {
+            seq_id,
+            dotplot_id,
+            output,
+            flex_track_id,
+            display_density_threshold,
+            display_intensity_gain,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(dotplot_id, "pair_dp");
+            assert_eq!(output, "/tmp/pair_dp.svg");
+            assert_eq!(flex_track_id.as_deref(), Some("flex_1"));
+            assert_eq!(display_density_threshold, Some(0.2));
+            assert_eq!(display_intensity_gain, Some(1.7));
+        }
+        other => panic!("expected RenderDotplotSvg, got {other:?}"),
+    }
+
     let flex = parse_shell_line(
             "flex compute seq_a --start 25 --end 325 --model at_skew --bin-bp 20 --smoothing-bp 60 --id promoter_flex",
         )

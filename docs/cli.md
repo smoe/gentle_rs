@@ -114,6 +114,7 @@ Deterministic API surface:
 - `op(operation)`
 - `workflow(workflow|workflow_path=...)`
 - `shell(line, expect_json=False)`
+- `render_dotplot_svg(seq_id, dotplot_id, output_svg, ...)`
 
 CLI resolution order:
 
@@ -162,11 +163,12 @@ Primer-design report capability status:
 Dotplot/flexibility capability status:
 
 - `gentle_cli`: supported via shared-shell/direct commands:
-  - `dotplot compute|list|show`
+  - `dotplot compute|list|show|render-svg`
+  - `render-dotplot-svg`
   - `transcripts derive`
   - `flex compute|list|show`
   backed by `ComputeDotplot`, `DeriveTranscriptSequences`, and
-  `ComputeFlexibilityTrack`.
+  `ComputeFlexibilityTrack` plus `RenderDotplotSvg`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
@@ -176,11 +178,13 @@ Dotplot/flexibility capability status:
     - splicing-scope constrained derivation from one seed feature
       (`--scope ...` with exactly one `--feature-id`)
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`);
-  dedicated convenience wrappers pending.
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`) plus
+  `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`);
-  dedicated convenience wrappers pending.
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`) plus
+  `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
+- `gentle_py`: baseline support via `op(...)` plus
+  `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
 
 RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
@@ -427,6 +431,12 @@ Exit methods:
       - `allow_auto_exec` / `execute_all`
       - `execute_indices` (1-based)
       - `include_state_summary` (default `true`)
+25. `render_dotplot_svg(state, seq_id, dotplot_id, output_svg, options)`
+    - Convenience wrapper around engine `RenderDotplotSvg`.
+    - `options` supports:
+      - `flex_track_id` (or `flexTrackId`)
+      - `display_density_threshold`
+      - `display_intensity_gain`
 
 ### JavaScript example
 
@@ -670,6 +680,8 @@ Exit methods:
     - Invokes one configured agent system through shared shell execution.
     - Returns table with `state`, `state_changed`, and `output`.
     - `project` may be `nil` to use an empty/default project state.
+25. `render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain])`
+    - Convenience wrapper around engine `RenderDotplotSvg`.
 
 ### Lua example
 
@@ -862,6 +874,7 @@ Shared shell command:
     - `save-project PATH`
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
     - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
@@ -960,6 +973,7 @@ Shared shell command:
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`
     - `dotplot show DOTPLOT_ID`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
     - `transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
@@ -1143,6 +1157,7 @@ Rendering export commands:
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
   - `--flex-track` optionally overlays one stored flexibility track in the same SVG.
   - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
+  - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`.
 - `render-rna-svg SEQ_ID OUTPUT.svg`
   - Calls engine operation `RenderRnaStructureSvg`.
   - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).

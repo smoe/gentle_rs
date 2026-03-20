@@ -14,6 +14,15 @@ Design intent:
   `state-summary`, `op`, `workflow`)
 - stable error object for scripting automation
 
+Convenience wrappers:
+
+- `render_dotplot_svg(seq_id, dotplot_id, output_svg, ...)`
+  - submits engine operation `RenderDotplotSvg` through deterministic `op(...)`
+  - optional arguments:
+    - `flex_track_id`
+    - `display_density_threshold`
+    - `display_intensity_gain`
+
 Quick start:
 
 ```bash

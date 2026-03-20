@@ -24721,7 +24721,8 @@ mod tests {
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
-        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LineageAnalysisKind, LineageNodeKind, LineageRow,
+        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
+        LineageAnalysisKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
         PersistedLineageNodeGroup, RetryCleanupAuditActionFilter, RetrySnapshotKindFilter,
         RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
@@ -25895,10 +25896,14 @@ mod tests {
 
     #[test]
     fn lineage_panel_split_clamps_for_small_height_and_round_trips_via_workspace() {
+        let expected_graph_height = LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT;
+        let expected_container_height = 120.0;
+        let expected_split =
+            expected_graph_height / (expected_graph_height + expected_container_height);
         let (graph_h, container_h, split) = GENtleApp::normalized_lineage_panel_heights(80.0, 0.95);
-        assert!((graph_h - 220.0).abs() <= 0.0001);
-        assert!((container_h - 120.0).abs() <= 0.0001);
-        assert!((split - (220.0 / 340.0)).abs() <= 0.0001);
+        assert!((graph_h - expected_graph_height).abs() <= 0.0001);
+        assert!((container_h - expected_container_height).abs() <= 0.0001);
+        assert!((split - expected_split).abs() <= 0.0001);
 
         let mut app = GENtleApp::default();
         app.lineage_graph_area_height = graph_h;
@@ -25925,9 +25930,9 @@ mod tests {
         reloaded.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         reloaded.load_lineage_graph_workspace_from_state();
 
-        assert!((reloaded.lineage_graph_area_height - 220.0).abs() <= 0.0001);
-        assert!((reloaded.lineage_container_area_height - 120.0).abs() <= 0.0001);
-        assert!((reloaded.lineage_main_split_fraction - (220.0 / 340.0)).abs() <= 0.0001);
+        assert!((reloaded.lineage_graph_area_height - expected_graph_height).abs() <= 0.0001);
+        assert!((reloaded.lineage_container_area_height - expected_container_height).abs() <= 0.0001);
+        assert!((reloaded.lineage_main_split_fraction - expected_split).abs() <= 0.0001);
     }
 
     #[test]

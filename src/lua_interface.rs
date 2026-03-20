@@ -95,6 +95,9 @@ impl LuaInterface {
         println!(
             "  - render_feature_expert_svg(project, seq_id, target, output_svg): Writes expert-view SVG via shared engine operation"
         );
+        println!(
+            "  - render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain]): Writes dotplot SVG via shared engine operation"
+        );
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
         println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
@@ -799,6 +802,54 @@ impl LuaInterface {
                             seq_id,
                             target,
                             path,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "render_dotplot_svg",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    seq_id,
+                    dotplot_id,
+                    path,
+                    flex_track_id,
+                    display_density_threshold,
+                    display_intensity_gain,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<f32>,
+                    Option<f32>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::RenderDotplotSvg {
+                            seq_id,
+                            dotplot_id,
+                            path,
+                            flex_track_id,
+                            display_density_threshold,
+                            display_intensity_gain,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]
@@ -1748,5 +1799,15 @@ mod tests {
             out.output["invocation"]["system_id"].as_str(),
             Some("builtin_echo")
         );
+    }
+
+    #[test]
+    fn lua_dotplot_svg_wrapper_is_registered() {
+        let lua = LuaInterface::new();
+        lua.register_rust_functions().expect("register rust functions");
+        lua.lua()
+            .load("assert(type(render_dotplot_svg) == 'function')")
+            .exec()
+            .expect("render_dotplot_svg wrapper should be registered");
     }
 }

@@ -1693,7 +1693,8 @@ Status (2026-03-19):
     - `gentle.dotplot_view.v2`
     - `gentle.flexibility_track.v1`
   - shared-shell/CLI commands:
-    - `dotplot compute|list|show`
+    - `dotplot compute|list|show|render-svg`
+    - `render-dotplot-svg`
     - `flex compute|list|show`
   - deterministic tests:
     - engine operation storage/retrieval
@@ -1733,7 +1734,7 @@ Status (2026-03-19):
       between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
   - additional overlay controls beyond crosshair baseline
-  - JS/Lua/Python convenience wrappers beyond generic operation calls
+  - additional adapter convenience wrappers as new dotplot operations are added
 
 Latest GUI baseline (2026-03-09):
 
@@ -1811,6 +1812,7 @@ Phase 3 (CLI/JS/Lua parity + export):
 - Add shared-shell commands:
   - `dotplot compute ...`
   - `dotplot show ...`
+  - `dotplot render-svg ...`
   - `render-dotplot-svg ...`
   - `flex compute ...`
   - `flex show ...`
@@ -1820,8 +1822,8 @@ Phase 3 (CLI/JS/Lua parity + export):
 - Status: partial.
   - implemented: `dotplot compute|list|show`, `flex compute|list|show`, GUI
     `Export Dotplot SVG...`, engine op `RenderDotplotSvg`, shared-shell/CLI
-    `render-dotplot-svg`
-  - pending: adapter convenience wrappers.
+    `render-dotplot-svg`, `dotplot render-svg`, JS/Lua/Python
+    `render_dotplot_svg(...)` convenience wrappers
 
 Phase 4 (latency hardening):
 
