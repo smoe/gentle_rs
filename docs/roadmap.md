@@ -257,10 +257,12 @@ order. Durable architecture constraints and decisions remain in
 - Protocol-cartoon SVG generation baseline is now available:
   - engine operation `RenderProtocolCartoonSvg { protocol, path }`
   - engine operation `RenderProtocolCartoonTemplateSvg { template_path, path }`
+  - engine operation `ExportProtocolCartoonTemplateJson { protocol, path }`
   - shared-shell/CLI routes:
     - `protocol-cartoon list`
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
     - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+    - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
     - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
   - first shipped protocol id: `gibson.two_fragment`

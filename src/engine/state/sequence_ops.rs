@@ -748,7 +748,8 @@ impl GentleEngine {
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. }
         | Operation::RenderProtocolCartoonSvg { path, .. }
-        | Operation::RenderProtocolCartoonTemplateSvg { path, .. } = op
+        | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
+        | Operation::ExportProtocolCartoonTemplateJson { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
@@ -769,6 +770,7 @@ impl GentleEngine {
             | Operation::RenderPoolGelSvg { path, .. }
             | Operation::RenderProtocolCartoonSvg { path, .. }
             | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
+            | Operation::ExportProtocolCartoonTemplateJson { path, .. }
             | Operation::ExportDnaLadders { path, .. }
             | Operation::ExportRnaLadders { path, .. }
             | Operation::ExportPool { path, .. }

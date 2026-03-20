@@ -461,6 +461,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] protocol-cartoon list\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n  \
   gentle_cli [--state PATH|--project PATH] render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
@@ -2119,7 +2120,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg"
+                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-export"
                         .to_string(),
                 );
             }
@@ -2197,8 +2198,44 @@ fn run() -> Result<(), String> {
                     }
                     Ok(())
                 }
+                "template-export" => {
+                    if args.len() != cmd_idx + 4 {
+                        return Err(
+                            "protocol-cartoon template-export requires: PROTOCOL_ID OUTPUT.json"
+                                .to_string(),
+                        );
+                    }
+                    let protocol_id = args[cmd_idx + 2].trim();
+                    if protocol_id.is_empty() {
+                        return Err(
+                            "protocol-cartoon template-export requires non-empty PROTOCOL_ID"
+                                .to_string(),
+                        );
+                    }
+                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                        format!(
+                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
+                        )
+                    })?;
+                    let output = &args[cmd_idx + 3];
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let result = engine
+                        .apply(Operation::ExportProtocolCartoonTemplateJson {
+                            protocol,
+                            path: output.to_string(),
+                        })
+                        .map_err(|e| e.to_string())?;
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    if let Some(msg) = result.messages.first() {
+                        println!("{msg}");
+                    }
+                    Ok(())
+                }
                 other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg)"
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-export)"
                 )),
             }
         }

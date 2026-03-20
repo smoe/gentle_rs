@@ -564,6 +564,10 @@ pub enum ShellCommand {
         template_path: String,
         output: String,
     },
+    ExportProtocolCartoonTemplateJson {
+        protocol: ProtocolCartoonKind,
+        output: String,
+    },
     RenderPoolGelSvg {
         inputs: Vec<String>,
         output: String,
@@ -4300,6 +4304,11 @@ impl ShellCommand {
             } => format!(
                 "render protocol cartoon template '{}' to '{}'",
                 template_path, output
+            ),
+            Self::ExportProtocolCartoonTemplateJson { protocol, output } => format!(
+                "export protocol cartoon template '{}' to '{}'",
+                protocol.id(),
+                output
             ),
             Self::RenderPoolGelSvg {
                 inputs,
@@ -9124,7 +9133,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "protocol-cartoon" => {
             if tokens.len() < 2 {
                 return Err(
-                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg"
+                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-export"
                         .to_string(),
                 );
             }
@@ -9178,8 +9187,32 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "template-export" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "protocol-cartoon template-export requires PROTOCOL_ID OUTPUT.json"
+                                .to_string(),
+                        );
+                    }
+                    let protocol_id = tokens[2].trim();
+                    if protocol_id.is_empty() {
+                        return Err(
+                            "protocol-cartoon template-export requires non-empty PROTOCOL_ID"
+                                .to_string(),
+                        );
+                    }
+                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                        format!(
+                            "Unknown protocol cartoon '{protocol_id}' (run 'protocol-cartoon list')"
+                        )
+                    })?;
+                    Ok(ShellCommand::ExportProtocolCartoonTemplateJson {
+                        protocol,
+                        output: tokens[3].clone(),
+                    })
+                }
                 other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg)"
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-export)"
                 )),
             }
         }
@@ -10956,6 +10989,18 @@ pub fn execute_shell_command_with_options(
             let op_result = engine
                 .apply(Operation::RenderProtocolCartoonTemplateSvg {
                     template_path: template_path.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ExportProtocolCartoonTemplateJson { protocol, output } => {
+            let op_result = engine
+                .apply(Operation::ExportProtocolCartoonTemplateJson {
+                    protocol: protocol.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

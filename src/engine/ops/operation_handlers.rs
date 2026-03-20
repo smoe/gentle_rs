@@ -1275,6 +1275,26 @@ impl GentleEngine {
                     spec.id, template_path, path
                 ));
             }
+            Operation::ExportProtocolCartoonTemplateJson { protocol, path } => {
+                let template =
+                    crate::protocol_cartoon::protocol_cartoon_template_for_kind(&protocol);
+                let json = serde_json::to_string_pretty(&template).map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not serialize protocol cartoon template '{}' as JSON: {e}",
+                        protocol.id()
+                    ),
+                })?;
+                std::fs::write(&path, format!("{json}\n")).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write JSON output '{path}': {e}"),
+                })?;
+                result.messages.push(format!(
+                    "Exported protocol cartoon template '{}' to '{}'",
+                    protocol.id(),
+                    path
+                ));
+            }
             Operation::CreateArrangementSerial {
                 container_ids,
                 arrangement_id,

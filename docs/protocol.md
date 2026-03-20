@@ -103,6 +103,7 @@ Current draft operations:
 - `RenderPoolGelSvg { inputs, path, ladders? }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
+- `ExportProtocolCartoonTemplateJson { protocol, path }`
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
@@ -295,6 +296,7 @@ external coding agent runtime, see:
   - `protocol-cartoon list`
   - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
   - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+  - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
   - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
   - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
 
@@ -1056,6 +1058,18 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - validates resolved cartoon semantics before rendering.
 - Output:
   - deterministic SVG artifact; operation is non-mutating.
+
+`ExportProtocolCartoonTemplateJson` semantics:
+
+- Inputs:
+  - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`)
+  - `path` (output JSON file)
+- Behavior:
+  - materializes the canonical built-in template
+    (`gentle.protocol_cartoon_template.v1`) for the requested protocol.
+  - writes deterministic pretty JSON suitable for user editing/tweaking.
+- Output:
+  - deterministic JSON artifact; operation is non-mutating.
 
 `ExportProcessRunBundle` semantics:
 

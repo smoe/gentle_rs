@@ -399,6 +399,19 @@ fn parse_render_protocol_cartoon_template_svg_alias() {
 }
 
 #[test]
+fn parse_protocol_cartoon_template_export() {
+    let cmd = parse_shell_line("protocol-cartoon template-export gibson out.json")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::ExportProtocolCartoonTemplateJson { protocol, output } => {
+            assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
+            assert_eq!(output, "out.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_info() {
     let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
     match cmd {
@@ -468,6 +481,33 @@ fn execute_render_protocol_cartoon_template_svg() {
     let svg = fs::read_to_string(output).expect("read protocol cartoon template svg");
     assert!(svg.contains("<svg"));
     assert!(svg.contains("demo.protocol"));
+}
+
+#[test]
+fn execute_protocol_cartoon_template_export() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("temp dir");
+    let output = tmp.path().join("gibson.template.json");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ExportProtocolCartoonTemplateJson {
+            protocol: ProtocolCartoonKind::GibsonTwoFragment,
+            output: output.display().to_string(),
+        },
+    )
+    .expect("execute protocol cartoon template export");
+    assert!(!out.state_changed);
+    let json = fs::read_to_string(output).expect("read protocol template json");
+    let template: serde_json::Value =
+        serde_json::from_str(&json).expect("parse protocol template json");
+    assert_eq!(
+        template.get("schema").and_then(|v| v.as_str()),
+        Some("gentle.protocol_cartoon_template.v1")
+    );
+    assert_eq!(
+        template.get("id").and_then(|v| v.as_str()),
+        Some("gibson.two_fragment")
+    );
 }
 
 #[test]
@@ -8032,10 +8072,9 @@ fn parse_rna_reads_commands() {
         other => panic!("expected RnaReadsAlignReport, got {other:?}"),
     }
 
-    let align_selected = parse_shell_line(
-        "rna-reads align-report tp73_reads --record-indices 2,7,2,9",
-    )
-    .expect("parse rna-reads align-report explicit record indices");
+    let align_selected =
+        parse_shell_line("rna-reads align-report tp73_reads --record-indices 2,7,2,9")
+            .expect("parse rna-reads align-report explicit record indices");
     match align_selected {
         ShellCommand::RnaReadsAlignReport {
             report_id,
@@ -8051,10 +8090,9 @@ fn parse_rna_reads_commands() {
         other => panic!("expected RnaReadsAlignReport, got {other:?}"),
     }
 
-    let align_selected_invalid = parse_shell_line(
-        "rna-reads align-report tp73_reads --record-indices ,,",
-    )
-    .expect_err("expected invalid empty --record-indices to fail");
+    let align_selected_invalid =
+        parse_shell_line("rna-reads align-report tp73_reads --record-indices ,,")
+            .expect_err("expected invalid empty --record-indices to fail");
     assert!(
         align_selected_invalid.contains("Invalid --record-indices value"),
         "unexpected parse error: {align_selected_invalid}"
