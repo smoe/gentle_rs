@@ -541,10 +541,13 @@ Patterns menu:
 - `Patterns -> Routine Assistant...`
   - opens a dedicated staged workflow window for routine application:
     1. goal + candidate search
-    2. routine alternative comparison
+    2. routine alternative comparison + disambiguation answers
     3. typed binding form from routine input ports
     4. shared-engine preflight preview (`--validate-only`)
     5. transactional run + process run-bundle export
+  - compare stage includes explicit disambiguation question prompts from
+    routine explain/compare payloads and records user-entered answers in
+    routine decision traces.
   - explainability and comparison data are loaded via shared shell commands:
     - `routines explain ROUTINE_ID`
     - `routines compare ROUTINE_A ROUTINE_B`

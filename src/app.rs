@@ -686,6 +686,7 @@ pub struct GENtleApp {
     routine_assistant_selected_routine_id: String,
     routine_assistant_compare_routine_id: String,
     routine_assistant_bindings: BTreeMap<String, String>,
+    routine_assistant_disambiguation_answers: BTreeMap<String, String>,
     routine_assistant_explain_output: Option<serde_json::Value>,
     routine_assistant_compare_output: Option<serde_json::Value>,
     routine_assistant_preflight_output: Option<serde_json::Value>,
@@ -1855,6 +1856,7 @@ impl Default for GENtleApp {
             routine_assistant_selected_routine_id: String::new(),
             routine_assistant_compare_routine_id: String::new(),
             routine_assistant_bindings: BTreeMap::new(),
+            routine_assistant_disambiguation_answers: BTreeMap::new(),
             routine_assistant_explain_output: None,
             routine_assistant_compare_output: None,
             routine_assistant_preflight_output: None,
@@ -5173,6 +5175,7 @@ Error: `{err}`"
         self.routine_assistant_selected_routine_id.clear();
         self.routine_assistant_compare_routine_id.clear();
         self.routine_assistant_bindings.clear();
+        self.routine_assistant_disambiguation_answers.clear();
         self.routine_assistant_explain_output = None;
         self.routine_assistant_compare_output = None;
         self.routine_assistant_preflight_output = None;
@@ -13047,6 +13050,7 @@ Error: `{err}`"
                         self.routine_assistant_selected_routine_id.clear();
                         self.routine_assistant_compare_routine_id.clear();
                         self.routine_assistant_bindings.clear();
+                        self.routine_assistant_disambiguation_answers.clear();
                         self.routine_assistant_explain_output = None;
                         self.routine_assistant_compare_output = None;
                         self.routine_assistant_preflight_output = None;
@@ -13099,6 +13103,7 @@ Error: `{err}`"
                     if let Some(routine_id) = choose_routine {
                         self.routine_assistant_selected_routine_id = routine_id;
                         self.routine_assistant_compare_routine_id.clear();
+                        self.routine_assistant_disambiguation_answers.clear();
                         self.routine_assistant_explain_output = None;
                         self.routine_assistant_compare_output = None;
                         self.routine_assistant_preflight_output = None;
@@ -13227,6 +13232,62 @@ Error: `{err}`"
                                     ui.end_row();
                                 }
                             });
+                    }
+                }
+                let disambiguation_questions =
+                    self.routine_assistant_effective_disambiguation_questions();
+                if disambiguation_questions.is_empty() {
+                    ui.separator();
+                    ui.small("No disambiguation questions provided for this routine pair.");
+                } else {
+                    self.sync_routine_assistant_disambiguation_answers_for_questions(
+                        &disambiguation_questions,
+                        &[],
+                    );
+                    ui.separator();
+                    ui.strong("Disambiguation answers");
+                    let mut answers_changed = false;
+                    egui::Grid::new("routine_assistant_disambiguation_answers_grid")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("question");
+                            ui.strong("answer");
+                            ui.end_row();
+                            for row in &disambiguation_questions {
+                                ui.label(row.question_text.as_str());
+                                let mut answer = self
+                                    .routine_assistant_disambiguation_answers
+                                    .get(&row.question_id)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                let answer_resp = ui.text_edit_singleline(&mut answer);
+                                if answer_resp.changed() {
+                                    self.routine_assistant_disambiguation_answers
+                                        .insert(row.question_id.clone(), answer);
+                                    answers_changed = true;
+                                }
+                                ui.end_row();
+                            }
+                        });
+                    if answers_changed {
+                        let selected = self.routine_assistant_selected_routine();
+                        let disambiguation_answers = self
+                            .routine_assistant_disambiguation_answers_snapshot(
+                                &disambiguation_questions,
+                            );
+                        self.update_routine_assistant_decision_trace(|trace| {
+                            trace.status = "draft".to_string();
+                            Self::routine_assistant_capture_selected_routine(
+                                trace,
+                                selected.as_ref(),
+                            );
+                            Self::merge_routine_assistant_disambiguation_questions(
+                                &mut trace.disambiguation_questions_presented,
+                                disambiguation_questions.clone(),
+                            );
+                            trace.disambiguation_answers = disambiguation_answers;
+                        });
                     }
                 }
             }
@@ -14503,6 +14564,111 @@ Error: `{err}`"
         out
     }
 
+    fn routine_assistant_effective_disambiguation_questions(
+        &self,
+    ) -> Vec<RoutineDecisionTraceDisambiguationQuestion> {
+        let mut questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
+        if let Some(output) = self.routine_assistant_explain_output.as_ref() {
+            Self::merge_routine_assistant_disambiguation_questions(
+                &mut questions,
+                Self::routine_assistant_disambiguation_questions_from_output(output),
+            );
+        }
+        if let Some(output) = self.routine_assistant_compare_output.as_ref() {
+            Self::merge_routine_assistant_disambiguation_questions(
+                &mut questions,
+                Self::routine_assistant_disambiguation_questions_from_output(output),
+            );
+        }
+        if let Some(trace) = self.routine_assistant_decision_trace.as_ref() {
+            Self::merge_routine_assistant_disambiguation_questions(
+                &mut questions,
+                trace.disambiguation_questions_presented.clone(),
+            );
+        }
+        questions
+    }
+
+    fn sync_routine_assistant_disambiguation_answers_for_questions(
+        &mut self,
+        questions: &[RoutineDecisionTraceDisambiguationQuestion],
+        fallback_answers: &[RoutineDecisionTraceDisambiguationAnswer],
+    ) {
+        let mut fallback_by_question_id: HashMap<String, String> = HashMap::new();
+        for row in fallback_answers {
+            let question_id = row.question_id.trim();
+            if question_id.is_empty() {
+                continue;
+            }
+            let answer_text = row.answer_text.trim();
+            if answer_text.is_empty() {
+                continue;
+            }
+            fallback_by_question_id
+                .entry(question_id.to_ascii_lowercase())
+                .or_insert_with(|| answer_text.to_string());
+        }
+
+        let mut next: BTreeMap<String, String> = BTreeMap::new();
+        for row in questions {
+            let question_id = row.question_id.trim();
+            if question_id.is_empty() {
+                continue;
+            }
+            let answer_text = self
+                .routine_assistant_disambiguation_answers
+                .get(question_id)
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    fallback_by_question_id
+                        .get(&question_id.to_ascii_lowercase())
+                        .cloned()
+                })
+                .unwrap_or_default();
+            next.insert(question_id.to_string(), answer_text);
+        }
+        self.routine_assistant_disambiguation_answers = next;
+    }
+
+    fn routine_assistant_disambiguation_answers_snapshot(
+        &self,
+        questions: &[RoutineDecisionTraceDisambiguationQuestion],
+    ) -> Vec<RoutineDecisionTraceDisambiguationAnswer> {
+        let mut answers_by_question_id: BTreeMap<String, String> = BTreeMap::new();
+        let mut seen_question_ids: HashSet<String> = HashSet::new();
+        for row in questions {
+            let question_id = row.question_id.trim();
+            if question_id.is_empty() {
+                continue;
+            }
+            if !seen_question_ids.insert(question_id.to_ascii_lowercase()) {
+                continue;
+            }
+            let answer_text = self
+                .routine_assistant_disambiguation_answers
+                .get(question_id)
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string());
+            if let Some(answer_text) = answer_text {
+                answers_by_question_id.insert(question_id.to_string(), answer_text);
+            }
+        }
+        answers_by_question_id
+            .into_iter()
+            .map(
+                |(question_id, answer_text)| RoutineDecisionTraceDisambiguationAnswer {
+                    question_id,
+                    answer_text,
+                },
+            )
+            .collect::<Vec<_>>()
+    }
+
     fn normalize_routine_decision_trace_for_gui(
         mut trace: RoutineDecisionTrace,
     ) -> Option<RoutineDecisionTrace> {
@@ -15000,6 +15166,7 @@ Error: `{err}`"
                     self.routine_assistant_selected_routine_id.clear();
                     self.routine_assistant_compare_routine_id.clear();
                     self.routine_assistant_bindings.clear();
+                    self.routine_assistant_disambiguation_answers.clear();
                     self.routine_assistant_explain_output = None;
                     self.routine_assistant_compare_output = None;
                     self.routine_assistant_preflight_output = None;
@@ -15317,6 +15484,7 @@ Error: `{err}`"
     fn sync_routine_assistant_bindings_for_selected(&mut self) {
         let Some(routine) = self.routine_assistant_selected_routine() else {
             self.routine_assistant_bindings.clear();
+            self.routine_assistant_disambiguation_answers.clear();
             return;
         };
         let allowed = Self::routine_assistant_input_port_ids(&routine)
@@ -15390,17 +15558,17 @@ Error: `{err}`"
                 let bindings_snapshot = self.routine_assistant_bindings_snapshot();
                 let disambiguation_questions =
                     Self::routine_assistant_disambiguation_questions_from_output(&output);
+                self.sync_routine_assistant_disambiguation_answers_for_questions(
+                    &disambiguation_questions,
+                    &[],
+                );
+                let disambiguation_answers = self
+                    .routine_assistant_disambiguation_answers_snapshot(&disambiguation_questions);
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "draft".to_string();
                     trace.alternatives_presented = alternatives;
                     trace.disambiguation_questions_presented = disambiguation_questions.clone();
-                    trace.disambiguation_answers.retain(|answer| {
-                        disambiguation_questions.iter().any(|question| {
-                            question
-                                .question_id
-                                .eq_ignore_ascii_case(answer.question_id.as_str())
-                        })
-                    });
+                    trace.disambiguation_answers = disambiguation_answers;
                     trace.bindings_snapshot = bindings_snapshot;
                     Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
                 });
@@ -15436,18 +15604,22 @@ Error: `{err}`"
                 self.routine_assistant_status =
                     format!("Routine Assistant: compared '{left}' vs '{right}'");
                 let selected = self.routine_assistant_selected_routine();
-                let disambiguation_questions = self
-                    .routine_assistant_compare_output
-                    .as_ref()
-                    .map(Self::routine_assistant_disambiguation_questions_from_output)
-                    .unwrap_or_default();
+                let disambiguation_questions =
+                    self.routine_assistant_effective_disambiguation_questions();
+                self.sync_routine_assistant_disambiguation_answers_for_questions(
+                    &disambiguation_questions,
+                    &[],
+                );
+                let disambiguation_answers = self
+                    .routine_assistant_disambiguation_answers_snapshot(&disambiguation_questions);
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "draft".to_string();
                     Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
                     Self::merge_routine_assistant_disambiguation_questions(
                         &mut trace.disambiguation_questions_presented,
-                        disambiguation_questions,
+                        disambiguation_questions.clone(),
                     );
+                    trace.disambiguation_answers = disambiguation_answers;
                     if !trace.comparisons.iter().any(|row| {
                         row.left_routine_id.eq_ignore_ascii_case(&left)
                             && row.right_routine_id.eq_ignore_ascii_case(&right)
@@ -15889,6 +16061,7 @@ Error: `{err}`"
         self.routine_assistant_selected_routine_id.clear();
         self.routine_assistant_compare_routine_id.clear();
         self.routine_assistant_bindings.clear();
+        self.routine_assistant_disambiguation_answers.clear();
         self.routine_assistant_explain_output = None;
         self.routine_assistant_compare_output = None;
         self.routine_assistant_preflight_output = None;
@@ -25695,7 +25868,8 @@ mod tests {
             FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
             LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
             RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
+            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
+            SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -27268,6 +27442,39 @@ mod tests {
             .expect("latest preflight snapshot");
         assert!(!latest_preflight.can_execute);
         assert_eq!(latest_preflight.errors, vec!["error_b"]);
+    }
+
+    #[test]
+    fn routine_assistant_disambiguation_answers_snapshot_filters_and_orders() {
+        let mut app = GENtleApp::default();
+        let questions = vec![
+            RoutineDecisionTraceDisambiguationQuestion {
+                question_id: "question_b".to_string(),
+                question_text: "Question B?".to_string(),
+            },
+            RoutineDecisionTraceDisambiguationQuestion {
+                question_id: "question_a".to_string(),
+                question_text: "Question A?".to_string(),
+            },
+        ];
+        app.routine_assistant_disambiguation_answers
+            .insert("question_b".to_string(), " answer b ".to_string());
+        app.routine_assistant_disambiguation_answers
+            .insert("question_a".to_string(), " answer a ".to_string());
+        app.routine_assistant_disambiguation_answers
+            .insert("stale_question".to_string(), "stale".to_string());
+
+        app.sync_routine_assistant_disambiguation_answers_for_questions(&questions, &[]);
+        let answers = app.routine_assistant_disambiguation_answers_snapshot(&questions);
+        assert_eq!(answers.len(), 2);
+        assert_eq!(answers[0].question_id, "question_a");
+        assert_eq!(answers[0].answer_text, "answer a");
+        assert_eq!(answers[1].question_id, "question_b");
+        assert_eq!(answers[1].answer_text, "answer b");
+        assert!(
+            !app.routine_assistant_disambiguation_answers
+                .contains_key("stale_question")
+        );
     }
 
     #[test]
