@@ -202,6 +202,90 @@ impl Default for PrimerPairConstraintUiState {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+struct PcrQueuedRegionUiState {
+    template: String,
+    source_label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+}
+
+impl Default for PcrQueuedRegionUiState {
+    fn default() -> Self {
+        Self {
+            template: String::new(),
+            source_label: String::new(),
+            start_0based: 0,
+            end_0based_exclusive: 0,
+        }
+    }
+}
+
+impl PcrQueuedRegionUiState {
+    fn span_len_bp(&self) -> usize {
+        self.end_0based_exclusive.saturating_sub(self.start_0based)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+struct PcrBatchResultRowUiState {
+    region_index_1based: usize,
+    template: String,
+    source_label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    report_id: String,
+    report_error: Option<String>,
+    copy_requested: bool,
+    copy_seq_id: Option<String>,
+    copy_error: Option<String>,
+}
+
+impl Default for PcrBatchResultRowUiState {
+    fn default() -> Self {
+        Self {
+            region_index_1based: 0,
+            template: String::new(),
+            source_label: String::new(),
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            report_id: String::new(),
+            report_error: None,
+            copy_requested: false,
+            copy_seq_id: None,
+            copy_error: None,
+        }
+    }
+}
+
+impl PcrBatchResultRowUiState {
+    fn span_len_bp(&self) -> usize {
+        self.end_0based_exclusive.saturating_sub(self.start_0based)
+    }
+
+    fn report_status_label(&self) -> &'static str {
+        if self.report_error.is_some() {
+            "report:failed"
+        } else {
+            "report:ok"
+        }
+    }
+
+    fn copy_status_label(&self) -> &'static str {
+        if !self.copy_requested {
+            "copy:off"
+        } else if self.copy_error.is_some() {
+            "copy:failed"
+        } else if self.copy_seq_id.is_some() {
+            "copy:ok"
+        } else {
+            "copy:none"
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PrimerDesignOpsUiState {
@@ -334,6 +418,17 @@ struct DotplotComputeDiagnostics {
     query_windows: usize,
     reference_windows: usize,
     estimated_pair_evaluations: usize,
+}
+
+#[derive(Clone, Debug)]
+struct PrimerDesignBatchSpec {
+    forward: PrimerDesignSideConstraint,
+    reverse: PrimerDesignSideConstraint,
+    pair_constraints: PrimerDesignPairConstraint,
+    min_amplicon_bp: usize,
+    max_amplicon_bp: usize,
+    max_tm_delta_c: Option<f64>,
+    max_pairs: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -503,6 +598,12 @@ struct EngineOpsUiState {
     pcr_mut_alt: String,
     #[serde(default)]
     primer_design_ui: PrimerDesignOpsUiState,
+    #[serde(default)]
+    pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
+    #[serde(default)]
+    pcr_batch_create_extract_copies: bool,
+    #[serde(default)]
+    pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
     #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
     #[serde(default = "default_primer_backend_auto")]
@@ -773,6 +874,7 @@ struct EngineOpsUiState {
 mod tests {
     use super::{DnaPresentationMode, MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
     use crate::{
+        dna_display::Selection,
         dna_sequence::DNAsequence,
         engine::{
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
@@ -1306,6 +1408,263 @@ mod tests {
         assert_eq!(area.qpcr_design_ui.roi_start_0based, "25");
         assert_eq!(area.qpcr_design_ui.roi_end_0based, "150");
         assert!(area.show_engine_ops);
+    }
+
+    #[test]
+    fn queue_current_selection_adds_pcr_region() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(15, 75, 400));
+
+        area.queue_current_selection_for_pcr();
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 1);
+        let queued = &area.pcr_queued_regions_ui[0];
+        assert_eq!(queued.template, "seq1");
+        assert_eq!(queued.source_label, "current sequence selection");
+        assert_eq!(queued.start_0based, 15);
+        assert_eq!(queued.end_0based_exclusive, 75);
+        assert_eq!(area.primer_design_ui.roi_start_0based, "15");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "75");
+        assert!(area.show_engine_ops);
+    }
+
+    #[test]
+    fn queue_selected_features_adds_multiple_regions() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(500)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(25, 120),
+            qualifiers: vec![("label".into(), Some("f1".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(180, 260),
+            qualifiers: vec![("label".into(), Some("f2".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.focus_feature(0);
+        area.toggle_feature_multi_select(1);
+
+        area.queue_selected_features_for_pcr();
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 2);
+        assert_eq!(area.pcr_queued_regions_ui[0].template, "seq1");
+        assert_eq!(
+            area.pcr_queued_regions_ui[0].source_label,
+            "feature n-0".to_string()
+        );
+        assert_eq!(area.pcr_queued_regions_ui[0].start_0based, 25);
+        assert_eq!(area.pcr_queued_regions_ui[0].end_0based_exclusive, 120);
+        assert_eq!(
+            area.pcr_queued_regions_ui[1].source_label,
+            "feature n-1".to_string()
+        );
+        assert_eq!(area.pcr_queued_regions_ui[1].start_0based, 180);
+        assert_eq!(area.pcr_queued_regions_ui[1].end_0based_exclusive, 260);
+        assert_eq!(area.primer_design_ui.roi_start_0based, "180");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "260");
+    }
+
+    fn make_primer_batch_area() -> MainAreaDna {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let dna = engine
+            .read()
+            .expect("engine lock")
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.primer_design_ui.forward.min_tm_c = "40".to_string();
+        area.primer_design_ui.forward.max_tm_c = "95".to_string();
+        area.primer_design_ui.forward.min_gc_fraction = "0.0".to_string();
+        area.primer_design_ui.forward.max_gc_fraction = "1.0".to_string();
+        area.primer_design_ui.forward.max_anneal_hits = "100".to_string();
+        area.primer_design_ui.reverse.min_tm_c = "40".to_string();
+        area.primer_design_ui.reverse.max_tm_c = "95".to_string();
+        area.primer_design_ui.reverse.min_gc_fraction = "0.0".to_string();
+        area.primer_design_ui.reverse.max_gc_fraction = "1.0".to_string();
+        area.primer_design_ui.reverse.max_anneal_hits = "100".to_string();
+        area.primer_design_ui.min_amplicon_bp = "40".to_string();
+        area.primer_design_ui.max_amplicon_bp = "140".to_string();
+        area.primer_design_ui.max_tm_delta_c = "50.0".to_string();
+        area.primer_design_ui.max_pairs = "10".to_string();
+        area
+    }
+
+    #[test]
+    fn queued_primer_batch_creates_one_report_per_region_with_deterministic_suffixes() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_gui".to_string();
+        area.pcr_queued_regions_ui = vec![
+            super::PcrQueuedRegionUiState {
+                template: "tpl".to_string(),
+                source_label: "feature n-0".to_string(),
+                start_0based: 20,
+                end_0based_exclusive: 90,
+            },
+            super::PcrQueuedRegionUiState {
+                template: "tpl".to_string(),
+                source_label: "feature n-1".to_string(),
+                start_0based: 30,
+                end_0based_exclusive: 100,
+            },
+        ];
+
+        area.run_queued_primer_pair_design_batch();
+
+        let engine = area.engine.as_ref().expect("engine");
+        let reports = engine
+            .read()
+            .expect("engine lock")
+            .list_primer_design_reports()
+            .into_iter()
+            .map(|row| row.report_id)
+            .collect::<Vec<_>>();
+        assert_eq!(reports, vec!["batch_gui_r01", "batch_gui_r02"]);
+        assert!(
+            area.op_status
+                .contains("2 queued region(s), 2 succeeded, 0 failed")
+        );
+    }
+
+    #[test]
+    fn queued_primer_batch_copy_mode_emits_extract_region_artifacts() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_copy".to_string();
+        area.pcr_batch_create_extract_copies = true;
+        area.pcr_queued_regions_ui = vec![super::PcrQueuedRegionUiState {
+            template: "tpl".to_string(),
+            source_label: "selection".to_string(),
+            start_0based: 25,
+            end_0based_exclusive: 95,
+        }];
+
+        area.run_queued_primer_pair_design_batch();
+
+        let engine = area.engine.as_ref().expect("engine");
+        let guard = engine.read().expect("engine lock");
+        assert!(guard.state().sequences.contains_key("tpl_pcr_roi_1"));
+        assert_eq!(
+            guard
+                .list_primer_design_reports()
+                .into_iter()
+                .map(|row| row.report_id)
+                .collect::<Vec<_>>(),
+            vec!["batch_copy_r01".to_string()]
+        );
+        assert!(
+            area.op_status
+                .contains("Extracted region copies: 1 succeeded, 0 failed")
+        );
+        assert_eq!(area.pcr_batch_results_ui.len(), 1);
+        assert_eq!(area.pcr_batch_results_ui[0].report_id, "batch_copy_r01");
+        assert_eq!(
+            area.pcr_batch_results_ui[0].copy_seq_id.as_deref(),
+            Some("tpl_pcr_roi_1")
+        );
+    }
+
+    #[test]
+    fn queued_primer_batch_populates_result_rows_with_failure_details() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_result".to_string();
+        area.pcr_batch_create_extract_copies = true;
+        area.pcr_queued_regions_ui = vec![
+            super::PcrQueuedRegionUiState {
+                template: "tpl".to_string(),
+                source_label: "selection".to_string(),
+                start_0based: 20,
+                end_0based_exclusive: 90,
+            },
+            super::PcrQueuedRegionUiState {
+                template: "missing_template".to_string(),
+                source_label: "missing".to_string(),
+                start_0based: 30,
+                end_0based_exclusive: 80,
+            },
+        ];
+
+        area.run_queued_primer_pair_design_batch();
+
+        assert_eq!(area.pcr_batch_results_ui.len(), 2);
+        let first = &area.pcr_batch_results_ui[0];
+        assert_eq!(first.region_index_1based, 1);
+        assert_eq!(first.report_id, "batch_result_r01");
+        assert!(first.report_error.is_none());
+        assert_eq!(first.copy_seq_id.as_deref(), Some("tpl_pcr_roi_1"));
+        let second = &area.pcr_batch_results_ui[1];
+        assert_eq!(second.region_index_1based, 2);
+        assert_eq!(second.report_id, "batch_result_r02");
+        assert!(second.report_error.is_some());
+        assert!(second.copy_error.is_some());
+    }
+
+    #[test]
+    fn open_sequence_by_id_switches_active_sequence_from_batch_copy() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_open".to_string();
+        area.pcr_batch_create_extract_copies = true;
+        area.pcr_queued_regions_ui = vec![super::PcrQueuedRegionUiState {
+            template: "tpl".to_string(),
+            source_label: "selection".to_string(),
+            start_0based: 25,
+            end_0based_exclusive: 95,
+        }];
+        area.run_queued_primer_pair_design_batch();
+        assert!(area.open_sequence_by_id("tpl_pcr_roi_1").is_ok());
+        assert_eq!(area.seq_id.as_deref(), Some("tpl_pcr_roi_1"));
+        assert_eq!(area.dna.read().expect("dna lock").len(), 70);
+    }
+
+    #[test]
+    fn queued_primer_batch_reports_partial_failures_deterministically() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_partial".to_string();
+        area.pcr_queued_regions_ui = vec![
+            super::PcrQueuedRegionUiState {
+                template: "tpl".to_string(),
+                source_label: "selection".to_string(),
+                start_0based: 20,
+                end_0based_exclusive: 90,
+            },
+            super::PcrQueuedRegionUiState {
+                template: "missing_template".to_string(),
+                source_label: "bad".to_string(),
+                start_0based: 30,
+                end_0based_exclusive: 80,
+            },
+        ];
+
+        area.run_queued_primer_pair_design_batch();
+
+        let engine = area.engine.as_ref().expect("engine");
+        let reports = engine
+            .read()
+            .expect("engine lock")
+            .list_primer_design_reports()
+            .into_iter()
+            .map(|row| row.report_id)
+            .collect::<Vec<_>>();
+        assert_eq!(reports, vec!["batch_partial_r01"]);
+        assert!(
+            area.op_status
+                .contains("2 queued region(s), 1 succeeded, 1 failed")
+        );
+        assert!(area.op_status.contains("r02 missing_template"));
     }
 
     #[test]
@@ -3167,6 +3526,9 @@ pub struct MainAreaDna {
     pcr_mut_ref: String,
     pcr_mut_alt: String,
     primer_design_ui: PrimerDesignOpsUiState,
+    pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
+    pcr_batch_create_extract_copies: bool,
+    pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
     qpcr_design_ui: QpcrDesignOpsUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -3447,6 +3809,9 @@ impl MainAreaDna {
             pcr_mut_ref: "A".to_string(),
             pcr_mut_alt: "G".to_string(),
             primer_design_ui: PrimerDesignOpsUiState::default(),
+            pcr_queued_regions_ui: vec![],
+            pcr_batch_create_extract_copies: false,
+            pcr_batch_results_ui: vec![],
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -5515,9 +5880,29 @@ impl MainAreaDna {
                         ui.close();
                     }
 
-                    let selected_feature_id = self
-                        .get_selected_feature_id()
-                        .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+                    let queue_selection_response = ui.add_enabled(
+                        selection_roi.is_some(),
+                        egui::Button::new("Add current selection to PCR queue"),
+                    );
+                    let queue_selection_response = if selection_roi.is_some() {
+                        queue_selection_response.on_hover_text(
+                            "Queue current linear selection as one PCR region for batch primer-pair design",
+                        )
+                    } else {
+                        queue_selection_response.on_hover_text(
+                            "Requires a non-empty linear map/sequence selection",
+                        )
+                    };
+                    if queue_selection_response.clicked() {
+                        self.queue_current_selection_for_pcr();
+                        ui.close();
+                    }
+
+                    let selected_feature_id = self.get_selected_feature_id().or_else(|| {
+                        self.selected_feature_ids_for_pcr_roi_actions()
+                            .into_iter()
+                            .next_back()
+                    });
                     let feature_roi = selected_feature_id.and_then(|feature_id| {
                         self.feature_roi_range_0based(feature_id)
                             .map(|roi| (feature_id, roi))
@@ -5541,6 +5926,28 @@ impl MainAreaDna {
                                 &format!("feature n-{feature_id}"),
                             );
                         }
+                        ui.close();
+                    }
+
+                    let selected_feature_ids = self.selected_feature_ids_for_pcr_roi_actions();
+                    let has_selected_feature = selected_feature_ids
+                        .iter()
+                        .any(|feature_id| self.feature_roi_range_0based(*feature_id).is_some());
+                    let queue_features_response = ui.add_enabled(
+                        has_selected_feature,
+                        egui::Button::new("Add selected features to PCR queue"),
+                    );
+                    let queue_features_response = if has_selected_feature {
+                        queue_features_response.on_hover_text(
+                            "Queue each selected feature as one PCR region for batch primer-pair design",
+                        )
+                    } else {
+                        queue_features_response.on_hover_text(
+                            "Requires at least one selected feature with valid coordinates",
+                        )
+                    };
+                    if queue_features_response.clicked() {
+                        self.queue_selected_features_for_pcr();
                         ui.close();
                     }
                 });
@@ -7738,6 +8145,35 @@ impl MainAreaDna {
         Some((start, end))
     }
 
+    fn template_length_bp(&self, template: &str) -> Option<usize> {
+        if template.trim().is_empty() {
+            return None;
+        }
+        if self.seq_id.as_deref() == Some(template) {
+            return self.dna.read().ok().map(|dna| dna.len());
+        }
+        let engine = self.engine.as_ref()?;
+        let guard = engine.read().ok()?;
+        guard.state().sequences.get(template).map(|dna| dna.len())
+    }
+
+    fn normalize_roi_range_for_template_0based(
+        &self,
+        template: &str,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        let seq_len = self.template_length_bp(template)?;
+        if seq_len == 0 || start >= seq_len {
+            return None;
+        }
+        let end_exclusive = end_exclusive.min(seq_len);
+        if end_exclusive <= start {
+            return None;
+        }
+        Some((start, end_exclusive))
+    }
+
     fn normalize_roi_range_0based(
         &self,
         start: usize,
@@ -7754,6 +8190,13 @@ impl MainAreaDna {
         Some((start, end_exclusive))
     }
 
+    fn set_primer_design_roi_fields_0based(&mut self, start: usize, end_exclusive: usize) {
+        self.primer_design_ui.roi_start_0based = start.to_string();
+        self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
+        self.qpcr_design_ui.roi_start_0based = start.to_string();
+        self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
+    }
+
     fn seed_primer_design_roi_0based(&mut self, start: usize, end_exclusive: usize, source: &str) {
         let Some((start, end_exclusive)) = self.normalize_roi_range_0based(start, end_exclusive)
         else {
@@ -7762,15 +8205,201 @@ impl MainAreaDna {
             );
             return;
         };
-        self.primer_design_ui.roi_start_0based = start.to_string();
-        self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
-        self.qpcr_design_ui.roi_start_0based = start.to_string();
-        self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
+        self.set_primer_design_roi_fields_0based(start, end_exclusive);
         self.show_engine_ops = true;
         self.op_status = format!(
             "Seeded primer/qPCR ROI from {source}: {start}..{end_exclusive} (0-based, end-exclusive)"
         );
         self.save_engine_ops_state();
+    }
+
+    fn selected_feature_ids_for_pcr_roi_actions(&self) -> Vec<usize> {
+        let mut feature_ids: Vec<usize> = self.multi_selected_feature_ids.iter().copied().collect();
+        if feature_ids.is_empty() {
+            if let Some(feature_id) = self.get_selected_feature_id() {
+                feature_ids.push(feature_id);
+            }
+        } else if let Some(feature_id) = self.get_selected_feature_id() {
+            feature_ids.push(feature_id);
+        }
+        feature_ids.sort_unstable();
+        feature_ids.dedup();
+        feature_ids
+    }
+
+    fn queue_pcr_region(
+        &mut self,
+        template: &str,
+        start: usize,
+        end_exclusive: usize,
+        source_label: &str,
+    ) -> Result<bool, String> {
+        let normalized = self
+            .normalize_roi_range_for_template_0based(template, start, end_exclusive)
+            .ok_or_else(|| {
+                format!(
+                    "Invalid PCR ROI {start}..{end_exclusive} (0-based, end-exclusive) for template '{template}'"
+                )
+            })?;
+        if self.pcr_queued_regions_ui.iter().any(|row| {
+            row.template == template
+                && row.start_0based == normalized.0
+                && row.end_0based_exclusive == normalized.1
+        }) {
+            return Ok(false);
+        }
+        self.pcr_queued_regions_ui.push(PcrQueuedRegionUiState {
+            template: template.to_string(),
+            source_label: source_label.to_string(),
+            start_0based: normalized.0,
+            end_0based_exclusive: normalized.1,
+        });
+        Ok(true)
+    }
+
+    fn queue_current_selection_for_pcr(&mut self) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status = "No non-empty linear selection available to queue for PCR".to_string();
+            return;
+        };
+        match self.queue_pcr_region(
+            &template,
+            start,
+            end_exclusive,
+            "current sequence selection",
+        ) {
+            Ok(true) => {
+                self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                self.show_engine_ops = true;
+                self.op_status = format!(
+                    "Queued PCR region from current selection: {start}..{end_exclusive} (0-based, end-exclusive)"
+                );
+                self.save_engine_ops_state();
+            }
+            Ok(false) => {
+                self.op_status = format!(
+                    "PCR region already queued for template '{}': {}..{}",
+                    template, start, end_exclusive
+                );
+            }
+            Err(message) => {
+                self.op_status = format!("Could not queue PCR region: {message}");
+            }
+        }
+    }
+
+    fn queue_selected_features_for_pcr(&mut self) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let selected_feature_ids = self.selected_feature_ids_for_pcr_roi_actions();
+        if selected_feature_ids.is_empty() {
+            self.op_status = "No selected features available to queue for PCR".to_string();
+            return;
+        }
+        let mut queued = 0usize;
+        let mut duplicates = 0usize;
+        let mut invalid_feature_ids: Vec<usize> = vec![];
+        let mut last_region: Option<(usize, usize)> = None;
+        for feature_id in selected_feature_ids {
+            let Some((start, end_exclusive)) = self.feature_roi_range_0based(feature_id) else {
+                invalid_feature_ids.push(feature_id);
+                continue;
+            };
+            match self.queue_pcr_region(
+                &template,
+                start,
+                end_exclusive,
+                &format!("feature n-{feature_id}"),
+            ) {
+                Ok(true) => {
+                    queued += 1;
+                    last_region = Some((start, end_exclusive));
+                }
+                Ok(false) => {
+                    duplicates += 1;
+                }
+                Err(_) => {
+                    invalid_feature_ids.push(feature_id);
+                }
+            }
+        }
+        if let Some((start, end_exclusive)) = last_region {
+            self.set_primer_design_roi_fields_0based(start, end_exclusive);
+            self.show_engine_ops = true;
+        }
+        self.op_status = format!(
+            "Queued {} PCR region(s) from selected features; duplicates skipped: {}; invalid features: {}",
+            queued,
+            duplicates,
+            invalid_feature_ids.len()
+        );
+        self.save_engine_ops_state();
+    }
+
+    fn remove_pcr_queued_region(&mut self, idx: usize) {
+        if idx < self.pcr_queued_regions_ui.len() {
+            self.pcr_queued_regions_ui.remove(idx);
+            self.op_status = format!(
+                "Removed PCR queued region #{:02}; {} region(s) remain",
+                idx + 1,
+                self.pcr_queued_regions_ui.len()
+            );
+            self.save_engine_ops_state();
+        }
+    }
+
+    fn clear_pcr_region_queue(&mut self) {
+        if self.pcr_queued_regions_ui.is_empty() {
+            self.op_status = "PCR region queue is already empty".to_string();
+            return;
+        }
+        self.pcr_queued_regions_ui.clear();
+        self.op_status = "Cleared PCR region queue".to_string();
+        self.save_engine_ops_state();
+    }
+
+    fn clear_pcr_batch_results(&mut self) {
+        if self.pcr_batch_results_ui.is_empty() {
+            self.op_status = "PCR batch results are already empty".to_string();
+            return;
+        }
+        self.pcr_batch_results_ui.clear();
+        self.op_status = "Cleared PCR batch results".to_string();
+        self.save_engine_ops_state();
+    }
+
+    fn open_sequence_by_id(&mut self, seq_id: &str) -> Result<(), String> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err("Sequence id is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        let dna = {
+            let guard = engine
+                .read()
+                .map_err(|_| "Engine lock poisoned while opening sequence".to_string())?;
+            guard
+                .state()
+                .sequences
+                .get(seq_id)
+                .cloned()
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?
+        };
+        self.seq_id = Some(seq_id.to_string());
+        self.replace_active_dna(dna, true);
+        self.op_status = format!("Opened sequence '{seq_id}' from PCR batch results");
+        self.show_engine_ops = true;
+        Ok(())
     }
 
     fn splicing_group_roi_range_0based(view: &SplicingExpertView) -> Option<(usize, usize)> {
@@ -18699,6 +19328,218 @@ impl MainAreaDna {
         })
     }
 
+    fn sanitize_id_component(raw: &str, fallback: &str) -> String {
+        let mut out = String::new();
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            fallback.to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn build_primer_design_batch_spec(&self) -> Result<PrimerDesignBatchSpec, String> {
+        let ui = &self.primer_design_ui;
+        let max_pairs = Self::parse_optional_usize_text(&ui.max_pairs, "max_pairs")?;
+        if matches!(max_pairs, Some(0)) {
+            return Err("Invalid max_pairs: expected >= 1 when provided".to_string());
+        }
+        let min_amplicon_bp =
+            Self::parse_positive_usize_text(&ui.min_amplicon_bp, "min_amplicon_bp")?;
+        let max_amplicon_bp =
+            Self::parse_positive_usize_text(&ui.max_amplicon_bp, "max_amplicon_bp")?;
+        if min_amplicon_bp > max_amplicon_bp {
+            return Err(format!(
+                "Invalid amplicon window: min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+            ));
+        }
+        Ok(PrimerDesignBatchSpec {
+            forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
+            reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
+            pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c: Self::parse_optional_f64_text(&ui.max_tm_delta_c, "max_tm_delta_c")?,
+            max_pairs,
+        })
+    }
+
+    fn run_queued_primer_pair_design_batch(&mut self) {
+        if self.pcr_queued_regions_ui.is_empty() {
+            self.op_status = "PCR region queue is empty; add at least one region first".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let spec = match self.build_primer_design_batch_spec() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let fallback_template = self
+            .pcr_queued_regions_ui
+            .first()
+            .map(|row| row.template.clone())
+            .unwrap_or_else(|| "template".to_string());
+        let report_base = if self.primer_design_ui.report_id.trim().is_empty() {
+            Self::sanitize_id_component(
+                &format!("{fallback_template}_primer_report"),
+                "primer_report_gui",
+            )
+        } else {
+            Self::sanitize_id_component(&self.primer_design_ui.report_id, "primer_report_gui")
+        };
+        let queued_regions = self.pcr_queued_regions_ui.clone();
+        let create_copies = self.pcr_batch_create_extract_copies;
+        let started = Instant::now();
+
+        let mut batch_rows: Vec<PcrBatchResultRowUiState> =
+            Vec::with_capacity(queued_regions.len());
+        let mut successful_report_ids: Vec<String> = vec![];
+        let mut failed_report_rows: Vec<String> = vec![];
+        let mut created_copy_ids: Vec<String> = vec![];
+        let mut failed_copy_rows: Vec<String> = vec![];
+        let mut created_seq_ids: Vec<String> = vec![];
+        let mut guard = match engine.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status =
+                    "Engine lock poisoned while running queued PCR primer design".to_string();
+                return;
+            }
+        };
+        for (index, region) in queued_regions.iter().enumerate() {
+            let report_id = format!("{report_base}_r{:02}", index + 1);
+            let region_label = format!(
+                "r{:02} {} [{}..{} {}]",
+                index + 1,
+                region.template,
+                region.start_0based,
+                region.end_0based_exclusive,
+                region.source_label
+            );
+            let mut row = PcrBatchResultRowUiState {
+                region_index_1based: index + 1,
+                template: region.template.clone(),
+                source_label: region.source_label.clone(),
+                start_0based: region.start_0based,
+                end_0based_exclusive: region.end_0based_exclusive,
+                report_id: report_id.clone(),
+                report_error: None,
+                copy_requested: create_copies,
+                copy_seq_id: None,
+                copy_error: None,
+            };
+            if create_copies {
+                let template_component = Self::sanitize_id_component(&region.template, "template");
+                let copy_output_id = format!("{}_pcr_roi_{}", template_component, index + 1);
+                match guard.apply(Operation::ExtractRegion {
+                    input: region.template.clone(),
+                    from: region.start_0based,
+                    to: region.end_0based_exclusive,
+                    output_id: Some(copy_output_id),
+                }) {
+                    Ok(result) => {
+                        if result.created_seq_ids.is_empty() {
+                            let message = format!(
+                                "ExtractRegion for {region_label} did not create a sequence"
+                            );
+                            row.copy_error = Some(message.clone());
+                            failed_copy_rows.push(message);
+                        } else {
+                            if let Some(copy_seq_id) = result.created_seq_ids.first() {
+                                row.copy_seq_id = Some(copy_seq_id.clone());
+                            }
+                            created_copy_ids.extend(result.created_seq_ids.clone());
+                            created_seq_ids.extend(result.created_seq_ids);
+                        }
+                    }
+                    Err(err) => {
+                        let message = format!("{region_label}: {}", err.message);
+                        row.copy_error = Some(message.clone());
+                        failed_copy_rows.push(message);
+                    }
+                }
+            }
+            match guard.apply(Operation::DesignPrimerPairs {
+                template: region.template.clone(),
+                roi_start_0based: region.start_0based,
+                roi_end_0based: region.end_0based_exclusive,
+                forward: spec.forward.clone(),
+                reverse: spec.reverse.clone(),
+                pair_constraints: spec.pair_constraints.clone(),
+                min_amplicon_bp: spec.min_amplicon_bp,
+                max_amplicon_bp: spec.max_amplicon_bp,
+                max_tm_delta_c: spec.max_tm_delta_c,
+                max_pairs: spec.max_pairs,
+                report_id: Some(report_id.clone()),
+            }) {
+                Ok(_) => {
+                    successful_report_ids.push(report_id);
+                }
+                Err(err) => {
+                    let message = format!("{region_label}: {}", err.message);
+                    row.report_error = Some(message.clone());
+                    failed_report_rows.push(message);
+                }
+            }
+            batch_rows.push(row);
+        }
+        drop(guard);
+
+        self.pcr_batch_results_ui = batch_rows;
+        self.save_engine_ops_state();
+
+        if !created_seq_ids.is_empty() {
+            self.last_created_seq_ids = created_seq_ids.clone();
+            self.export_pool_inputs_text = created_seq_ids.join(", ");
+        }
+
+        let elapsed_ms = started.elapsed().as_millis();
+        let mut status_lines = vec![format!(
+            "PCR primer batch finished in {} ms: {} queued region(s), {} succeeded, {} failed",
+            elapsed_ms,
+            queued_regions.len(),
+            successful_report_ids.len(),
+            failed_report_rows.len()
+        )];
+        if !successful_report_ids.is_empty() {
+            status_lines.push(format!("Report IDs: {}", successful_report_ids.join(", ")));
+        }
+        if create_copies {
+            status_lines.push(format!(
+                "Extracted region copies: {} succeeded, {} failed",
+                created_copy_ids.len(),
+                failed_copy_rows.len()
+            ));
+            if !created_copy_ids.is_empty() {
+                status_lines.push(format!("Copy IDs: {}", created_copy_ids.join(", ")));
+            }
+        }
+        if !failed_report_rows.is_empty() {
+            status_lines.push(format!(
+                "Primer design failures: {}",
+                failed_report_rows.join(" | ")
+            ));
+        }
+        if !failed_copy_rows.is_empty() {
+            status_lines.push(format!("Copy failures: {}", failed_copy_rows.join(" | ")));
+        }
+        self.op_status = status_lines.join("\n");
+        self.op_error_popup = None;
+    }
+
     fn build_design_primer_pairs_operation(&self, template: &str) -> Result<Operation, String> {
         let ui = &self.primer_design_ui;
         let max_pairs = Self::parse_optional_usize_text(&ui.max_pairs, "max_pairs")?;
@@ -19376,6 +20217,199 @@ impl MainAreaDna {
                             .desired_width(180.0),
                     );
                 });
+                ui.group(|ui| {
+                    ui.label("PCR region queue (batch source)");
+                    let copy_toggle = ui.checkbox(
+                        &mut self.pcr_batch_create_extract_copies,
+                        "Also create extracted region copies",
+                    );
+                    if copy_toggle.changed() {
+                        self.save_engine_ops_state();
+                    }
+                    if self.pcr_queued_regions_ui.is_empty() {
+                        ui.small(
+                            "Queue regions from DNA-window `PCR ROI` actions, then run batch primer design.",
+                        );
+                    } else {
+                        let mut use_roi_idx: Option<usize> = None;
+                        let mut remove_idx: Option<usize> = None;
+                        egui::Grid::new("primer_pairs_region_queue_grid")
+                            .striped(true)
+                            .num_columns(8)
+                            .show(ui, |ui| {
+                                ui.strong("#");
+                                ui.strong("source");
+                                ui.strong("start");
+                                ui.strong("end");
+                                ui.strong("len");
+                                ui.strong("template");
+                                ui.strong("use");
+                                ui.strong("remove");
+                                ui.end_row();
+                                for (idx, row) in self.pcr_queued_regions_ui.iter().enumerate() {
+                                    ui.monospace(format!("{:02}", idx + 1));
+                                    ui.label(&row.source_label);
+                                    ui.monospace(format!("{}", row.start_0based));
+                                    ui.monospace(format!("{}", row.end_0based_exclusive));
+                                    ui.monospace(format!("{}", row.span_len_bp()));
+                                    ui.monospace(&row.template);
+                                    if ui.small_button("Use ROI").clicked() {
+                                        use_roi_idx = Some(idx);
+                                    }
+                                    if ui.small_button("Remove").clicked() {
+                                        remove_idx = Some(idx);
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                        if let Some(idx) = use_roi_idx {
+                            if let Some(row) = self.pcr_queued_regions_ui.get(idx).cloned() {
+                                self.set_primer_design_roi_fields_0based(
+                                    row.start_0based,
+                                    row.end_0based_exclusive,
+                                );
+                                self.show_engine_ops = true;
+                                self.op_status = format!(
+                                    "Set active PCR ROI from queued region #{:02}: {}..{}",
+                                    idx + 1,
+                                    row.start_0based,
+                                    row.end_0based_exclusive
+                                );
+                                self.save_engine_ops_state();
+                            }
+                        }
+                        if let Some(idx) = remove_idx {
+                            self.remove_pcr_queued_region(idx);
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        let run_batch_response = ui.add_enabled(
+                            !self.pcr_queued_regions_ui.is_empty(),
+                            egui::Button::new("Design Primer Pairs for queued regions"),
+                        );
+                        let run_batch_response = run_batch_response.on_hover_text(
+                            "Run one DesignPrimerPairs operation per queued region using current primer constraints",
+                        );
+                        if run_batch_response.clicked() {
+                            self.run_queued_primer_pair_design_batch();
+                        }
+                        if ui
+                            .button("Clear queue")
+                            .on_hover_text("Remove all queued PCR regions")
+                            .clicked()
+                        {
+                            self.clear_pcr_region_queue();
+                        }
+                    });
+                });
+                ui.group(|ui| {
+                    ui.label("PCR batch results");
+                    if self.pcr_batch_results_ui.is_empty() {
+                        ui.small(
+                            "No batch run recorded yet. Run `Design Primer Pairs for queued regions` to populate this table.",
+                        );
+                    } else {
+                        let mut show_report_id: Option<String> = None;
+                        let mut export_report_id: Option<String> = None;
+                        let mut open_seq_id: Option<String> = None;
+                        egui::Grid::new("primer_pairs_batch_results_grid")
+                            .striped(true)
+                            .num_columns(11)
+                            .show(ui, |ui| {
+                                ui.strong("#");
+                                ui.strong("status");
+                                ui.strong("source");
+                                ui.strong("region");
+                                ui.strong("len");
+                                ui.strong("report_id");
+                                ui.strong("copy_id");
+                                ui.strong("Show");
+                                ui.strong("Export");
+                                ui.strong("Open sequence");
+                                ui.strong("detail");
+                                ui.end_row();
+                                for row in &self.pcr_batch_results_ui {
+                                    ui.monospace(format!("{:02}", row.region_index_1based));
+                                    ui.monospace(format!(
+                                        "{} | {}",
+                                        row.report_status_label(),
+                                        row.copy_status_label()
+                                    ));
+                                    ui.label(&row.source_label);
+                                    ui.monospace(format!(
+                                        "{}:{}..{}",
+                                        row.template, row.start_0based, row.end_0based_exclusive
+                                    ));
+                                    ui.monospace(format!("{}", row.span_len_bp()));
+                                    ui.monospace(&row.report_id);
+                                    if let Some(copy_seq_id) = &row.copy_seq_id {
+                                        ui.monospace(copy_seq_id);
+                                    } else if row.copy_requested {
+                                        ui.label("-");
+                                    } else {
+                                        ui.label("n/a");
+                                    }
+                                    let report_ok = row.report_error.is_none();
+                                    if ui
+                                        .add_enabled(report_ok, egui::Button::new("Show"))
+                                        .on_hover_text("Show summary for this report_id")
+                                        .clicked()
+                                    {
+                                        show_report_id = Some(row.report_id.clone());
+                                    }
+                                    if ui
+                                        .add_enabled(report_ok, egui::Button::new("Export"))
+                                        .on_hover_text("Export this report_id to JSON")
+                                        .clicked()
+                                    {
+                                        export_report_id = Some(row.report_id.clone());
+                                    }
+                                    let open_target = row
+                                        .copy_seq_id
+                                        .clone()
+                                        .unwrap_or_else(|| row.template.clone());
+                                    if ui
+                                        .button("Open")
+                                        .on_hover_text(
+                                            "Open extracted copy when available; otherwise open template sequence",
+                                        )
+                                        .clicked()
+                                    {
+                                        open_seq_id = Some(open_target);
+                                    }
+                                    let detail = row
+                                        .report_error
+                                        .clone()
+                                        .or_else(|| row.copy_error.clone())
+                                        .unwrap_or_else(|| "ok".to_string());
+                                    ui.label(detail);
+                                    ui.end_row();
+                                }
+                            });
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button("Clear results")
+                                .on_hover_text("Remove all rows from PCR batch results table")
+                                .clicked()
+                            {
+                                self.clear_pcr_batch_results();
+                            }
+                        });
+                        if let Some(report_id) = show_report_id {
+                            self.primer_design_ui.report_id = report_id.clone();
+                            self.show_primer_design_report(&report_id);
+                        }
+                        if let Some(report_id) = export_report_id {
+                            self.primer_design_ui.report_id = report_id.clone();
+                            self.export_primer_design_report_dialog(&report_id);
+                        }
+                        if let Some(seq_id) = open_seq_id
+                            && let Err(err) = self.open_sequence_by_id(&seq_id)
+                        {
+                            self.op_status = err;
+                        }
+                    }
+                });
                 Self::render_primer_pair_constraint_editor(
                     ui,
                     "primer_pairs_pair_constraints",
@@ -19433,6 +20467,9 @@ impl MainAreaDna {
         egui::CollapsingHeader::new("Design qPCR assays")
             .default_open(false)
             .show(ui, |ui| {
+                ui.small(
+                    "Tip: queue multi-region primer workflows in `Design primer pairs`; qPCR remains optional for follow-up assays.",
+                );
                 ui.horizontal(|ui| {
                     ui.label("ROI start");
                     ui.add(
@@ -20977,6 +22014,9 @@ impl MainAreaDna {
             pcr_mut_ref: self.pcr_mut_ref.clone(),
             pcr_mut_alt: self.pcr_mut_alt.clone(),
             primer_design_ui: self.primer_design_ui.clone(),
+            pcr_queued_regions_ui: self.pcr_queued_regions_ui.clone(),
+            pcr_batch_create_extract_copies: self.pcr_batch_create_extract_copies,
+            pcr_batch_results_ui: self.pcr_batch_results_ui.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
@@ -21178,6 +22218,9 @@ impl MainAreaDna {
         self.pcr_mut_ref = s.pcr_mut_ref;
         self.pcr_mut_alt = s.pcr_mut_alt;
         self.primer_design_ui = s.primer_design_ui;
+        self.pcr_queued_regions_ui = s.pcr_queued_regions_ui;
+        self.pcr_batch_create_extract_copies = s.pcr_batch_create_extract_copies;
+        self.pcr_batch_results_ui = s.pcr_batch_results_ui;
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {

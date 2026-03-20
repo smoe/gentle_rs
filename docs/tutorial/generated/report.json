@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 13,
+  "chapter_count": 14,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -20,26 +20,28 @@
     "chapters/10_tp53_isoform_architecture_online.md",
     "chapters/11_tp63_anchor_extension_online.md",
     "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
-    "chapters/13_tp73_cdna_genomic_dotplot_online.md",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "5b4e3bcc24ce92e1bb06e4b7f7bdcbf3d872afcb",
+    "README.md": "77df24121b077e8f0aa14e23bc6fe54683f65b29",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "324cf58e8f70fd7aeadf589f063629654667337a",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "fb9e17615426cadaecd3f1a6f18ce92a923ad047",
-    "chapters/03_load_and_digest_pgex.md": "cf52639518968389d0e17838acfa50f1f87eda05",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "43af58f9cbb661f87876f42198bc2250bc81feb4",
-    "chapters/05_guides_filter_and_generate_oligos.md": "08860b11cab56f7ec85b8a915e9e518e8f7d2e63",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "b0c12be4eee21819c2122cec78ee70c3e0b691d8",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "6466e32451db5c334bcb7550ba8cb5e4cccb6026",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "bc7ad9c6343c0b77f61592e188867afbfe129de6",
+    "chapters/03_load_and_digest_pgex.md": "34be39ef121493a27e53bcb0fdeb624b2e6f583e",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "6d6f30dd8a4a2ec3651e6555f21ff9db50b4cf34",
+    "chapters/05_guides_filter_and_generate_oligos.md": "da1fd28de194448e4d46bce3a030c1f92f90cac2",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "0875775eb99f2f8b85b9ef312c1830e040194af3",
     "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "3037e469f1608807fb8fe0568c9ed72364951db8",
-    "chapters/09_prepare_reference_genome_online.md": "44ecb6ec5c3baaa752c8300c32d0f999ce3be840",
-    "chapters/10_tp53_isoform_architecture_online.md": "9af5756a4ee4861725abe574efb45162d46082d7",
-    "chapters/11_tp63_anchor_extension_online.md": "d74cb4529cda66e86eb8465f0e6a62146c39eb8f",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "3e008cf26ec0179cf3f007c30b6c8eb55d4ccb8d",
-    "chapters/13_tp73_cdna_genomic_dotplot_online.md": "7e7299f0f1c38abbd431413ef0c221fd8b0fffa6"
+    "chapters/08_contribute_to_gentle_development.md": "f239f420ccc57341dbc9809bbb3b2a2958260819",
+    "chapters/09_prepare_reference_genome_online.md": "9b5df5f0ccac23b244f4bf22bece2c99afe3e922",
+    "chapters/10_tp53_isoform_architecture_online.md": "47889942cdb54bc940ac97fe1f1cb61d90a00b56",
+    "chapters/11_tp63_anchor_extension_online.md": "dcd5caf0044db53dca9ecfbd5348f617f0aafb04",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "312dbb31f6f10c215d1464ccc9561470e2bbb550",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "5e4c68f30b5a34d2f1a20f89a897216749e43c07",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "0cdc83be05622bde0f3d35fef67e8f9986bc251a"
   },
   "chapters": [
     {
@@ -227,8 +229,23 @@
       "retained_artifacts": []
     },
     {
-      "id": "tp73_cdna_genomic_dotplot_online",
+      "id": "pcr_selection_batch_primer_pairs_offline",
       "order": 13,
+      "title": "Selection-first PCR batch primer design (offline)",
+      "tier": "core",
+      "example_id": "pcr_selection_batch_primer_pairs_offline",
+      "example_source": "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "order": 14,
       "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
       "tier": "online",
       "example_id": "tp73_cdna_genomic_dotplot_online",

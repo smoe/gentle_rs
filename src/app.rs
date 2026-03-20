@@ -711,6 +711,8 @@ pub struct GENtleApp {
     retry_cleanup_audit_retain_count: usize,
     retry_cleanup_audit_action_filter: RetryCleanupAuditActionFilter,
     retry_cleanup_audit_text_filter: String,
+    retry_cleanup_audit_pending_clear_all: bool,
+    retry_cleanup_audit_clear_confirm_text: String,
     retry_snapshot_pending_cleanup_action: Option<RetrySnapshotPendingCleanupAction>,
     retry_snapshot_cleanup_confirm_text: String,
     genome_track_preflight_track_subscription: bool,
@@ -1876,6 +1878,8 @@ impl Default for GENtleApp {
             retry_cleanup_audit_retain_count: MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES,
             retry_cleanup_audit_action_filter: RetryCleanupAuditActionFilter::All,
             retry_cleanup_audit_text_filter: String::new(),
+            retry_cleanup_audit_pending_clear_all: false,
+            retry_cleanup_audit_clear_confirm_text: String::new(),
             retry_snapshot_pending_cleanup_action: None,
             retry_snapshot_cleanup_confirm_text: String::new(),
             genome_track_preflight_track_subscription: true,
@@ -3749,6 +3753,15 @@ Error: `{err}`"
         input.trim().eq_ignore_ascii_case(expected.as_str())
     }
 
+    fn retry_cleanup_audit_clear_confirm_phrase(target_count: usize) -> String {
+        format!("clear-audit {target_count}")
+    }
+
+    fn retry_cleanup_audit_clear_confirm_input_matches(target_count: usize, input: &str) -> bool {
+        let expected = Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
+        input.trim().eq_ignore_ascii_case(expected.as_str())
+    }
+
     fn build_retry_cleanup_audit_report_payload(
         &self,
         entries: Vec<RetrySnapshotCleanupAuditEntry>,
@@ -3762,7 +3775,12 @@ Error: `{err}`"
         serde_json::json!({
             "schema": "gentle.gui_retry_cleanup_audit_report.v1",
             "exported_at_unix_ms": Self::now_unix_ms(),
+            "filters": {
+                "action": self.retry_cleanup_audit_action_filter.label(),
+                "text": self.retry_cleanup_audit_text_filter.trim()
+            },
             "entry_count": entry_count,
+            "retained_entry_count": self.retry_snapshot_cleanup_audit.len(),
             "action_counts": action_counts,
             "entries": entries
         })
@@ -3772,11 +3790,9 @@ Error: `{err}`"
         &self,
         path: &Path,
     ) -> std::result::Result<usize, String> {
-        let entries = Self::normalize_retry_snapshot_cleanup_audit_entries(
-            self.retry_snapshot_cleanup_audit.clone(),
-        );
+        let entries = self.filtered_retry_cleanup_audit_entries();
         if entries.is_empty() {
-            return Err("No retry cleanup audit entries to export".to_string());
+            return Err("No retry cleanup audit entries match current filters".to_string());
         }
         let entry_count = entries.len();
         let payload = self.build_retry_cleanup_audit_report_payload(entries);
@@ -5489,12 +5505,12 @@ Error: `{err}`"
     }
 
     fn prompt_export_retry_cleanup_audit_report(&mut self) {
-        if self.retry_snapshot_cleanup_audit.is_empty() {
-            self.app_status = "No retry cleanup audit entries to export".to_string();
+        if self.filtered_retry_cleanup_audit_entries().is_empty() {
+            self.app_status = "No retry cleanup audit entries match current filters".to_string();
             return;
         }
         let path = rfd::FileDialog::new()
-            .set_file_name("retry_cleanup_audit_report.json")
+            .set_file_name("retry_cleanup_audit_report_filtered.json")
             .add_filter("JSON", &["json"])
             .save_file();
         let Some(path) = path else {
@@ -5505,8 +5521,9 @@ Error: `{err}`"
         match self.export_retry_cleanup_audit_report_to_path(path.as_path()) {
             Ok(count) => {
                 // Exporting the audit report is read-only and intentionally not self-audited.
-                self.app_status =
-                    format!("Exported {count} retry cleanup audit entries to '{path_text}'");
+                self.app_status = format!(
+                    "Exported {count} filtered retry cleanup audit entries to '{path_text}'"
+                );
             }
             Err(err) => {
                 self.app_status = format!(
@@ -23341,6 +23358,10 @@ Error: `{err}`"
                     });
                 ui.separator();
                 ui.strong("Retry cleanup audit");
+                if self.retry_snapshot_cleanup_audit.is_empty() {
+                    self.retry_cleanup_audit_pending_clear_all = false;
+                    self.retry_cleanup_audit_clear_confirm_text.clear();
+                }
                 self.retry_cleanup_audit_retain_count = self.retry_cleanup_audit_retention_limit();
                 ui.horizontal(|ui| {
                     ui.label("Retain newest");
@@ -23373,8 +23394,14 @@ Error: `{err}`"
                         .on_hover_text("Delete all retained cleanup-audit entries")
                         .clicked()
                     {
-                        let removed = self.clear_retry_cleanup_audit();
-                        self.app_status = format!("Cleared {removed} retry cleanup audit entries");
+                        let target_count = self.retry_snapshot_cleanup_audit.len();
+                        let confirm_phrase =
+                            Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
+                        self.retry_cleanup_audit_pending_clear_all = true;
+                        self.retry_cleanup_audit_clear_confirm_text.clear();
+                        self.app_status = format!(
+                            "Retry cleanup audit clear-all staged: type '{confirm_phrase}' to confirm"
+                        );
                     }
                 });
                 ui.horizontal(|ui| {
@@ -23418,13 +23445,14 @@ Error: `{err}`"
                     if ui.button("Clear").clicked() {
                         self.retry_cleanup_audit_text_filter.clear();
                     }
+                    let filtered_audit_count = self.filtered_retry_cleanup_audit_entries().len();
                     if ui
                         .add_enabled(
-                            !self.retry_snapshot_cleanup_audit.is_empty(),
-                            egui::Button::new("Export report..."),
+                            filtered_audit_count > 0,
+                            egui::Button::new("Export filtered report..."),
                         )
                         .on_hover_text(
-                            "Export full cleanup-audit report JSON (read-only; does not append new audit entries)",
+                            "Export filtered cleanup-audit report JSON (read-only; does not append new audit entries)",
                         )
                         .clicked()
                     {
@@ -23432,6 +23460,54 @@ Error: `{err}`"
                     }
                 });
                 let filtered_audit_entries = self.filtered_retry_cleanup_audit_entries();
+                if self.retry_cleanup_audit_pending_clear_all {
+                    let target_count = self.retry_snapshot_cleanup_audit.len();
+                    let confirm_phrase = Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
+                    let confirm_ready = Self::retry_cleanup_audit_clear_confirm_input_matches(
+                        target_count,
+                        &self.retry_cleanup_audit_clear_confirm_text,
+                    );
+                    ui.group(|ui| {
+                        ui.label("Pending confirmation: Clear all cleanup-audit entries");
+                        ui.small(format!(
+                            "This will remove all {} retained cleanup-audit entries",
+                            target_count
+                        ));
+                        ui.small(format!("Type '{}' to confirm", confirm_phrase));
+                        ui.horizontal(|ui| {
+                            ui.label("Confirm phrase");
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.retry_cleanup_audit_clear_confirm_text,
+                                )
+                                .desired_width(220.0)
+                                .hint_text(confirm_phrase.as_str()),
+                            );
+                        });
+                        if !confirm_ready {
+                            ui.small("Confirmation phrase does not match yet");
+                        }
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(target_count > 0 && confirm_ready, egui::Button::new("Confirm clear all"))
+                                .clicked()
+                            {
+                                let removed = self.clear_retry_cleanup_audit();
+                                self.retry_cleanup_audit_pending_clear_all = false;
+                                self.retry_cleanup_audit_clear_confirm_text.clear();
+                                self.app_status =
+                                    format!("Cleared {removed} retry cleanup audit entries");
+                            }
+                            if ui.button("Cancel").clicked() {
+                                self.retry_cleanup_audit_pending_clear_all = false;
+                                self.retry_cleanup_audit_clear_confirm_text.clear();
+                                self.app_status =
+                                    "Retry cleanup audit clear-all confirmation canceled"
+                                        .to_string();
+                            }
+                        });
+                    });
+                }
                 ui.small(format!(
                     "Showing {} of {} retained audit entries",
                     filtered_audit_entries.len(),
@@ -25296,7 +25372,27 @@ mod tests {
         );
         assert_eq!(
             payload_json
+                .get("filters")
+                .and_then(|value| value.get("action"))
+                .and_then(|value| value.as_str()),
+            Some("all")
+        );
+        assert_eq!(
+            payload_json
+                .get("filters")
+                .and_then(|value| value.get("text"))
+                .and_then(|value| value.as_str()),
+            Some("")
+        );
+        assert_eq!(
+            payload_json
                 .get("entry_count")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            payload_json
+                .get("retained_entry_count")
                 .and_then(|value| value.as_u64()),
             Some(2)
         );
@@ -25322,7 +25418,98 @@ mod tests {
         let err = app
             .export_retry_cleanup_audit_report_to_path(output_path.as_path())
             .expect_err("export should fail when audit is empty");
-        assert!(err.contains("No retry cleanup audit entries to export"));
+        assert!(err.contains("No retry cleanup audit entries match current filters"));
+        assert!(!output_path.exists());
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_writes_filtered_payload() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report_filtered.json");
+        let mut app = GENtleApp::default();
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::BlastGenome;
+        app.retry_snapshot_text_filter = "origin:panel args:hg38".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "delete_filtered",
+            "Removed blast hg38 panel snapshots",
+            3,
+            2,
+            8,
+            6,
+            None,
+        );
+        app.retry_snapshot_kind_filter = RetrySnapshotKindFilter::TrackImport;
+        app.retry_snapshot_text_filter = "origin:dialog args:seq_1".to_string();
+        app.record_retry_snapshot_cleanup_audit(
+            "prune_oldest",
+            "Pruned old track-import entries",
+            5,
+            2,
+            7,
+            5,
+            None,
+        );
+        app.retry_cleanup_audit_action_filter = RetryCleanupAuditActionFilter::DeleteFiltered;
+        app.retry_cleanup_audit_text_filter = "kind:blast summary:hg38".to_string();
+
+        let exported = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect("export filtered retry cleanup audit report");
+        assert_eq!(exported, 1);
+
+        let payload = fs::read_to_string(&output_path).expect("read audit export");
+        let payload_json =
+            serde_json::from_str::<serde_json::Value>(&payload).expect("parse audit export");
+        assert_eq!(
+            payload_json
+                .get("filters")
+                .and_then(|value| value.get("action"))
+                .and_then(|value| value.as_str()),
+            Some("delete_filtered")
+        );
+        assert_eq!(
+            payload_json
+                .get("filters")
+                .and_then(|value| value.get("text"))
+                .and_then(|value| value.as_str()),
+            Some("kind:blast summary:hg38")
+        );
+        assert_eq!(
+            payload_json
+                .get("entry_count")
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            payload_json
+                .get("retained_entry_count")
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        let entries = payload_json
+            .get("entries")
+            .and_then(|value| value.as_array())
+            .expect("entries array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].get("action").and_then(|value| value.as_str()),
+            Some("delete_filtered")
+        );
+    }
+
+    #[test]
+    fn export_retry_cleanup_audit_report_to_path_rejects_empty_filtered_match_set() {
+        let temp = tempdir().expect("tempdir");
+        let output_path = temp.path().join("retry_cleanup_audit_report_filtered.json");
+        let mut app = GENtleApp::default();
+        app.record_retry_snapshot_cleanup_audit("delete_filtered", "first", 2, 1, 4, 3, None);
+        app.retry_cleanup_audit_action_filter = RetryCleanupAuditActionFilter::PruneOldest;
+        app.retry_cleanup_audit_text_filter = "summary:nope".to_string();
+
+        let err = app
+            .export_retry_cleanup_audit_report_to_path(output_path.as_path())
+            .expect_err("export should fail when no audit entries match filters");
+        assert!(err.contains("No retry cleanup audit entries match current filters"));
         assert!(!output_path.exists());
     }
 
@@ -25436,6 +25623,18 @@ mod tests {
             .and_then(|value| value.as_array())
             .expect("retry cleanup audit array");
         assert!(audits.is_empty());
+    }
+
+    #[test]
+    fn retry_cleanup_audit_clear_confirm_input_matches_expected_phrase_case_insensitive() {
+        assert!(GENtleApp::retry_cleanup_audit_clear_confirm_input_matches(
+            4,
+            "  ClEaR-AuDiT 4  "
+        ));
+        assert!(!GENtleApp::retry_cleanup_audit_clear_confirm_input_matches(
+            4,
+            "clear-audit 3"
+        ));
     }
 
     #[test]

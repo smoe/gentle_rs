@@ -1,0 +1,108 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "pcr_selection_batch_primer_pairs_offline",
+  "title": "PCR selection-first batch primer design (offline)",
+  "summary": "Loads one local template, materializes two ROI copy artifacts, and designs primer-pair reports for both regions.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "tutorial",
+    "pcr",
+    "primer",
+    "extract_region",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_pcr_selection_batch_primer_pairs_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "pgex_template"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "pgex_template",
+          "from": 160,
+          "to": 460,
+          "output_id": "pgex_template_pcr_roi_1"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "pgex_template",
+          "from": 760,
+          "to": 1120,
+          "output_id": "pgex_template_pcr_roi_2"
+        }
+      },
+      {
+        "DesignPrimerPairs": {
+          "template": "pgex_template",
+          "roi_start_0based": 160,
+          "roi_end_0based": 460,
+          "forward": {
+            "min_length": 20,
+            "max_length": 20,
+            "location_0based": 170,
+            "min_tm_c": 40.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100
+          },
+          "reverse": {
+            "min_length": 20,
+            "max_length": 20,
+            "location_0based": 430,
+            "min_tm_c": 40.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100
+          },
+          "min_amplicon_bp": 120,
+          "max_amplicon_bp": 400,
+          "max_tm_delta_c": 3.0,
+          "max_pairs": 10,
+          "report_id": "pcr_batch_demo_r01"
+        }
+      },
+      {
+        "DesignPrimerPairs": {
+          "template": "pgex_template",
+          "roi_start_0based": 760,
+          "roi_end_0based": 1120,
+          "forward": {
+            "min_length": 20,
+            "max_length": 20,
+            "location_0based": 770,
+            "min_tm_c": 40.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100
+          },
+          "reverse": {
+            "min_length": 20,
+            "max_length": 20,
+            "location_0based": 1090,
+            "min_tm_c": 40.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100
+          },
+          "min_amplicon_bp": 120,
+          "max_amplicon_bp": 420,
+          "max_tm_delta_c": 3.0,
+          "max_pairs": 10,
+          "report_id": "pcr_batch_demo_r02"
+        }
+      }
+    ]
+  }
+}

@@ -207,6 +207,11 @@ GUI:
 5. optionally run `Design qPCR Assays`
 6. review and export reports
 
+For a dedicated selection-first walkthrough (multi-region queueing, optional
+`ExtractRegion` copy artifacts, deterministic batch report naming), see:
+
+- `docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md`
+
 GUI/CLI mapping:
 
 | GUI action | Engine operation | CLI equivalent |

@@ -692,11 +692,13 @@ Controls:
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
 16. PCR ROI
-   - `PCR ROI` menu seeds Primer/qPCR design ROI fields directly from:
-     - current map/text selection
-     - selected feature bounds
-   - opens Engine Ops so the user can run `Design Primer Pairs` or
-     `Design qPCR Assays`.
+   - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
+     - seed Primer/qPCR ROI from current map/text selection
+     - add current map/text selection to PCR region queue
+     - seed Primer/qPCR ROI from selected feature bounds
+     - add selected feature(s) to PCR region queue (one queued row per feature)
+   - opens Engine Ops so the user can run `Design Primer Pairs`,
+     queue batch execution, or `Design qPCR Assays`.
 17. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
@@ -1238,11 +1240,14 @@ In `Main window -> Graph` view:
     phrase (for example `delete 3`) before the confirm button is enabled
   - successful destructive cleanup actions append persisted audit entries
     (action/filter/counts/archive path) visible in-panel for traceability
-  - cleanup audit section provides a dedicated JSON report export action;
-    report export is read-only and does not append additional audit entries
+  - cleanup audit section provides filtered JSON report export using current
+    action/text filters; report export is read-only and does not append
+    additional audit entries
   - cleanup audit history supports action/text filtering plus independent
     retention tuning (`retain newest N`, `prune oldest`, `clear all`) for
     bounded, searchable long-running session traces
+  - cleanup audit `clear all` now uses staged type-to-confirm before final
+    removal
 
 ## Linear map conventions
 
@@ -1435,6 +1440,22 @@ Primer pairs form:
   - `fixed amplicon start`
   - `fixed amplicon end (exclusive)`
   - required/forbidden amplicon motifs
+- PCR region queue block:
+  - row source + template + `start/end/len` columns
+  - `Use ROI` per row to copy queued coordinates back into active ROI fields
+  - `Remove` per row and `Clear queue`
+  - batch toggle: `Also create extracted region copies`
+  - batch run: `Design Primer Pairs for queued regions`
+    - runs one `DesignPrimerPairs` operation per queued row
+    - report IDs derive from current primer `report_id` base with `_rNN` suffix
+    - optional copy mode emits one `ExtractRegion` artifact per queued row
+- PCR batch results block:
+  - one row per queued-region run with status, region coordinates, report ID, and optional copy ID
+  - quick actions per row:
+    - `Show` (report summary)
+    - `Export` (report JSON)
+    - `Open` (opens extracted copy when present, otherwise template)
+  - `Clear results` removes recorded batch rows without deleting persisted reports
 
 qPCR form:
 
@@ -1447,6 +1468,7 @@ qPCR form:
 Buttons:
 
 - `Design Primer Pairs`
+- `Design Primer Pairs for queued regions`
 - `Design qPCR Assays`
 - primer-report helpers (uses current primer `report_id` field):
   - `List Primer Reports`

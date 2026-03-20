@@ -293,6 +293,16 @@ order. Durable architecture constraints and decisions remain in
     - list persisted report IDs
     - show report summary for current `report_id`
     - export current `report_id` to JSON via save dialog
+  - DNA-window `PCR ROI` menu now supports selection-first queue capture:
+    - add current selection to PCR queue
+    - add selected feature(s) to PCR queue (one region per feature)
+  - GUI primer panel now includes queued PCR batch execution:
+    - queue table (`source`, `template`, `start/end/len`) with row remove/clear
+    - batch run action `Design Primer Pairs for queued regions`
+    - deterministic batch report suffixing (`{base}_rNN`)
+    - optional per-region `ExtractRegion` copy artifacts
+    - batch-results table with per-region status and quick actions:
+      `Show` / `Export` / `Open` (copy-first fallback to template)
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
@@ -349,6 +359,10 @@ order. Durable architecture constraints and decisions remain in
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +
     +/-2 kb extension)
+  - dedicated offline PCR selection-first chapter added:
+    `pcr_selection_batch_primer_pairs_offline` (backed by canonical
+    `pcr_selection_batch_primer_pairs_offline` workflow example with
+    deterministic multi-region primer report IDs)
   - dedicated Gibson planning chapter added:
     `gibson_two_fragment_overlap_preview` (backed by canonical
     `gibson_two_fragment_overlap_preview` workflow example and routine-catalog
@@ -1938,9 +1952,12 @@ Post-baseline follow-ups:
     - cleanup-audit history now supports action/text filtering and independent
       retention controls (`retain newest N`, prune oldest, clear-all) so
       long-running sessions can keep bounded, searchable audit trails.
+    - cleanup-audit report export now respects current audit filters (action +
+      text), and audit `clear all` now uses staged type-to-confirm before
+      removal.
   - Next:
-    - optionally add filtered cleanup-audit report export and a staged
-      type-to-confirm gate for audit `clear all`
+    - optionally add dual-mode cleanup-audit export (`filtered` vs `full`) and
+      quick-filter chips for common audit actions
 
 ### Current branch blockers (must clear first)
 
