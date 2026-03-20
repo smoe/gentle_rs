@@ -1025,7 +1025,15 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Behavior:
   - renders a deterministic protocol-cartoon strip through one engine route,
     independent of GUI/CLI entry point.
-  - emits canonical conceptual step order for the requested protocol.
+  - emits canonical conceptual step order for the requested protocol as an
+    ordered event-sequence model.
+  - internal model used by renderer:
+    - event -> molecules -> feature fragments
+    - molecule topology supports `linear|circular`
+    - linear molecules may carry end styles (`blunt` or sticky `5'`/`3'` with
+      explicit nt overhang length)
+  - malformed protocol cartoon specs fail validation and render deterministic
+    invalid-spec SVG diagnostics instead of panicking.
 - Output:
   - deterministic SVG artifact; operation is non-mutating.
 

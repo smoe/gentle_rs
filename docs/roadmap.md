@@ -261,6 +261,15 @@ order. Durable architecture constraints and decisions remain in
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
   - first shipped protocol id: `gibson.two_fragment`
+  - renderer contract is now abstraction-first:
+    - protocol strip = ordered event sequence
+    - event payload = one or more DNA molecules
+    - molecule payload supports:
+      - topology: `linear|circular`
+      - feature fragments with explicit lengths/colors
+      - linear-end styles: `blunt` or sticky (`5'`/`3'`, explicit nt length)
+    - validation rejects malformed cartoons (empty ids/events, zero-length
+      features, circular molecules with linear end styles, zero-nt sticky ends)
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command
