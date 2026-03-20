@@ -560,6 +560,10 @@ pub enum ShellCommand {
         protocol: ProtocolCartoonKind,
         output: String,
     },
+    RenderProtocolCartoonTemplateSvg {
+        template_path: String,
+        output: String,
+    },
     RenderPoolGelSvg {
         inputs: Vec<String>,
         output: String,
@@ -4290,6 +4294,13 @@ impl ShellCommand {
             Self::RenderProtocolCartoonSvg { protocol, output } => {
                 format!("render protocol cartoon '{}' to '{output}'", protocol.id())
             }
+            Self::RenderProtocolCartoonTemplateSvg {
+                template_path,
+                output,
+            } => format!(
+                "render protocol cartoon template '{}' to '{}'",
+                template_path, output
+            ),
             Self::RenderPoolGelSvg {
                 inputs,
                 output,
@@ -9112,7 +9123,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "protocol-cartoon" => {
             if tokens.len() < 2 {
-                return Err("protocol-cartoon requires a subcommand: list, render-svg".to_string());
+                return Err(
+                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg"
+                        .to_string(),
+                );
             }
             match tokens[1].as_str() {
                 "list" => {
@@ -9145,8 +9159,27 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "render-template-svg" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "protocol-cartoon render-template-svg requires TEMPLATE.json OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    let template_path = tokens[2].trim();
+                    if template_path.is_empty() {
+                        return Err(
+                            "protocol-cartoon render-template-svg requires non-empty TEMPLATE.json"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::RenderProtocolCartoonTemplateSvg {
+                        template_path: tokens[2].clone(),
+                        output: tokens[3].clone(),
+                    })
+                }
                 other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg)"
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg)"
                 )),
             }
         }
@@ -9167,6 +9200,25 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             })?;
             Ok(ShellCommand::RenderProtocolCartoonSvg {
                 protocol,
+                output: tokens[2].clone(),
+            })
+        }
+        "render-protocol-cartoon-template-svg" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "render-protocol-cartoon-template-svg requires TEMPLATE.json OUTPUT.svg"
+                        .to_string(),
+                );
+            }
+            let template_path = tokens[1].trim();
+            if template_path.is_empty() {
+                return Err(
+                    "render-protocol-cartoon-template-svg requires non-empty TEMPLATE.json"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RenderProtocolCartoonTemplateSvg {
+                template_path: tokens[1].clone(),
                 output: tokens[2].clone(),
             })
         }
@@ -10889,6 +10941,21 @@ pub fn execute_shell_command_with_options(
             let op_result = engine
                 .apply(Operation::RenderProtocolCartoonSvg {
                     protocol: protocol.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RenderProtocolCartoonTemplateSvg {
+            template_path,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonTemplateSvg {
+                    template_path: template_path.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

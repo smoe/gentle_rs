@@ -4024,6 +4024,10 @@ pub enum Operation {
         protocol: ProtocolCartoonKind,
         path: String,
     },
+    RenderProtocolCartoonTemplateSvg {
+        template_path: String,
+        path: String,
+    },
     CreateArrangementSerial {
         container_ids: Vec<ContainerId>,
         arrangement_id: Option<String>,
@@ -5949,6 +5953,7 @@ impl GentleEngine {
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
                 "RenderProtocolCartoonSvg".to_string(),
+                "RenderProtocolCartoonTemplateSvg".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
@@ -6986,6 +6991,7 @@ impl GentleEngine {
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
+                | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }

@@ -256,10 +256,13 @@ order. Durable architecture constraints and decisions remain in
   container-based and arrangement-based serial gel export surfaces.
 - Protocol-cartoon SVG generation baseline is now available:
   - engine operation `RenderProtocolCartoonSvg { protocol, path }`
+  - engine operation `RenderProtocolCartoonTemplateSvg { template_path, path }`
   - shared-shell/CLI routes:
     - `protocol-cartoon list`
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+    - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
+    - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
   - first shipped protocol id: `gibson.two_fragment`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence

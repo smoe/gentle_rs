@@ -367,6 +367,38 @@ fn parse_render_protocol_cartoon_svg_alias() {
 }
 
 #[test]
+fn parse_protocol_cartoon_render_template_svg() {
+    let cmd = parse_shell_line("protocol-cartoon render-template-svg template.json out.svg")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RenderProtocolCartoonTemplateSvg {
+            template_path,
+            output,
+        } => {
+            assert_eq!(template_path, "template.json");
+            assert_eq!(output, "out.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_render_protocol_cartoon_template_svg_alias() {
+    let cmd = parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RenderProtocolCartoonTemplateSvg {
+            template_path,
+            output,
+        } => {
+            assert_eq!(template_path, "template.json");
+            assert_eq!(output, "out.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_info() {
     let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
     match cmd {
@@ -406,6 +438,36 @@ fn execute_render_protocol_cartoon_svg() {
     let svg = fs::read_to_string(output).expect("read protocol cartoon svg");
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Chew-back"));
+}
+
+#[test]
+fn execute_render_protocol_cartoon_template_svg() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("temp dir");
+    let template = tmp.path().join("template.json");
+    fs::write(
+        &template,
+        r#"{
+            "id":"demo.protocol",
+            "events":[
+                {"id":"step_a","title":"Step A"}
+            ]
+        }"#,
+    )
+    .expect("write template json");
+    let output = tmp.path().join("template.svg");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RenderProtocolCartoonTemplateSvg {
+            template_path: template.display().to_string(),
+            output: output.display().to_string(),
+        },
+    )
+    .expect("execute render protocol cartoon template");
+    assert!(!out.state_changed);
+    let svg = fs::read_to_string(output).expect("read protocol cartoon template svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("demo.protocol"));
 }
 
 #[test]
@@ -4988,17 +5050,17 @@ fn execute_primers_seed_from_feature_and_splicing() {
         Some("seq_a")
     );
     assert_eq!(
-            seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
-                ["roi_start_0based"]
-                .as_u64(),
-            Some(feature_start as u64)
-        );
+        seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
+            ["roi_start_0based"]
+            .as_u64(),
+        Some(feature_start as u64)
+    );
     assert_eq!(
-            seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
-                ["roi_end_0based"]
-                .as_u64(),
-            Some(feature_end as u64)
-        );
+        seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
+            ["roi_end_0based"]
+            .as_u64(),
+        Some(feature_end as u64)
+    );
 
     let seeded_splicing = execute_shell_command(
         &mut engine,

@@ -776,6 +776,8 @@ cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
 cargo run --bin gentle_cli -- protocol-cartoon list
 cargo run --bin gentle_cli -- protocol-cartoon render-svg gibson.two_fragment gibson.protocol.svg
+cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
+cargo run --bin gentle_cli -- render-protocol-cartoon-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
@@ -901,7 +903,9 @@ Shared shell command:
     - `render-lineage-svg OUTPUT.svg`
     - `protocol-cartoon list`
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+    - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
+    - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg`
     - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
@@ -1207,8 +1211,14 @@ Rendering export commands:
 - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
   - Calls engine operation `RenderProtocolCartoonSvg`.
   - Current baseline protocol ID: `gibson.two_fragment`.
+- `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+  - Calls engine operation `RenderProtocolCartoonTemplateSvg`.
+  - Loads template JSON schema `gentle.protocol_cartoon_template.v1` and resolves
+    sparse defaults before rendering.
 - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
   - Alias for `protocol-cartoon render-svg ...`.
+- `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg`
+  - Alias for `protocol-cartoon render-template-svg ...`.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.

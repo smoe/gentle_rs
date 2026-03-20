@@ -102,6 +102,7 @@ Current draft operations:
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders? }`
 - `RenderProtocolCartoonSvg { protocol, path }`
+- `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
@@ -293,7 +294,9 @@ external coding agent runtime, see:
 - shared-shell protocol-cartoon routes:
   - `protocol-cartoon list`
   - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+  - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
   - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
+  - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
 
 - Python adapter wrapper (`integrations/python/gentle_py`):
   - thin subprocess-based wrapper over `gentle_cli`
@@ -1038,6 +1041,19 @@ Feature-distance geometry controls (candidate generation and distance scoring):
       explicit nt overhang length)
   - malformed protocol cartoon specs fail validation and render deterministic
     invalid-spec SVG diagnostics instead of panicking.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
+
+`RenderProtocolCartoonTemplateSvg` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+  - `path` (output SVG)
+- Behavior:
+  - reads template JSON from disk and parses it deterministically.
+  - resolves sparse event/molecule/feature rows using deterministic defaults
+    (action/caption/topology/end styles/feature length/palette).
+  - validates resolved cartoon semantics before rendering.
 - Output:
   - deterministic SVG artifact; operation is non-mutating.
 
