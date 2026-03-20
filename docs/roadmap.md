@@ -610,6 +610,15 @@ Notes:
      confirms additional repeated gaps are not yet first-class:
      primer design/validation workflows, auto-annotation library scans,
      sequencing-confirmation workflows, and interactive cloning clipboard/model
+   - PCRtools parity intake (paper-first review, 2026-03-20; DOI:
+     `10.1016/j.omtn.2025.102716`) highlights additional assay-family gaps not
+     yet first-class in shared engine contracts:
+     - inverse PCR on circular templates
+     - bisulfite-aware PCR/LAMP assay design modes
+     - KASP/PACE/ASQ allele-specific genotyping assay workflows
+     - LAMP primer-set design (FIP/BIP/F3/B3 with optional loop primers)
+     - custom multiplex tiling panel design + primer pooling strategy outputs
+     - virtual PCR/off-target search with mismatch-tolerance reporting
    - primer design backend parity is still incomplete:
      - Primer3 backend baseline is now available behind `DesignPrimerPairs`
        (with deterministic auto-fallback to internal backend), but deeper
@@ -1496,11 +1505,43 @@ Repeated multi-tool gaps to prioritize:
 5. CRISPR workflow closure:
    - extend existing guide-design baseline to include practical
      screening/confirmation workflow outputs
+6. PCR assay modality expansion (PCRtools-derived parity set):
+   - add inverse-PCR mode for circular templates with deterministic amplicon
+     boundary semantics and report parity across adapters
+   - add bisulfite-aware primer-design modes (PCR and optional LAMP branch)
+     with explicit conversion policy fields in operation contracts
+   - add allele-specific genotyping workflow contracts (KASP/PACE/ASQ) for
+     SNP/InDel assay design and machine-readable assay-output bundles
+   - add LAMP primer-set design workflow (`F3/B3/FIP/BIP` + optional `LF/LB`)
+     with deterministic scoring/reporting and GUI assist
+   - add multiplex tiling panel-design contracts (target ranges -> tiled primer
+     pools) with deterministic pool-assignment/export payloads
+   - add virtual-PCR/off-target route with mismatch-tolerance controls and
+     structured multi-hit reporting for multiplex preflight
 
 Notes:
 
 - If visual comparisons include screenshot/raster baselines, those artifacts
   remain manual contributions while screenshot execution is policy-disabled.
+- External-code intake decision (2026-03-20, paper-first intake for
+  `10.1016/j.omtn.2025.102716`):
+  - do not vendor/import upstream JavaScript directly into GENtle engine paths
+  - rationale:
+    - primary feature intake source is the peer-reviewed article discussion and
+      methods/data-availability statements, with repository content treated as
+      secondary context only
+    - architecture mismatch (PCRtools places core assay logic in browser-page
+      JavaScript, while GENtle requires shared engine-owned contracts)
+    - maintainability/auditability risk from obfuscated/minified upstream
+      scripts in core assay modules
+    - GPLv3 upstream licensing is technically consumable via GENtle's `GPL-2+`
+      policy, but would still require explicit maintainership/legal sign-off
+      before any direct code derivation
+  - preferred path:
+    - re-spec required behavior in `docs/protocol.md`
+    - reimplement in Rust engine with deterministic fixtures/tests
+    - keep optional output-level comparison harnesses against PCRtools as
+      non-shipping validation aids
 
 ### Primer3 wrapper integration track (new)
 
@@ -2068,6 +2109,13 @@ Post-baseline follow-ups:
   - primer design/validation workflow contracts
   - nested-PCR primer workflow contract + UI/report parity
   - Primer3 wrapper integration + backend-equivalence test matrix
+  - PCRtools-derived assay-modality expansion:
+    - inverse PCR on circular templates
+    - bisulfite-aware PCR/LAMP design modes
+    - KASP/PACE/ASQ allele-specific genotyping workflows
+    - LAMP primer-set workflow contracts
+    - multiplex tiling panel design + pool assignment exports
+    - virtual-PCR/off-target reporting routes
   - auto-annotation library scan contracts
   - interactive cloning workspace/clipboard model
 
