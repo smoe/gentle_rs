@@ -4796,6 +4796,20 @@ pub struct RoutineDecisionTraceComparison {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationQuestion {
+    pub question_id: String,
+    pub question_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationAnswer {
+    pub question_id: String,
+    pub answer_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RoutineDecisionTracePreflightSnapshot {
     pub can_execute: bool,
     pub warnings: Vec<String>,
@@ -4827,7 +4841,10 @@ pub struct RoutineDecisionTrace {
     pub selected_routine_family: Option<String>,
     pub alternatives_presented: Vec<String>,
     pub comparisons: Vec<RoutineDecisionTraceComparison>,
+    pub disambiguation_questions_presented: Vec<RoutineDecisionTraceDisambiguationQuestion>,
+    pub disambiguation_answers: Vec<RoutineDecisionTraceDisambiguationAnswer>,
     pub bindings_snapshot: BTreeMap<String, String>,
+    pub preflight_history: Vec<RoutineDecisionTracePreflightSnapshot>,
     pub preflight_snapshot: Option<RoutineDecisionTracePreflightSnapshot>,
     pub execution_attempted: bool,
     pub execution_success: Option<bool>,

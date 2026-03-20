@@ -37,7 +37,8 @@ use crate::{
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RoutineDecisionTrace,
-        RoutineDecisionTraceComparison, RoutineDecisionTraceExportEvent,
+        RoutineDecisionTraceComparison, RoutineDecisionTraceDisambiguationAnswer,
+        RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTraceExportEvent,
         RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
         SequenceGenomeAnchorSummary,
     },
@@ -14336,6 +14337,145 @@ Error: `{err}`"
         values.push(compact.to_string());
     }
 
+    fn normalize_routine_assistant_preflight_snapshot(
+        snapshot: &mut RoutineDecisionTracePreflightSnapshot,
+    ) {
+        let mut warnings = vec![];
+        for warning in std::mem::take(&mut snapshot.warnings) {
+            Self::push_unique_trace_token(&mut warnings, &warning);
+        }
+        snapshot.warnings = warnings;
+
+        let mut errors = vec![];
+        for error in std::mem::take(&mut snapshot.errors) {
+            Self::push_unique_trace_token(&mut errors, &error);
+        }
+        snapshot.errors = errors;
+
+        snapshot.contract_source = snapshot
+            .contract_source
+            .take()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+    }
+
+    fn routine_assistant_disambiguation_question_id_from_text(text: &str) -> String {
+        let mut out = String::new();
+        let mut last_was_sep = false;
+        for ch in text.trim().chars().flat_map(|c| c.to_lowercase()) {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                last_was_sep = false;
+            } else if !last_was_sep {
+                out.push('_');
+                last_was_sep = true;
+            }
+            if out.len() >= 48 {
+                break;
+            }
+        }
+        let compact = out.trim_matches('_').to_string();
+        if compact.is_empty() {
+            "question".to_string()
+        } else {
+            compact
+        }
+    }
+
+    fn routine_assistant_disambiguation_questions_from_output(
+        output: &serde_json::Value,
+    ) -> Vec<RoutineDecisionTraceDisambiguationQuestion> {
+        let mut question_texts: Vec<String> = vec![];
+        if let Some(rows) = output
+            .get("explanation")
+            .and_then(|value| value.get("disambiguation_questions"))
+            .and_then(|value| value.as_array())
+        {
+            for row in rows {
+                if let Some(text) = row.as_str() {
+                    Self::push_unique_trace_token(&mut question_texts, text);
+                }
+            }
+        }
+        if let Some(rows) = output
+            .get("comparison")
+            .and_then(|value| value.get("disambiguation_questions"))
+            .and_then(|value| value.as_array())
+        {
+            for row in rows {
+                if let Some(text) = row.as_str() {
+                    Self::push_unique_trace_token(&mut question_texts, text);
+                }
+            }
+        }
+
+        let mut out: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
+        let mut used_ids: HashMap<String, usize> = HashMap::new();
+        for text in question_texts {
+            let question_text = text.trim().to_string();
+            if question_text.is_empty() {
+                continue;
+            }
+            let base_id =
+                Self::routine_assistant_disambiguation_question_id_from_text(&question_text);
+            let count = used_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            let question_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{}_{}", base_id, *count)
+            };
+            out.push(RoutineDecisionTraceDisambiguationQuestion {
+                question_id,
+                question_text,
+            });
+        }
+        out
+    }
+
+    fn merge_routine_assistant_disambiguation_questions(
+        existing: &mut Vec<RoutineDecisionTraceDisambiguationQuestion>,
+        incoming: Vec<RoutineDecisionTraceDisambiguationQuestion>,
+    ) {
+        for mut row in incoming {
+            row.question_id = row.question_id.trim().to_string();
+            row.question_text = row.question_text.trim().to_string();
+            if row.question_text.is_empty() {
+                continue;
+            }
+            if row.question_id.is_empty() {
+                row.question_id = Self::routine_assistant_disambiguation_question_id_from_text(
+                    &row.question_text,
+                );
+            }
+            if row.question_id.is_empty() {
+                continue;
+            }
+            if existing.iter().any(|present| {
+                present.question_id.eq_ignore_ascii_case(&row.question_id)
+                    || present
+                        .question_text
+                        .eq_ignore_ascii_case(&row.question_text)
+            }) {
+                continue;
+            }
+            existing.push(row);
+        }
+    }
+
+    fn routine_assistant_commit_preflight_snapshot(
+        trace: &mut RoutineDecisionTrace,
+        mut snapshot: Option<RoutineDecisionTracePreflightSnapshot>,
+    ) {
+        if let Some(snapshot) = snapshot.as_mut() {
+            Self::normalize_routine_assistant_preflight_snapshot(snapshot);
+            trace.preflight_history.push(snapshot.clone());
+            trace.preflight_snapshot = Some(snapshot.clone());
+        } else {
+            trace.preflight_snapshot = None;
+        }
+    }
+
     fn next_routine_assistant_trace_id(&mut self) -> String {
         let counter = self.routine_assistant_trace_counter.max(1);
         self.routine_assistant_trace_counter = counter.saturating_add(1);
@@ -14419,6 +14559,57 @@ Error: `{err}`"
         }
         trace.alternatives_presented = normalized_alternatives;
 
+        let mut normalized_questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
+        let mut used_question_ids: HashMap<String, usize> = HashMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_questions_presented) {
+            row.question_id = row.question_id.trim().to_string();
+            row.question_text = row.question_text.trim().to_string();
+            if row.question_text.is_empty() {
+                continue;
+            }
+            let base_id = if row.question_id.is_empty() {
+                Self::routine_assistant_disambiguation_question_id_from_text(&row.question_text)
+            } else {
+                row.question_id.clone()
+            };
+            let count = used_question_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            row.question_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{}_{}", base_id, *count)
+            };
+            if normalized_questions.iter().any(|existing| {
+                existing.question_id.eq_ignore_ascii_case(&row.question_id)
+                    || existing
+                        .question_text
+                        .eq_ignore_ascii_case(&row.question_text)
+            }) {
+                continue;
+            }
+            normalized_questions.push(row);
+        }
+        trace.disambiguation_questions_presented = normalized_questions;
+
+        let mut normalized_answers_by_question: BTreeMap<String, String> = BTreeMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_answers) {
+            row.question_id = row.question_id.trim().to_string();
+            row.answer_text = row.answer_text.trim().to_string();
+            if row.question_id.is_empty() || row.answer_text.is_empty() {
+                continue;
+            }
+            normalized_answers_by_question.insert(row.question_id, row.answer_text);
+        }
+        trace.disambiguation_answers = normalized_answers_by_question
+            .into_iter()
+            .map(
+                |(question_id, answer_text)| RoutineDecisionTraceDisambiguationAnswer {
+                    question_id,
+                    answer_text,
+                },
+            )
+            .collect();
+
         let mut normalized_op_ids = vec![];
         for token in std::mem::take(&mut trace.emitted_operation_ids) {
             Self::push_unique_trace_token(&mut normalized_op_ids, &token);
@@ -14436,23 +14627,22 @@ Error: `{err}`"
         }
         trace.bindings_snapshot = normalized_bindings;
 
-        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
-            let mut warnings = vec![];
-            for warning in std::mem::take(&mut snapshot.warnings) {
-                Self::push_unique_trace_token(&mut warnings, &warning);
-            }
-            snapshot.warnings = warnings;
-            let mut errors = vec![];
-            for error in std::mem::take(&mut snapshot.errors) {
-                Self::push_unique_trace_token(&mut errors, &error);
-            }
-            snapshot.errors = errors;
-            snapshot.contract_source = snapshot
-                .contract_source
-                .take()
-                .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty());
+        let mut preflight_history: Vec<RoutineDecisionTracePreflightSnapshot> = vec![];
+        for mut snapshot in std::mem::take(&mut trace.preflight_history) {
+            Self::normalize_routine_assistant_preflight_snapshot(&mut snapshot);
+            preflight_history.push(snapshot);
         }
+        trace.preflight_history = preflight_history;
+
+        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
+            Self::normalize_routine_assistant_preflight_snapshot(snapshot);
+        }
+        if trace.preflight_history.is_empty() {
+            if let Some(snapshot) = trace.preflight_snapshot.clone() {
+                trace.preflight_history.push(snapshot);
+            }
+        }
+        trace.preflight_snapshot = trace.preflight_history.last().cloned();
 
         let mut comparisons: Vec<RoutineDecisionTraceComparison> = vec![];
         for mut row in std::mem::take(&mut trace.comparisons) {
@@ -15198,9 +15388,19 @@ Error: `{err}`"
                     }
                 }
                 let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                let disambiguation_questions =
+                    Self::routine_assistant_disambiguation_questions_from_output(&output);
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "draft".to_string();
                     trace.alternatives_presented = alternatives;
+                    trace.disambiguation_questions_presented = disambiguation_questions.clone();
+                    trace.disambiguation_answers.retain(|answer| {
+                        disambiguation_questions.iter().any(|question| {
+                            question
+                                .question_id
+                                .eq_ignore_ascii_case(answer.question_id.as_str())
+                        })
+                    });
                     trace.bindings_snapshot = bindings_snapshot;
                     Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
                 });
@@ -15236,9 +15436,18 @@ Error: `{err}`"
                 self.routine_assistant_status =
                     format!("Routine Assistant: compared '{left}' vs '{right}'");
                 let selected = self.routine_assistant_selected_routine();
+                let disambiguation_questions = self
+                    .routine_assistant_compare_output
+                    .as_ref()
+                    .map(Self::routine_assistant_disambiguation_questions_from_output)
+                    .unwrap_or_default();
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "draft".to_string();
                     Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
+                    Self::merge_routine_assistant_disambiguation_questions(
+                        &mut trace.disambiguation_questions_presented,
+                        disambiguation_questions,
+                    );
                     if !trace.comparisons.iter().any(|row| {
                         row.left_routine_id.eq_ignore_ascii_case(&left)
                             && row.right_routine_id.eq_ignore_ascii_case(&right)
@@ -15307,7 +15516,7 @@ Error: `{err}`"
             self.update_routine_assistant_decision_trace(|trace| {
                 trace.status = "preflight_failed".to_string();
                 trace.bindings_snapshot = bindings_snapshot;
-                trace.preflight_snapshot = preflight_snapshot;
+                Self::routine_assistant_commit_preflight_snapshot(trace, preflight_snapshot);
                 Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
             });
             return;
@@ -15318,7 +15527,7 @@ Error: `{err}`"
             self.update_routine_assistant_decision_trace(|trace| {
                 trace.status = "preflight_failed".to_string();
                 trace.bindings_snapshot = bindings_snapshot;
-                trace.preflight_snapshot = None;
+                Self::routine_assistant_commit_preflight_snapshot(trace, None);
                 trace.execution_error = Some(err.clone());
                 Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
             });
@@ -15354,7 +15563,7 @@ Error: `{err}`"
                         "preflight_failed".to_string()
                     };
                     trace.bindings_snapshot = bindings_snapshot;
-                    trace.preflight_snapshot = preflight_snapshot;
+                    Self::routine_assistant_commit_preflight_snapshot(trace, preflight_snapshot);
                     trace.execution_error = None;
                     Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
                 });
@@ -15366,7 +15575,7 @@ Error: `{err}`"
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "preflight_failed".to_string();
                     trace.bindings_snapshot = bindings_snapshot;
-                    trace.preflight_snapshot = None;
+                    Self::routine_assistant_commit_preflight_snapshot(trace, None);
                     trace.execution_error = Some(err.clone());
                     Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
                 });
@@ -15401,7 +15610,7 @@ Error: `{err}`"
             self.update_routine_assistant_decision_trace(|trace| {
                 trace.status = "preflight_failed".to_string();
                 trace.bindings_snapshot = bindings_snapshot;
-                trace.preflight_snapshot = preflight_snapshot;
+                Self::routine_assistant_commit_preflight_snapshot(trace, preflight_snapshot);
                 trace.execution_attempted = false;
                 trace.execution_success = Some(false);
                 trace.transactional = Some(true);
@@ -15450,9 +15659,7 @@ Error: `{err}`"
                 self.update_routine_assistant_decision_trace(|trace| {
                     trace.status = "executed".to_string();
                     trace.bindings_snapshot = bindings_snapshot;
-                    if preflight_snapshot.is_some() {
-                        trace.preflight_snapshot = preflight_snapshot;
-                    }
+                    Self::routine_assistant_commit_preflight_snapshot(trace, preflight_snapshot);
                     trace.execution_attempted = true;
                     trace.execution_success = Some(true);
                     trace.transactional = Some(true);
@@ -25487,7 +25694,8 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
             FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
             LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
-            RenderSvgMode, SequenceOrigin,
+            RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
+            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -26961,6 +27169,105 @@ mod tests {
             .and_then(|value| value.as_array())
             .expect("trace rows");
         assert_eq!(traces.len(), 1);
+    }
+
+    #[test]
+    fn routine_assistant_decision_trace_normalizes_disambiguation_and_preflight_history() {
+        let mut app = GENtleApp::default();
+        app.ensure_routine_assistant_decision_trace_started();
+
+        let explain_output = serde_json::json!({
+            "explanation": {
+                "disambiguation_questions": [
+                    " Question A? ",
+                    "Question B?",
+                    "Question A?"
+                ]
+            }
+        });
+        let compare_output = serde_json::json!({
+            "comparison": {
+                "disambiguation_questions": [
+                    "Question B?",
+                    "Question C?"
+                ]
+            }
+        });
+        let explain_questions =
+            GENtleApp::routine_assistant_disambiguation_questions_from_output(&explain_output);
+        let compare_questions =
+            GENtleApp::routine_assistant_disambiguation_questions_from_output(&compare_output);
+
+        app.update_routine_assistant_decision_trace(|trace| {
+            trace.disambiguation_questions_presented = explain_questions;
+            GENtleApp::merge_routine_assistant_disambiguation_questions(
+                &mut trace.disambiguation_questions_presented,
+                compare_questions,
+            );
+            trace.disambiguation_answers = vec![
+                RoutineDecisionTraceDisambiguationAnswer {
+                    question_id: "question_c".to_string(),
+                    answer_text: " answer C ".to_string(),
+                },
+                RoutineDecisionTraceDisambiguationAnswer {
+                    question_id: "question_a".to_string(),
+                    answer_text: " answer A ".to_string(),
+                },
+                RoutineDecisionTraceDisambiguationAnswer {
+                    question_id: "question_a".to_string(),
+                    answer_text: " revised answer A ".to_string(),
+                },
+            ];
+            GENtleApp::routine_assistant_commit_preflight_snapshot(
+                trace,
+                Some(RoutineDecisionTracePreflightSnapshot {
+                    can_execute: true,
+                    warnings: vec![" warning_a ".to_string(), "warning_a".to_string()],
+                    errors: vec![],
+                    contract_source: Some(" routine_catalog ".to_string()),
+                }),
+            );
+            GENtleApp::routine_assistant_commit_preflight_snapshot(
+                trace,
+                Some(RoutineDecisionTracePreflightSnapshot {
+                    can_execute: false,
+                    warnings: vec![],
+                    errors: vec![" error_b ".to_string(), "error_b".to_string()],
+                    contract_source: Some(" routine_catalog ".to_string()),
+                }),
+            );
+        });
+
+        let trace = app
+            .routine_assistant_decision_trace
+            .as_ref()
+            .expect("active trace");
+        assert_eq!(trace.disambiguation_questions_presented.len(), 3);
+        assert_eq!(
+            trace
+                .disambiguation_questions_presented
+                .iter()
+                .map(|row| row.question_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["question_a", "question_b", "question_c"]
+        );
+        assert_eq!(trace.disambiguation_answers.len(), 2);
+        assert_eq!(trace.disambiguation_answers[0].question_id, "question_a");
+        assert_eq!(
+            trace.disambiguation_answers[0].answer_text,
+            "revised answer A"
+        );
+        assert_eq!(trace.disambiguation_answers[1].question_id, "question_c");
+        assert_eq!(trace.disambiguation_answers[1].answer_text, "answer C");
+        assert_eq!(trace.preflight_history.len(), 2);
+        assert_eq!(trace.preflight_history[0].warnings, vec!["warning_a"]);
+        assert_eq!(trace.preflight_history[1].errors, vec!["error_b"]);
+        let latest_preflight = trace
+            .preflight_snapshot
+            .as_ref()
+            .expect("latest preflight snapshot");
+        assert!(!latest_preflight.can_execute);
+        assert_eq!(latest_preflight.errors, vec!["error_b"]);
     }
 
     #[test]

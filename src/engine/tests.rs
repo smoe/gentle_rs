@@ -4508,10 +4508,34 @@ fn test_export_process_run_bundle_operation() {
                     left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
                     right_routine_id: "gibson.two_fragment_overlap_preview".to_string(),
                 }],
+                disambiguation_questions_presented: vec![
+                    RoutineDecisionTraceDisambiguationQuestion {
+                        question_id: "termini_expectation".to_string(),
+                        question_text:
+                            "What molecule types and termini are expected for insert and vector?"
+                                .to_string(),
+                    },
+                    RoutineDecisionTraceDisambiguationQuestion {
+                        question_id: "directionality_constraints".to_string(),
+                        question_text:
+                            "Do you need directionality constraints or compatible overhang control?"
+                                .to_string(),
+                    },
+                ],
+                disambiguation_answers: vec![RoutineDecisionTraceDisambiguationAnswer {
+                    question_id: "termini_expectation".to_string(),
+                    answer_text: "vector and insert are type IIS compatible".to_string(),
+                }],
                 bindings_snapshot: std::collections::BTreeMap::from([(
                     "vector_seq_id".to_string(),
                     "s".to_string(),
                 )]),
+                preflight_history: vec![RoutineDecisionTracePreflightSnapshot {
+                    can_execute: true,
+                    warnings: vec!["no additional warnings".to_string()],
+                    errors: vec![],
+                    contract_source: Some("routine_catalog".to_string()),
+                }],
                 preflight_snapshot: Some(RoutineDecisionTracePreflightSnapshot {
                     can_execute: true,
                     warnings: vec![],
@@ -4596,6 +4620,21 @@ fn test_export_process_run_bundle_operation() {
     );
     assert_eq!(bundle.decision_traces.len(), 1);
     assert_eq!(bundle.decision_traces[0].trace_id, "trace_1");
+    assert_eq!(
+        bundle.decision_traces[0]
+            .disambiguation_questions_presented
+            .len(),
+        2
+    );
+    assert_eq!(bundle.decision_traces[0].disambiguation_answers.len(), 1);
+    assert_eq!(bundle.decision_traces[0].preflight_history.len(), 1);
+    assert_eq!(
+        bundle.decision_traces[0]
+            .preflight_snapshot
+            .as_ref()
+            .map(|row| row.contract_source.as_deref()),
+        Some(Some("routine_catalog"))
+    );
 }
 
 #[test]

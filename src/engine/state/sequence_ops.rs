@@ -786,6 +786,59 @@ impl GentleEngine {
         paths
     }
 
+    fn normalize_routine_decision_trace_preflight_snapshot(
+        snapshot: &mut RoutineDecisionTracePreflightSnapshot,
+    ) {
+        let mut warnings = vec![];
+        for warning in std::mem::take(&mut snapshot.warnings) {
+            let warning = warning.trim();
+            if warning.is_empty() {
+                continue;
+            }
+            Self::push_unique_token(&mut warnings, warning);
+        }
+        snapshot.warnings = warnings;
+
+        let mut errors = vec![];
+        for error in std::mem::take(&mut snapshot.errors) {
+            let error = error.trim();
+            if error.is_empty() {
+                continue;
+            }
+            Self::push_unique_token(&mut errors, error);
+        }
+        snapshot.errors = errors;
+
+        snapshot.contract_source = snapshot
+            .contract_source
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    fn normalize_routine_decision_disambiguation_question_id_from_text(text: &str) -> String {
+        let mut out = String::new();
+        let mut last_was_sep = false;
+        for ch in text.trim().chars().flat_map(|c| c.to_lowercase()) {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                last_was_sep = false;
+            } else if !last_was_sep {
+                out.push('_');
+                last_was_sep = true;
+            }
+            if out.len() >= 48 {
+                break;
+            }
+        }
+        let compact = out.trim_matches('_').to_string();
+        if compact.is_empty() {
+            "question".to_string()
+        } else {
+            compact
+        }
+    }
+
     fn normalize_routine_decision_trace(
         mut trace: RoutineDecisionTrace,
     ) -> Option<RoutineDecisionTrace> {
@@ -843,6 +896,59 @@ impl GentleEngine {
         }
         trace.alternatives_presented = dedup_alternatives;
 
+        let mut normalized_questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
+        let mut used_question_ids: HashMap<String, usize> = HashMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_questions_presented) {
+            row.question_id = row.question_id.trim().to_string();
+            row.question_text = row.question_text.trim().to_string();
+            if row.question_text.is_empty() {
+                continue;
+            }
+            let base_id = if row.question_id.is_empty() {
+                Self::normalize_routine_decision_disambiguation_question_id_from_text(
+                    &row.question_text,
+                )
+            } else {
+                row.question_id.clone()
+            };
+            let count = used_question_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            row.question_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{}_{}", base_id, *count)
+            };
+            if normalized_questions.iter().any(|existing| {
+                existing.question_id.eq_ignore_ascii_case(&row.question_id)
+                    || existing
+                        .question_text
+                        .eq_ignore_ascii_case(&row.question_text)
+            }) {
+                continue;
+            }
+            normalized_questions.push(row);
+        }
+        trace.disambiguation_questions_presented = normalized_questions;
+
+        let mut normalized_answers_by_question: BTreeMap<String, String> = BTreeMap::new();
+        for mut row in std::mem::take(&mut trace.disambiguation_answers) {
+            row.question_id = row.question_id.trim().to_string();
+            row.answer_text = row.answer_text.trim().to_string();
+            if row.question_id.is_empty() || row.answer_text.is_empty() {
+                continue;
+            }
+            normalized_answers_by_question.insert(row.question_id, row.answer_text);
+        }
+        trace.disambiguation_answers = normalized_answers_by_question
+            .into_iter()
+            .map(
+                |(question_id, answer_text)| RoutineDecisionTraceDisambiguationAnswer {
+                    question_id,
+                    answer_text,
+                },
+            )
+            .collect();
+
         let mut dedup_emitted_op_ids = vec![];
         for token in std::mem::take(&mut trace.emitted_operation_ids) {
             Self::push_unique_token(&mut dedup_emitted_op_ids, &token);
@@ -876,33 +982,22 @@ impl GentleEngine {
         }
         trace.bindings_snapshot = normalized_bindings;
 
-        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
-            let mut warnings = vec![];
-            for warning in std::mem::take(&mut snapshot.warnings) {
-                let warning = warning.trim();
-                if warning.is_empty() {
-                    continue;
-                }
-                Self::push_unique_token(&mut warnings, warning);
-            }
-            snapshot.warnings = warnings;
-
-            let mut errors = vec![];
-            for error in std::mem::take(&mut snapshot.errors) {
-                let error = error.trim();
-                if error.is_empty() {
-                    continue;
-                }
-                Self::push_unique_token(&mut errors, error);
-            }
-            snapshot.errors = errors;
-
-            snapshot.contract_source = snapshot
-                .contract_source
-                .take()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
+        let mut preflight_history: Vec<RoutineDecisionTracePreflightSnapshot> = vec![];
+        for mut snapshot in std::mem::take(&mut trace.preflight_history) {
+            Self::normalize_routine_decision_trace_preflight_snapshot(&mut snapshot);
+            preflight_history.push(snapshot);
         }
+        trace.preflight_history = preflight_history;
+
+        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
+            Self::normalize_routine_decision_trace_preflight_snapshot(snapshot);
+        }
+        if trace.preflight_history.is_empty() {
+            if let Some(snapshot) = trace.preflight_snapshot.clone() {
+                trace.preflight_history.push(snapshot);
+            }
+        }
+        trace.preflight_snapshot = trace.preflight_history.last().cloned();
 
         let mut export_events_out: Vec<RoutineDecisionTraceExportEvent> = vec![];
         let mut seen_export_events: HashSet<String> = HashSet::new();

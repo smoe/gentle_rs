@@ -1033,7 +1033,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - optional routine-assistant trace rows
       (`gentle.routine_decision_trace.v1`) captured in project metadata and
       exported for routine-selection reproducibility (`trace_id`, selected
-      routine/alternatives, binding snapshot, preflight snapshot, execution
+      routine/alternatives, disambiguation questions/answers, binding snapshot,
+      ordered `preflight_history`, canonical `preflight_snapshot`, execution
       outcome, export events)
   - `operation_log`:
     - selected immutable operation records (`run_id`, operation payload, result)

@@ -1264,9 +1264,10 @@ self-describing alternatives
 
 Status (2026-03-20): metadata schema extension + shared `routines explain` /
 `routines compare` command surfaces are implemented; GUI staged Routine
-Assistant baseline is implemented; decision-trace export wiring is now started
-with first deterministic schema capture + run-bundle inclusion from GUI Routine
-Assistant flows.
+Assistant baseline is implemented; decision-trace export wiring now includes
+deterministic run-bundle inclusion plus `disambiguation_questions_presented`,
+`disambiguation_answers`, and ordered `preflight_history` capture from GUI
+Routine Assistant flows.
 
 1. Metadata contract extension (`assets/cloning_routines.json`)
 - Add additive explanation fields for routine-selection clarity:
