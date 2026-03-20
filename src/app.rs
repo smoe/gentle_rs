@@ -35,7 +35,10 @@ use crate::{
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
-        RenderSvgMode,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RoutineDecisionTrace,
+        RoutineDecisionTraceComparison, RoutineDecisionTraceExportEvent,
+        RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
         SequenceGenomeAnchorSummary,
     },
     engine_shell::{
@@ -687,6 +690,8 @@ pub struct GENtleApp {
     routine_assistant_preflight_output: Option<serde_json::Value>,
     routine_assistant_execute_output: Option<serde_json::Value>,
     routine_assistant_status: String,
+    routine_assistant_decision_trace: Option<RoutineDecisionTrace>,
+    routine_assistant_trace_counter: u64,
     planning_profile_global_json: String,
     planning_profile_overlay_json: String,
     planning_profile_project_json: String,
@@ -1854,6 +1859,8 @@ impl Default for GENtleApp {
             routine_assistant_preflight_output: None,
             routine_assistant_execute_output: None,
             routine_assistant_status: String::new(),
+            routine_assistant_decision_trace: None,
+            routine_assistant_trace_counter: 1,
             planning_profile_global_json: String::new(),
             planning_profile_overlay_json: String::new(),
             planning_profile_project_json: String::new(),
@@ -5170,6 +5177,8 @@ Error: `{err}`"
         self.routine_assistant_preflight_output = None;
         self.routine_assistant_execute_output = None;
         self.routine_assistant_status.clear();
+        self.routine_assistant_decision_trace = None;
+        self.routine_assistant_trace_counter = 1;
         self.genome_track_status.clear();
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
@@ -5753,6 +5762,12 @@ Error: `{err}`"
         if self.routine_assistant_candidates.is_empty() {
             self.refresh_routine_assistant_candidates();
         }
+        self.ensure_routine_assistant_decision_trace_started();
+        let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+        self.update_routine_assistant_decision_trace(|trace| {
+            trace.status = "draft".to_string();
+            trace.bindings_snapshot = bindings_snapshot;
+        });
     }
 
     fn open_agent_assistant_dialog(&mut self) {
@@ -13027,6 +13042,7 @@ Error: `{err}`"
                         .on_hover_text("Clear selected routine and staged assistant outputs")
                         .clicked()
                     {
+                        self.maybe_mark_routine_assistant_trace_aborted();
                         self.routine_assistant_selected_routine_id.clear();
                         self.routine_assistant_compare_routine_id.clear();
                         self.routine_assistant_bindings.clear();
@@ -13037,6 +13053,8 @@ Error: `{err}`"
                         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
                         self.routine_assistant_status =
                             "Routine Assistant: reset staged state".to_string();
+                        self.routine_assistant_decision_trace = None;
+                        self.ensure_routine_assistant_decision_trace_started();
                     }
                 });
                 ui.separator();
@@ -13274,6 +13292,16 @@ Error: `{err}`"
                                     .insert(port_id.to_string(), entry.clone());
                                 self.routine_assistant_preflight_output = None;
                                 self.routine_assistant_execute_output = None;
+                                let selected = self.routine_assistant_selected_routine();
+                                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                                self.update_routine_assistant_decision_trace(|trace| {
+                                    trace.status = "draft".to_string();
+                                    trace.bindings_snapshot = bindings_snapshot;
+                                    Self::routine_assistant_capture_selected_routine(
+                                        trace,
+                                        selected.as_ref(),
+                                    );
+                                });
                             }
                             if kind.eq_ignore_ascii_case("sequence") {
                                 let compact = entry.trim();
@@ -14300,6 +14328,433 @@ Error: `{err}`"
         Ok((run.output, run.state_changed))
     }
 
+    fn push_unique_trace_token(values: &mut Vec<String>, token: &str) {
+        let compact = token.trim();
+        if compact.is_empty() || values.iter().any(|existing| existing == compact) {
+            return;
+        }
+        values.push(compact.to_string());
+    }
+
+    fn next_routine_assistant_trace_id(&mut self) -> String {
+        let counter = self.routine_assistant_trace_counter.max(1);
+        self.routine_assistant_trace_counter = counter.saturating_add(1);
+        format!("routine_assistant_{}_{}", Self::now_unix_ms(), counter)
+    }
+
+    fn routine_assistant_candidate_ids_snapshot(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        for row in &self.routine_assistant_candidates {
+            Self::push_unique_trace_token(&mut out, &row.routine_id);
+        }
+        out
+    }
+
+    fn routine_assistant_bindings_snapshot(&self) -> BTreeMap<String, String> {
+        let mut out: BTreeMap<String, String> = BTreeMap::new();
+        for (key, value) in &self.routine_assistant_bindings {
+            let key = key.trim();
+            let value = value.trim();
+            if key.is_empty() || value.is_empty() {
+                continue;
+            }
+            out.insert(key.to_string(), value.to_string());
+        }
+        out
+    }
+
+    fn normalize_routine_decision_trace_for_gui(
+        mut trace: RoutineDecisionTrace,
+    ) -> Option<RoutineDecisionTrace> {
+        let schema = trace.schema.trim();
+        if schema.is_empty() {
+            trace.schema = ROUTINE_DECISION_TRACE_SCHEMA.to_string();
+        } else if !schema.eq_ignore_ascii_case(ROUTINE_DECISION_TRACE_SCHEMA) {
+            return None;
+        } else {
+            trace.schema = ROUTINE_DECISION_TRACE_SCHEMA.to_string();
+        }
+        trace.trace_id = trace.trace_id.trim().to_string();
+        if trace.trace_id.is_empty() {
+            return None;
+        }
+        trace.source = trace.source.trim().to_string();
+        if trace.source.is_empty() {
+            trace.source = "gui_routine_assistant".to_string();
+        }
+        trace.status = trace.status.trim().to_string();
+        if trace.status.is_empty() {
+            trace.status = "draft".to_string();
+        }
+        trace.goal_text = trace.goal_text.trim().to_string();
+        trace.query_text = trace.query_text.trim().to_string();
+        if trace.created_at_unix_ms == 0 {
+            trace.created_at_unix_ms = trace.updated_at_unix_ms;
+        }
+        if trace.updated_at_unix_ms == 0 {
+            trace.updated_at_unix_ms = trace.created_at_unix_ms;
+        }
+
+        let normalize_opt = |value: &mut Option<String>| {
+            *value = value
+                .take()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+        };
+        normalize_opt(&mut trace.selected_routine_id);
+        normalize_opt(&mut trace.selected_routine_title);
+        normalize_opt(&mut trace.selected_routine_family);
+        normalize_opt(&mut trace.macro_instance_id);
+        normalize_opt(&mut trace.execution_error);
+
+        let mut normalized_candidates = vec![];
+        for token in std::mem::take(&mut trace.candidate_routine_ids) {
+            Self::push_unique_trace_token(&mut normalized_candidates, &token);
+        }
+        trace.candidate_routine_ids = normalized_candidates;
+
+        let mut normalized_alternatives = vec![];
+        for token in std::mem::take(&mut trace.alternatives_presented) {
+            Self::push_unique_trace_token(&mut normalized_alternatives, &token);
+        }
+        trace.alternatives_presented = normalized_alternatives;
+
+        let mut normalized_op_ids = vec![];
+        for token in std::mem::take(&mut trace.emitted_operation_ids) {
+            Self::push_unique_trace_token(&mut normalized_op_ids, &token);
+        }
+        trace.emitted_operation_ids = normalized_op_ids;
+
+        let mut normalized_bindings: BTreeMap<String, String> = BTreeMap::new();
+        for (key, value) in std::mem::take(&mut trace.bindings_snapshot) {
+            let key = key.trim().to_string();
+            let value = value.trim().to_string();
+            if key.is_empty() || value.is_empty() {
+                continue;
+            }
+            normalized_bindings.insert(key, value);
+        }
+        trace.bindings_snapshot = normalized_bindings;
+
+        if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
+            let mut warnings = vec![];
+            for warning in std::mem::take(&mut snapshot.warnings) {
+                Self::push_unique_trace_token(&mut warnings, &warning);
+            }
+            snapshot.warnings = warnings;
+            let mut errors = vec![];
+            for error in std::mem::take(&mut snapshot.errors) {
+                Self::push_unique_trace_token(&mut errors, &error);
+            }
+            snapshot.errors = errors;
+            snapshot.contract_source = snapshot
+                .contract_source
+                .take()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+        }
+
+        let mut comparisons: Vec<RoutineDecisionTraceComparison> = vec![];
+        for mut row in std::mem::take(&mut trace.comparisons) {
+            row.left_routine_id = row.left_routine_id.trim().to_string();
+            row.right_routine_id = row.right_routine_id.trim().to_string();
+            if row.left_routine_id.is_empty() || row.right_routine_id.is_empty() {
+                continue;
+            }
+            if comparisons.iter().any(|existing| {
+                existing.left_routine_id == row.left_routine_id
+                    && existing.right_routine_id == row.right_routine_id
+            }) {
+                continue;
+            }
+            comparisons.push(row);
+        }
+        trace.comparisons = comparisons;
+
+        let mut export_events: Vec<RoutineDecisionTraceExportEvent> = vec![];
+        for mut event in std::mem::take(&mut trace.export_events) {
+            event.run_bundle_path = event.run_bundle_path.trim().to_string();
+            if event.run_bundle_path.is_empty() {
+                continue;
+            }
+            if export_events.iter().any(|existing| {
+                existing.run_bundle_path == event.run_bundle_path
+                    && existing.exported_at_unix_ms == event.exported_at_unix_ms
+            }) {
+                continue;
+            }
+            export_events.push(event);
+        }
+        export_events.sort_by(|left, right| {
+            left.exported_at_unix_ms
+                .cmp(&right.exported_at_unix_ms)
+                .then_with(|| left.run_bundle_path.cmp(&right.run_bundle_path))
+        });
+        trace.export_events = export_events;
+        Some(trace)
+    }
+
+    fn normalize_routine_decision_trace_store_for_gui(
+        store: RoutineDecisionTraceStore,
+    ) -> RoutineDecisionTraceStore {
+        let mut by_trace_id: HashMap<String, RoutineDecisionTrace> = HashMap::new();
+        for trace in store.traces {
+            let Some(normalized) = Self::normalize_routine_decision_trace_for_gui(trace) else {
+                continue;
+            };
+            let should_replace = by_trace_id
+                .get(&normalized.trace_id)
+                .map(|existing| {
+                    (
+                        normalized.updated_at_unix_ms,
+                        normalized.created_at_unix_ms,
+                        normalized.trace_id.as_str(),
+                    ) > (
+                        existing.updated_at_unix_ms,
+                        existing.created_at_unix_ms,
+                        existing.trace_id.as_str(),
+                    )
+                })
+                .unwrap_or(true);
+            if should_replace {
+                by_trace_id.insert(normalized.trace_id.clone(), normalized);
+            }
+        }
+        let mut traces = by_trace_id.into_values().collect::<Vec<_>>();
+        traces.sort_by(|left, right| {
+            left.created_at_unix_ms
+                .cmp(&right.created_at_unix_ms)
+                .then_with(|| left.trace_id.cmp(&right.trace_id))
+        });
+        RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces,
+        }
+    }
+
+    fn load_routine_decision_trace_store_from_state(&self) -> RoutineDecisionTraceStore {
+        let raw = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(ROUTINE_DECISION_TRACES_METADATA_KEY)
+            .cloned();
+        let Some(raw) = raw else {
+            return RoutineDecisionTraceStore {
+                schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+                traces: vec![],
+            };
+        };
+        if let Ok(mut store) = serde_json::from_value::<RoutineDecisionTraceStore>(raw.clone()) {
+            if store.schema.trim().is_empty() {
+                store.schema = ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string();
+            }
+            if !store
+                .schema
+                .trim()
+                .eq_ignore_ascii_case(ROUTINE_DECISION_TRACE_STORE_SCHEMA)
+            {
+                return RoutineDecisionTraceStore {
+                    schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+                    traces: vec![],
+                };
+            }
+            return Self::normalize_routine_decision_trace_store_for_gui(store);
+        }
+        let traces = serde_json::from_value::<Vec<RoutineDecisionTrace>>(raw).unwrap_or_default();
+        Self::normalize_routine_decision_trace_store_for_gui(RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces,
+        })
+    }
+
+    fn persist_routine_decision_trace_store_to_state(&mut self, store: RoutineDecisionTraceStore) {
+        let normalized = Self::normalize_routine_decision_trace_store_for_gui(store);
+        let Ok(value) = serde_json::to_value(&normalized) else {
+            return;
+        };
+        let mut engine = self.engine.write().unwrap();
+        let state = engine.state_mut();
+        if state.metadata.get(ROUTINE_DECISION_TRACES_METADATA_KEY) == Some(&value) {
+            return;
+        }
+        state
+            .metadata
+            .insert(ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(), value);
+    }
+
+    fn persist_routine_assistant_decision_trace(&mut self) {
+        let Some(active_trace) = self.routine_assistant_decision_trace.clone() else {
+            return;
+        };
+        let Some(active_trace) = Self::normalize_routine_decision_trace_for_gui(active_trace)
+        else {
+            return;
+        };
+        self.routine_assistant_decision_trace = Some(active_trace.clone());
+        let mut store = self.load_routine_decision_trace_store_from_state();
+        let mut replaced = false;
+        for trace in &mut store.traces {
+            if trace.trace_id == active_trace.trace_id {
+                *trace = active_trace.clone();
+                replaced = true;
+                break;
+            }
+        }
+        if !replaced {
+            store.traces.push(active_trace);
+        }
+        self.persist_routine_decision_trace_store_to_state(store);
+    }
+
+    fn ensure_routine_assistant_decision_trace_started(&mut self) {
+        if self.routine_assistant_decision_trace.is_some() {
+            return;
+        }
+        let now = Self::now_unix_ms();
+        let trace = RoutineDecisionTrace {
+            schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+            trace_id: self.next_routine_assistant_trace_id(),
+            source: "gui_routine_assistant".to_string(),
+            status: "draft".to_string(),
+            created_at_unix_ms: now,
+            updated_at_unix_ms: now,
+            goal_text: self.routine_assistant_goal.trim().to_string(),
+            query_text: self.routine_assistant_query.trim().to_string(),
+            candidate_routine_ids: self.routine_assistant_candidate_ids_snapshot(),
+            ..RoutineDecisionTrace::default()
+        };
+        self.routine_assistant_decision_trace = Some(trace);
+        self.persist_routine_assistant_decision_trace();
+    }
+
+    fn update_routine_assistant_decision_trace<F>(&mut self, updater: F)
+    where
+        F: FnOnce(&mut RoutineDecisionTrace),
+    {
+        self.ensure_routine_assistant_decision_trace_started();
+        let goal_text = self.routine_assistant_goal.trim().to_string();
+        let query_text = self.routine_assistant_query.trim().to_string();
+        let candidate_routine_ids = self.routine_assistant_candidate_ids_snapshot();
+        let now = Self::now_unix_ms();
+        if let Some(trace) = self.routine_assistant_decision_trace.as_mut() {
+            updater(trace);
+            trace.goal_text = goal_text;
+            trace.query_text = query_text;
+            trace.candidate_routine_ids = candidate_routine_ids;
+            trace.updated_at_unix_ms = now;
+        }
+        self.persist_routine_assistant_decision_trace();
+    }
+
+    fn maybe_mark_routine_assistant_trace_aborted(&mut self) {
+        let should_mark = self
+            .routine_assistant_decision_trace
+            .as_ref()
+            .map(|trace| {
+                !matches!(
+                    trace.status.as_str(),
+                    "executed" | "execution_failed" | "aborted" | "exported"
+                )
+            })
+            .unwrap_or(false);
+        if !should_mark {
+            return;
+        }
+        self.update_routine_assistant_decision_trace(|trace| {
+            trace.status = "aborted".to_string();
+        });
+    }
+
+    fn routine_assistant_capture_selected_routine(
+        trace: &mut RoutineDecisionTrace,
+        routine: Option<&CloningRoutineCatalogRow>,
+    ) {
+        if let Some(routine) = routine {
+            trace.selected_routine_id = Some(routine.routine_id.trim().to_string());
+            trace.selected_routine_title = Some(routine.title.trim().to_string());
+            trace.selected_routine_family = Some(routine.family.trim().to_string());
+        }
+    }
+
+    fn routine_assistant_preflight_snapshot_from_output(
+        output: &serde_json::Value,
+    ) -> Option<RoutineDecisionTracePreflightSnapshot> {
+        let can_execute = output
+            .get("can_execute")
+            .and_then(|value| value.as_bool())?;
+        let preflight = output.get("preflight")?;
+        let warnings = preflight
+            .get("warnings")
+            .and_then(|value| value.as_array())
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| row.as_str())
+                    .map(str::trim)
+                    .filter(|row| !row.is_empty())
+                    .map(|row| row.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let errors = preflight
+            .get("errors")
+            .and_then(|value| value.as_array())
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| row.as_str())
+                    .map(str::trim)
+                    .filter(|row| !row.is_empty())
+                    .map(|row| row.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let contract_source = preflight
+            .get("contract_source")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        Some(RoutineDecisionTracePreflightSnapshot {
+            can_execute,
+            warnings,
+            errors,
+            contract_source,
+        })
+    }
+
+    fn collect_op_ids_from_json(value: &serde_json::Value, op_ids: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if let Some(op_id) = map.get("op_id").and_then(|value| value.as_str()) {
+                    Self::push_unique_trace_token(op_ids, op_id);
+                }
+                for nested in map.values() {
+                    Self::collect_op_ids_from_json(nested, op_ids);
+                }
+            }
+            serde_json::Value::Array(rows) => {
+                for row in rows {
+                    Self::collect_op_ids_from_json(row, op_ids);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn routine_assistant_emitted_op_ids_from_execute_output(
+        output: &serde_json::Value,
+    ) -> Vec<String> {
+        let mut op_ids: Vec<String> = vec![];
+        if let Some(run) = output.get("run") {
+            Self::collect_op_ids_from_json(run, &mut op_ids);
+        } else {
+            Self::collect_op_ids_from_json(output, &mut op_ids);
+        }
+        op_ids
+    }
+
     fn list_cloning_routines(
         &mut self,
         family: Option<&str>,
@@ -14364,11 +14819,21 @@ Error: `{err}`"
                     "Routine Assistant: loaded {} candidate routine(s)",
                     self.routine_assistant_candidates.len()
                 );
+                let selected = self.routine_assistant_selected_routine();
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                    trace.bindings_snapshot = bindings_snapshot;
+                    Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
+                });
             }
             Err(err) => {
                 self.routine_assistant_candidates.clear();
                 self.routine_assistant_status =
                     format!("Routine Assistant: could not list routines: {err}");
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                });
             }
         }
     }
@@ -14718,9 +15183,33 @@ Error: `{err}`"
                 }
                 self.routine_assistant_status =
                     format!("Routine Assistant: loaded explanation for '{selected_id}'");
+                let selected = self.routine_assistant_selected_routine();
+                let mut alternatives: Vec<String> = vec![];
+                if let Some(rows) = output
+                    .get("alternatives")
+                    .and_then(|value| value.as_array())
+                {
+                    for row in rows {
+                        if let Some(routine_id) =
+                            row.get("routine_id").and_then(|value| value.as_str())
+                        {
+                            Self::push_unique_trace_token(&mut alternatives, routine_id);
+                        }
+                    }
+                }
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                    trace.alternatives_presented = alternatives;
+                    trace.bindings_snapshot = bindings_snapshot;
+                    Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
+                });
             }
             Err(err) => {
                 self.routine_assistant_status = format!("Routine Assistant explain failed: {err}");
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                });
             }
         }
     }
@@ -14746,9 +15235,26 @@ Error: `{err}`"
                 self.routine_assistant_compare_output = Some(output);
                 self.routine_assistant_status =
                     format!("Routine Assistant: compared '{left}' vs '{right}'");
+                let selected = self.routine_assistant_selected_routine();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                    Self::routine_assistant_capture_selected_routine(trace, selected.as_ref());
+                    if !trace.comparisons.iter().any(|row| {
+                        row.left_routine_id.eq_ignore_ascii_case(&left)
+                            && row.right_routine_id.eq_ignore_ascii_case(&right)
+                    }) {
+                        trace.comparisons.push(RoutineDecisionTraceComparison {
+                            left_routine_id: left.clone(),
+                            right_routine_id: right.clone(),
+                        });
+                    }
+                });
             }
             Err(err) => {
                 self.routine_assistant_status = format!("Routine Assistant compare failed: {err}");
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "draft".to_string();
+                });
             }
         }
     }
@@ -14793,10 +15299,29 @@ Error: `{err}`"
                 "Routine Assistant preflight blocked: '{}' on '{}' is circular",
                 binding.seq_id, binding.port_id
             );
+            let preflight_snapshot = self
+                .routine_assistant_preflight_output
+                .as_ref()
+                .and_then(Self::routine_assistant_preflight_snapshot_from_output);
+            let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+            self.update_routine_assistant_decision_trace(|trace| {
+                trace.status = "preflight_failed".to_string();
+                trace.bindings_snapshot = bindings_snapshot;
+                trace.preflight_snapshot = preflight_snapshot;
+                Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+            });
             return;
         }
         if let Err(err) = self.ensure_routine_assistant_template_imported(&routine) {
             self.routine_assistant_status = format!("Routine Assistant preflight failed: {err}");
+            let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+            self.update_routine_assistant_decision_trace(|trace| {
+                trace.status = "preflight_failed".to_string();
+                trace.bindings_snapshot = bindings_snapshot;
+                trace.preflight_snapshot = None;
+                trace.execution_error = Some(err.clone());
+                Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+            });
             return;
         }
         let command = ShellCommand::MacrosTemplateRun {
@@ -14819,10 +15344,32 @@ Error: `{err}`"
                 } else {
                     "Routine Assistant: preflight reported blocking errors".to_string()
                 };
+                let preflight_snapshot =
+                    Self::routine_assistant_preflight_snapshot_from_output(&output);
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = if can_execute {
+                        "ready".to_string()
+                    } else {
+                        "preflight_failed".to_string()
+                    };
+                    trace.bindings_snapshot = bindings_snapshot;
+                    trace.preflight_snapshot = preflight_snapshot;
+                    trace.execution_error = None;
+                    Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+                });
             }
             Err(err) => {
                 self.routine_assistant_status =
                     format!("Routine Assistant preflight failed: {err}");
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "preflight_failed".to_string();
+                    trace.bindings_snapshot = bindings_snapshot;
+                    trace.preflight_snapshot = None;
+                    trace.execution_error = Some(err.clone());
+                    Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+                });
             }
         }
     }
@@ -14846,10 +15393,35 @@ Error: `{err}`"
                 "Routine Assistant execution blocked: '{}' on '{}' is circular",
                 binding.seq_id, binding.port_id
             );
+            let preflight_snapshot = self
+                .routine_assistant_preflight_output
+                .as_ref()
+                .and_then(Self::routine_assistant_preflight_snapshot_from_output);
+            let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+            self.update_routine_assistant_decision_trace(|trace| {
+                trace.status = "preflight_failed".to_string();
+                trace.bindings_snapshot = bindings_snapshot;
+                trace.preflight_snapshot = preflight_snapshot;
+                trace.execution_attempted = false;
+                trace.execution_success = Some(false);
+                trace.transactional = Some(true);
+                trace.execution_error = Some("execution blocked by preflight guard".to_string());
+                Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+            });
             return;
         }
         if let Err(err) = self.ensure_routine_assistant_template_imported(&routine) {
             self.routine_assistant_status = format!("Routine Assistant execution failed: {err}");
+            let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+            self.update_routine_assistant_decision_trace(|trace| {
+                trace.status = "execution_failed".to_string();
+                trace.bindings_snapshot = bindings_snapshot;
+                trace.execution_attempted = false;
+                trace.execution_success = Some(false);
+                trace.transactional = Some(true);
+                trace.execution_error = Some(err.clone());
+                Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+            });
             return;
         }
         let command = ShellCommand::MacrosTemplateRun {
@@ -14860,14 +15432,49 @@ Error: `{err}`"
         };
         match self.execute_shared_shell_command_json(&command) {
             Ok((output, _)) => {
+                let emitted_operation_ids =
+                    Self::routine_assistant_emitted_op_ids_from_execute_output(&output);
+                let macro_instance_id = output
+                    .get("macro_instance_id")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
+                let preflight_snapshot =
+                    Self::routine_assistant_preflight_snapshot_from_output(&output);
                 self.routine_assistant_execute_output = Some(output);
                 self.routine_assistant_stage = RoutineAssistantStage::ExecuteAndExport;
                 self.routine_assistant_status =
                     "Routine Assistant: transactional run completed".to_string();
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "executed".to_string();
+                    trace.bindings_snapshot = bindings_snapshot;
+                    if preflight_snapshot.is_some() {
+                        trace.preflight_snapshot = preflight_snapshot;
+                    }
+                    trace.execution_attempted = true;
+                    trace.execution_success = Some(true);
+                    trace.transactional = Some(true);
+                    trace.macro_instance_id = macro_instance_id;
+                    trace.emitted_operation_ids = emitted_operation_ids;
+                    trace.execution_error = None;
+                    Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+                });
             }
             Err(err) => {
                 self.routine_assistant_status =
                     format!("Routine Assistant execution failed: {err}");
+                let bindings_snapshot = self.routine_assistant_bindings_snapshot();
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "execution_failed".to_string();
+                    trace.bindings_snapshot = bindings_snapshot;
+                    trace.execution_attempted = true;
+                    trace.execution_success = Some(false);
+                    trace.transactional = Some(true);
+                    trace.execution_error = Some(err.clone());
+                    Self::routine_assistant_capture_selected_routine(trace, Some(&routine));
+                });
             }
         }
     }
@@ -14891,12 +15498,23 @@ Error: `{err}`"
             Ok(_) => {
                 self.routine_assistant_status =
                     format!("Routine Assistant: exported run bundle to '{path_text}'");
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "exported".to_string();
+                    trace.export_events.push(RoutineDecisionTraceExportEvent {
+                        run_bundle_path: path_text.clone(),
+                        exported_at_unix_ms: Self::now_unix_ms(),
+                    });
+                });
             }
             Err(err) => {
                 self.routine_assistant_status = format!(
                     "Routine Assistant: could not export run bundle '{}': {}",
                     path_text, err
                 );
+                self.update_routine_assistant_decision_trace(|trace| {
+                    trace.status = "execution_failed".to_string();
+                    trace.execution_error = Some(format!("run-bundle export failed: {}", err));
+                });
             }
         }
     }
@@ -15069,6 +15687,8 @@ Error: `{err}`"
         self.routine_assistant_preflight_output = None;
         self.routine_assistant_execute_output = None;
         self.routine_assistant_status.clear();
+        self.routine_assistant_decision_trace = None;
+        self.routine_assistant_trace_counter = 1;
         self.agent_task = None;
         self.agent_model_discovery_task = None;
         self.agent_status.clear();
@@ -24855,10 +25475,11 @@ mod tests {
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
-        LineageAnalysisKind, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, RetryCleanupAuditActionFilter, RetrySnapshotKindFilter,
-        RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -24866,8 +25487,7 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
             FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
             LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
-            RenderSvgMode,
-            SequenceOrigin,
+            RenderSvgMode, SequenceOrigin,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -26187,7 +26807,9 @@ mod tests {
         reloaded.load_lineage_graph_workspace_from_state();
 
         assert!((reloaded.lineage_graph_area_height - expected_graph_height).abs() <= 0.0001);
-        assert!((reloaded.lineage_container_area_height - expected_container_height).abs() <= 0.0001);
+        assert!(
+            (reloaded.lineage_container_area_height - expected_container_height).abs() <= 0.0001
+        );
         assert!((reloaded.lineage_main_split_fraction - expected_split).abs() <= 0.0001);
     }
 
@@ -26290,6 +26912,55 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::routine_assistant_viewport_id())
         );
+    }
+
+    #[test]
+    fn open_routine_assistant_dialog_starts_and_persists_decision_trace() {
+        let mut app = GENtleApp::default();
+        app.routine_assistant_goal = "Assemble reporter".to_string();
+        app.routine_assistant_query = "golden gate".to_string();
+        app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+            routine_id: "golden_gate.type_iis_single_insert".to_string(),
+            title: "Golden Gate Type IIS Single Insert".to_string(),
+            family: "golden_gate".to_string(),
+            status: "implemented".to_string(),
+            ..Default::default()
+        }];
+
+        app.open_routine_assistant_dialog();
+
+        let trace = app
+            .routine_assistant_decision_trace
+            .as_ref()
+            .expect("routine-assistant trace");
+        assert_eq!(trace.schema, ROUTINE_DECISION_TRACE_SCHEMA);
+        assert_eq!(trace.status, "draft");
+        assert_eq!(trace.goal_text, "Assemble reporter");
+        assert_eq!(trace.query_text, "golden gate");
+        assert!(
+            trace
+                .candidate_routine_ids
+                .iter()
+                .any(|id| id == "golden_gate.type_iis_single_insert")
+        );
+        let store = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(ROUTINE_DECISION_TRACES_METADATA_KEY)
+            .cloned()
+            .expect("trace store metadata");
+        assert_eq!(
+            store.get("schema").and_then(|value| value.as_str()),
+            Some(ROUTINE_DECISION_TRACE_STORE_SCHEMA)
+        );
+        let traces = store
+            .get("traces")
+            .and_then(|value| value.as_array())
+            .expect("trace rows");
+        assert_eq!(traces.len(), 1);
     }
 
     #[test]
@@ -28064,10 +28735,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 })
                 .expect("render dotplot svg");
             assert!(dotplot_result.messages.iter().any(|m| m.contains("svg_dp")));
-            (
-                render_sequence_result.op_id,
-                render_dotplot_result.op_id,
-            )
+            (render_sequence_result.op_id, render_dotplot_result.op_id)
         };
 
         app.refresh_lineage_cache_if_needed();

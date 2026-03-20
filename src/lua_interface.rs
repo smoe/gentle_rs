@@ -1804,7 +1804,8 @@ mod tests {
     #[test]
     fn lua_dotplot_svg_wrapper_is_registered() {
         let lua = LuaInterface::new();
-        lua.register_rust_functions().expect("register rust functions");
+        lua.register_rust_functions()
+            .expect("register rust functions");
         lua.lua()
             .load("assert(type(render_dotplot_svg) == 'function')")
             .exec()

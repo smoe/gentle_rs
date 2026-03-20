@@ -4486,6 +4486,52 @@ fn test_export_pool_operation() {
 fn test_export_process_run_bundle_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
+    state.metadata.insert(
+        ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+        serde_json::to_value(RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces: vec![RoutineDecisionTrace {
+                schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                trace_id: "trace_1".to_string(),
+                source: "gui_routine_assistant".to_string(),
+                status: "executed".to_string(),
+                created_at_unix_ms: 10,
+                updated_at_unix_ms: 20,
+                goal_text: "Assemble reporter".to_string(),
+                query_text: "golden gate".to_string(),
+                candidate_routine_ids: vec!["golden_gate.type_iis_single_insert".to_string()],
+                selected_routine_id: Some("golden_gate.type_iis_single_insert".to_string()),
+                selected_routine_title: Some("Golden Gate Type IIS Single Insert".to_string()),
+                selected_routine_family: Some("golden_gate".to_string()),
+                alternatives_presented: vec!["gibson.two_fragment_overlap_preview".to_string()],
+                comparisons: vec![RoutineDecisionTraceComparison {
+                    left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
+                    right_routine_id: "gibson.two_fragment_overlap_preview".to_string(),
+                }],
+                bindings_snapshot: std::collections::BTreeMap::from([(
+                    "vector_seq_id".to_string(),
+                    "s".to_string(),
+                )]),
+                preflight_snapshot: Some(RoutineDecisionTracePreflightSnapshot {
+                    can_execute: true,
+                    warnings: vec![],
+                    errors: vec![],
+                    contract_source: Some("routine_catalog".to_string()),
+                }),
+                execution_attempted: true,
+                execution_success: Some(true),
+                transactional: Some(true),
+                macro_instance_id: Some("macro_1".to_string()),
+                emitted_operation_ids: vec!["op_1".to_string()],
+                execution_error: None,
+                export_events: vec![RoutineDecisionTraceExportEvent {
+                    run_bundle_path: "run_bundle.json".to_string(),
+                    exported_at_unix_ms: 25,
+                }],
+            }],
+        })
+        .expect("trace store json"),
+    );
     let mut engine = GentleEngine::from_state(state);
     let reverse = engine
         .apply(Operation::Reverse {
@@ -4548,6 +4594,8 @@ fn test_export_process_run_bundle_operation() {
             .iter()
             .any(|seq_id| seq_id == "s")
     );
+    assert_eq!(bundle.decision_traces.len(), 1);
+    assert_eq!(bundle.decision_traces[0].trace_id, "trace_1");
 }
 
 #[test]

@@ -9036,9 +9036,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 2;
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for render-dotplot-svg"
-                        ));
+                        return Err(format!("Unknown argument '{other}' for render-dotplot-svg"));
                     }
                 }
             }

@@ -1029,6 +1029,12 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `parameter_overrides`:
     - chronological `SetParameter` overrides with `op_id`, `record_index`,
       parameter `name`, and exact JSON `value`
+  - `decision_traces`:
+    - optional routine-assistant trace rows
+      (`gentle.routine_decision_trace.v1`) captured in project metadata and
+      exported for routine-selection reproducibility (`trace_id`, selected
+      routine/alternatives, binding snapshot, preflight snapshot, execution
+      outcome, export events)
   - `operation_log`:
     - selected immutable operation records (`run_id`, operation payload, result)
   - `outputs`:

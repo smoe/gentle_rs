@@ -57,8 +57,8 @@ impl GentleEngine {
         let top_margin = 26.0_f32;
         let bottom_margin = 24.0_f32;
         let dotplot_width = 1600.0_f32;
-        let dotplot_height = (dotplot_width * (reference_span as f32 / query_span as f32))
-            .clamp(420.0, 1280.0);
+        let dotplot_height =
+            (dotplot_width * (reference_span as f32 / query_span as f32)).clamp(420.0, 1280.0);
         let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
         let gap = if flex_track.is_some() { 10.0 } else { 0.0 };
         let canvas_width = outer_margin + left_margin + dotplot_width + right_margin + outer_margin;
@@ -291,9 +291,9 @@ impl GentleEngine {
             bins.sort_by_key(|bin| bin.start_0based);
             let mut points: Vec<(f32, f32)> = Vec::with_capacity(bins.len());
             for bin in bins {
-                let x_fraction =
-                    (bin.start_0based.saturating_sub(track.span_start_0based) as f32 / span_bp)
-                        .clamp(0.0, 1.0);
+                let x_fraction = (bin.start_0based.saturating_sub(track.span_start_0based) as f32
+                    / span_bp)
+                    .clamp(0.0, 1.0);
                 let y_fraction =
                     ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
                 let x = dotplot_left + x_fraction * dotplot_width;

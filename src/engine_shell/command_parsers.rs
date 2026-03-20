@@ -2029,9 +2029,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                         })?);
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown option '{other}' for dotplot render-svg"
-                        ));
+                        return Err(format!("Unknown option '{other}' for dotplot render-svg"));
                     }
                 }
             }

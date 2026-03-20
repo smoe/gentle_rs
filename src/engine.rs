@@ -141,6 +141,9 @@ const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projection
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
+pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
+pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
+pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
 const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v2";
@@ -4784,6 +4787,64 @@ pub struct ProcessRunBundleOutputs {
     pub exported_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceComparison {
+    pub left_routine_id: String,
+    pub right_routine_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTracePreflightSnapshot {
+    pub can_execute: bool,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub contract_source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceExportEvent {
+    pub run_bundle_path: String,
+    pub exported_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTrace {
+    pub schema: String,
+    pub trace_id: String,
+    pub source: String,
+    pub status: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub goal_text: String,
+    pub query_text: String,
+    pub candidate_routine_ids: Vec<String>,
+    pub selected_routine_id: Option<String>,
+    pub selected_routine_title: Option<String>,
+    pub selected_routine_family: Option<String>,
+    pub alternatives_presented: Vec<String>,
+    pub comparisons: Vec<RoutineDecisionTraceComparison>,
+    pub bindings_snapshot: BTreeMap<String, String>,
+    pub preflight_snapshot: Option<RoutineDecisionTracePreflightSnapshot>,
+    pub execution_attempted: bool,
+    pub execution_success: Option<bool>,
+    pub transactional: Option<bool>,
+    pub macro_instance_id: Option<String>,
+    pub emitted_operation_ids: Vec<String>,
+    pub execution_error: Option<String>,
+    pub export_events: Vec<RoutineDecisionTraceExportEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceStore {
+    pub schema: String,
+    pub traces: Vec<RoutineDecisionTrace>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessRunBundleExport {
     pub schema: String,
@@ -4794,6 +4855,8 @@ pub struct ProcessRunBundleExport {
     pub inputs: ProcessRunBundleInputs,
     #[serde(default)]
     pub parameter_overrides: Vec<ProcessRunBundleParameterOverride>,
+    #[serde(default)]
+    pub decision_traces: Vec<RoutineDecisionTrace>,
     pub operation_log: Vec<OperationRecord>,
     pub outputs: ProcessRunBundleOutputs,
     pub parameter_snapshot: serde_json::Value,
