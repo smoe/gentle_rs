@@ -1472,6 +1472,52 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn decision_trace_fixture_state() -> ProjectState {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "s".to_string(),
+            DNAsequence::from_sequence("ATGCCA").expect("sequence"),
+        );
+        state.metadata.insert(
+            crate::engine::ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+            serde_json::to_value(crate::engine::RoutineDecisionTraceStore {
+                schema: crate::engine::ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+                traces: vec![crate::engine::RoutineDecisionTrace {
+                    schema: crate::engine::ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "adapter_trace_1".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "preflight_failed".to_string(),
+                    created_at_unix_ms: 10,
+                    updated_at_unix_ms: 20,
+                    goal_text: "Assemble insert".to_string(),
+                    query_text: "golden gate".to_string(),
+                    disambiguation_questions_presented: vec![
+                        crate::engine::RoutineDecisionTraceDisambiguationQuestion {
+                            question_id: "question_a".to_string(),
+                            question_text: "Question A?".to_string(),
+                        },
+                    ],
+                    disambiguation_answers: vec![
+                        crate::engine::RoutineDecisionTraceDisambiguationAnswer {
+                            question_id: "question_a".to_string(),
+                            answer_text: "Answer A".to_string(),
+                        },
+                    ],
+                    preflight_history: vec![crate::engine::RoutineDecisionTracePreflightSnapshot {
+                        can_execute: false,
+                        warnings: vec![],
+                        errors: vec!["missing sequence".to_string()],
+                        contract_source: Some("routine_catalog".to_string()),
+                    }],
+                    preflight_snapshot: None,
+                    ..crate::engine::RoutineDecisionTrace::default()
+                }],
+            })
+            .expect("trace store"),
+        );
+        state
+    }
+
     #[test]
     fn lua_sync_rebase_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
@@ -1810,5 +1856,85 @@ mod tests {
             .load("assert(type(render_dotplot_svg) == 'function')")
             .exec()
             .expect("render_dotplot_svg wrapper should be registered");
+    }
+
+    #[test]
+    fn lua_apply_operation_export_run_bundle_matches_engine_decision_traces() {
+        let td = tempdir().expect("tempdir");
+        let wrapper_path = td.path().join("wrapper.run_bundle.json");
+        let engine_path = td.path().join("engine.run_bundle.json");
+
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set(
+                "state_in",
+                lua.lua()
+                    .to_value(&decision_trace_fixture_state())
+                    .expect("state"),
+            )
+            .expect("set state");
+        lua.lua()
+            .globals()
+            .set(
+                "op_json",
+                serde_json::to_string(&Operation::ExportProcessRunBundle {
+                    path: wrapper_path.to_string_lossy().to_string(),
+                    run_id: None,
+                })
+                .expect("serialize operation"),
+            )
+            .expect("set op json");
+        lua.lua()
+            .load(
+                r#"
+                    out = apply_operation(state_in, op_json)
+                "#,
+            )
+            .exec()
+            .expect("lua apply_operation");
+        let out_value: Value = lua.lua().globals().get("out").expect("out value");
+        let out_json: serde_json::Value = lua
+            .lua()
+            .from_value(out_value)
+            .expect("lua out json conversion");
+        assert!(out_json["result"]["error"].is_null());
+
+        let wrapper_bundle_text =
+            fs::read_to_string(&wrapper_path).expect("read wrapper bundle output");
+        let wrapper_bundle: crate::engine::ProcessRunBundleExport =
+            serde_json::from_str(&wrapper_bundle_text).expect("parse wrapper bundle");
+
+        let mut engine = GentleEngine::from_state(decision_trace_fixture_state());
+        engine
+            .apply(Operation::ExportProcessRunBundle {
+                path: engine_path.to_string_lossy().to_string(),
+                run_id: None,
+            })
+            .expect("engine export run bundle");
+        let engine_bundle_text = fs::read_to_string(&engine_path).expect("read engine bundle");
+        let engine_bundle: crate::engine::ProcessRunBundleExport =
+            serde_json::from_str(&engine_bundle_text).expect("parse engine bundle");
+
+        assert_eq!(
+            serde_json::to_value(&wrapper_bundle.decision_traces)
+                .expect("serialize wrapper traces"),
+            serde_json::to_value(&engine_bundle.decision_traces).expect("serialize engine traces")
+        );
+        assert_eq!(wrapper_bundle.decision_traces.len(), 1);
+        assert_eq!(
+            wrapper_bundle.decision_traces[0].status,
+            "preflight_failed".to_string()
+        );
+        assert_eq!(
+            wrapper_bundle.decision_traces[0]
+                .preflight_snapshot
+                .as_ref()
+                .expect("snapshot derived from history")
+                .errors,
+            vec!["missing sequence".to_string()]
+        );
     }
 }
