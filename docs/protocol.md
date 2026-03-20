@@ -1027,6 +1027,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     independent of GUI/CLI entry point.
   - emits canonical conceptual step order for the requested protocol as an
     ordered event-sequence model.
+  - template representation baseline is now available in engine internals:
+    - schema id: `gentle.protocol_cartoon_template.v1`
+    - sparse template rows (event/molecule/feature) are resolved with
+      deterministic defaults into render-ready specs.
   - internal model used by renderer:
     - event -> molecules -> feature fragments
     - molecule topology supports `linear|circular`

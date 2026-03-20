@@ -268,6 +268,10 @@ order. Durable architecture constraints and decisions remain in
       - topology: `linear|circular`
       - feature fragments with explicit lengths/colors
       - linear-end styles: `blunt` or sticky (`5'`/`3'`, explicit nt length)
+    - template schema baseline:
+      - `gentle.protocol_cartoon_template.v1`
+      - sparse template inputs are expanded with deterministic defaults
+        (action/caption/topology/end styles/feature lengths/palette)
     - validation rejects malformed cartoons (empty ids/events, zero-length
       features, circular molecules with linear end styles, zero-nt sticky ends)
 - Deterministic process run-bundle export baseline is now implemented:

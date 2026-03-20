@@ -62,6 +62,100 @@ pub struct ProtocolCartoonCatalogRow {
     pub summary: String,
 }
 
+/// JSON-facing protocol-cartoon template schema (v1).
+///
+/// A template can be sparse: omitted event/molecule/feature fields are
+/// expanded deterministically through `defaults`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplate {
+    #[serde(default = "protocol_cartoon_template_schema_id")]
+    pub schema: String,
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub defaults: ProtocolCartoonTemplateDefaults,
+    #[serde(default)]
+    pub events: Vec<ProtocolCartoonTemplateEvent>,
+}
+
+/// Default values used when template events/molecules/features omit fields.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplateDefaults {
+    #[serde(default = "default_template_event_caption")]
+    pub event_caption: String,
+    #[serde(default = "default_template_event_action")]
+    pub event_action: ProtocolCartoonAction,
+    #[serde(default = "default_template_molecule_topology")]
+    pub molecule_topology: DnaTopologyCartoon,
+    #[serde(default = "default_template_linear_end_style")]
+    pub linear_end_style: DnaEndStyle,
+    #[serde(default = "default_template_feature_length_bp")]
+    pub feature_length_bp: usize,
+    #[serde(default = "default_template_palette")]
+    pub palette: Vec<String>,
+}
+
+impl Default for ProtocolCartoonTemplateDefaults {
+    fn default() -> Self {
+        Self {
+            event_caption: default_template_event_caption(),
+            event_action: default_template_event_action(),
+            molecule_topology: default_template_molecule_topology(),
+            linear_end_style: default_template_linear_end_style(),
+            feature_length_bp: default_template_feature_length_bp(),
+            palette: default_template_palette(),
+        }
+    }
+}
+
+/// One event row in a protocol-cartoon template.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ProtocolCartoonTemplateEvent {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub caption: String,
+    #[serde(default)]
+    pub action: Option<ProtocolCartoonAction>,
+    #[serde(default)]
+    pub molecules: Vec<ProtocolCartoonTemplateMolecule>,
+}
+
+/// One molecule row in a protocol-cartoon template.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ProtocolCartoonTemplateMolecule {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub topology: Option<DnaTopologyCartoon>,
+    #[serde(default)]
+    pub features: Vec<ProtocolCartoonTemplateFeature>,
+    #[serde(default)]
+    pub left_end: Option<DnaEndStyle>,
+    #[serde(default)]
+    pub right_end: Option<DnaEndStyle>,
+}
+
+/// One feature-fragment row in a protocol-cartoon template.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ProtocolCartoonTemplateFeature {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub length_bp: Option<usize>,
+    #[serde(default)]
+    pub color_hex: Option<String>,
+}
+
 /// One feature fragment shown as a colored span in a molecule cartoon.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DnaFeatureCartoon {
@@ -232,6 +326,216 @@ impl ProtocolCartoonSpec {
     }
 }
 
+fn protocol_cartoon_template_schema_id() -> String {
+    "gentle.protocol_cartoon_template.v1".to_string()
+}
+
+fn default_template_event_caption() -> String {
+    "Event snapshot".to_string()
+}
+
+fn default_template_event_action() -> ProtocolCartoonAction {
+    ProtocolCartoonAction::Context
+}
+
+fn default_template_molecule_topology() -> DnaTopologyCartoon {
+    DnaTopologyCartoon::Linear
+}
+
+fn default_template_linear_end_style() -> DnaEndStyle {
+    DnaEndStyle::Blunt
+}
+
+fn default_template_feature_length_bp() -> usize {
+    120
+}
+
+fn default_template_palette() -> Vec<String> {
+    vec![
+        "#0f5d75".to_string(),
+        "#1aa3a1".to_string(),
+        "#e3b230".to_string(),
+        "#4b7f52".to_string(),
+    ]
+}
+
+fn default_template_summary() -> String {
+    "Event-sequence protocol cartoon (feature fragments + end semantics)".to_string()
+}
+
+fn default_template_title(protocol_id: &str) -> String {
+    format!("GENtle Protocol Cartoon: {}", protocol_id)
+}
+
+fn ensure_non_empty(value: &str, fallback: String) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        fallback
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_template_defaults(
+    defaults: &ProtocolCartoonTemplateDefaults,
+) -> ProtocolCartoonTemplateDefaults {
+    let mut normalized = defaults.clone();
+    normalized.event_caption =
+        ensure_non_empty(&normalized.event_caption, default_template_event_caption());
+    normalized.feature_length_bp = normalized.feature_length_bp.max(1);
+    if normalized.palette.is_empty() {
+        normalized.palette = default_template_palette();
+    }
+    normalized
+}
+
+/// Resolve a sparse template into a concrete, render-ready protocol cartoon
+/// spec with deterministic defaults.
+pub fn resolve_protocol_cartoon_template(
+    template: &ProtocolCartoonTemplate,
+) -> Result<ProtocolCartoonSpec, String> {
+    let expected_schema = protocol_cartoon_template_schema_id();
+    let schema = template.schema.trim();
+    if !schema.is_empty() && schema != expected_schema {
+        return Err(format!(
+            "Unsupported protocol cartoon template schema '{}' (expected '{}')",
+            schema, expected_schema
+        ));
+    }
+
+    let id = template.id.trim().to_string();
+    if id.is_empty() {
+        return Err("Protocol cartoon template id must be non-empty".to_string());
+    }
+    if template.events.is_empty() {
+        return Err(format!(
+            "Protocol cartoon template '{}' must contain at least one event",
+            id
+        ));
+    }
+
+    let defaults = normalize_template_defaults(&template.defaults);
+    let title = ensure_non_empty(&template.title, default_template_title(&id));
+    let summary = ensure_non_empty(&template.summary, default_template_summary());
+
+    let mut events: Vec<ProtocolCartoonEvent> = vec![];
+    for (event_idx, event) in template.events.iter().enumerate() {
+        let event_id = ensure_non_empty(&event.id, format!("event_{}", event_idx + 1));
+        let event_title = ensure_non_empty(&event.title, format!("Step {}", event_idx + 1));
+        let event_caption = ensure_non_empty(&event.caption, defaults.event_caption.clone());
+        let action = event
+            .action
+            .clone()
+            .unwrap_or_else(|| defaults.event_action.clone());
+
+        let template_molecules: Vec<ProtocolCartoonTemplateMolecule> = if event.molecules.is_empty()
+        {
+            vec![ProtocolCartoonTemplateMolecule::default()]
+        } else {
+            event.molecules.clone()
+        };
+
+        let mut molecules: Vec<DnaMoleculeCartoon> = vec![];
+        for (molecule_idx, molecule) in template_molecules.iter().enumerate() {
+            let topology = molecule
+                .topology
+                .clone()
+                .unwrap_or_else(|| defaults.molecule_topology.clone());
+            let molecule_id = ensure_non_empty(
+                &molecule.id,
+                format!("{}_molecule_{}", event_id, molecule_idx + 1),
+            );
+            let molecule_label =
+                ensure_non_empty(&molecule.label, format!("Molecule {}", molecule_idx + 1));
+
+            let template_features: Vec<ProtocolCartoonTemplateFeature> =
+                if molecule.features.is_empty() {
+                    vec![ProtocolCartoonTemplateFeature::default()]
+                } else {
+                    molecule.features.clone()
+                };
+
+            let mut features: Vec<DnaFeatureCartoon> = vec![];
+            for (feature_idx, feature) in template_features.iter().enumerate() {
+                let feature_id = ensure_non_empty(
+                    &feature.id,
+                    format!("{}_feature_{}", molecule_id, feature_idx + 1),
+                );
+                let feature_label =
+                    ensure_non_empty(&feature.label, format!("Segment {}", feature_idx + 1));
+                let length_bp = feature
+                    .length_bp
+                    .unwrap_or(defaults.feature_length_bp)
+                    .max(1);
+                let color_hex = feature.color_hex.clone().unwrap_or_else(|| {
+                    defaults.palette[feature_idx % defaults.palette.len()].clone()
+                });
+                features.push(DnaFeatureCartoon {
+                    id: feature_id,
+                    label: feature_label,
+                    length_bp,
+                    color_hex,
+                });
+            }
+
+            let (left_end, right_end) = match topology {
+                DnaTopologyCartoon::Circular => (None, None),
+                DnaTopologyCartoon::Linear => (
+                    Some(
+                        molecule
+                            .left_end
+                            .clone()
+                            .unwrap_or_else(|| defaults.linear_end_style.clone()),
+                    ),
+                    Some(
+                        molecule
+                            .right_end
+                            .clone()
+                            .unwrap_or_else(|| defaults.linear_end_style.clone()),
+                    ),
+                ),
+            };
+
+            molecules.push(DnaMoleculeCartoon {
+                id: molecule_id,
+                label: molecule_label,
+                topology,
+                features,
+                left_end,
+                right_end,
+            });
+        }
+
+        events.push(ProtocolCartoonEvent {
+            id: event_id,
+            title: event_title,
+            caption: event_caption,
+            action,
+            molecules,
+        });
+    }
+
+    let spec = ProtocolCartoonSpec {
+        id,
+        title,
+        summary,
+        events,
+    };
+    spec.validate()?;
+    Ok(spec)
+}
+
+/// Render one protocol cartoon template as deterministic SVG.
+pub fn render_protocol_cartoon_template_svg(template: &ProtocolCartoonTemplate) -> String {
+    match resolve_protocol_cartoon_template(template) {
+        Ok(spec) => render_protocol_cartoon_spec_svg(&spec),
+        Err(message) => {
+            let id = ensure_non_empty(&template.id, "unknown".to_string());
+            render_invalid_protocol_svg(&id, &message)
+        }
+    }
+}
+
 pub fn protocol_cartoon_catalog_rows() -> Vec<ProtocolCartoonCatalogRow> {
     ProtocolCartoonKind::catalog()
         .into_iter()
@@ -243,11 +547,42 @@ pub fn protocol_cartoon_catalog_rows() -> Vec<ProtocolCartoonCatalogRow> {
         .collect()
 }
 
+/// Build the reusable protocol-cartoon template for one built-in protocol.
+pub fn protocol_cartoon_template_for_kind(kind: &ProtocolCartoonKind) -> ProtocolCartoonTemplate {
+    match kind {
+        ProtocolCartoonKind::GibsonTwoFragment => gibson_two_fragment_template(),
+    }
+}
+
 /// Build the reusable event/molecule abstraction for one built-in protocol.
 pub fn protocol_cartoon_spec_for_kind(kind: &ProtocolCartoonKind) -> ProtocolCartoonSpec {
-    match kind {
-        ProtocolCartoonKind::GibsonTwoFragment => gibson_two_fragment_spec(),
-    }
+    let template = protocol_cartoon_template_for_kind(kind);
+    resolve_protocol_cartoon_template(&template).unwrap_or_else(|message| ProtocolCartoonSpec {
+        id: template.id.clone(),
+        title: "Invalid protocol cartoon template".to_string(),
+        summary: message,
+        events: vec![ProtocolCartoonEvent {
+            id: "invalid_template".to_string(),
+            title: "Invalid template".to_string(),
+            caption: "Template resolution failed".to_string(),
+            action: ProtocolCartoonAction::Custom {
+                label: "Invalid".to_string(),
+            },
+            molecules: vec![DnaMoleculeCartoon {
+                id: "invalid_template_molecule".to_string(),
+                label: "Invalid template".to_string(),
+                topology: DnaTopologyCartoon::Linear,
+                features: vec![DnaFeatureCartoon {
+                    id: "invalid_feature".to_string(),
+                    label: "Invalid".to_string(),
+                    length_bp: 1,
+                    color_hex: "#8ea7b1".to_string(),
+                }],
+                left_end: Some(DnaEndStyle::Blunt),
+                right_end: Some(DnaEndStyle::Blunt),
+            }],
+        }],
+    })
 }
 
 /// Render one protocol cartoon as deterministic SVG.
@@ -712,6 +1047,51 @@ fn render_invalid_protocol_svg(id: &str, message: &str) -> String {
     )
 }
 
+fn protocol_cartoon_template_from_spec(spec: ProtocolCartoonSpec) -> ProtocolCartoonTemplate {
+    ProtocolCartoonTemplate {
+        schema: protocol_cartoon_template_schema_id(),
+        id: spec.id,
+        title: spec.title,
+        summary: spec.summary,
+        defaults: ProtocolCartoonTemplateDefaults::default(),
+        events: spec
+            .events
+            .into_iter()
+            .map(|event| ProtocolCartoonTemplateEvent {
+                id: event.id,
+                title: event.title,
+                caption: event.caption,
+                action: Some(event.action),
+                molecules: event
+                    .molecules
+                    .into_iter()
+                    .map(|molecule| ProtocolCartoonTemplateMolecule {
+                        id: molecule.id,
+                        label: molecule.label,
+                        topology: Some(molecule.topology),
+                        features: molecule
+                            .features
+                            .into_iter()
+                            .map(|feature| ProtocolCartoonTemplateFeature {
+                                id: feature.id,
+                                label: feature.label,
+                                length_bp: Some(feature.length_bp),
+                                color_hex: Some(feature.color_hex),
+                            })
+                            .collect(),
+                        left_end: molecule.left_end,
+                        right_end: molecule.right_end,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+fn gibson_two_fragment_template() -> ProtocolCartoonTemplate {
+    protocol_cartoon_template_from_spec(gibson_two_fragment_spec())
+}
+
 fn gibson_two_fragment_spec() -> ProtocolCartoonSpec {
     ProtocolCartoonSpec {
         id: "gibson.two_fragment".to_string(),
@@ -991,6 +1371,144 @@ mod tests {
     }
 
     #[test]
+    fn template_deserialize_applies_schema_and_defaults() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [
+                    { "id": "e1" }
+                ]
+            }"#,
+        )
+        .expect("deserialize template");
+
+        assert_eq!(template.schema, "gentle.protocol_cartoon_template.v1");
+        assert_eq!(template.defaults.feature_length_bp, 120);
+        assert_eq!(template.defaults.palette.len(), 4);
+    }
+
+    #[test]
+    fn resolve_sparse_template_uses_reasonable_defaults() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [
+                    { "id": "e1" }
+                ]
+            }"#,
+        )
+        .expect("deserialize template");
+
+        let spec = resolve_protocol_cartoon_template(&template).expect("resolve template");
+        assert_eq!(spec.id, "demo.protocol");
+        assert_eq!(spec.title, "GENtle Protocol Cartoon: demo.protocol");
+        assert!(spec.summary.contains("Event-sequence"));
+        assert_eq!(spec.events.len(), 1);
+        assert_eq!(spec.events[0].action, ProtocolCartoonAction::Context);
+        assert_eq!(spec.events[0].molecules.len(), 1);
+        assert_eq!(
+            spec.events[0].molecules[0].topology,
+            DnaTopologyCartoon::Linear
+        );
+        assert_eq!(
+            spec.events[0].molecules[0].left_end,
+            Some(DnaEndStyle::Blunt)
+        );
+        assert_eq!(
+            spec.events[0].molecules[0].right_end,
+            Some(DnaEndStyle::Blunt)
+        );
+        assert_eq!(spec.events[0].molecules[0].features.len(), 1);
+        assert_eq!(spec.events[0].molecules[0].features[0].length_bp, 120);
+        assert_eq!(spec.events[0].molecules[0].features[0].color_hex, "#0f5d75");
+    }
+
+    #[test]
+    fn resolve_template_rejects_unknown_schema() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "schema": "gentle.protocol_cartoon_template.v0",
+                "id": "demo.protocol",
+                "events": [
+                    { "id": "e1" }
+                ]
+            }"#,
+        )
+        .expect("deserialize template");
+        let err = resolve_protocol_cartoon_template(&template).expect_err("schema mismatch");
+        assert!(err.contains("Unsupported protocol cartoon template schema"));
+    }
+
+    #[test]
+    fn resolve_template_handles_linear_and_circular_end_defaults() {
+        let template = ProtocolCartoonTemplate {
+            schema: protocol_cartoon_template_schema_id(),
+            id: "template.ends".to_string(),
+            title: "".to_string(),
+            summary: "".to_string(),
+            defaults: ProtocolCartoonTemplateDefaults::default(),
+            events: vec![ProtocolCartoonTemplateEvent {
+                id: "evt".to_string(),
+                title: "evt".to_string(),
+                caption: "".to_string(),
+                action: Some(ProtocolCartoonAction::Separate),
+                molecules: vec![
+                    ProtocolCartoonTemplateMolecule {
+                        id: "linear".to_string(),
+                        label: "linear".to_string(),
+                        topology: Some(DnaTopologyCartoon::Linear),
+                        features: vec![ProtocolCartoonTemplateFeature::default()],
+                        left_end: None,
+                        right_end: Some(DnaEndStyle::Sticky {
+                            polarity: OverhangPolarity::ThreePrime,
+                            nt: 7,
+                        }),
+                    },
+                    ProtocolCartoonTemplateMolecule {
+                        id: "circular".to_string(),
+                        label: "circular".to_string(),
+                        topology: Some(DnaTopologyCartoon::Circular),
+                        features: vec![ProtocolCartoonTemplateFeature::default()],
+                        left_end: Some(DnaEndStyle::Blunt),
+                        right_end: Some(DnaEndStyle::Blunt),
+                    },
+                ],
+            }],
+        };
+
+        let spec = resolve_protocol_cartoon_template(&template).expect("resolve template");
+        assert_eq!(
+            spec.events[0].molecules[0].left_end,
+            Some(DnaEndStyle::Blunt)
+        );
+        assert_eq!(
+            spec.events[0].molecules[0].right_end,
+            Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::ThreePrime,
+                nt: 7
+            })
+        );
+        assert_eq!(spec.events[0].molecules[1].left_end, None);
+        assert_eq!(spec.events[0].molecules[1].right_end, None);
+    }
+
+    #[test]
+    fn render_template_svg_resolves_sparse_template() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [
+                    { "id": "e1" }
+                ]
+            }"#,
+        )
+        .expect("deserialize template");
+        let svg = render_protocol_cartoon_template_svg(&template);
+        assert!(svg.contains("data-protocol-id=\"demo.protocol\""));
+        assert!(svg.contains("Step 1"));
+    }
+
+    #[test]
     fn parse_protocol_cartoon_aliases() {
         assert_eq!(
             ProtocolCartoonKind::parse_id("gibson.two_fragment"),
@@ -1009,6 +1527,14 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, "gibson.two_fragment");
         assert!(rows[0].title.contains("Gibson"));
+    }
+
+    #[test]
+    fn built_in_kind_exposes_template_schema() {
+        let template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
+        assert_eq!(template.schema, "gentle.protocol_cartoon_template.v1");
+        assert_eq!(template.id, "gibson.two_fragment");
+        assert!(!template.events.is_empty());
     }
 
     #[test]
