@@ -4132,8 +4132,8 @@ impl GentleEngine {
                                     (span_start_0based, span_end_0based),
                                 )
                             {
-                                overlap_bp =
-                                    overlap_bp.saturating_add(overlap_end.saturating_sub(overlap_start));
+                                overlap_bp = overlap_bp
+                                    .saturating_add(overlap_end.saturating_sub(overlap_start));
                             }
                         }
                         if overlap_bp == 0 {
@@ -4145,8 +4145,7 @@ impl GentleEngine {
                                 if overlap_bp > best_overlap
                                     || (overlap_bp == best_overlap
                                         && (min_start < best_start
-                                            || (min_start == best_start
-                                                && feature_idx < best_idx)))
+                                            || (min_start == best_start && feature_idx < best_idx)))
                                 {
                                     best = Some((overlap_bp, min_start, feature_idx));
                                 }
@@ -4212,10 +4211,9 @@ impl GentleEngine {
                     Some("Derived splicing DNA window".to_string()),
                     Some(&result.op_id),
                 ) {
-                    result.messages.push(format!(
-                        "Created DNA-window container '{}'",
-                        container_id
-                    ));
+                    result
+                        .messages
+                        .push(format!("Created DNA-window container '{}'", container_id));
                 }
 
                 let mut mrna_seq_ids: Vec<SeqId> = vec![];
@@ -4237,15 +4235,14 @@ impl GentleEngine {
                         code: ErrorCode::Internal,
                         message: format!("Could not render mRNA sequence bytes: {e}"),
                     })?;
-                    let mut mrna = DNAsequence::from_sequence(&rna_sequence).map_err(|e| {
-                        EngineError {
+                    let mut mrna =
+                        DNAsequence::from_sequence(&rna_sequence).map_err(|e| EngineError {
                             code: ErrorCode::Internal,
                             message: format!(
                                 "Could not create mRNA sequence '{}' from transcript '{}': {e}",
                                 lane.transcript_id, lane.label
                             ),
-                        }
-                    })?;
+                        })?;
                     mrna.set_circular(false);
                     let transcript_token = lane
                         .transcript_id
@@ -4270,7 +4267,11 @@ impl GentleEngine {
                     mrna.set_name(mrna_seq_id.clone());
                     Self::prepare_sequence(&mut mrna);
                     self.state.sequences.insert(mrna_seq_id.clone(), mrna);
-                    self.add_lineage_node(&mrna_seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    self.add_lineage_node(
+                        &mrna_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
                     result.created_seq_ids.push(mrna_seq_id.clone());
                     mrna_seq_ids.push(mrna_seq_id);
                 }
@@ -4293,10 +4294,9 @@ impl GentleEngine {
                         Some("Derived splicing mRNA isoforms".to_string()),
                         Some(&result.op_id),
                     ) {
-                        result.messages.push(format!(
-                            "Created mRNA-isoform container '{}'",
-                            container_id
-                        ));
+                        result
+                            .messages
+                            .push(format!("Created mRNA-isoform container '{}'", container_id));
                     }
                 }
 
@@ -4325,12 +4325,8 @@ impl GentleEngine {
                                 .map(|base| base.to_ascii_uppercase()),
                         );
                     } else {
-                        exon_reference_bytes.extend(
-                            segment
-                                .iter()
-                                .copied()
-                                .map(Self::normalize_nucleotide_base),
-                        );
+                        exon_reference_bytes
+                            .extend(segment.iter().copied().map(Self::normalize_nucleotide_base));
                     }
                 }
                 if exon_reference_bytes.is_empty() {
@@ -4346,16 +4342,14 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: format!("Could not render exon-reference sequence bytes: {e}"),
                         })?;
-                    let mut exon_reference =
-                        DNAsequence::from_sequence(&exon_reference_sequence).map_err(|e| {
-                            EngineError {
-                                code: ErrorCode::Internal,
-                                message: format!(
-                                    "Could not create exon-reference sequence from '{}' transcripts: {e}",
-                                    seq_id
-                                ),
-                            }
-                        })?;
+                    let mut exon_reference = DNAsequence::from_sequence(&exon_reference_sequence)
+                        .map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not create exon-reference sequence from '{}' transcripts: {e}",
+                            seq_id
+                        ),
+                    })?;
                     exon_reference.set_circular(false);
                     let exon_reference_seq_id =
                         self.unique_seq_id(&format!("{prefix}_exon_reference"));
@@ -4441,11 +4435,12 @@ impl GentleEngine {
                     query_span_start_0based,
                     query_span_end_0based,
                 )?;
-                let (target_span_start_0based, target_span_end_0based) = Self::resolve_analysis_span(
-                    target_bytes.len(),
-                    target_span_start_0based,
-                    target_span_end_0based,
-                )?;
+                let (target_span_start_0based, target_span_end_0based) =
+                    Self::resolve_analysis_span(
+                        target_bytes.len(),
+                        target_span_start_0based,
+                        target_span_end_0based,
+                    )?;
                 let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
                 let target_span = &target_bytes[target_span_start_0based..target_span_end_0based];
 

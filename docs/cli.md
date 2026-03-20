@@ -164,16 +164,19 @@ Dotplot/flexibility capability status:
 - `gentle_cli`: supported via shared-shell/direct commands:
   - `dotplot compute|list|show`
   - `flex compute|list|show`
-  backed by `ComputeDotplot` and `ComputeFlexibilityTrack`.
-  Pairwise sequence alignment is also available as operation-level contract
-  (`AlignSequences`) via `gentle_cli op` / `gentle_cli workflow`.
+  - `splicing-refs derive`
+  - `align compute`
+  backed by `ComputeDotplot`, `ComputeFlexibilityTrack`,
+  `DeriveSplicingReferences`, and `AlignSequences`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`, `AlignSequences`); dedicated convenience wrappers pending.
+  `ComputeFlexibilityTrack`, `DeriveSplicingReferences`, `AlignSequences`);
+  dedicated convenience wrappers pending.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `ComputeFlexibilityTrack`, `AlignSequences`); dedicated convenience wrappers pending.
+  `ComputeFlexibilityTrack`, `DeriveSplicingReferences`, `AlignSequences`);
+  dedicated convenience wrappers pending.
 
 RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
@@ -953,6 +956,8 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
+    - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+    - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`

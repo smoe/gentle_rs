@@ -553,6 +553,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
+  gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
+  gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH]\n\n  \
@@ -594,6 +596,8 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "primers",
     "dotplot",
     "flex",
+    "splicing-refs",
+    "align",
     "rna-reads",
     "tracks",
     "genbank",
@@ -640,8 +644,8 @@ fn load_json_arg(value: &str) -> Result<String, String> {
         if path.is_empty() {
             return Err("Could not read JSON file '': empty path".to_string());
         }
-        let text =
-            fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
+        let text = fs::read_to_string(path)
+            .map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
         return Ok(strip_shebang_line(&text));
     }
     if trimmed.starts_with('{') || trimmed.starts_with('[') {
@@ -2873,6 +2877,47 @@ T [ 0 0 0 10 ]
             rna_reads_interpret,
             ShellCommand::RnaReadsInterpret {
                 scope: gentle::engine::SplicingScopePreset::AllOverlappingBothStrands,
+                ..
+            }
+        ));
+
+        let splicing_refs = parse_shell_tokens(&[
+            "splicing-refs".to_string(),
+            "derive".to_string(),
+            "seqA".to_string(),
+            "10".to_string(),
+            "210".to_string(),
+            "--scope".to_string(),
+            "target_group_any_strand".to_string(),
+        ])
+        .expect("parse splicing-refs derive");
+        assert!(matches!(
+            splicing_refs,
+            ShellCommand::SplicingRefsDerive {
+                scope: gentle::engine::SplicingScopePreset::TargetGroupAnyStrand,
+                ..
+            }
+        ));
+
+        let align = parse_shell_tokens(&[
+            "align".to_string(),
+            "compute".to_string(),
+            "query".to_string(),
+            "target".to_string(),
+            "--mode".to_string(),
+            "local".to_string(),
+            "--match".to_string(),
+            "3".to_string(),
+            "--mismatch".to_string(),
+            "-4".to_string(),
+        ])
+        .expect("parse align compute");
+        assert!(matches!(
+            align,
+            ShellCommand::AlignCompute {
+                mode: gentle::engine::PairwiseAlignmentMode::Local,
+                match_score: 3,
+                mismatch_score: -4,
                 ..
             }
         ));

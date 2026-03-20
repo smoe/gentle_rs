@@ -1390,6 +1390,9 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
   - scoring defaults: `match=2`, `mismatch=-3`, `gap_open=-5`, `gap_extend=-1`
   - returns structured payload `sequence_alignment` with spans, score, coverage, identity, and CIGAR-like compact operations string
   - non-mutating operation (no sequence/container state mutation)
+- Shared-shell command family:
+  - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+  - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 

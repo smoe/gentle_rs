@@ -7464,6 +7464,62 @@ fn parse_dotplot_and_flex_commands() {
         }
         other => panic!("expected FlexCompute, got {other:?}"),
     }
+
+    let splicing_refs = parse_shell_line(
+        "splicing-refs derive seq_a 10 220 --seed-feature-id 7 --scope target_group_any_strand --output-prefix tp53_refs",
+    )
+    .expect("parse splicing-refs derive");
+    match splicing_refs {
+        ShellCommand::SplicingRefsDerive {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            seed_feature_id,
+            scope,
+            output_prefix,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(span_start_0based, 10);
+            assert_eq!(span_end_0based, 220);
+            assert_eq!(seed_feature_id, Some(7));
+            assert_eq!(scope, SplicingScopePreset::TargetGroupAnyStrand);
+            assert_eq!(output_prefix.as_deref(), Some("tp53_refs"));
+        }
+        other => panic!("expected SplicingRefsDerive, got {other:?}"),
+    }
+
+    let align = parse_shell_line(
+        "align compute query target --query-start 5 --query-end 105 --target-start 10 --target-end 120 --mode local --match 3 --mismatch -4 --gap-open -6 --gap-extend -2",
+    )
+    .expect("parse align compute");
+    match align {
+        ShellCommand::AlignCompute {
+            query_seq_id,
+            target_seq_id,
+            query_span_start_0based,
+            query_span_end_0based,
+            target_span_start_0based,
+            target_span_end_0based,
+            mode,
+            match_score,
+            mismatch_score,
+            gap_open,
+            gap_extend,
+        } => {
+            assert_eq!(query_seq_id, "query");
+            assert_eq!(target_seq_id, "target");
+            assert_eq!(query_span_start_0based, Some(5));
+            assert_eq!(query_span_end_0based, Some(105));
+            assert_eq!(target_span_start_0based, Some(10));
+            assert_eq!(target_span_end_0based, Some(120));
+            assert_eq!(mode, PairwiseAlignmentMode::Local);
+            assert_eq!(match_score, 3);
+            assert_eq!(mismatch_score, -4);
+            assert_eq!(gap_open, -6);
+            assert_eq!(gap_extend, -2);
+        }
+        other => panic!("expected AlignCompute, got {other:?}"),
+    }
 }
 
 #[test]
@@ -7760,6 +7816,92 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
     )
     .expect("list flex tracks");
     assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
+}
+
+#[test]
+fn execute_splicing_refs_and_align_commands() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence("ATGCGTAA").expect("query sequence"),
+    );
+    state.sequences.insert(
+        "target".to_string(),
+        DNAsequence::from_sequence("TTATGCGTAACCG").expect("target sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+
+    let derived = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SplicingRefsDerive {
+            seq_id: "seq_a".to_string(),
+            span_start_0based: 0,
+            span_end_0based: 400,
+            seed_feature_id: Some(feature_id),
+            scope: SplicingScopePreset::TargetGroupAnyStrand,
+            output_prefix: Some("tp53_refs".to_string()),
+        },
+    )
+    .expect("execute splicing-refs derive");
+    assert!(derived.state_changed);
+    let derived_ids = derived
+        .output
+        .get("derived_sequence_ids")
+        .and_then(|value| value.as_array())
+        .expect("derived sequence id array");
+    assert!(
+        derived_ids
+            .iter()
+            .filter_map(|value| value.as_str())
+            .any(|id| id.starts_with("tp53_refs_dna")),
+        "expected derived DNA-window sequence id in payload"
+    );
+
+    let align = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AlignCompute {
+            query_seq_id: "query".to_string(),
+            target_seq_id: "target".to_string(),
+            query_span_start_0based: Some(0),
+            query_span_end_0based: Some(8),
+            target_span_start_0based: None,
+            target_span_end_0based: None,
+            mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+        },
+    )
+    .expect("execute align compute");
+    assert!(!align.state_changed);
+    assert_eq!(align.output["alignment"]["mode"].as_str(), Some("local"));
+    assert_eq!(
+        align.output["alignment"]["query_seq_id"].as_str(),
+        Some("query")
+    );
+    assert_eq!(
+        align.output["alignment"]["target_seq_id"].as_str(),
+        Some("target")
+    );
+    assert_eq!(
+        align.output["result"]["created_seq_ids"]
+            .as_array()
+            .map(|v| v.len()),
+        Some(0)
+    );
 }
 
 #[test]

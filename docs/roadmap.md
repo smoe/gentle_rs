@@ -153,6 +153,9 @@ order. Durable architecture constraints and decisions remain in
   - `AlignSequences` adds deterministic local/global pairwise alignment
     reporting (score/identity/coverage/CIGAR-like ops) as structured
     `OpResult.sequence_alignment` payloads.
+  - shared-shell/direct command routing is available for both operations:
+    - `splicing-refs derive ...`
+    - `align compute ...`
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)

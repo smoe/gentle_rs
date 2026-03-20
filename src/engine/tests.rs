@@ -9365,7 +9365,11 @@ fn test_derive_splicing_references_from_window_without_seed_feature() {
     let mut expected_mrna_lengths = view
         .transcripts
         .iter()
-        .map(|lane| GentleEngine::make_transcript_template(source_dna, lane, 0).sequence.len())
+        .map(|lane| {
+            GentleEngine::make_transcript_template(source_dna, lane, 0)
+                .sequence
+                .len()
+        })
         .collect::<Vec<_>>();
     mrna_lengths.sort_unstable();
     expected_mrna_lengths.sort_unstable();
