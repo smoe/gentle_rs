@@ -17137,7 +17137,9 @@ impl MainAreaDna {
                     if ui
                         .add_enabled(
                             self.rna_read_task.is_none() && selected_count > 0,
-                            egui::Button::new("Evaluate Selected (phase-2)"),
+                            egui::Button::new(format!(
+                                "Evaluate Selected (phase-2) [{selected_count}]"
+                            )),
                         )
                         .on_hover_text(
                             "Align only selected top-hit rows by record_index and refresh inline mapping metrics.",
