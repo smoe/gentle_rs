@@ -3513,6 +3513,7 @@ impl GentleEngine {
         report_id: &str,
         selection: RnaReadHitSelection,
         align_config_override: Option<RnaReadAlignConfig>,
+        selected_record_indices: &[usize],
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
         let mut keep_running = || true;
@@ -3520,6 +3521,7 @@ impl GentleEngine {
             report_id,
             selection,
             align_config_override,
+            selected_record_indices,
             on_progress,
             &mut keep_running,
         )
@@ -3530,6 +3532,7 @@ impl GentleEngine {
         report_id: &str,
         selection: RnaReadHitSelection,
         align_config_override: Option<RnaReadAlignConfig>,
+        selected_record_indices: &[usize],
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         should_continue: &mut dyn FnMut() -> bool,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
@@ -3643,12 +3646,20 @@ impl GentleEngine {
         let mut bins = Self::build_rna_read_seed_histogram_bins(dna.len());
         let histogram_index =
             Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let selected_indices = report
             .hits
             .iter()
             .enumerate()
             .filter_map(|(idx, hit)| {
-                Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
+                if !explicit_record_filter.is_empty() {
+                    explicit_record_filter.contains(&hit.record_index).then_some(idx)
+                } else {
+                    Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
+                }
             })
             .collect::<Vec<_>>();
         let selected_total = selected_indices.len();
@@ -4004,17 +4015,29 @@ impl GentleEngine {
             .warnings
             .retain(|warning| !warning.contains("alignment is deferred to a later pass"));
         report.warnings.push(format!(
-            "alignment phase completed over retained-hit selection '{}' (selected={}, aligned={}, msa_eligible={})",
+            "alignment phase completed over retained-hit selection '{}'{} (selected={}, aligned={}, msa_eligible={})",
             selection.as_str(),
+            if explicit_record_filter.is_empty() {
+                String::new()
+            } else {
+                format!(" with explicit_record_indices={}", explicit_record_filter.len())
+            },
             selected_total,
             report.read_count_aligned,
             report.retained_count_msa_eligible,
         ));
         if selected_total == 0 {
-            report.warnings.push(format!(
-                "alignment phase selection '{}' matched no retained hits",
-                selection.as_str()
-            ));
+            if explicit_record_filter.is_empty() {
+                report.warnings.push(format!(
+                    "alignment phase selection '{}' matched no retained hits",
+                    selection.as_str()
+                ));
+            } else {
+                report.warnings.push(format!(
+                    "alignment phase explicit_record_indices={} matched no retained hits",
+                    explicit_record_filter.len()
+                ));
+            }
         }
         if report.align_config.max_secondary_mappings == 0 {
             report.warnings.push(
@@ -4158,11 +4181,13 @@ impl GentleEngine {
         report: RnaReadInterpretationReport,
         selection: RnaReadHitSelection,
         align_config_override: Option<RnaReadAlignConfig>,
+        selected_record_indices: Vec<usize>,
     ) -> Result<OpResult, EngineError> {
         let op = Operation::AlignRnaReadReport {
             report_id: report.report_id.clone(),
             selection,
             align_config_override,
+            selected_record_indices,
         };
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);

@@ -4300,6 +4300,8 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default)]
         align_config_override: Option<RnaReadAlignConfig>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
     },
     ListRnaReadReports {
         #[serde(default)]

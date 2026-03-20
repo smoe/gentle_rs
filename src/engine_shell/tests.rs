@@ -7749,9 +7749,11 @@ fn parse_rna_reads_commands() {
             report_id,
             selection,
             align_config_override,
+            selected_record_indices,
         } => {
             assert_eq!(report_id, "tp73_reads");
             assert_eq!(selection, RnaReadHitSelection::SeedPassed);
+            assert!(selected_record_indices.is_empty());
             let cfg = align_config_override.expect("align config override");
             assert_eq!(cfg.band_width_bp, 32);
             assert!((cfg.min_identity_fraction - 0.70).abs() < f64::EPSILON);
@@ -7759,6 +7761,34 @@ fn parse_rna_reads_commands() {
         }
         other => panic!("expected RnaReadsAlignReport, got {other:?}"),
     }
+
+    let align_selected = parse_shell_line(
+        "rna-reads align-report tp73_reads --record-indices 2,7,2,9",
+    )
+    .expect("parse rna-reads align-report explicit record indices");
+    match align_selected {
+        ShellCommand::RnaReadsAlignReport {
+            report_id,
+            selection,
+            align_config_override,
+            selected_record_indices,
+        } => {
+            assert_eq!(report_id, "tp73_reads");
+            assert_eq!(selection, RnaReadHitSelection::SeedPassed);
+            assert!(align_config_override.is_none());
+            assert_eq!(selected_record_indices, vec![2, 7, 9]);
+        }
+        other => panic!("expected RnaReadsAlignReport, got {other:?}"),
+    }
+
+    let align_selected_invalid = parse_shell_line(
+        "rna-reads align-report tp73_reads --record-indices ,,",
+    )
+    .expect_err("expected invalid empty --record-indices to fail");
+    assert!(
+        align_selected_invalid.contains("Invalid --record-indices value"),
+        "unexpected parse error: {align_selected_invalid}"
+    );
 }
 
 #[test]
@@ -8050,6 +8080,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
                 min_identity_fraction: 0.60,
                 max_secondary_mappings: 0,
             }),
+            selected_record_indices: vec![],
         },
     )
     .expect("execute rna-reads align-report");

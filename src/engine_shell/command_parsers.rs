@@ -1702,6 +1702,28 @@ pub(super) fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelect
     }
 }
 
+pub(super) fn parse_rna_read_record_indices(raw: &str) -> Result<Vec<usize>, String> {
+    let mut indices = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(|token| {
+            token.parse::<usize>().map_err(|e| {
+                format!("Invalid record index '{token}' (expected comma-separated non-negative integers): {e}")
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if indices.is_empty() {
+        return Err(
+            "Invalid --record-indices value: expected comma-separated non-negative integers"
+                .to_string(),
+        );
+    }
+    indices.sort_unstable();
+    indices.dedup();
+    Ok(indices)
+}
+
 pub(super) fn parse_rna_read_score_density_scale(
     raw: &str,
 ) -> Result<RnaReadScoreDensityScale, String> {
@@ -2701,7 +2723,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "align-report" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads align-report requires REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                    "rna-reads align-report requires REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
                         .to_string(),
                 );
             }
@@ -2711,6 +2733,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             let mut selection = RnaReadHitSelection::SeedPassed;
             let mut align_config_override: Option<RnaReadAlignConfig> = None;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -2722,6 +2745,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             "rna-reads align-report",
                         )?;
                         selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads align-report",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
                     }
                     "--align-band-bp" => {
                         let raw = parse_option_path(
@@ -2779,6 +2811,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 selection,
                 align_config_override,
+                selected_record_indices,
             })
         }
         "list-reports" => {

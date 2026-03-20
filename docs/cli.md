@@ -216,6 +216,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `align-report`: retained-hit alignment pass (phase-2) that updates
     mapping fields, MSA-eligibility counters, exon-transition rows, and
     exon/junction abundance frequencies in the persisted report.
+    - supports explicit row filtering via
+      `--record-indices i,j,k` (0-based stored `record_index` values);
+      when provided, this overrides `--selection`.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.
 - `gentle_lua`: baseline support via `apply_operation` for the same operation

@@ -15323,11 +15323,29 @@ impl MainAreaDna {
     }
 
     fn run_splicing_rna_read_alignment_phase(&mut self) {
+        self.run_splicing_rna_read_alignment_phase_with_records(None);
+    }
+
+    fn run_splicing_rna_read_alignment_phase_for_selected(&mut self, record_indices: Vec<usize>) {
+        self.run_splicing_rna_read_alignment_phase_with_records(Some(record_indices));
+    }
+
+    fn run_splicing_rna_read_alignment_phase_with_records(
+        &mut self,
+        record_indices: Option<Vec<usize>>,
+    ) {
         if self.rna_read_task.is_some() {
             self.op_status = "RNA-read alignment phase is already running".to_string();
             return;
         }
-        let op = match self.build_splicing_rna_read_align_operation() {
+        if let Some(indices) = record_indices.as_ref() {
+            if indices.is_empty() {
+                self.op_status =
+                    "No top-hit rows selected; select at least one row first".to_string();
+                return;
+            }
+        }
+        let op = match self.build_splicing_rna_read_align_operation(record_indices) {
             Ok(op) => op,
             Err(message) => {
                 self.op_status = message.clone();
@@ -15650,16 +15668,26 @@ impl MainAreaDna {
         )
     }
 
-    fn build_splicing_rna_read_align_operation(&self) -> Result<Operation, String> {
+    fn build_splicing_rna_read_align_operation(
+        &self,
+        selected_record_indices: Option<Vec<usize>>,
+    ) -> Result<Operation, String> {
         let report_id = self.rna_reads_ui.report_id.trim();
         if report_id.is_empty() {
             return Err("Set a Report ID first before running alignment phase".to_string());
         }
         let align_config = self.parse_rna_align_config_from_ui()?;
+        let selected_record_indices = selected_record_indices
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
         Ok(Operation::AlignRnaReadReport {
             report_id: report_id.to_string(),
             selection: self.rna_reads_ui.align_phase_selection,
             align_config_override: Some(align_config),
+            selected_record_indices,
         })
     }
 
@@ -15887,6 +15915,7 @@ impl MainAreaDna {
                 report_id,
                 selection,
                 align_config_override,
+                selected_record_indices,
             } => {
                 let align_note = align_config_override
                     .as_ref()
@@ -15900,10 +15929,18 @@ impl MainAreaDna {
                     })
                     .unwrap_or_else(|| "report-default".to_string());
                 format!(
-                    "{} started for report '{}' (selection={}, align={}): '{}'",
+                    "{} started for report '{}' (selection={}{}align={}): '{}'",
                     operation_label,
                     report_id,
                     selection.as_str(),
+                    if selected_record_indices.is_empty() {
+                        ", ".to_string()
+                    } else {
+                        format!(
+                            ", selected_record_indices={}, ",
+                            selected_record_indices.len()
+                        )
+                    },
                     align_note,
                     input_path
                 )
@@ -16003,6 +16040,7 @@ impl MainAreaDna {
                 report_id,
                 selection,
                 align_config_override,
+                selected_record_indices,
             } => {
                 std::thread::spawn(move || {
                     let tx_progress = tx.clone();
@@ -16016,6 +16054,7 @@ impl MainAreaDna {
                                 &report_id,
                                 selection,
                                 align_config_override.clone(),
+                                &selected_record_indices,
                                 &mut move |progress| {
                                     if cancel_for_progress.load(AtomicOrdering::Relaxed) {
                                         return false;
@@ -16041,6 +16080,7 @@ impl MainAreaDna {
                                 report,
                                 selection,
                                 align_config_override,
+                                selected_record_indices,
                             ),
                             Err(_) => Err(EngineError {
                                 code: ErrorCode::Internal,
@@ -17094,6 +17134,25 @@ impl MainAreaDna {
                         self.run_splicing_rna_read_alignment_phase();
                     }
                     let selected_count = self.rna_seed_selected_record_indices.len();
+                    if ui
+                        .add_enabled(
+                            self.rna_read_task.is_none() && selected_count > 0,
+                            egui::Button::new("Evaluate Selected (phase-2)"),
+                        )
+                        .on_hover_text(
+                            "Align only selected top-hit rows by record_index and refresh inline mapping metrics.",
+                        )
+                        .clicked()
+                    {
+                        let selected_indices = self
+                            .rna_seed_selected_record_indices
+                            .iter()
+                            .copied()
+                            .collect::<Vec<_>>();
+                        self.run_splicing_rna_read_alignment_phase_for_selected(
+                            selected_indices,
+                        );
+                    }
                     if ui
                         .button(format!("Copy selected FASTA ({selected_count})"))
                         .clicked()

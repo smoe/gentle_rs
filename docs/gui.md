@@ -459,6 +459,9 @@ Feature tree grouping:
     `AlignRnaReadReport` immediately with the current `align selection`
     setting, so retained top rows gain mapping metrics without leaving the
     panel
+  - `Evaluate Selected (phase-2)` aligns only checkbox-selected top rows
+    (`record_index`-exact subset), useful for rapid manual triage before
+    running a broader phase-2 pass
   - top-read rows include strand assignment diagnostics for the joint
     two-strand run (`strand`, `opp`, `ambig`)
   - top-read rows now also expose origin diagnostics from engine

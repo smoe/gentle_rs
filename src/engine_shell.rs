@@ -1159,6 +1159,7 @@ pub enum ShellCommand {
         report_id: String,
         selection: RnaReadHitSelection,
         align_config_override: Option<RnaReadAlignConfig>,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsListReports {
         seq_id: Option<String>,
@@ -5813,6 +5814,7 @@ impl ShellCommand {
                 report_id,
                 selection,
                 align_config_override,
+                selected_record_indices,
             } => {
                 let align_note = align_config_override
                     .as_ref()
@@ -5826,9 +5828,17 @@ impl ShellCommand {
                     })
                     .unwrap_or_else(|| "report-default".to_string());
                 format!(
-                    "run RNA-read alignment phase for report '{}' (selection={}, align={})",
+                    "run RNA-read alignment phase for report '{}' (selection={}{}align={})",
                     report_id,
                     selection.as_str(),
+                    if selected_record_indices.is_empty() {
+                        ", ".to_string()
+                    } else {
+                        format!(
+                            ", selected_record_indices={}, ",
+                            selected_record_indices.len()
+                        )
+                    },
                     align_note
                 )
             }
@@ -14455,12 +14465,14 @@ pub fn execute_shell_command_with_options(
             report_id,
             selection,
             align_config_override,
+            selected_record_indices,
         } => {
             let op_result = engine
                 .apply(Operation::AlignRnaReadReport {
                     report_id: report_id.clone(),
                     selection: *selection,
                     align_config_override: align_config_override.clone(),
+                    selected_record_indices: selected_record_indices.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             let report = engine

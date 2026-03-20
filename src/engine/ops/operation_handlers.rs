@@ -5596,20 +5596,30 @@ impl GentleEngine {
                 report_id,
                 selection,
                 align_config_override,
+                selected_record_indices,
             } => {
                 let mut keep_running = || true;
                 let report = self.align_rna_read_report_with_progress_and_cancel(
                     &report_id,
                     selection,
                     align_config_override.clone(),
+                    &selected_record_indices,
                     on_progress,
                     &mut keep_running,
                 )?;
                 self.push_rna_read_report_result_message(report.clone(), &mut result)?;
                 result.messages.push(format!(
-                    "Alignment phase updated report '{}' (selection={}, aligned={}, msa_eligible(retained)={})",
+                    "Alignment phase updated report '{}' (selection={}{} aligned={}, msa_eligible(retained)={})",
                     report.report_id,
                     selection.as_str(),
+                    if selected_record_indices.is_empty() {
+                        ", ".to_string()
+                    } else {
+                        format!(
+                            ", selected_record_indices={}, ",
+                            selected_record_indices.len()
+                        )
+                    },
                     report.read_count_aligned,
                     report.retained_count_msa_eligible
                 ));
