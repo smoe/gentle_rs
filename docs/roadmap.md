@@ -254,6 +254,13 @@ order. Durable architecture constraints and decisions remain in
     `macros instance-list`, `macros instance-show`
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
+- Protocol-cartoon SVG generation baseline is now available:
+  - engine operation `RenderProtocolCartoonSvg { protocol, path }`
+  - shared-shell/CLI routes:
+    - `protocol-cartoon list`
+    - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+    - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
+  - first shipped protocol id: `gibson.two_fragment`
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command

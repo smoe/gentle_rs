@@ -62,6 +62,8 @@ pub mod open_reading_frame;
 pub mod pool_gel;
 /// Protease digest definitions and helpers.
 pub mod protease;
+/// Protocol-cartoon catalog and deterministic SVG rendering helpers.
+pub mod protocol_cartoon;
 /// Position-specific scoring matrix (motif) primitives.
 pub mod pssm;
 /// Shared DNA rendering entry points.

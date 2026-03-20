@@ -1225,6 +1225,18 @@ impl GentleEngine {
                     .messages
                     .push(format!("Wrote lineage SVG to '{}'", path));
             }
+            Operation::RenderProtocolCartoonSvg { protocol, path } => {
+                let svg = crate::protocol_cartoon::render_protocol_cartoon_svg(&protocol);
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write SVG output '{path}': {e}"),
+                })?;
+                result.messages.push(format!(
+                    "Wrote protocol cartoon SVG for '{}' to '{}'",
+                    protocol.id(),
+                    path
+                ));
+            }
             Operation::CreateArrangementSerial {
                 container_ids,
                 arrangement_id,

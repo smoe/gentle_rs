@@ -52,6 +52,7 @@ use crate::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord,
     },
+    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_sync,
     shell_docs::{
         HelpOutputFormat, shell_help_json as render_shell_help_json,
@@ -552,6 +553,11 @@ pub enum ShellCommand {
         seq_id: String,
     },
     RenderLineageSvg {
+        output: String,
+    },
+    ProtocolCartoonList,
+    RenderProtocolCartoonSvg {
+        protocol: ProtocolCartoonKind,
         output: String,
     },
     RenderPoolGelSvg {
@@ -4280,6 +4286,10 @@ impl ShellCommand {
                 format!("inspect rnapkin textual RNA report for '{seq_id}'")
             }
             Self::RenderLineageSvg { output } => format!("render lineage SVG to '{output}'"),
+            Self::ProtocolCartoonList => "list available protocol cartoon renderers".to_string(),
+            Self::RenderProtocolCartoonSvg { protocol, output } => {
+                format!("render protocol cartoon '{}' to '{output}'", protocol.id())
+            }
             Self::RenderPoolGelSvg {
                 inputs,
                 output,
@@ -9100,6 +9110,66 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
+        "protocol-cartoon" => {
+            if tokens.len() < 2 {
+                return Err("protocol-cartoon requires a subcommand: list, render-svg".to_string());
+            }
+            match tokens[1].as_str() {
+                "list" => {
+                    if tokens.len() != 2 {
+                        return Err(
+                            "protocol-cartoon list takes no additional arguments".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ProtocolCartoonList)
+                }
+                "render-svg" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "protocol-cartoon render-svg requires PROTOCOL_ID OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    let protocol_id = tokens[2].trim();
+                    if protocol_id.is_empty() {
+                        return Err("protocol-cartoon render-svg requires non-empty PROTOCOL_ID"
+                            .to_string());
+                    }
+                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                        format!(
+                            "Unknown protocol cartoon '{protocol_id}' (run 'protocol-cartoon list')"
+                        )
+                    })?;
+                    Ok(ShellCommand::RenderProtocolCartoonSvg {
+                        protocol,
+                        output: tokens[3].clone(),
+                    })
+                }
+                other => Err(format!(
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg)"
+                )),
+            }
+        }
+        "render-protocol-cartoon-svg" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "render-protocol-cartoon-svg requires PROTOCOL_ID OUTPUT.svg".to_string(),
+                );
+            }
+            let protocol_id = tokens[1].trim();
+            if protocol_id.is_empty() {
+                return Err(
+                    "render-protocol-cartoon-svg requires non-empty PROTOCOL_ID".to_string()
+                );
+            }
+            let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                format!("Unknown protocol cartoon '{protocol_id}' (run 'protocol-cartoon list')")
+            })?;
+            Ok(ShellCommand::RenderProtocolCartoonSvg {
+                protocol,
+                output: tokens[2].clone(),
+            })
+        }
         "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
@@ -10802,6 +10872,23 @@ pub fn execute_shell_command_with_options(
         ShellCommand::RenderLineageSvg { output } => {
             let op_result = engine
                 .apply(Operation::RenderLineageSvg {
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ProtocolCartoonList => ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(protocol_cartoon_catalog_rows())
+                .map_err(|e| format!("Could not serialize protocol cartoon catalog: {e}"))?,
+        },
+        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonSvg {
+                    protocol: protocol.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

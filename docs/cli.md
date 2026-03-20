@@ -774,6 +774,8 @@ cargo run --bin gentle_cli -- render-dotplot-svg tp73_cdna dotplot_primary tp73.
 cargo run --bin gentle_cli -- render-rna-svg rna_seq rna.secondary.svg
 cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
+cargo run --bin gentle_cli -- protocol-cartoon list
+cargo run --bin gentle_cli -- protocol-cartoon render-svg gibson.two_fragment gibson.protocol.svg
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
@@ -897,6 +899,9 @@ Shared shell command:
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
+    - `protocol-cartoon list`
+    - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+    - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
     - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
@@ -1197,6 +1202,13 @@ Rendering export commands:
   - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
 - `render-lineage-svg OUTPUT.svg`
   - Calls engine operation `RenderLineageSvg`.
+- `protocol-cartoon list`
+  - Lists deterministic protocol-cartoon IDs currently supported by the engine.
+- `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+  - Calls engine operation `RenderProtocolCartoonSvg`.
+  - Current baseline protocol ID: `gibson.two_fragment`.
+- `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
+  - Alias for `protocol-cartoon render-svg ...`.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.

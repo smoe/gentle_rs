@@ -15,6 +15,7 @@ use gentle::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeGeneRecord,
         PrepareGenomeProgress,
     },
+    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
 };
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -457,6 +458,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH|--project PATH] protocol-cartoon list\n  \
+  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
@@ -2097,6 +2101,92 @@ fn run() -> Result<(), String> {
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = engine
                 .apply(Operation::RenderLineageSvg {
+                    path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "protocol-cartoon" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("protocol-cartoon requires a subcommand: list, render-svg".to_string());
+            }
+            match args[cmd_idx + 1].as_str() {
+                "list" => {
+                    if args.len() != cmd_idx + 2 {
+                        return Err(
+                            "protocol-cartoon list takes no additional arguments".to_string()
+                        );
+                    }
+                    print_json(&protocol_cartoon_catalog_rows())
+                }
+                "render-svg" => {
+                    if args.len() != cmd_idx + 4 {
+                        return Err(
+                            "protocol-cartoon render-svg requires: PROTOCOL_ID OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    let protocol_id = args[cmd_idx + 2].trim();
+                    if protocol_id.is_empty() {
+                        return Err("protocol-cartoon render-svg requires non-empty PROTOCOL_ID"
+                            .to_string());
+                    }
+                    let output = &args[cmd_idx + 3];
+                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                        format!(
+                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
+                        )
+                    })?;
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let result = engine
+                        .apply(Operation::RenderProtocolCartoonSvg {
+                            protocol,
+                            path: output.to_string(),
+                        })
+                        .map_err(|e| e.to_string())?;
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    if let Some(msg) = result.messages.first() {
+                        println!("{msg}");
+                    }
+                    Ok(())
+                }
+                other => Err(format!(
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg)"
+                )),
+            }
+        }
+        "render-protocol-cartoon-svg" => {
+            if args.len() != cmd_idx + 3 {
+                usage();
+                return Err(
+                    "render-protocol-cartoon-svg requires: PROTOCOL_ID OUTPUT.svg".to_string(),
+                );
+            }
+            let protocol_id = args[cmd_idx + 1].trim();
+            if protocol_id.is_empty() {
+                return Err(
+                    "render-protocol-cartoon-svg requires non-empty PROTOCOL_ID".to_string()
+                );
+            }
+            let output = &args[cmd_idx + 2];
+            let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
+                format!("Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)")
+            })?;
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderProtocolCartoonSvg {
+                    protocol,
                     path: output.to_string(),
                 })
                 .map_err(|e| e.to_string())?;

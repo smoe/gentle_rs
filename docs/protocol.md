@@ -101,6 +101,7 @@ Current draft operations:
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders? }`
+- `RenderProtocolCartoonSvg { protocol, path }`
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
@@ -289,6 +290,10 @@ external coding agent runtime, see:
   - `uniprot projection-show PROJECTION_ID`
 - shared-shell GenBank route:
   - `genbank fetch ACCESSION [--as-id ID]`
+- shared-shell protocol-cartoon routes:
+  - `protocol-cartoon list`
+  - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+  - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
 
 - Python adapter wrapper (`integrations/python/gentle_py`):
   - thin subprocess-based wrapper over `gentle_cli`
@@ -1011,6 +1016,18 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional flexibility track must also belong to `seq_id`
 - Output:
   - deterministic SVG dotplot artifact; operation is non-mutating.
+
+`RenderProtocolCartoonSvg` semantics:
+
+- Inputs:
+  - `protocol` (currently supported baseline: `gibson.two_fragment`)
+  - `path` (output SVG)
+- Behavior:
+  - renders a deterministic protocol-cartoon strip through one engine route,
+    independent of GUI/CLI entry point.
+  - emits canonical conceptual step order for the requested protocol.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
 
 `ExportProcessRunBundle` semantics:
 

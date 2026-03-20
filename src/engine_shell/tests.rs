@@ -332,6 +332,41 @@ fn parse_render_rna_svg() {
 }
 
 #[test]
+fn parse_protocol_cartoon_list() {
+    let cmd = parse_shell_line("protocol-cartoon list").expect("parse command");
+    match cmd {
+        ShellCommand::ProtocolCartoonList => {}
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_protocol_cartoon_render_svg() {
+    let cmd = parse_shell_line("protocol-cartoon render-svg gibson.two_fragment out.svg")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
+            assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
+            assert_eq!(output, "out.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_render_protocol_cartoon_svg_alias() {
+    let cmd =
+        parse_shell_line("render-protocol-cartoon-svg gibson out.svg").expect("parse command");
+    match cmd {
+        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
+            assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
+            assert_eq!(output, "out.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_info() {
     let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
     match cmd {
@@ -340,6 +375,37 @@ fn parse_rna_info() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn execute_protocol_cartoon_list() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(&mut engine, &ShellCommand::ProtocolCartoonList)
+        .expect("execute protocol-cartoon list");
+    assert!(!out.state_changed);
+    let rows = out.output.as_array().expect("catalog rows array");
+    assert!(!rows.is_empty());
+    assert_eq!(rows[0]["id"].as_str(), Some("gibson.two_fragment"));
+}
+
+#[test]
+fn execute_render_protocol_cartoon_svg() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("temp dir");
+    let output = tmp.path().join("gibson.svg");
+    let output_path = output.display().to_string();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RenderProtocolCartoonSvg {
+            protocol: ProtocolCartoonKind::GibsonTwoFragment,
+            output: output_path.clone(),
+        },
+    )
+    .expect("execute render protocol cartoon");
+    assert!(!out.state_changed);
+    let svg = fs::read_to_string(output).expect("read protocol cartoon svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Chew-back"));
 }
 
 #[test]

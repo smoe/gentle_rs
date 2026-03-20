@@ -40,6 +40,7 @@ use crate::{
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
+    protocol_cartoon::ProtocolCartoonKind,
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
@@ -4019,6 +4020,10 @@ pub enum Operation {
         #[serde(default)]
         arrangement_id: Option<String>,
     },
+    RenderProtocolCartoonSvg {
+        protocol: ProtocolCartoonKind,
+        path: String,
+    },
     CreateArrangementSerial {
         container_ids: Vec<ContainerId>,
         arrangement_id: Option<String>,
@@ -5943,6 +5948,7 @@ impl GentleEngine {
                 "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
+                "RenderProtocolCartoonSvg".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
@@ -6979,6 +6985,7 @@ impl GentleEngine {
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
+                | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
