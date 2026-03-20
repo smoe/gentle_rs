@@ -155,6 +155,9 @@ const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_expo
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
+const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_alignment_dotplot_svg_export.v1";
+const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
@@ -3072,6 +3075,10 @@ fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
 }
 
+fn default_rna_read_alignment_dotplot_max_points() -> usize {
+    2_500
+}
+
 fn default_splicing_reference_scope() -> SplicingScopePreset {
     SplicingScopePreset::TargetGroupTargetStrand
 }
@@ -3358,6 +3365,55 @@ pub struct RnaReadScoreDensitySvgExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadAlignmentDotplotSvgExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub point_count: usize,
+    pub rendered_point_count: usize,
+    pub max_points: usize,
+    pub min_score: isize,
+    pub max_score: isize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspectionRow {
+    pub rank: usize,
+    pub record_index: usize,
+    pub header_id: String,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub alignment_mode: RnaReadAlignmentMode,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    pub seed_hit_fraction: f64,
+    pub weighted_seed_hit_fraction: f64,
+    pub passed_seed_filter: bool,
+    pub msa_eligible: bool,
+    pub origin_class: RnaReadOriginClass,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspection {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub limit: usize,
+    pub align_min_identity_fraction: f64,
+    pub max_secondary_mappings: usize,
+    pub rows: Vec<RnaReadAlignmentInspectionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaSeedHashCatalogEntry {
     pub seed_bits: u32,
     pub kmer_sequence: String,
@@ -3494,6 +3550,10 @@ impl<R: Read> Read for CountingReader<R> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RnaReadRetentionRank {
     passed_seed_filter: bool,
+    has_alignment: bool,
+    alignment_identity_ppm: u32,
+    alignment_query_coverage_ppm: u32,
+    alignment_score: i64,
     weighted_support_milli: u64,
     weighted_seed_hit_ppm: u32,
     seed_hit_ppm: u32,
@@ -3507,6 +3567,16 @@ impl Ord for RnaReadRetentionRank {
     fn cmp(&self, other: &Self) -> Ordering {
         self.passed_seed_filter
             .cmp(&other.passed_seed_filter)
+            .then(self.has_alignment.cmp(&other.has_alignment))
+            .then(
+                self.alignment_query_coverage_ppm
+                    .cmp(&other.alignment_query_coverage_ppm),
+            )
+            .then(
+                self.alignment_identity_ppm
+                    .cmp(&other.alignment_identity_ppm),
+            )
+            .then(self.alignment_score.cmp(&other.alignment_score))
             .then(
                 self.weighted_support_milli
                     .cmp(&other.weighted_support_milli),
@@ -4346,6 +4416,14 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         scale: RnaReadScoreDensityScale,
+    },
+    ExportRnaReadAlignmentDotplotSvg {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default = "default_rna_read_alignment_dotplot_max_points")]
+        max_points: usize,
     },
     ExtractRegion {
         input: SeqId,
@@ -5811,6 +5889,7 @@ impl GentleEngine {
                 "ExportRnaReadExonPathsTsv".to_string(),
                 "ExportRnaReadExonAbundanceTsv".to_string(),
                 "ExportRnaReadScoreDensitySvg".to_string(),
+                "ExportRnaReadAlignmentDotplotSvg".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -6810,6 +6889,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
+                | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
                 | Operation::AlignSequences { .. }
         )
     }

@@ -2,6 +2,17 @@
 
 use super::*;
 
+#[derive(Debug, Clone)]
+struct RnaReadAlignmentScatterPoint {
+    rank: RnaReadRetentionRank,
+    record_index: usize,
+    header_id: String,
+    transcript_id: String,
+    identity_fraction: f64,
+    query_coverage_fraction: f64,
+    score: isize,
+}
+
 impl GentleEngine {
     pub(super) fn read_rna_read_report_store_from_metadata(
         value: Option<&serde_json::Value>,
@@ -368,6 +379,295 @@ impl GentleEngine {
             RnaReadHitSelection::SeedPassed => hit.passed_seed_filter,
             RnaReadHitSelection::Aligned => hit.best_mapping.is_some(),
         }
+    }
+
+    pub fn inspect_rna_read_alignments(
+        &self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        limit: usize,
+    ) -> Result<RnaReadAlignmentInspection, EngineError> {
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment inspection requires --limit >= 1".to_string(),
+            });
+        }
+        let report = self.get_rna_read_report(report_id)?;
+        let mut ranked_rows = report
+            .hits
+            .iter()
+            .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+            .filter_map(|hit| {
+                let mapping = hit.best_mapping.as_ref()?;
+                let rank = Self::rna_read_retention_rank(hit);
+                Some((
+                    rank,
+                    RnaReadAlignmentInspectionRow {
+                        rank: 0,
+                        record_index: hit.record_index,
+                        header_id: hit.header_id.clone(),
+                        transcript_id: mapping.transcript_id.clone(),
+                        transcript_label: mapping.transcript_label.clone(),
+                        strand: mapping.strand.clone(),
+                        alignment_mode: mapping.alignment_mode,
+                        score: mapping.score,
+                        identity_fraction: mapping.identity_fraction,
+                        query_coverage_fraction: mapping.query_coverage_fraction,
+                        seed_hit_fraction: hit.seed_hit_fraction,
+                        weighted_seed_hit_fraction: hit.weighted_seed_hit_fraction,
+                        passed_seed_filter: hit.passed_seed_filter,
+                        msa_eligible: hit.msa_eligible,
+                        origin_class: hit.origin_class,
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        ranked_rows.sort_by(|left, right| right.0.cmp(&left.0));
+        let aligned_count = ranked_rows.len();
+        let mut rows = ranked_rows
+            .into_iter()
+            .take(limit)
+            .map(|(_, row)| row)
+            .collect::<Vec<_>>();
+        for (idx, row) in rows.iter_mut().enumerate() {
+            row.rank = idx + 1;
+        }
+        Ok(RnaReadAlignmentInspection {
+            schema: RNA_READ_ALIGNMENT_INSPECTION_SCHEMA.to_string(),
+            report_id: report.report_id,
+            seq_id: report.seq_id,
+            selection,
+            row_count: rows.len(),
+            aligned_count,
+            limit,
+            align_min_identity_fraction: report.align_config.min_identity_fraction,
+            max_secondary_mappings: report.align_config.max_secondary_mappings,
+            rows,
+        })
+    }
+
+    pub(super) fn alignment_scatter_color_hex(
+        score: isize,
+        min_score: isize,
+        max_score: isize,
+    ) -> String {
+        let t = if max_score <= min_score {
+            0.5
+        } else {
+            ((score - min_score) as f64 / (max_score - min_score) as f64).clamp(0.0, 1.0)
+        };
+        let low = (37u8, 99u8, 235u8);
+        let high = (220u8, 38u8, 38u8);
+        let mix = |a: u8, b: u8| -> u8 { (a as f64 + (b as f64 - a as f64) * t).round() as u8 };
+        let r = mix(low.0, high.0);
+        let g = mix(low.1, high.1);
+        let b = mix(low.2, high.2);
+        format!("#{r:02x}{g:02x}{b:02x}")
+    }
+
+    fn render_rna_read_alignment_dotplot_svg_text(
+        report: &RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        points: &[RnaReadAlignmentScatterPoint],
+        total_points: usize,
+        max_points: usize,
+        min_score: isize,
+        max_score: isize,
+    ) -> String {
+        let width = 960.0f64;
+        let height = 620.0f64;
+        let margin_left = 72.0f64;
+        let margin_right = 28.0f64;
+        let margin_top = 58.0f64;
+        let margin_bottom = 72.0f64;
+        let chart_left = margin_left;
+        let chart_right = width - margin_right;
+        let chart_top = margin_top;
+        let chart_bottom = height - margin_bottom;
+        let chart_width = (chart_right - chart_left).max(1.0);
+        let chart_height = (chart_bottom - chart_top).max(1.0);
+        let identity_threshold = report.align_config.min_identity_fraction.clamp(0.0, 1.0);
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">\n"
+        ));
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n");
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"24\" font-family=\"monospace\" font-size=\"15\" fill=\"#111827\">{title}</text>\n",
+            x = chart_left,
+            title = Self::escape_svg_text(&format!(
+                "RNA-read alignment dotplot (coverage vs identity): {}",
+                report.report_id
+            ))
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"40\" font-family=\"monospace\" font-size=\"11\" fill=\"#4b5563\">{subtitle}</text>\n",
+            x = chart_left,
+            subtitle = Self::escape_svg_text(&format!(
+                "selection={} rendered_points={} total_points={} max_points={} min_identity={:.3} score_range=[{}, {}]",
+                selection.as_str(),
+                points.len(),
+                total_points,
+                max_points,
+                identity_threshold,
+                min_score,
+                max_score
+            ))
+        ));
+
+        for tick in [0.0f64, 0.25, 0.50, 0.75, 1.0] {
+            let x = chart_left + tick * chart_width;
+            let y = chart_bottom - tick * chart_height;
+            svg.push_str(&format!(
+                "<line x1=\"{x:.2}\" y1=\"{top:.2}\" x2=\"{x:.2}\" y2=\"{bottom:.2}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>\n",
+                top = chart_top,
+                bottom = chart_bottom
+            ));
+            svg.push_str(&format!(
+                "<line x1=\"{left:.2}\" y1=\"{y:.2}\" x2=\"{right:.2}\" y2=\"{y:.2}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>\n",
+                left = chart_left,
+                right = chart_right
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{x:.2}\" y=\"{label_y:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" fill=\"#6b7280\">{tick:.2}</text>\n",
+                label_y = chart_bottom + 16.0
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{label_x:.2}\" y=\"{y_plus:.2}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#6b7280\">{tick:.2}</text>\n",
+                label_x = chart_left - 8.0,
+                y_plus = y + 3.0
+            ));
+        }
+
+        svg.push_str(&format!(
+            "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"none\" stroke=\"#9ca3af\" stroke-width=\"1.2\"/>\n",
+            x = chart_left,
+            y = chart_top,
+            w = chart_width,
+            h = chart_height
+        ));
+        svg.push_str(&format!(
+            "<line x1=\"{left:.2}\" y1=\"{y:.2}\" x2=\"{right:.2}\" y2=\"{y:.2}\" stroke=\"#ef4444\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>\n",
+            left = chart_left,
+            right = chart_right,
+            y = chart_bottom - identity_threshold * chart_height
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.2}\" y=\"{y:.2}\" font-family=\"monospace\" font-size=\"10\" fill=\"#b91c1c\">min identity={:.3}</text>\n",
+            identity_threshold,
+            x = chart_right - 180.0,
+            y = chart_bottom - identity_threshold * chart_height - 6.0
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#111827\">query coverage fraction</text>\n",
+            x = (chart_left + chart_right) * 0.5,
+            y = height - 24.0
+        ));
+        svg.push_str(&format!(
+            "<text x=\"18\" y=\"{y:.2}\" transform=\"rotate(-90 18 {y:.2})\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#111827\">identity fraction</text>\n",
+            y = (chart_top + chart_bottom) * 0.5
+        ));
+
+        for point in points {
+            let coverage = point.query_coverage_fraction.clamp(0.0, 1.0);
+            let identity = point.identity_fraction.clamp(0.0, 1.0);
+            let x = chart_left + coverage * chart_width;
+            let y = chart_bottom - identity * chart_height;
+            let color = Self::alignment_scatter_color_hex(point.score, min_score, max_score);
+            svg.push_str(&format!(
+                "<circle cx=\"{x:.2}\" cy=\"{y:.2}\" r=\"2.3\" fill=\"{color}\" fill-opacity=\"0.72\" stroke=\"#0f172a\" stroke-opacity=\"0.20\" stroke-width=\"0.35\"><title>{tip}</title></circle>\n",
+                tip = Self::escape_svg_text(&format!(
+                    "record={} tx={} score={} identity={:.4} coverage={:.4} header={}",
+                    point.record_index,
+                    point.transcript_id,
+                    point.score,
+                    point.identity_fraction,
+                    point.query_coverage_fraction,
+                    point.header_id
+                ))
+            ));
+        }
+
+        svg.push_str("</svg>\n");
+        svg
+    }
+
+    pub fn export_rna_read_alignment_dotplot_svg(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        max_points: usize,
+    ) -> Result<RnaReadAlignmentDotplotSvgExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment dotplot export requires non-empty path".to_string(),
+            });
+        }
+        if max_points == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment dotplot export requires max_points >= 1".to_string(),
+            });
+        }
+
+        let mut points = report
+            .hits
+            .iter()
+            .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+            .filter_map(|hit| {
+                let mapping = hit.best_mapping.as_ref()?;
+                Some(RnaReadAlignmentScatterPoint {
+                    rank: Self::rna_read_retention_rank(hit),
+                    record_index: hit.record_index,
+                    header_id: hit.header_id.clone(),
+                    transcript_id: mapping.transcript_id.clone(),
+                    identity_fraction: mapping.identity_fraction,
+                    query_coverage_fraction: mapping.query_coverage_fraction,
+                    score: mapping.score,
+                })
+            })
+            .collect::<Vec<_>>();
+        points.sort_by(|left, right| right.rank.cmp(&left.rank));
+        let point_count = points.len();
+        if points.len() > max_points {
+            points.truncate(max_points);
+        }
+        let rendered_point_count = points.len();
+        let min_score = points.iter().map(|point| point.score).min().unwrap_or(0);
+        let max_score = points.iter().map(|point| point.score).max().unwrap_or(0);
+        let svg = Self::render_rna_read_alignment_dotplot_svg_text(
+            &report,
+            selection,
+            &points,
+            point_count,
+            max_points,
+            min_score,
+            max_score,
+        );
+        std::fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read alignment dotplot SVG '{}': {e}",
+                path
+            ),
+        })?;
+        Ok(RnaReadAlignmentDotplotSvgExport {
+            schema: RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            selection,
+            point_count,
+            rendered_point_count,
+            max_points,
+            min_score,
+            max_score,
+        })
     }
 
     pub(super) fn parse_exon_path(path: &str) -> (Vec<usize>, Vec<char>) {
@@ -2104,8 +2404,23 @@ impl GentleEngine {
         let weighted_seed_hit_ppm =
             (hit.weighted_seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
         let seed_hit_ppm = (hit.seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
+        let (has_alignment, alignment_identity_ppm, alignment_query_coverage_ppm, alignment_score) =
+            if let Some(mapping) = hit.best_mapping.as_ref() {
+                (
+                    true,
+                    (mapping.identity_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32,
+                    (mapping.query_coverage_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32,
+                    mapping.score as i64,
+                )
+            } else {
+                (false, 0, 0, i64::MIN)
+            };
         RnaReadRetentionRank {
             passed_seed_filter: hit.passed_seed_filter,
+            has_alignment,
+            alignment_identity_ppm,
+            alignment_query_coverage_ppm,
+            alignment_score,
             weighted_support_milli,
             weighted_seed_hit_ppm,
             seed_hit_ppm,
@@ -2114,6 +2429,14 @@ impl GentleEngine {
             read_length_bp: hit.read_length_bp,
             record_index: hit.record_index,
         }
+    }
+
+    pub(super) fn sort_rna_read_hits_by_retention_rank(hits: &mut [RnaReadInterpretationHit]) {
+        hits.sort_by(|left, right| {
+            let left_rank = Self::rna_read_retention_rank(left);
+            let right_rank = Self::rna_read_retention_rank(right);
+            right_rank.cmp(&left_rank)
+        });
     }
 
     pub(super) fn should_emit_rna_read_progress(
@@ -3987,6 +4310,7 @@ impl GentleEngine {
                 std::thread::yield_now();
             }
         }
+        Self::sort_rna_read_hits_by_retention_rank(&mut report.hits);
         let mut origin_class_counts = BTreeMap::<String, usize>::new();
         for row in &report.hits {
             *origin_class_counts
@@ -4015,7 +4339,7 @@ impl GentleEngine {
             .warnings
             .retain(|warning| !warning.contains("alignment is deferred to a later pass"));
         report.warnings.push(format!(
-            "alignment phase completed over retained-hit selection '{}'{} (selected={}, aligned={}, msa_eligible={})",
+            "alignment phase completed over retained-hit selection '{}'{} (selected={}, aligned={}, msa_eligible={}); retained hits were re-ranked by alignment-aware retention rank",
             selection.as_str(),
             if explicit_record_filter.is_empty() {
                 String::new()
@@ -5254,7 +5578,7 @@ impl GentleEngine {
         ));
         if reads_total > retained_hit_count {
             warnings.push(format!(
-                "retained_top_hits={} out of total_reads={} (scored by seed-hit fraction)",
+                "retained_top_hits={} out of total_reads={} (scored by retention rank; alignment quality contributes when mappings are available)",
                 retained_hit_count, reads_total
             ));
         }

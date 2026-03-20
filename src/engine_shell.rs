@@ -1167,6 +1167,11 @@ pub enum ShellCommand {
     RnaReadsShowReport {
         report_id: String,
     },
+    RnaReadsInspectAlignments {
+        report_id: String,
+        selection: RnaReadHitSelection,
+        limit: usize,
+    },
     RnaReadsExportReport {
         report_id: String,
         path: String,
@@ -1196,6 +1201,12 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
         scale: RnaReadScoreDensityScale,
+    },
+    RnaReadsExportAlignmentDotplotSvg {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+        max_points: usize,
     },
     SetParameter {
         name: String,
@@ -5852,6 +5863,16 @@ impl ShellCommand {
             Self::RnaReadsShowReport { report_id } => {
                 format!("show stored RNA-read report '{}'", report_id)
             }
+            Self::RnaReadsInspectAlignments {
+                report_id,
+                selection,
+                limit,
+            } => format!(
+                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={})",
+                report_id,
+                selection.as_str(),
+                limit
+            ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",
                 report_id, path
@@ -5911,6 +5932,18 @@ impl ShellCommand {
                 report_id,
                 path,
                 scale.as_str()
+            ),
+            Self::RnaReadsExportAlignmentDotplotSvg {
+                report_id,
+                path,
+                selection,
+                max_points,
+            } => format!(
+                "export RNA-read alignment dotplot SVG from '{}' to '{}' (selection={}, max_points={})",
+                report_id,
+                path,
+                selection.as_str(),
+                max_points
             ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
@@ -14515,6 +14548,21 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::RnaReadsInspectAlignments {
+            report_id,
+            selection,
+            limit,
+        } => {
+            let inspection = engine
+                .inspect_rna_read_alignments(report_id, *selection, *limit)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "inspection": inspection,
+                }),
+            }
+        }
         ShellCommand::RnaReadsExportReport { report_id, path } => {
             let report = engine
                 .export_rna_read_report(report_id, path)
@@ -14630,6 +14678,30 @@ pub fn execute_shell_command_with_options(
                     "max_bin_count": export.max_bin_count,
                     "total_scored_reads": export.total_scored_reads,
                     "derived_from_report_hits_only": export.derived_from_report_hits_only,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id,
+            path,
+            selection,
+            max_points,
+        } => {
+            let export = engine
+                .export_rna_read_alignment_dotplot_svg(report_id, path, *selection, *max_points)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "point_count": export.point_count,
+                    "rendered_point_count": export.rendered_point_count,
+                    "max_points": export.max_points,
+                    "min_score": export.min_score,
+                    "max_score": export.max_score,
                 }),
             }
         }

@@ -5772,6 +5772,25 @@ impl GentleEngine {
                     ));
                 }
             }
+            Operation::ExportRnaReadAlignmentDotplotSvg {
+                report_id,
+                path,
+                selection,
+                max_points,
+            } => {
+                let export = self.export_rna_read_alignment_dotplot_svg(
+                    &report_id, &path, selection, max_points,
+                )?;
+                result.messages.push(format!(
+                    "Exported RNA-read alignment dotplot SVG '{}' to '{}' (selection={}, rendered_points={}, total_points={}, max_points={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.rendered_point_count,
+                    export.point_count,
+                    export.max_points
+                ));
+            }
             Operation::ExtractRegion {
                 input,
                 from,

@@ -118,7 +118,7 @@ Current draft operations:
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
 - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
-- `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields)
+- `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
@@ -127,6 +127,7 @@ Current draft operations:
 - `ExportRnaReadExonPathsTsv { report_id, path, selection }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
+- `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
@@ -1483,6 +1484,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - aggregate `read_count_aligned` and `retained_count_msa_eligible`
       - refreshed transition/isoform support rows and exon/junction abundance
         frequencies
+      - deterministic retained-hit re-ranking by alignment-aware retention rank
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -1512,6 +1514,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `origin_candidates[]` (selected/plus/minus/seed-chain candidate hints)
     - `best_mapping.alignment_mode` (`semiglobal` preferred, with deterministic
       local fallback when quality is better)
+  - alignment inspection payload schema:
+    - `gentle.rna_read_alignment_inspection.v1`
+    - produced by non-mutating shared-shell inspection command
+      `rna-reads inspect-alignments`
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
@@ -1525,18 +1531,28 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
+  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+  - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
   - shell output convenience fields:
     - `rna-reads list-reports` includes `summary_rows[]` with concise
       human-readable provenance lines (`mode`, `origin`, target count,
       ROI-capture flag, read counters)
     - `rna-reads show-report` includes `summary` with the same provenance
       framing for one report
+    - `rna-reads inspect-alignments` returns top aligned rows ranked by
+      alignment-aware retention score (mapping + seed metrics)
+- Alignment-dotplot export:
+  - operation:
+    `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
+  - export schema: `gentle.rna_read_alignment_dotplot_svg_export.v1`
+  - output: SVG scatter of query coverage vs identity for aligned hits with
+    score-colored points and report-config threshold guide.
 - `rna-reads export-hits-fasta` header extensions:
   - `exon_path_tx=<transcript_id|none>`
   - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent

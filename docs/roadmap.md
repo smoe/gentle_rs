@@ -936,6 +936,18 @@ Status:
     `Run alignment phase (retained report)`), refreshing per-hit mappings,
     `msa_eligible` diagnostics, transition/isoform support, and exon/junction
     abundance frequencies.
+  - Phase-2 alignment now deterministically re-ranks retained hits by
+    alignment-aware retention rank (alignment identity/coverage/score first,
+    seed metrics as tie-breakers) so downstream candidate ranking reflects
+    mapping quality.
+  - Added non-mutating alignment inspection route:
+    `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]`
+    returns ranked aligned-hit rows for report triage without mutating state.
+  - Added dotplot-style alignment inspection export:
+    `ExportRnaReadAlignmentDotplotSvg` /
+    `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg
+    [--selection ...] [--max-points N]` renders coverage-vs-identity scatter
+    with score-based coloring.
   - Phase-1 seed filtering now hashes full read span for every read (replacing
     prior sampled-window behavior) to improve filtering sensitivity.
   - Runtime panel now reports detailed compute breakdown

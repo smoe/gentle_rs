@@ -11717,6 +11717,168 @@ fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
 }
 
 #[test]
+fn test_rna_read_retention_rank_prefers_aligned_hits_over_unaligned_seed_only_hits() {
+    let aligned = RnaReadInterpretationHit {
+        record_index: 2,
+        header_id: "aligned_read".to_string(),
+        sequence: "ACGTACGT".to_string(),
+        read_length_bp: 8,
+        tested_kmers: 6,
+        matched_kmers: 2,
+        seed_hit_fraction: 0.33,
+        weighted_seed_hit_fraction: 0.20,
+        weighted_matched_kmers: 1.2,
+        passed_seed_filter: true,
+        best_mapping: Some(RnaReadMappingHit {
+            transcript_id: "tx_aligned".to_string(),
+            transcript_label: "TX_ALIGNED".to_string(),
+            strand: "+".to_string(),
+            query_start_0based: 0,
+            query_end_0based_exclusive: 8,
+            target_start_1based: 101,
+            target_end_1based: 108,
+            score: 75,
+            identity_fraction: 0.95,
+            query_coverage_fraction: 0.95,
+            ..RnaReadMappingHit::default()
+        }),
+        ..RnaReadInterpretationHit::default()
+    };
+    let unaligned_seed_heavy = RnaReadInterpretationHit {
+        record_index: 1,
+        header_id: "seed_heavy_unaligned".to_string(),
+        sequence: "ACGTACGT".to_string(),
+        read_length_bp: 8,
+        tested_kmers: 6,
+        matched_kmers: 6,
+        seed_hit_fraction: 1.0,
+        weighted_seed_hit_fraction: 1.0,
+        weighted_matched_kmers: 6.0,
+        passed_seed_filter: true,
+        best_mapping: None,
+        ..RnaReadInterpretationHit::default()
+    };
+    let mut hits = vec![unaligned_seed_heavy, aligned];
+    GentleEngine::sort_rna_read_hits_by_retention_rank(&mut hits);
+    assert_eq!(hits[0].header_id, "aligned_read");
+    assert_eq!(hits[1].header_id, "seed_heavy_unaligned");
+}
+
+#[test]
+fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
+    let mut engine = GentleEngine::default();
+    let report = RnaReadInterpretationReport {
+        schema: "gentle.rna_read_report.v1".to_string(),
+        report_id: "rna_reads_alignment_rank".to_string(),
+        seq_id: "seq_alignment".to_string(),
+        align_config: RnaReadAlignConfig {
+            min_identity_fraction: 0.6,
+            max_secondary_mappings: 0,
+            ..RnaReadAlignConfig::default()
+        },
+        hits: vec![
+            RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "aligned_hi_id".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 8,
+                seed_hit_fraction: 0.88,
+                weighted_seed_hit_fraction: 0.82,
+                weighted_matched_kmers: 7.4,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_id: "tx_hi_id".to_string(),
+                    transcript_label: "TX_HI_ID".to_string(),
+                    strand: "+".to_string(),
+                    query_start_0based: 0,
+                    query_end_0based_exclusive: 12,
+                    target_start_1based: 201,
+                    target_end_1based: 212,
+                    score: 150,
+                    identity_fraction: 0.98,
+                    query_coverage_fraction: 0.72,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                record_index: 1,
+                header_id: "aligned_hi_cov".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 3,
+                seed_hit_fraction: 0.33,
+                weighted_seed_hit_fraction: 0.27,
+                weighted_matched_kmers: 2.5,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_id: "tx_hi_cov".to_string(),
+                    transcript_label: "TX_HI_COV".to_string(),
+                    strand: "+".to_string(),
+                    query_start_0based: 0,
+                    query_end_0based_exclusive: 12,
+                    target_start_1based: 301,
+                    target_end_1based: 312,
+                    score: 90,
+                    identity_fraction: 0.84,
+                    query_coverage_fraction: 0.96,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                record_index: 2,
+                header_id: "seed_only".to_string(),
+                sequence: "ACGTACGTACGT".to_string(),
+                read_length_bp: 12,
+                tested_kmers: 9,
+                matched_kmers: 9,
+                seed_hit_fraction: 1.0,
+                weighted_seed_hit_fraction: 1.0,
+                weighted_matched_kmers: 9.0,
+                passed_seed_filter: true,
+                best_mapping: None,
+                ..RnaReadInterpretationHit::default()
+            },
+        ],
+        ..RnaReadInterpretationReport::default()
+    };
+    engine
+        .upsert_rna_read_report(report)
+        .expect("upsert synthetic RNA-read report");
+
+    let inspection = engine
+        .inspect_rna_read_alignments("rna_reads_alignment_rank", RnaReadHitSelection::All, 10)
+        .expect("inspect alignment rows");
+    assert_eq!(inspection.aligned_count, 2);
+    assert_eq!(inspection.row_count, 2);
+    assert_eq!(inspection.rows[0].rank, 1);
+    assert_eq!(inspection.rows[0].header_id, "aligned_hi_cov");
+    assert_eq!(inspection.rows[1].rank, 2);
+    assert_eq!(inspection.rows[1].header_id, "aligned_hi_id");
+
+    let td = tempdir().expect("tempdir");
+    let svg_path = td.path().join("alignment_dotplot.svg");
+    let export = engine
+        .export_rna_read_alignment_dotplot_svg(
+            "rna_reads_alignment_rank",
+            svg_path.to_str().expect("svg path"),
+            RnaReadHitSelection::All,
+            1,
+        )
+        .expect("export alignment dotplot svg");
+    assert_eq!(export.point_count, 2);
+    assert_eq!(export.rendered_point_count, 1);
+    let svg_text = fs::read_to_string(&svg_path).expect("read alignment dotplot svg");
+    assert!(svg_text.contains("alignment dotplot"));
+    assert!(svg_text.contains("rendered_points=1"));
+    assert!(svg_text.contains("total_points=2"));
+}
+
+#[test]
 fn test_interpret_rna_reads_populates_exon_and_junction_support_frequencies() {
     let mut state = ProjectState::default();
     state

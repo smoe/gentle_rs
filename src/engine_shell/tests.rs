@@ -7677,6 +7677,17 @@ fn parse_rna_reads_commands() {
         ShellCommand::RnaReadsShowReport { report_id } if report_id == "tp73_reads"
     ));
 
+    let inspect =
+        parse_shell_line("rna-reads inspect-alignments tp73_reads --selection aligned --limit 25")
+            .expect("parse rna-reads inspect-alignments");
+    assert!(matches!(
+        inspect,
+        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit }
+            if report_id == "tp73_reads"
+                && selection == RnaReadHitSelection::Aligned
+                && limit == 25
+    ));
+
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
         .expect("parse rna-reads export-report");
     assert!(matches!(
@@ -7738,6 +7749,23 @@ fn parse_rna_reads_commands() {
             if report_id == "tp73_reads"
                 && path == "score_density.svg"
                 && scale == RnaReadScoreDensityScale::Linear
+    ));
+
+    let export_alignment_dotplot = parse_shell_line(
+        "rna-reads export-alignment-dotplot-svg tp73_reads alignment_dotplot.svg --selection aligned --max-points 500",
+    )
+    .expect("parse rna-reads export-alignment-dotplot-svg");
+    assert!(matches!(
+        export_alignment_dotplot,
+        ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id,
+            path,
+            selection,
+            max_points
+        } if report_id == "tp73_reads"
+            && path == "alignment_dotplot.svg"
+            && selection == RnaReadHitSelection::Aligned
+            && max_points == 500
     ));
 
     let align = parse_shell_line(
@@ -8144,6 +8172,24 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene"))
     );
 
+    let inspected = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInspectAlignments {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: 10,
+        },
+    )
+    .expect("inspect rna-read alignments");
+    assert_eq!(
+        inspected.output["inspection"]["report_id"].as_str(),
+        Some(report_id.as_str())
+    );
+    assert_eq!(
+        inspected.output["inspection"]["selection"].as_str(),
+        Some("aligned")
+    );
+
     let exported_report = fasta_dir.path().join("report.json");
     let export_result = execute_shell_command(
         &mut engine,
@@ -8245,6 +8291,26 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     let density_text = fs::read_to_string(exported_density_svg).expect("read density svg");
     assert!(density_text.contains("<svg"));
     assert!(density_text.contains("seed-hit score density"));
+
+    let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
+    let export_alignment_dotplot_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_alignment_dotplot_svg.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            max_points: 1_000,
+        },
+    )
+    .expect("export rna-read alignment dotplot svg");
+    assert_eq!(
+        export_alignment_dotplot_result.output["selection"].as_str(),
+        Some("aligned")
+    );
+    let alignment_dotplot_text =
+        fs::read_to_string(exported_alignment_dotplot_svg).expect("read alignment dotplot svg");
+    assert!(alignment_dotplot_text.contains("<svg"));
+    assert!(alignment_dotplot_text.contains("alignment dotplot"));
 }
 
 #[test]

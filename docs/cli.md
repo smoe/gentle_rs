@@ -198,16 +198,19 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads align-report`
   - `rna-reads list-reports`
   - `rna-reads show-report`
+  - `rna-reads inspect-alignments`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
+  - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
   `ListRnaReadReports`, `ShowRnaReadReport`, `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
   `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`,
-  `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadScoreDensitySvg`.
+  `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`, and
+  `ExportRnaReadAlignmentDotplotSvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
@@ -215,10 +218,15 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `align-report`: retained-hit alignment pass (phase-2) that updates
     mapping fields, MSA-eligibility counters, exon-transition rows, and
-    exon/junction abundance frequencies in the persisted report.
+    exon/junction abundance frequencies in the persisted report; retained hits
+    are re-ranked by alignment-aware retention rank after alignment.
     - supports explicit row filtering via
       `--record-indices i,j,k` (0-based stored `record_index` values);
       when provided, this overrides `--selection`.
+  - `inspect-alignments`: non-mutating ranked alignment inspection
+    (`--selection` + `--limit`) over persisted report hits.
+  - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
+    (coverage vs identity, score-colored points) for aligned report hits.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.
 - `gentle_lua`: baseline support via `apply_operation` for the same operation
@@ -989,14 +997,23 @@ Shared shell command:
     - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
+    - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+    - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
+    - `rna-reads align-report` re-ranks retained hits by alignment-aware
+      retention rank after mapping refresh.
+    - `rna-reads inspect-alignments` returns ranked aligned rows suitable for
+      read-level inspection without mutating report payloads.
+    - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
+      scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path
       annotations:
       - `exon_path_tx=<transcript_id|none>`
