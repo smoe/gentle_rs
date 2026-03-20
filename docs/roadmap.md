@@ -1267,7 +1267,9 @@ Status (2026-03-20): metadata schema extension + shared `routines explain` /
 Assistant baseline is implemented; decision-trace export wiring now includes
 deterministic run-bundle inclusion plus `disambiguation_questions_presented`,
 `disambiguation_answers`, and ordered `preflight_history` capture from GUI
-Routine Assistant flows (including explicit compare-stage answer entry).
+Routine Assistant flows (including explicit compare-stage answer entry), with
+deterministic lifecycle tests now covering `preflight_failed`,
+`execution_failed`, and `aborted` trace statuses.
 
 1. Metadata contract extension (`assets/cloning_routines.json`)
 - Add additive explanation fields for routine-selection clarity:

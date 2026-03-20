@@ -13542,6 +13542,7 @@ Error: `{err}`"
         if !self.show_routine_assistant_dialog {
             return;
         }
+        let was_open = self.show_routine_assistant_dialog;
         let mut open = self.show_routine_assistant_dialog;
         let builder = egui::ViewportBuilder::default()
             .with_title("Routine Assistant")
@@ -13571,6 +13572,9 @@ Error: `{err}`"
         );
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
+        }
+        if was_open && !open {
+            self.maybe_mark_routine_assistant_trace_aborted();
         }
         self.show_routine_assistant_dialog = open;
     }
@@ -27475,6 +27479,59 @@ mod tests {
             !app.routine_assistant_disambiguation_answers
                 .contains_key("stale_question")
         );
+    }
+
+    #[test]
+    fn maybe_mark_routine_assistant_trace_aborted_marks_non_terminal_trace() {
+        let mut app = GENtleApp::default();
+        app.ensure_routine_assistant_decision_trace_started();
+        app.update_routine_assistant_decision_trace(|trace| {
+            trace.status = "draft".to_string();
+        });
+
+        app.maybe_mark_routine_assistant_trace_aborted();
+
+        let trace = app
+            .routine_assistant_decision_trace
+            .as_ref()
+            .expect("active trace");
+        assert_eq!(trace.status, "aborted");
+        let store = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(ROUTINE_DECISION_TRACES_METADATA_KEY)
+            .cloned()
+            .expect("trace store metadata");
+        let traces = store
+            .get("traces")
+            .and_then(|value| value.as_array())
+            .expect("trace rows");
+        assert_eq!(
+            traces[0].get("status").and_then(|value| value.as_str()),
+            Some("aborted")
+        );
+    }
+
+    #[test]
+    fn maybe_mark_routine_assistant_trace_aborted_preserves_terminal_statuses() {
+        for terminal in ["executed", "execution_failed", "aborted", "exported"] {
+            let mut app = GENtleApp::default();
+            app.ensure_routine_assistant_decision_trace_started();
+            app.update_routine_assistant_decision_trace(|trace| {
+                trace.status = terminal.to_string();
+            });
+
+            app.maybe_mark_routine_assistant_trace_aborted();
+
+            let trace = app
+                .routine_assistant_decision_trace
+                .as_ref()
+                .expect("active trace");
+            assert_eq!(trace.status, terminal);
+        }
     }
 
     #[test]

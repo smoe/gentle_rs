@@ -4638,6 +4638,114 @@ fn test_export_process_run_bundle_operation() {
 }
 
 #[test]
+fn test_export_process_run_bundle_decision_trace_partial_statuses_and_ordering() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), seq("ATGCCA"));
+    state.metadata.insert(
+        ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
+        serde_json::to_value(RoutineDecisionTraceStore {
+            schema: ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
+            traces: vec![
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_z".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "execution_failed".to_string(),
+                    created_at_unix_ms: 30,
+                    updated_at_unix_ms: 31,
+                    disambiguation_answers: vec![
+                        RoutineDecisionTraceDisambiguationAnswer {
+                            question_id: "question_b".to_string(),
+                            answer_text: "answer b".to_string(),
+                        },
+                        RoutineDecisionTraceDisambiguationAnswer {
+                            question_id: "question_a".to_string(),
+                            answer_text: "answer a".to_string(),
+                        },
+                    ],
+                    ..RoutineDecisionTrace::default()
+                },
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_a".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "preflight_failed".to_string(),
+                    created_at_unix_ms: 10,
+                    updated_at_unix_ms: 11,
+                    preflight_history: vec![RoutineDecisionTracePreflightSnapshot {
+                        can_execute: false,
+                        warnings: vec![],
+                        errors: vec!["missing sequence".to_string()],
+                        contract_source: Some("routine_catalog".to_string()),
+                    }],
+                    preflight_snapshot: None,
+                    ..RoutineDecisionTrace::default()
+                },
+                RoutineDecisionTrace {
+                    schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
+                    trace_id: "trace_m".to_string(),
+                    source: "gui_routine_assistant".to_string(),
+                    status: "aborted".to_string(),
+                    created_at_unix_ms: 10,
+                    updated_at_unix_ms: 12,
+                    ..RoutineDecisionTrace::default()
+                },
+            ],
+        })
+        .expect("trace store json"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::Reverse {
+            input: "s".to_string(),
+            output_id: Some("s_rev".to_string()),
+        })
+        .expect("reverse");
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("run.bundle.partial_traces.json");
+    let path_text = path.display().to_string();
+    let export = engine
+        .apply(Operation::ExportProcessRunBundle {
+            path: path_text.clone(),
+            run_id: Some("interactive".to_string()),
+        })
+        .expect("export run bundle");
+    assert!(
+        export
+            .messages
+            .iter()
+            .any(|line| line.contains("process run bundle"))
+    );
+
+    let text = std::fs::read_to_string(path_text).expect("read bundle");
+    let bundle: ProcessRunBundleExport =
+        serde_json::from_str(&text).expect("parse run bundle json");
+    assert_eq!(bundle.decision_traces.len(), 3);
+    assert_eq!(bundle.decision_traces[0].trace_id, "trace_a");
+    assert_eq!(bundle.decision_traces[0].status, "preflight_failed");
+    assert_eq!(bundle.decision_traces[1].trace_id, "trace_m");
+    assert_eq!(bundle.decision_traces[1].status, "aborted");
+    assert_eq!(bundle.decision_traces[2].trace_id, "trace_z");
+    assert_eq!(bundle.decision_traces[2].status, "execution_failed");
+    assert_eq!(
+        bundle.decision_traces[0]
+            .preflight_snapshot
+            .as_ref()
+            .expect("preflight snapshot from history")
+            .errors,
+        vec!["missing sequence".to_string()]
+    );
+    assert_eq!(
+        bundle.decision_traces[2]
+            .disambiguation_answers
+            .iter()
+            .map(|row| row.question_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["question_a", "question_b"]
+    );
+}
+
+#[test]
 fn test_export_process_run_bundle_run_id_not_found_fails() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
