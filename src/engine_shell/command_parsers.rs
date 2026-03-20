@@ -1613,6 +1613,16 @@ pub(super) fn parse_flexibility_model(raw: &str) -> Result<FlexibilityModel, Str
     }
 }
 
+pub(super) fn parse_pairwise_alignment_mode(raw: &str) -> Result<PairwiseAlignmentMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "global" => Ok(PairwiseAlignmentMode::Global),
+        "local" => Ok(PairwiseAlignmentMode::Local),
+        other => Err(format!(
+            "Unsupported alignment mode '{other}', expected global or local"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_read_profile(raw: &str) -> Result<RnaReadInterpretationProfile, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "nanopore_cdna_v1" | "nanopore" | "nanopore_cdna" => {
@@ -2115,6 +2125,199 @@ pub(super) fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, Stri
         }
         other => Err(format!(
             "Unknown flex subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
+pub(super) fn parse_splicing_refs_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("splicing-refs requires a subcommand: derive".to_string());
+    }
+    match tokens[1].as_str() {
+        "derive" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "splicing-refs derive requires SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("splicing-refs derive SEQ_ID must not be empty".to_string());
+            }
+            let span_start_0based = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid START_0BASED '{}' for splicing-refs derive: {e}",
+                    tokens[3]
+                )
+            })?;
+            let span_end_0based = tokens[4].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid END_0BASED '{}' for splicing-refs derive: {e}",
+                    tokens[4]
+                )
+            })?;
+            let mut seed_feature_id: Option<usize> = None;
+            let mut scope = SplicingScopePreset::TargetGroupTargetStrand;
+            let mut output_prefix: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seed-feature-id" | "--seed-feature" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "splicing-refs derive")?;
+                        seed_feature_id = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for splicing-refs derive: {e}")
+                        })?);
+                    }
+                    "--scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--scope", "splicing-refs derive")?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--output-prefix" | "--prefix" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "splicing-refs derive")?;
+                        let trimmed = raw.trim();
+                        output_prefix = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for splicing-refs derive"));
+                    }
+                }
+            }
+            Ok(ShellCommand::SplicingRefsDerive {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id,
+                scope,
+                output_prefix,
+            })
+        }
+        other => Err(format!(
+            "Unknown splicing-refs subcommand '{other}' (expected derive)"
+        )),
+    }
+}
+
+pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("align requires a subcommand: compute".to_string());
+    }
+    match tokens[1].as_str() {
+        "compute" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+                        .to_string(),
+                );
+            }
+            let query_seq_id = tokens[2].trim().to_string();
+            if query_seq_id.is_empty() {
+                return Err("align compute QUERY_SEQ_ID must not be empty".to_string());
+            }
+            let target_seq_id = tokens[3].trim().to_string();
+            if target_seq_id.is_empty() {
+                return Err("align compute TARGET_SEQ_ID must not be empty".to_string());
+            }
+            let mut query_span_start_0based: Option<usize> = None;
+            let mut query_span_end_0based: Option<usize> = None;
+            let mut target_span_start_0based: Option<usize> = None;
+            let mut target_span_end_0based: Option<usize> = None;
+            let mut mode = PairwiseAlignmentMode::Global;
+            let mut match_score = 2i32;
+            let mut mismatch_score = -3i32;
+            let mut gap_open = -5i32;
+            let mut gap_extend = -1i32;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--query-start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-start", "align compute")?;
+                        query_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --query-start value '{raw}' for align compute: {e}")
+                        })?);
+                    }
+                    "--query-end" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-end", "align compute")?;
+                        query_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --query-end value '{raw}' for align compute: {e}")
+                        })?);
+                    }
+                    "--target-start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--target-start", "align compute")?;
+                        target_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --target-start value '{raw}' for align compute: {e}")
+                        })?);
+                    }
+                    "--target-end" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--target-end", "align compute")?;
+                        target_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --target-end value '{raw}' for align compute: {e}")
+                        })?);
+                    }
+                    "--mode" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--mode", "align compute")?;
+                        mode = parse_pairwise_alignment_mode(&raw)?;
+                    }
+                    "--match" | "--match-score" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "align compute")?;
+                        match_score = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for align compute: {e}")
+                        })?;
+                    }
+                    "--mismatch" | "--mismatch-score" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "align compute")?;
+                        mismatch_score = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for align compute: {e}")
+                        })?;
+                    }
+                    "--gap-open" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--gap-open", "align compute")?;
+                        gap_open = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid --gap-open value '{raw}' for align compute: {e}")
+                        })?;
+                    }
+                    "--gap-extend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--gap-extend", "align compute")?;
+                        gap_extend = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid --gap-extend value '{raw}' for align compute: {e}")
+                        })?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for align compute")),
+                }
+            }
+            Ok(ShellCommand::AlignCompute {
+                query_seq_id,
+                target_seq_id,
+                query_span_start_0based,
+                query_span_end_0based,
+                target_span_start_0based,
+                target_span_end_0based,
+                mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+            })
+        }
+        other => Err(format!(
+            "Unknown align subcommand '{other}' (expected compute)"
         )),
     }
 }

@@ -8634,6 +8634,7 @@ Error: `{err}`"
                     &report,
                 )],
                 genome_annotation_projection: None,
+                sequence_alignment: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -24148,6 +24149,62 @@ Error: `{err}`"
                     .filter(|value| !value.is_empty())
                     .unwrap_or("-")
             ),
+            Operation::DeriveSplicingReferences {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id,
+                scope,
+                output_prefix,
+            } => format!(
+                "Derive splicing references: seq_id={}, span={}..{}, seed_feature_id={}, scope={}, output_prefix={}",
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                scope.as_str(),
+                output_prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-")
+            ),
+            Operation::AlignSequences {
+                query_seq_id,
+                target_seq_id,
+                query_span_start_0based,
+                query_span_end_0based,
+                target_span_start_0based,
+                target_span_end_0based,
+                mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+            } => format!(
+                "Align sequences: query={}, target={}, mode={}, query_span={}..{}, target_span={}..{}, scores(match={}, mismatch={}, gap_open={}, gap_extend={})",
+                query_seq_id,
+                target_seq_id,
+                mode.as_str(),
+                query_span_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query_span_end_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                target_span_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                target_span_end_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend
+            ),
             Operation::AnnotateTfbs {
                 seq_id,
                 motifs,
@@ -27036,6 +27093,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 warnings: vec![],
                 messages: vec!["prepare completed quickly".to_string()],
                 genome_annotation_projection: None,
+                sequence_alignment: None,
             }),
         })
         .expect("send prepare done");
@@ -27085,6 +27143,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 warnings: vec![],
                 messages: vec!["Imported 5 BED feature(s)".to_string()],
                 genome_annotation_projection: None,
+                sequence_alignment: None,
             }),
         })
         .expect("send track import done");
@@ -27119,6 +27178,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 warnings: vec![],
                 messages: vec!["Imported 5 BED feature(s)".to_string()],
                 genome_annotation_projection: None,
+                sequence_alignment: None,
             }),
         })
         .expect("send track import done");
@@ -27158,6 +27218,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                     "Projected full annotation exceeded cap and fell back to core".to_string(),
                 ),
             }),
+            sequence_alignment: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

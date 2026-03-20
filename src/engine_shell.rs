@@ -37,14 +37,14 @@ use crate::{
         GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
         LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
         PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
-        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
+        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
+        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
+        PrimerDesignSideConstraint, ProjectState, RenderSvgMode, RnaReadAlignConfig,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor,
+        SplicingScopePreset, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
+        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
@@ -1115,6 +1115,27 @@ pub enum ShellCommand {
     },
     FlexShow {
         track_id: String,
+    },
+    SplicingRefsDerive {
+        seq_id: String,
+        span_start_0based: usize,
+        span_end_0based: usize,
+        seed_feature_id: Option<usize>,
+        scope: SplicingScopePreset,
+        output_prefix: Option<String>,
+    },
+    AlignCompute {
+        query_seq_id: String,
+        target_seq_id: String,
+        query_span_start_0based: Option<usize>,
+        query_span_end_0based: Option<usize>,
+        target_span_start_0based: Option<usize>,
+        target_span_end_0based: Option<usize>,
+        mode: PairwiseAlignmentMode,
+        match_score: i32,
+        mismatch_score: i32,
+        gap_open: i32,
+        gap_extend: i32,
     },
     RnaReadsInterpret {
         seq_id: String,
@@ -5676,6 +5697,62 @@ impl ShellCommand {
             Self::FlexShow { track_id } => {
                 format!("show stored flexibility track '{}'", track_id)
             }
+            Self::SplicingRefsDerive {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id,
+                scope,
+                output_prefix,
+            } => format!(
+                "derive splicing-reference sequences for '{}' (span={}..{}, seed_feature_id={}, scope={}, output_prefix='{}')",
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                seed_feature_id
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                scope.as_str(),
+                output_prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::AlignCompute {
+                query_seq_id,
+                target_seq_id,
+                query_span_start_0based,
+                query_span_end_0based,
+                target_span_start_0based,
+                target_span_end_0based,
+                mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+            } => format!(
+                "compute {} pairwise alignment '{}' vs '{}' (query_span={}..{}, target_span={}..{}, match={}, mismatch={}, gap_open={}, gap_extend={})",
+                mode.as_str(),
+                query_seq_id,
+                target_seq_id,
+                query_span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                query_span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "query_end".to_string()),
+                target_span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                target_span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "target_end".to_string()),
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -5957,6 +6034,7 @@ impl ShellCommand {
                 | Self::TranscriptsDerive { .. }
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
+                | Self::SplicingRefsDerive { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
@@ -7049,8 +7127,8 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if let Some(path) = trimmed.strip_prefix('@') {
         let path = path.trim();
-        let text =
-            fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
+        let text = fs::read_to_string(path)
+            .map_err(|e| format!("Could not read JSON file '{path}': {e}"))?;
         return Ok(strip_shebang_line(&text));
     }
     if trimmed.starts_with('{') || trimmed.starts_with('[') {
@@ -9221,6 +9299,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "dotplot" => parse_dotplot_command(tokens),
         "flex" => parse_flex_command(tokens),
         "transcripts" => parse_transcripts_command(tokens),
+        "splicing-refs" | "splicing_refs" | "splicingrefs" => parse_splicing_refs_command(tokens),
+        "align" => parse_align_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -14245,6 +14325,70 @@ pub fn execute_shell_command_with_options(
                 state_changed: false,
                 output: json!({
                     "track": track,
+                }),
+            }
+        }
+        ShellCommand::SplicingRefsDerive {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            seed_feature_id,
+            scope,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::DeriveSplicingReferences {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    seed_feature_id: *seed_feature_id,
+                    scope: *scope,
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let derived_sequence_ids = op_result.created_seq_ids.clone();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "derived_sequence_ids": derived_sequence_ids,
+                }),
+            }
+        }
+        ShellCommand::AlignCompute {
+            query_seq_id,
+            target_seq_id,
+            query_span_start_0based,
+            query_span_end_0based,
+            target_span_start_0based,
+            target_span_end_0based,
+            mode,
+            match_score,
+            mismatch_score,
+            gap_open,
+            gap_extend,
+        } => {
+            let op_result = engine
+                .apply(Operation::AlignSequences {
+                    query_seq_id: query_seq_id.clone(),
+                    target_seq_id: target_seq_id.clone(),
+                    query_span_start_0based: *query_span_start_0based,
+                    query_span_end_0based: *query_span_end_0based,
+                    target_span_start_0based: *target_span_start_0based,
+                    target_span_end_0based: *target_span_end_0based,
+                    mode: *mode,
+                    match_score: *match_score,
+                    mismatch_score: *mismatch_score,
+                    gap_open: *gap_open,
+                    gap_extend: *gap_extend,
+                })
+                .map_err(|e| e.to_string())?;
+            let alignment = op_result.sequence_alignment.clone();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "alignment": alignment,
                 }),
             }
         }

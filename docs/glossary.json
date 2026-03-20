@@ -1254,6 +1254,37 @@
          "usage": "flex show TRACK_ID"
       },
       {
+         "aliases": [
+            "splicing_refs derive",
+            "splicingrefs derive"
+         ],
+         "engine_operations": [
+            "DeriveSplicingReferences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing-refs derive",
+         "summary": "Derive DNA-window, mRNA-isoform, and exon-reference sequences from one span.",
+         "usage": "splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AlignSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "align compute",
+         "summary": "Compute one deterministic pairwise local/global sequence alignment report.",
+         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InterpretRnaReads"

@@ -167,8 +167,11 @@ Dotplot/flexibility capability status:
   - `render-dotplot-svg`
   - `transcripts derive`
   - `flex compute|list|show`
-  backed by `ComputeDotplot`, `DeriveTranscriptSequences`, and
-  `ComputeFlexibilityTrack` plus `RenderDotplotSvg`.
+  - `splicing-refs derive`
+  - `align compute`
+  backed by `ComputeDotplot`, `DeriveTranscriptSequences`,
+  `ComputeFlexibilityTrack`, `DeriveSplicingReferences`,
+  `AlignSequences`, and `RenderDotplotSvg`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
@@ -178,10 +181,12 @@ Dotplot/flexibility capability status:
     - splicing-scope constrained derivation from one seed feature
       (`--scope ...` with exactly one `--feature-id`)
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`) plus
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`,
+  `DeriveSplicingReferences`, `AlignSequences`) plus
   `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
-  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`) plus
+  `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`,
+  `DeriveSplicingReferences`, `AlignSequences`) plus
   `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
 - `gentle_py`: baseline support via `op(...)` plus
   `render_dotplot_svg(...)` convenience wrapper over `RenderDotplotSvg`.
@@ -978,6 +983,8 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
+    - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+    - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
@@ -1709,6 +1716,19 @@ Extract region (`from` inclusive, `to` exclusive):
 
 ```json
 {"ExtractRegion":{"input":"pgex","from":100,"to":900,"output_id":"insert_candidate"}}
+```
+
+Derive splicing references from a sequence window (DNA window + mRNA isoforms +
+exon-reference):
+
+```json
+{"DeriveSplicingReferences":{"seq_id":"tp73_window","span_start_0based":1200,"span_end_0based":2600,"seed_feature_id":null,"scope":"target_group_target_strand","output_prefix":"tp73_refs"}}
+```
+
+Pairwise sequence alignment (global/local) with structured result payload:
+
+```json
+{"AlignSequences":{"query_seq_id":"tp73_refs_mrna_NM_001204186","target_seq_id":"tp73_refs_exon_reference","mode":"local","match_score":2,"mismatch_score":-3,"gap_open":-5,"gap_extend":-1}}
 ```
 
 Extract anchored region with flexible 5' boundary and fixed anchor side:

@@ -9706,6 +9706,181 @@ fn test_compute_flexibility_track_stores_and_retrieves_track() {
 }
 
 #[test]
+fn test_derive_splicing_references_from_window_without_seed_feature() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::DeriveSplicingReferences {
+            seq_id: "seq_a".to_string(),
+            span_start_0based: 1,
+            span_end_0based: 34,
+            seed_feature_id: None,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            output_prefix: Some("seq_a_splicing_refs".to_string()),
+        })
+        .expect("derive splicing references");
+
+    assert_eq!(result.created_seq_ids.len(), 4);
+    let dna_window_id = result
+        .created_seq_ids
+        .iter()
+        .find(|seq_id| seq_id.ends_with("_dna"))
+        .expect("dna window id");
+    let dna_window = engine
+        .state()
+        .sequences
+        .get(dna_window_id)
+        .expect("dna window sequence");
+    assert_eq!(dna_window.len(), 33);
+    assert!(!dna_window.is_circular());
+
+    let mrna_ids = result
+        .created_seq_ids
+        .iter()
+        .filter(|seq_id| seq_id.contains("_mrna_"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(mrna_ids.len(), 2);
+    let view = engine
+        .build_splicing_expert_view("seq_a", 0, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("splicing view");
+    let source_dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("source sequence");
+    let mut mrna_lengths = vec![];
+    for mrna_id in &mrna_ids {
+        let mrna = engine
+            .state()
+            .sequences
+            .get(mrna_id)
+            .expect("mRNA sequence present");
+        assert!(!mrna.is_circular());
+        mrna_lengths.push(mrna.len());
+    }
+    let mut expected_mrna_lengths = view
+        .transcripts
+        .iter()
+        .map(|lane| {
+            GentleEngine::make_transcript_template(source_dna, lane, 0)
+                .sequence
+                .len()
+        })
+        .collect::<Vec<_>>();
+    mrna_lengths.sort_unstable();
+    expected_mrna_lengths.sort_unstable();
+    assert_eq!(mrna_lengths, expected_mrna_lengths);
+
+    let exon_reference_id = result
+        .created_seq_ids
+        .iter()
+        .find(|seq_id| seq_id.ends_with("_exon_reference"))
+        .expect("exon reference id");
+    let exon_reference = engine
+        .state()
+        .sequences
+        .get(exon_reference_id)
+        .expect("exon reference sequence");
+    let expected_exon_ref_len = view
+        .unique_exons
+        .iter()
+        .map(|exon| exon.end_1based + 1 - exon.start_1based)
+        .sum::<usize>();
+    assert_eq!(exon_reference.len(), expected_exon_ref_len);
+    assert!(!exon_reference.get_forward_string().contains('U'));
+}
+
+#[test]
+fn test_align_sequences_global_sets_structured_result() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence("ACGTTT").expect("query"),
+    );
+    state.sequences.insert(
+        "target".to_string(),
+        DNAsequence::from_sequence("ACGTAT").expect("target"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::AlignSequences {
+            query_seq_id: "query".to_string(),
+            target_seq_id: "target".to_string(),
+            query_span_start_0based: None,
+            query_span_end_0based: None,
+            target_span_start_0based: None,
+            target_span_end_0based: None,
+            mode: PairwiseAlignmentMode::Global,
+            match_score: 2,
+            mismatch_score: -1,
+            gap_open: -5,
+            gap_extend: -1,
+        })
+        .expect("align sequences globally");
+
+    assert!(result.created_seq_ids.is_empty());
+    let report = result
+        .sequence_alignment
+        .expect("structured sequence alignment report");
+    assert_eq!(report.schema, SEQUENCE_ALIGNMENT_REPORT_SCHEMA);
+    assert_eq!(report.mode, PairwiseAlignmentMode::Global);
+    assert_eq!(report.query_seq_id, "query");
+    assert_eq!(report.target_seq_id, "target");
+    assert_eq!(report.matches, 5);
+    assert_eq!(report.mismatches, 1);
+    assert_eq!(report.insertions, 0);
+    assert_eq!(report.deletions, 0);
+    assert_eq!(report.score, 9);
+    assert_eq!(report.cigar, "4=1X1=");
+    assert!((report.identity_fraction - (5.0 / 6.0)).abs() < 1e-9);
+    assert!((report.query_coverage_fraction - 1.0).abs() < 1e-9);
+    assert!((report.target_coverage_fraction - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn test_align_sequences_local_reports_partial_coverage() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence("TTTACGTAA").expect("query"),
+    );
+    state.sequences.insert(
+        "target".to_string(),
+        DNAsequence::from_sequence("GGGACGTCCC").expect("target"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::AlignSequences {
+            query_seq_id: "query".to_string(),
+            target_seq_id: "target".to_string(),
+            query_span_start_0based: None,
+            query_span_end_0based: None,
+            target_span_start_0based: None,
+            target_span_end_0based: None,
+            mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+        })
+        .expect("align sequences locally");
+
+    let report = result
+        .sequence_alignment
+        .expect("structured local alignment report");
+    assert_eq!(report.mode, PairwiseAlignmentMode::Local);
+    assert!(report.matches >= 4);
+    assert!(report.aligned_columns >= 4);
+    assert!(report.query_coverage_fraction < 1.0);
+    assert!(report.target_coverage_fraction < 1.0);
+}
+
+#[test]
 fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
     let td = tempdir().expect("tempdir");
     let fasta_gz = td.path().join("reads.fa.gz");
