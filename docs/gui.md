@@ -455,11 +455,18 @@ Feature tree grouping:
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time
+  - `Evaluate Top Hits (phase-2)` in the same panel runs
+    `AlignRnaReadReport` immediately with the current `align selection`
+    setting, so retained top rows gain mapping metrics without leaving the
+    panel
   - top-read rows include strand assignment diagnostics for the joint
     two-strand run (`strand`, `opp`, `ambig`)
   - top-read rows now also expose origin diagnostics from engine
     classification (`class`, `oconf`, `sconf`) and running class totals are
     shown while processing
+  - once phase-2 alignment runs, top-read rows and FASTA headers also include
+    compact mapping summaries (`align` mode, transcript, strand, target span,
+    identity, query coverage, score, secondary count)
   - top-read rows support FASTA copy paths:
     - checkbox-select one/many rows, then `Copy selected FASTA`
     - `Copy highlighted FASTA` for the active highlighted row

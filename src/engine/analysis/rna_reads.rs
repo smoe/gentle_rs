@@ -2158,6 +2158,44 @@ impl GentleEngine {
         hit: &RnaReadInterpretationHit,
     ) -> RnaReadTopHitPreview {
         let sequence_preview = hit.sequence.chars().take(80).collect::<String>();
+        let (
+            aligned,
+            best_alignment_mode,
+            best_alignment_transcript_id,
+            best_alignment_transcript_label,
+            best_alignment_strand,
+            best_alignment_target_start_1based,
+            best_alignment_target_end_1based,
+            best_alignment_identity_fraction,
+            best_alignment_query_coverage_fraction,
+            best_alignment_score,
+        ) = if let Some(best) = &hit.best_mapping {
+            (
+                true,
+                best.alignment_mode.as_str().to_string(),
+                best.transcript_id.clone(),
+                best.transcript_label.clone(),
+                best.strand.clone(),
+                best.target_start_1based,
+                best.target_end_1based,
+                best.identity_fraction,
+                best.query_coverage_fraction,
+                best.score,
+            )
+        } else {
+            (
+                false,
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                0,
+                0,
+                0.0,
+                0.0,
+                0,
+            )
+        };
         RnaReadTopHitPreview {
             record_index: hit.record_index,
             header_id: hit.header_id.clone(),
@@ -2183,6 +2221,17 @@ impl GentleEngine {
             origin_candidates: hit.origin_candidates.clone(),
             msa_eligible: hit.msa_eligible,
             msa_eligibility_reason: hit.msa_eligibility_reason.clone(),
+            aligned,
+            best_alignment_mode,
+            best_alignment_transcript_id,
+            best_alignment_transcript_label,
+            best_alignment_strand,
+            best_alignment_target_start_1based,
+            best_alignment_target_end_1based,
+            best_alignment_identity_fraction,
+            best_alignment_query_coverage_fraction,
+            best_alignment_score,
+            secondary_mapping_count: hit.secondary_mappings.len(),
             read_length_bp: hit.read_length_bp,
             sequence: hit.sequence.clone(),
             sequence_preview,

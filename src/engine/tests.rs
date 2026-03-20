@@ -9903,6 +9903,77 @@ fn test_rna_read_seed_filter_default_kmer_len_is_10() {
 }
 
 #[test]
+fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
+    let best_mapping = RnaReadMappingHit {
+        alignment_mode: RnaReadAlignmentMode::Semiglobal,
+        transcript_feature_id: 7,
+        transcript_id: "NM_TEST_1".to_string(),
+        transcript_label: "TP73-201".to_string(),
+        strand: "+".to_string(),
+        query_start_0based: 0,
+        query_end_0based_exclusive: 120,
+        target_start_1based: 101,
+        target_end_1based: 220,
+        matches: 114,
+        mismatches: 6,
+        score: 342,
+        identity_fraction: 0.95,
+        query_coverage_fraction: 0.92,
+    };
+    let secondary_mapping = RnaReadMappingHit {
+        alignment_mode: RnaReadAlignmentMode::Local,
+        transcript_feature_id: 8,
+        transcript_id: "NM_TEST_2".to_string(),
+        transcript_label: "TP73-202".to_string(),
+        strand: "+".to_string(),
+        query_start_0based: 4,
+        query_end_0based_exclusive: 104,
+        target_start_1based: 140,
+        target_end_1based: 239,
+        matches: 90,
+        mismatches: 10,
+        score: 210,
+        identity_fraction: 0.90,
+        query_coverage_fraction: 0.83,
+    };
+    let hit = RnaReadInterpretationHit {
+        record_index: 41,
+        header_id: "read_42".to_string(),
+        sequence: "ACGT".repeat(40),
+        read_length_bp: 160,
+        best_mapping: Some(best_mapping),
+        secondary_mappings: vec![secondary_mapping],
+        ..Default::default()
+    };
+
+    let preview = GentleEngine::make_rna_read_top_hit_preview(&hit);
+    assert!(preview.aligned);
+    assert_eq!(preview.best_alignment_mode, "semiglobal");
+    assert_eq!(preview.best_alignment_transcript_id, "NM_TEST_1");
+    assert_eq!(preview.best_alignment_transcript_label, "TP73-201");
+    assert_eq!(preview.best_alignment_strand, "+");
+    assert_eq!(preview.best_alignment_target_start_1based, 101);
+    assert_eq!(preview.best_alignment_target_end_1based, 220);
+    assert!((preview.best_alignment_identity_fraction - 0.95).abs() < f64::EPSILON);
+    assert!((preview.best_alignment_query_coverage_fraction - 0.92).abs() < f64::EPSILON);
+    assert_eq!(preview.best_alignment_score, 342);
+    assert_eq!(preview.secondary_mapping_count, 1);
+
+    let preview_without_mapping =
+        GentleEngine::make_rna_read_top_hit_preview(&RnaReadInterpretationHit::default());
+    assert!(!preview_without_mapping.aligned);
+    assert!(preview_without_mapping.best_alignment_mode.is_empty());
+    assert!(
+        preview_without_mapping
+            .best_alignment_transcript_id
+            .is_empty()
+    );
+    assert_eq!(preview_without_mapping.best_alignment_target_start_1based, 0);
+    assert_eq!(preview_without_mapping.best_alignment_target_end_1based, 0);
+    assert_eq!(preview_without_mapping.secondary_mapping_count, 0);
+}
+
+#[test]
 fn test_interpret_rna_reads_accepts_gzip_fasta_input() {
     let mut state = ProjectState::default();
     state

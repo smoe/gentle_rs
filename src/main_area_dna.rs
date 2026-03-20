@@ -15186,6 +15186,44 @@ impl MainAreaDna {
             .find(|row| row.record_index == selected_index)
     }
 
+    fn rna_top_hit_alignment_summary(row: &RnaReadTopHitPreview) -> String {
+        if !row.aligned {
+            return "none".to_string();
+        }
+        let tx = if row.best_alignment_transcript_id.is_empty() {
+            "unknown".to_string()
+        } else if row.best_alignment_transcript_label.is_empty()
+            || row.best_alignment_transcript_label == row.best_alignment_transcript_id
+        {
+            row.best_alignment_transcript_id.clone()
+        } else {
+            format!(
+                "{}/{}",
+                row.best_alignment_transcript_id, row.best_alignment_transcript_label
+            )
+        };
+        format!(
+            "{} tx={} strand={} t={}-{} id={:.3} cov={:.3} score={} sec={}",
+            if row.best_alignment_mode.is_empty() {
+                "aligned"
+            } else {
+                row.best_alignment_mode.as_str()
+            },
+            tx,
+            if row.best_alignment_strand.is_empty() {
+                "na"
+            } else {
+                row.best_alignment_strand.as_str()
+            },
+            row.best_alignment_target_start_1based,
+            row.best_alignment_target_end_1based,
+            row.best_alignment_identity_fraction,
+            row.best_alignment_query_coverage_fraction,
+            row.best_alignment_score,
+            row.secondary_mapping_count
+        )
+    }
+
     fn format_rna_top_hit_preview_fasta_entry(row: &RnaReadTopHitPreview) -> String {
         let header_id = row.header_id.trim().replace(['\n', '\r', '\t'], " ");
         let gap_median = if row.seed_transcript_gap_count == 0 {
@@ -15193,8 +15231,9 @@ impl MainAreaDna {
         } else {
             format!("{:.2}", row.seed_median_transcript_gap)
         };
+        let alignment_summary = Self::rna_top_hit_alignment_summary(row).replace(' ', "_");
         format!(
-            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa_eligible={} msa_reason={} len={}\n{}",
+            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa_eligible={} msa_reason={} align={} len={}\n{}",
             row.record_index + 1,
             row.seed_hit_fraction,
             row.weighted_seed_hit_fraction,
@@ -15224,6 +15263,7 @@ impl MainAreaDna {
             row.reverse_complement_applied,
             row.msa_eligible,
             row.msa_eligibility_reason.trim(),
+            alignment_summary,
             row.read_length_bp,
             row.sequence,
         )
@@ -16619,8 +16659,9 @@ impl MainAreaDna {
                 max_seed_occurrence
             ));
             if let Some(selected) = selected_top_hit {
+                let alignment_summary = Self::rna_top_hit_alignment_summary(selected);
                 ui.small(format!(
-                    "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms | score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2}",
+                    "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms | score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} align={}",
                     selected.record_index + 1,
                     selected_supported_positions,
                     selected_supported_pixel_buckets.len(),
@@ -16643,6 +16684,7 @@ impl MainAreaDna {
                     selected.origin_class.as_str(),
                     selected.origin_confidence,
                     selected.strand_confidence,
+                    alignment_summary,
                 ));
             } else {
                 ui.small("Select one of the best-performing reads to light supported hash positions in green.");
@@ -17037,6 +17079,20 @@ impl MainAreaDna {
                     if ui.button("Clear highlight").clicked() {
                         next_selection = Some(None);
                     }
+                    if ui
+                        .add_enabled(
+                            self.rna_read_task.is_none(),
+                            egui::Button::new("Evaluate Top Hits (phase-2)"),
+                        )
+                        .on_hover_text(format!(
+                            "Runs AlignRnaReadReport for report '{}' using current align selection '{}', then refreshes top-hit alignment columns.",
+                            self.rna_reads_ui.report_id.trim(),
+                            self.rna_reads_ui.align_phase_selection.as_str()
+                        ))
+                        .clicked()
+                    {
+                        self.run_splicing_rna_read_alignment_phase();
+                    }
                     let selected_count = self.rna_seed_selected_record_indices.len();
                     if ui
                         .button(format!("Copy selected FASTA ({selected_count})"))
@@ -17096,8 +17152,9 @@ impl MainAreaDna {
                                     } else {
                                         (row.sequence.as_str(), false)
                                     };
+                                    let alignment_summary = Self::rna_top_hit_alignment_summary(row);
                                     let response = ui.selectable_label(selected, format!(
-                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} len={} seq={}{}",
+                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} align={} len={} seq={}{}",
                                         row.record_index + 1,
                                         row.header_id,
                                         row.seed_hit_fraction,
@@ -17123,6 +17180,7 @@ impl MainAreaDna {
                                         row.passed_seed_filter,
                                         row.reverse_complement_applied,
                                         row.msa_eligible,
+                                        alignment_summary,
                                         row.read_length_bp,
                                         sequence_text,
                                         if truncated { "...[cut@5000]" } else { "" },

@@ -5264,6 +5264,28 @@ pub struct RnaReadTopHitPreview {
     pub msa_eligible: bool,
     #[serde(default)]
     pub msa_eligibility_reason: String,
+    #[serde(default)]
+    pub aligned: bool,
+    #[serde(default)]
+    pub best_alignment_mode: String,
+    #[serde(default)]
+    pub best_alignment_transcript_id: String,
+    #[serde(default)]
+    pub best_alignment_transcript_label: String,
+    #[serde(default)]
+    pub best_alignment_strand: String,
+    #[serde(default)]
+    pub best_alignment_target_start_1based: usize,
+    #[serde(default)]
+    pub best_alignment_target_end_1based: usize,
+    #[serde(default)]
+    pub best_alignment_identity_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_query_coverage_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_score: isize,
+    #[serde(default)]
+    pub secondary_mapping_count: usize,
     pub read_length_bp: usize,
     pub sequence: String,
     pub sequence_preview: String,
