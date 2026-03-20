@@ -697,6 +697,60 @@
         "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
         "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
       ]
+    },
+    {
+      "id": "pcr_selection_batch_primer_pairs_offline",
+      "order": 13,
+      "title": "Selection-first PCR batch primer design (offline)",
+      "example_id": "pcr_selection_batch_primer_pairs_offline",
+      "tier": "core",
+      "summary": "Queue multiple ROIs from one template and run deterministic primer-pair reports with optional extracted-region artifacts.",
+      "narrative": "Regular PCR planning often starts from visual selections in the DNA window rather than manual coordinate typing. This chapter focuses that selection-first workflow: choose two regions, optionally materialize extracted-region copies for downstream handoff, and run one primer-design report per region with deterministic naming (`..._r01`, `..._r02`).",
+      "use_cases": [
+        "You want to design primer pairs for several selected regions without retyping ROI coordinates.",
+        "You need copied sequence artifacts for each PCR target before forwarding to other workflows.",
+        "You want deterministic report IDs for review and export."
+      ],
+      "gui_steps": [
+        "Load `test_files/pGEX_3X.fa` and open `Engine Ops -> Primer and qPCR design reports`.",
+        "Use DNA-window `PCR ROI` actions to add current selection and selected features to the PCR region queue.",
+        "In `Design primer pairs`, set shared constraints once and run `Design Primer Pairs for queued regions`.",
+        "Optionally enable `Also create extracted region copies`, then export one generated report via `Export report_id...`."
+      ],
+      "learning_objectives": [
+        "Use DNA-window selections as first-class PCR queue inputs.",
+        "Run deterministic multi-region primer design in one batch action.",
+        "Understand optional extraction-copy artifacts as downstream handoff objects."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "DesignPrimerPairs.report_id base",
+          "where_used": "batch execution in Design primer pairs form",
+          "why_it_matters": "Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.",
+          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_promoter_batch`)."
+        },
+        {
+          "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
+          "where_used": "batch execution in Design primer pairs form",
+          "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
+          "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- shell 'primers list-reports'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Two primer reports are created with deterministic `_r01`/`_r02` suffixes.",
+        "Optional extracted-region copy artifacts are created when the queue toggle is enabled.",
+        "At least one report can be exported from GUI report helpers without manual JSON editing."
+      ]
     }
   ]
 }

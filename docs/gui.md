@@ -628,11 +628,13 @@ Controls:
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
 15. PCR ROI
-   - `PCR ROI` menu seeds Primer/qPCR design ROI fields directly from:
-     - current map/text selection
-     - selected feature bounds
-   - opens Engine Ops so the user can run `Design Primer Pairs` or
-     `Design qPCR Assays`.
+   - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
+     - seed Primer/qPCR ROI from current map/text selection
+     - add current map/text selection to PCR region queue
+     - seed Primer/qPCR ROI from selected feature bounds
+     - add selected feature(s) to PCR region queue (one queued row per feature)
+   - opens Engine Ops so the user can run `Design Primer Pairs`,
+     queue batch execution, or `Design qPCR Assays`.
 16. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
@@ -1374,6 +1376,15 @@ Primer pairs form:
   - `fixed amplicon start`
   - `fixed amplicon end (exclusive)`
   - required/forbidden amplicon motifs
+- PCR region queue block:
+  - row source + template + `start/end/len` columns
+  - `Use ROI` per row to copy queued coordinates back into active ROI fields
+  - `Remove` per row and `Clear queue`
+  - batch toggle: `Also create extracted region copies`
+  - batch run: `Design Primer Pairs for queued regions`
+    - runs one `DesignPrimerPairs` operation per queued row
+    - report IDs derive from current primer `report_id` base with `_rNN` suffix
+    - optional copy mode emits one `ExtractRegion` artifact per queued row
 
 qPCR form:
 
@@ -1386,6 +1397,7 @@ qPCR form:
 Buttons:
 
 - `Design Primer Pairs`
+- `Design Primer Pairs for queued regions`
 - `Design qPCR Assays`
 - primer-report helpers (uses current primer `report_id` field):
   - `List Primer Reports`

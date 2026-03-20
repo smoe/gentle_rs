@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 12,
+  "chapter_count": 13,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -20,24 +20,26 @@
     "chapters/10_tp53_isoform_architecture_online.md",
     "chapters/11_tp63_anchor_extension_online.md",
     "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "da7516cd5bd8e8aab2374a0196863d02aad32d2e",
+    "README.md": "7ddb67ab77a9be5b1c81f54c5d2333060bb57461",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "719718f09ac94cae3d1372c5cd911e5b4ce63c68",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "30a5fd936165b7bfa1fb9ff1b7da7d414f13dd40",
-    "chapters/03_load_and_digest_pgex.md": "95e5d81bb5a902641af58f7f2d2d303ed1fc7067",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "e622f2e24ccbcfb8408eada536aa61e9915b1057",
-    "chapters/05_guides_filter_and_generate_oligos.md": "248a93083c0997301407688174ef24d0bf950b45",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "b7af38fb8f4ce4a12a08d7caa89baea326d827ed",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "2e72212200a68540e6a615ae807b539572d44e50",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "f9bf9375843c489f945ffa8a0637e63c0231a1db",
+    "chapters/03_load_and_digest_pgex.md": "aa09282704849f653c750fd39ec9fa642e994707",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "0647c5278bf129bef3173c8227a3eb0a5ce686ef",
+    "chapters/05_guides_filter_and_generate_oligos.md": "97742b9e8d8c5ba6cc7a0f7494a60636ed6c1d86",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "e6c662e7fbee89d2e184af81c3ca4ed3e06ab59e",
     "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "dcb2d2fcd968a77e5c6fb08841b4b334c2ed9c1e",
-    "chapters/09_prepare_reference_genome_online.md": "28b22133850348cb3652c79bfae8b8af130d0ed0",
-    "chapters/10_tp53_isoform_architecture_online.md": "21d60006475a6bd5cf586d6fbcbac02fa7a3dafc",
-    "chapters/11_tp63_anchor_extension_online.md": "30d6300a9459990cf3fcd35d936b6090990f0765",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "536c2057e7c551048508f2b65a39c6e2e22b7c92"
+    "chapters/08_contribute_to_gentle_development.md": "a7f95a2118859f86dfe24bf2112a02bec01dab77",
+    "chapters/09_prepare_reference_genome_online.md": "c8b0783254cd34c9d03fbcf67a46427048a09dae",
+    "chapters/10_tp53_isoform_architecture_online.md": "e7bf3eccc7d39858fb1b179400ad45d4bf472661",
+    "chapters/11_tp63_anchor_extension_online.md": "e5ccc33736c774f576700f43ff1a445307058e51",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "55718af29675730dd1e66262f47f3aa8d4a498f7",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "3c6a0237a1f841342cad99fc0240e0c17457839a"
   },
   "chapters": [
     {
@@ -222,6 +224,21 @@
         "online_opt_in"
       ],
       "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "pcr_selection_batch_primer_pairs_offline",
+      "order": 13,
+      "title": "Selection-first PCR batch primer design (offline)",
+      "tier": "core",
+      "example_id": "pcr_selection_batch_primer_pairs_offline",
+      "example_source": "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
       "retained_artifacts": []
     }
   ]
