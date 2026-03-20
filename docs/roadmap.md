@@ -282,6 +282,8 @@ order. Durable architecture constraints and decisions remain in
     - batch run action `Design Primer Pairs for queued regions`
     - deterministic batch report suffixing (`{base}_rNN`)
     - optional per-region `ExtractRegion` copy artifacts
+    - batch-results table with per-region status and quick actions:
+      `Show` / `Export` / `Open` (copy-first fallback to template)
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`

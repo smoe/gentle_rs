@@ -1385,6 +1385,13 @@ Primer pairs form:
     - runs one `DesignPrimerPairs` operation per queued row
     - report IDs derive from current primer `report_id` base with `_rNN` suffix
     - optional copy mode emits one `ExtractRegion` artifact per queued row
+- PCR batch results block:
+  - one row per queued-region run with status, region coordinates, report ID, and optional copy ID
+  - quick actions per row:
+    - `Show` (report summary)
+    - `Export` (report JSON)
+    - `Open` (opens extracted copy when present, otherwise template)
+  - `Clear results` removes recorded batch rows without deleting persisted reports
 
 qPCR form:
 
