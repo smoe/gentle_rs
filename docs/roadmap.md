@@ -1518,8 +1518,8 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     preflight overlap diagnostics.
   - next: one-insert, multi-insert, circularize-fragment workflows.
   - destination-first planning model drafted as
-    `gentle.gibson_assembly_plan.v1` with canonical example under
-    `docs/examples/plans/`.
+    `gentle.gibson_assembly_plan.v1` with canonical single-insert and
+    multi-insert examples under `docs/examples/plans/`.
   - extend the protocol-cartoon baseline from `gibson.two_fragment` to
     multi-fragment Gibson assembly, including circular assembled products and
     canonical template/binding support for the generated explanatory strip.

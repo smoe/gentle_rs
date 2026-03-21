@@ -21,8 +21,9 @@ syntax.
 
 - Draft, non-executable planning/design artifacts may live outside
   `docs/examples/workflows/`.
-- Current draft resource example:
+- Current draft resource examples:
   - `docs/examples/plans/gibson_destination_first_single_insert.json`
+  - `docs/examples/plans/gibson_destination_first_multi_insert.json`
   - schema: `gentle.gibson_assembly_plan.v1`
 - These files are documentation resources for protocol/data-model design and
   are not yet executed by workflow-example tests.

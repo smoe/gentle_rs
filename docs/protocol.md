@@ -101,9 +101,10 @@ Status:
 - draft schema and documentation artifact only
 - not yet accepted by a direct engine operation in this release
 
-Canonical example:
+Canonical examples:
 
 - `docs/examples/plans/gibson_destination_first_single_insert.json`
+- `docs/examples/plans/gibson_destination_first_multi_insert.json`
 
 Top-level structure:
 
@@ -159,6 +160,34 @@ Design intent:
   - workflow/macro instantiation
   - factual protocol-cartoon generation
   - reproducible AI-facing project context
+
+Normalization/derivation phases:
+
+1. Resolve the destination opening into explicit `dest_left` / `dest_right`
+   terminal context.
+2. Normalize `assembly_order[]` into one adjacency chain.
+3. Materialize one `junction` per adjacent pair in that chain.
+4. Derive required overlap sequences from destination flanks and/or adjacent
+   fragment termini.
+5. Detect whether each fragment end already satisfies its required overlap or
+   requires adaptation (for example primer-added tails).
+6. Run hard validation and advisory design checks.
+7. Expose derived overlaps, primer-tail suggestions, and cartoon-ready event
+   semantics through `derived_design`.
+
+Current invariants for the draft model:
+
+- `assembly_order[]` defines the intended adjacency order explicitly.
+- `junctions[]` should cover every adjacent pair in `assembly_order[]`.
+- terminal junctions are the ones adjacent to the opened destination ends.
+- terminal junction distinctness is a hard validation rule for opened
+  destination-vector Gibson plans.
+- destination-opening uniqueness is a hard validation rule.
+- broader destination/fragment/genome uniqueness checks are advisory unless a
+  stricter policy is requested.
+- `derived_design` may contain unresolved/null sequences at pure planning time;
+  this allows the same schema to exist before sequence extraction or primer
+  design has been run.
 
 ## Core entities
 
