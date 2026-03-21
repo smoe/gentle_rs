@@ -42,4 +42,6 @@ be adapted to the actual parameters of a concrete cloning routine.
 - Protocol: [`docs/protocol.md`](docs/protocol.md)
 - GUI manual: [`docs/gui.md`](docs/gui.md)
 - CLI manual: [`docs/cli.md`](docs/cli.md)
+- Tutorial hub: [`docs/tutorial/generated/README.md`](docs/tutorial/generated/README.md)
+- Additional walkthroughs: [`docs/tutorial/`](docs/tutorial/) and [`docs/agent_interfaces_tutorial.md`](docs/agent_interfaces_tutorial.md)
 - Acknowledgements: [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)
