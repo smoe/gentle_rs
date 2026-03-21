@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
+use crate::test_support::decision_trace_fixture_state;
 use gb_io::seq::{Feature, FeatureKind, Location};
 use std::fs;
 #[cfg(unix)]
@@ -55,52 +56,6 @@ fn primer3_fixture_path(name: &str) -> String {
         "{}/test_files/fixtures/primer3/{name}",
         env!("CARGO_MANIFEST_DIR")
     )
-}
-
-fn decision_trace_fixture_state() -> ProjectState {
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "s".to_string(),
-        DNAsequence::from_sequence("ATGCCA").expect("sequence"),
-    );
-    state.metadata.insert(
-        crate::engine::ROUTINE_DECISION_TRACES_METADATA_KEY.to_string(),
-        serde_json::to_value(crate::engine::RoutineDecisionTraceStore {
-            schema: crate::engine::ROUTINE_DECISION_TRACE_STORE_SCHEMA.to_string(),
-            traces: vec![crate::engine::RoutineDecisionTrace {
-                schema: crate::engine::ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
-                trace_id: "adapter_trace_1".to_string(),
-                source: "gui_routine_assistant".to_string(),
-                status: "preflight_failed".to_string(),
-                created_at_unix_ms: 10,
-                updated_at_unix_ms: 20,
-                goal_text: "Assemble insert".to_string(),
-                query_text: "golden gate".to_string(),
-                disambiguation_questions_presented: vec![
-                    crate::engine::RoutineDecisionTraceDisambiguationQuestion {
-                        question_id: "question_a".to_string(),
-                        question_text: "Question A?".to_string(),
-                    },
-                ],
-                disambiguation_answers: vec![
-                    crate::engine::RoutineDecisionTraceDisambiguationAnswer {
-                        question_id: "question_a".to_string(),
-                        answer_text: "Answer A".to_string(),
-                    },
-                ],
-                preflight_history: vec![crate::engine::RoutineDecisionTracePreflightSnapshot {
-                    can_execute: false,
-                    warnings: vec![],
-                    errors: vec!["missing sequence".to_string()],
-                    contract_source: Some("routine_catalog".to_string()),
-                }],
-                preflight_snapshot: None,
-                ..crate::engine::RoutineDecisionTrace::default()
-            }],
-        })
-        .expect("trace store"),
-    );
-    state
 }
 
 #[cfg(unix)]

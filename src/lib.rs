@@ -96,6 +96,8 @@ pub mod sequence_rows_dna;
 pub mod sequence_rows_restriction_enzymes;
 /// Generated/derived shell-help documentation helpers.
 pub mod shell_docs;
+#[cfg(test)]
+pub(crate) mod test_support;
 /// TF-motif registry and matching support.
 pub mod tf_motifs;
 /// Process-local tool-path override registry.
