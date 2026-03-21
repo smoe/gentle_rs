@@ -2679,7 +2679,9 @@ fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use gentle::test_support::{
+        write_demo_jaspar_pfm, write_demo_pool_json, write_demo_rebase_withrefm,
+    };
     use std::fs;
     use std::sync::Mutex;
     use tempfile::tempdir;
@@ -3282,13 +3284,8 @@ T [ 0 0 0 10 ]
     #[test]
     fn test_forwarded_resources_sync_rebase_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
-        let input_path = td.path().join("rebase.withrefm");
+        let input_path = write_demo_rebase_withrefm(td.path());
         let output_path = td.path().join("rebase.json");
-        fs::write(
-            &input_path,
-            "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n",
-        )
-        .expect("write rebase input");
 
         let forwarded_args = vec![
             "gentle_cli".to_string(),
@@ -3324,13 +3321,8 @@ T [ 0 0 0 10 ]
     #[test]
     fn test_forwarded_resources_sync_jaspar_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
-        let input_path = td.path().join("motifs.pfm");
+        let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
-        fs::write(
-            &input_path,
-            ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n",
-        )
-        .expect("write jaspar input");
 
         let forwarded_args = vec![
             "gentle_cli".to_string(),
@@ -3410,35 +3402,7 @@ T [ 0 0 0 10 ]
     #[test]
     fn test_forwarded_import_pool_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
-        let pool_path = td.path().join("demo.pool.gentle.json");
-        let pool_json = json!({
-            "schema": "gentle.pool.v1",
-            "pool_id": "demo_pool",
-            "human_id": "demo",
-            "member_count": 1,
-            "members": [
-                {
-                    "seq_id": "member_1",
-                    "human_id": "member_1",
-                    "name": "Member One",
-                    "sequence": "ATGCATGC",
-                    "length_bp": 8,
-                    "topology": "linear",
-                    "ends": {
-                        "end_type": "blunt",
-                        "forward_5": "",
-                        "forward_3": "",
-                        "reverse_5": "",
-                        "reverse_3": ""
-                    }
-                }
-            ]
-        });
-        fs::write(
-            &pool_path,
-            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
-        )
-        .expect("write pool json");
+        let pool_path = write_demo_pool_json(td.path());
 
         let forwarded_args = vec![
             "gentle_cli".to_string(),

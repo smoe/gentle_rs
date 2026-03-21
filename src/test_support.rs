@@ -21,7 +21,7 @@ const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
 
 /// Synthetic project state with one routine-decision trace used in parity tests.
-pub(crate) fn decision_trace_fixture_state() -> ProjectState {
+pub fn decision_trace_fixture_state() -> ProjectState {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "s".to_string(),
@@ -66,21 +66,21 @@ pub(crate) fn decision_trace_fixture_state() -> ProjectState {
 }
 
 /// Writes a minimal deterministic REBASE `.withrefm` fixture and returns its path.
-pub(crate) fn write_demo_rebase_withrefm(dir: &Path) -> PathBuf {
+pub fn write_demo_rebase_withrefm(dir: &Path) -> PathBuf {
     let path = dir.join("rebase.withrefm");
     fs::write(&path, DEMO_REBASE_WITHREFM).expect("write rebase input");
     path
 }
 
 /// Writes a minimal deterministic JASPAR PFM fixture and returns its path.
-pub(crate) fn write_demo_jaspar_pfm(dir: &Path) -> PathBuf {
+pub fn write_demo_jaspar_pfm(dir: &Path) -> PathBuf {
     let path = dir.join("motifs.pfm");
     fs::write(&path, DEMO_JASPAR_PFM).expect("write jaspar input");
     path
 }
 
 /// Writes a minimal deterministic pool-export fixture and returns its path.
-pub(crate) fn write_demo_pool_json(dir: &Path) -> PathBuf {
+pub fn write_demo_pool_json(dir: &Path) -> PathBuf {
     let path = dir.join("demo.pool.gentle.json");
     let pool_json = json!({
         "schema": "gentle.pool.v1",
