@@ -575,17 +575,22 @@ Patterns menu:
          unique restriction sites when the destination already exposes them
        - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
          such as `SmaI` can be chosen directly from the specialist
+       - tooltips and quick help explain the difference between using the full
+         MCS span and choosing one specific cutter suggestion
     2. `Insert`
        - choose one insert sequence and orientation
     3. `Design Targets`
        - Gibson-specific overlap bp range
-       - minimum overlap Tm
-       - priming-segment Tm window
+       - minimum overlap Tₘ
+       - priming-segment Tₘ window
        - priming-segment length window
+       - displayed Tₘ values are currently the shared deterministic first-pass
+         estimate used across GENtle, not a richer thermodynamic model
     4. `Review`
        - resolves terminal overlaps
        - derives insert primer suggestions as `5' overlap + 3' priming`
        - shows blocking errors, warnings, and the factual Gibson cartoon
+       - findings and status text are copyable directly from the window
     5. `Outputs`
        - export plan JSON
        - export preview JSON
