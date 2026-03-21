@@ -29,6 +29,11 @@ If you are GUI-first and want one concrete cloning workflow:
 - Use the TP73 promoter/luciferase walkthrough:
   [`docs/tutorial/tp73_promoter_luciferase_gui.md`](./tp73_promoter_luciferase_gui.md)
 
+If you want to test the new destination-first Gibson specialist end-to-end:
+
+- Use the Gibson specialist testing tutorial:
+  [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md)
+
 If you want a sequence-analysis example with screenshots:
 
 - Use the TP73 cDNA-vs-genomic dotplot walkthrough:
@@ -45,6 +50,7 @@ If you want to use GENtle with agents, MCP, or the command line:
 | --- | --- | --- | --- | --- |
 | [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/sources/` and executable workflows through the runtime manifest; validated by `tutorial-check`. |
 | [`docs/tutorial/tp73_promoter_luciferase_gui.md`](./tp73_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first cloning planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable PCR material. |
+| [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
@@ -83,14 +89,20 @@ Use the labels above as trust/maintenance signals:
 2. Use the executable PCR chapter it references
 3. Save the resulting project state for later CLI/agent replay
 
-### Path C: Sequence-analysis and visualization
+### Path C: Gibson specialist testing
+
+1. Read [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md)
+2. Run the GUI preview/export steps with local inputs
+3. Replay the exported plan through `gibson preview` for parity checking
+
+### Path D: Sequence-analysis and visualization
 
 1. Read [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md)
 2. Compare its screenshots to the live GUI state
 3. Re-run the corresponding workflow example if you want a deterministic audit
    path
 
-### Path D: Agents and automation
+### Path E: Agents and automation
 
 1. Read [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 2. Verify capabilities with `gentle_cli help` or MCP `tools/list`

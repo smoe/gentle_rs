@@ -428,6 +428,11 @@ order. Durable architecture constraints and decisions remain in
   - dedicated contributor onboarding tutorial chapter added:
     `contribute_to_gentle_development` (backed by executable
     `contribute_gentle_development_baseline` workflow example)
+  - dedicated manual Gibson specialist testing tutorial added:
+    `docs/tutorial/gibson_specialist_testing_gui.md`
+    - local committed inputs only
+    - explicit GUI checkpoints for preview, exports, and cartoon visibility
+    - explicit shared CLI parity check through `gibson preview`
   - dedicated online TP53 isoform architecture chapter added:
     `tp53_isoform_architecture_online` (backed by canonical
     `tp53_isoform_architecture_online` workflow example and curated panel
@@ -774,7 +779,9 @@ Notes:
      (including promoter cloning walkthroughs such as TP73)
      - PCR selection-first chapter and TP73 Step 5 now include explicit
        queue-capture and batch-results checklists; broader chapter coverage
-       remains pending
+       remains pending, although the Gibson specialist testing tutorial now
+       provides that style of checklist for the new destination-first Gibson
+       flow
    - tutorial authoring is still structurally split:
      executable chapter metadata now comes from `docs/tutorial/sources/`, while
      GUI and agent/reference tutorials still keep their narrative content in

@@ -1,0 +1,275 @@
+# Gibson Specialist Testing Tutorial
+
+> Type: `GUI walkthrough + CLI parity`
+> Status: `manual/hybrid`
+> Drift note: this page is hand-written, but it is intentionally tied to the
+> shared `gibson preview` route, exported plan JSON, and deterministic local
+> tutorial inputs.
+
+This tutorial is a practical test script for the dedicated `Patterns ->
+Gibson...` specialist window.
+
+It is not meant to produce a bench-ready cloning design. Instead, it gives you
+one stable local path for checking that the Gibson specialist does what it
+should do:
+
+1. accepts a circular destination plus one linear insert,
+2. derives left and right junction overlaps from an opening,
+3. suggests Gibson PCR primers from high-level overlap/Tm targets,
+4. renders the factual Gibson cartoon,
+5. exports machine-readable plan/preview outputs, and
+6. matches the shared-shell/CLI `gibson preview` result.
+
+## What You Will Test
+
+By the end of this tutorial, you should have verified all of these:
+
+- the `Patterns -> Gibson...` window opens and stays Gibson-specific
+- destination and insert selection work from local sequences
+- defined-site opening coordinates are accepted
+- `Preview Gibson Plan` yields:
+  - two resolved junctions
+  - two primer suggestions
+  - a visible Gibson cartoon
+- `Export Plan JSON...`, `Export Preview JSON...`, `Export Primer Summary...`,
+  and `Export Cartoon SVG...` all work
+- the exported plan can be replayed through:
+  - `gentle_cli ... gibson preview @plan.json --output preview.json`
+- GUI and CLI preview payloads are identical
+
+## Inputs
+
+Use only local committed inputs:
+
+- destination vector:
+  [`test_files/pGEX-3X.gb`](../../test_files/pGEX-3X.gb)
+- synthetic insert:
+  [`docs/tutorial/inputs/gibson_insert_demo.fa`](./inputs/gibson_insert_demo.fa)
+
+Why these inputs:
+
+- `pGEX-3X.gb` gives you a known circular destination sequence.
+- `gibson_insert_demo.fa` is a small synthetic linear insert built only for
+  functional testing of the specialist UI and preview/export flow.
+
+## Step 1: Load the Two Input Sequences
+
+GUI:
+
+1. start GENtle
+2. `File -> Open Sequence...`
+3. load
+   [`test_files/pGEX-3X.gb`](../../test_files/pGEX-3X.gb)
+4. `File -> Open Sequence...`
+5. load
+   [`docs/tutorial/inputs/gibson_insert_demo.fa`](./inputs/gibson_insert_demo.fa)
+
+What to verify:
+
+- the destination sequence reports as circular
+- the insert sequence reports as linear
+
+## Step 2: Save a Test Project
+
+Do this before the actual Gibson preview so the later CLI parity check can read
+the same sequence IDs and state.
+
+GUI:
+
+1. `File -> Save Project As...`
+2. save to a temporary location, for example:
+   `~/Desktop/gibson_ui_test.project.gentle.json`
+
+## Step 3: Open the Gibson Specialist
+
+GUI:
+
+1. `Patterns -> Gibson...`
+
+What to verify:
+
+- the specialist window opens as a dedicated Gibson window
+- the window contains these sections:
+  - `Destination`
+  - `Insert`
+  - `Design Targets`
+  - `Review`
+  - `Outputs`
+
+## Step 4: Fill the Destination Section
+
+Use the circular `pGEX` sequence as the destination.
+
+GUI:
+
+1. in `Destination`, choose the circular `pGEX` sequence you loaded in Step 1
+2. keep `opening = defined site`
+3. enter:
+   - `start_0based = 240`
+   - `end_0based_exclusive = 246`
+
+Optional prefill check:
+
+1. in the `pGEX` DNA window, make a short selection
+2. return to `Patterns -> Gibson...`
+3. click `Use Active Selection`
+4. confirm that the destination and opening coordinates update from the focused
+   DNA window
+
+Notes:
+
+- `240..246` is only a stable tutorial opening window for UI testing.
+- This tutorial checks the mechanics of the specialist, not whether this exact
+  insertion site is biologically optimal.
+
+## Step 5: Fill the Insert Section
+
+GUI:
+
+1. in `Insert`, choose the `gibson_insert_demo` sequence
+2. keep `orientation = forward`
+
+## Step 6: Set Design Targets
+
+For a tighter, easier-to-review preview, use fixed tutorial values instead of
+the broader defaults.
+
+GUI:
+
+1. in `Design Targets`, set:
+   - `overlap min/max bp = 30 / 30`
+   - `minimum overlap Tm C = 60`
+   - `priming Tm window C = 58 / 68`
+   - `priming length bp = 18 / 35`
+   - `output id hint = gibson_ui_test_product`
+
+What this means:
+
+- both terminal junctions should resolve to `30 bp` overlaps
+- primer suggestions still choose their exact `3'` priming segment from the
+  insert template within the allowed Tm/length window
+
+## Step 7: Preview the Gibson Plan
+
+GUI:
+
+1. click `Preview Gibson Plan`
+
+What to verify in `Review`:
+
+- `preview schema` is `gentle.gibson_assembly_preview.v1`
+- `can_execute=true`
+- no blocking errors are present
+- `Resolved junctions` contains exactly `2` rows
+- each resolved junction shows:
+  - one terminal destination/insert member pair
+  - `30 bp` overlap length
+  - an explicit overlap sequence
+- `Primer suggestions` contains exactly `2` rows
+- each primer row shows:
+  - one full primer sequence
+  - one `5' overlap`
+  - one `3' priming` segment
+- `Cartoon preview` is visible in the same window
+
+Expected interpretation:
+
+- the destination opening defines the left and right vector ends
+- the overlap sequences are derived from the destination flanks
+- the insert does not need to already contain those overlaps because the primer
+  suggestions add them at the `5'` end
+
+## Step 8: Export the Outputs
+
+GUI:
+
+1. click `Export Plan JSON...`
+2. save as:
+   `~/Desktop/gibson_ui_test.plan.json`
+3. click `Export Preview JSON...`
+4. save as:
+   `~/Desktop/gibson_ui_test.preview.json`
+5. click `Export Primer Summary...`
+6. save as:
+   `~/Desktop/gibson_ui_test.primers.txt`
+7. click `Export Cartoon SVG...`
+8. save as:
+   `~/Desktop/gibson_ui_test.cartoon.svg`
+
+What to verify:
+
+- all four files are written successfully
+- the primer summary is human-readable
+- the SVG opens and matches the in-window cartoon logic
+
+## Step 9: Check Shared CLI Parity
+
+Run the exported plan through the shared CLI path against the same saved
+project:
+
+```bash
+cargo run --quiet --bin gentle_cli -- \
+  --project "${HOME}/Desktop/gibson_ui_test.project.gentle.json" \
+  gibson preview \
+  @"${HOME}/Desktop/gibson_ui_test.plan.json" \
+  --output "${HOME}/Desktop/gibson_ui_test.preview.from_cli.json"
+```
+
+Then compare the GUI-exported preview with the CLI-generated preview:
+
+```bash
+diff -u \
+  "${HOME}/Desktop/gibson_ui_test.preview.json" \
+  "${HOME}/Desktop/gibson_ui_test.preview.from_cli.json"
+```
+
+Expected result:
+
+- `diff` prints nothing
+- the shared GUI and CLI routes are therefore using the same deterministic
+  Gibson preview contract
+
+## Step 10: Check the Current Handoff Limitation
+
+GUI:
+
+1. return to `Patterns -> Gibson...`
+2. click `Open in Routine Assistant`
+
+Expected result in this tutorial:
+
+- the status line should explain that this preview is still preview-only for
+  the current opening mode
+
+Why this is expected:
+
+- this tutorial uses a circular destination with a `defined site` opening
+- current Gibson specialist v1 only offers direct routine handoff for the
+  already-linear `existing termini` path
+
+## Pass/Fail Checklist
+
+Mark the tutorial successful if all of these are true:
+
+- [ ] `Patterns -> Gibson...` opens and shows all five sections
+- [ ] circular destination + linear insert can be chosen without ambiguity
+- [ ] defined-site opening `240..246` is accepted
+- [ ] preview returns `2` resolved junctions
+- [ ] preview returns `2` primer suggestions
+- [ ] factual Gibson cartoon is visible
+- [ ] plan, preview, primer summary, and cartoon export all succeed
+- [ ] CLI `gibson preview` reproduces the GUI preview byte-for-byte
+- [ ] routine handoff reports the current v1 limitation clearly instead of
+      failing silently
+
+## Optional Extension
+
+If you also want to test the active-context helpers more directly:
+
+1. focus the `pGEX` DNA window
+2. click `Use Active Sequence`
+3. make a short selection in the DNA window
+4. click `Use Active Selection`
+
+That confirms the specialist can prefill from the currently focused DNA window
+instead of forcing you to type everything manually.

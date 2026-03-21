@@ -590,6 +590,8 @@ Patterns menu:
        - hand off to Routine Assistant when current execution paths can accept it
   - uses the same shared preview command as CLI/shell:
     - `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - GUI-first testing tutorial:
+    - `docs/tutorial/gibson_specialist_testing_gui.md`
   - deliberately does not embed the generic PCR/qPCR specialist UI
 - `Patterns -> Planning...`
   - opens a dedicated standalone `Planning` window for the planning meta-layer.
@@ -2027,6 +2029,9 @@ Tutorial projects:
   - canonical workflow skeleton:
     `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
     (`test_mode: skip`, online GenBank retrieval involved by design).
+  - `docs/tutorial/gibson_specialist_testing_gui.md`
+    - focused end-to-end test script for `Patterns -> Gibson...`
+    - uses local committed inputs plus `gibson preview` parity checking
   - `docs/tutorial/two_sequence_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).
