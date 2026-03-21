@@ -115,23 +115,44 @@
         "sequence_source_note": "Derived from the destination right flank at planning time."
       }
     ],
-    "primer_tail_suggestions": [
+    "primer_design_suggestions": [
       {
         "fragment_id": "insert_x",
         "primer": "forward",
+        "pcr_reaction_id": "amplify_insert_x",
         "adds_junction_id": "junction_left",
-        "tail_bp": 30,
-        "tail_source_note": "Use the destination left flank as the 5' primer tail."
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 30,
+          "sequence": null,
+          "source_note": "Use the destination left flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "forward",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert template to satisfy PCR priming criteria."
+        }
       },
       {
         "fragment_id": "insert_x",
         "primer": "reverse",
+        "pcr_reaction_id": "amplify_insert_x",
         "adds_junction_id": "junction_right",
-        "tail_bp": 30,
-        "tail_source_note": "Use the reverse complement of the destination right flank as the 5' primer tail."
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 30,
+          "sequence": null,
+          "source_note": "Use the reverse complement of the destination right flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "reverse_complement",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert template on the reverse-complement strand."
+        }
       }
     ],
     "notes": [
+      "Primer design should begin from the in silico assembled product so the destination-derived junctions are explicit before overlaps are assigned.",
       "If insert termini already satisfy the required overlaps, end strategies may switch from primer_added_overlap to native_overlap.",
       "Future multi-fragment plans extend assembly_order and add one junction record per adjacent fragment pair."
     ]

@@ -1520,6 +1520,15 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
   - destination-first planning model drafted as
     `gentle.gibson_assembly_plan.v1` with canonical single-insert and
     multi-insert examples under `docs/examples/plans/`.
+  - draft enum vocabulary and input-vs-derived field boundary are now
+    documented in `docs/protocol.md` for that planning model.
+  - draft model now documents low-bp-first source ordering guidance and
+    primer-added designed bridge overlaps for internal multi-fragment
+    junctions.
+  - draft model now also separates assembly-setup advisories
+    (cleanup/stoichiometry/host-risk) from hard junction validation.
+  - draft model now represents Gibson primer suggestions explicitly as 5'
+    overlap segments plus 3' gene-specific priming segments.
   - extend the protocol-cartoon baseline from `gibson.two_fragment` to
     multi-fragment Gibson assembly, including circular assembled products and
     canonical template/binding support for the generated explanatory strip.

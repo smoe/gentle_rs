@@ -24,6 +24,11 @@
       "seq_id": "insert_x_amplicon",
       "role": "insert",
       "orientation": "forward",
+      "source_span_1based": {
+        "source_seq_id": "donor_construct",
+        "start": 101,
+        "end": 700
+      },
       "left_end_strategy": {
         "mode": "primer_added_overlap",
         "target_junction_id": "junction_left"
@@ -38,8 +43,13 @@
       "seq_id": "insert_y_amplicon",
       "role": "insert",
       "orientation": "forward",
+      "source_span_1based": {
+        "source_seq_id": "donor_construct",
+        "start": 701,
+        "end": 1280
+      },
       "left_end_strategy": {
-        "mode": "native_overlap",
+        "mode": "primer_added_overlap",
         "target_junction_id": "junction_xy"
       },
       "right_end_strategy": {
@@ -77,7 +87,7 @@
         "kind": "fragment",
         "id": "insert_x"
       },
-      "required_overlap_bp": 30,
+      "required_overlap_bp": 40,
       "overlap_source": "derive_from_destination_left_flank",
       "distinct_from": [
         "junction_right"
@@ -93,8 +103,8 @@
         "kind": "fragment",
         "id": "insert_y"
       },
-      "required_overlap_bp": 28,
-      "overlap_source": "derive_from_adjacent_fragment_ends",
+      "required_overlap_bp": 40,
+      "overlap_source": "designed_bridge_sequence",
       "distinct_from": []
     },
     {
@@ -107,7 +117,7 @@
         "kind": "destination_end",
         "id": "dest_right"
       },
-      "required_overlap_bp": 30,
+      "required_overlap_bp": 40,
       "overlap_source": "derive_from_destination_right_flank",
       "distinct_from": [
         "junction_left"
@@ -119,8 +129,8 @@
     "require_distinct_terminal_junctions": true,
     "adjacency_overlap_mismatch": "error",
     "design_targets": {
-      "overlap_bp_min": 20,
-      "overlap_bp_max": 40,
+      "overlap_bp_min": 40,
+      "overlap_bp_max": 100,
       "minimum_overlap_tm_celsius": 60.0
     },
     "uniqueness_checks": {
@@ -144,7 +154,7 @@
       {
         "junction_id": "junction_xy",
         "sequence": null,
-        "sequence_source_note": "Derived from the adjacent insert termini or by adaptation if native overlap is absent."
+        "sequence_source_note": "Designed as an internal bridge overlap and introduced by primer-added overlaps on the adjacent insert ends."
       },
       {
         "junction_id": "junction_right",
@@ -152,31 +162,92 @@
         "sequence_source_note": "Derived from the destination right flank at planning time."
       }
     ],
-    "primer_tail_suggestions": [
+    "primer_design_suggestions": [
       {
         "fragment_id": "insert_x",
         "primer": "forward",
+        "pcr_reaction_id": "amplify_insert_x",
         "adds_junction_id": "junction_left",
-        "tail_bp": 30,
-        "tail_source_note": "Use the destination left flank as the 5' primer tail."
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 40,
+          "sequence": null,
+          "source_note": "Use the destination left flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "forward",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert_x template."
+        }
       },
       {
         "fragment_id": "insert_x",
         "primer": "reverse",
+        "pcr_reaction_id": "amplify_insert_x",
         "adds_junction_id": "junction_xy",
-        "tail_bp": 28,
-        "tail_source_note": "Add the insert_y-adjacent internal overlap to the reverse primer if insert_x does not already end with it."
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 40,
+          "sequence": null,
+          "source_note": "Add the designed internal bridge overlap as the 5' non-priming segment of the reverse primer for insert_x."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "reverse_complement",
+          "source_note": "Choose the gene-specific 3' priming segment from insert_x on the reverse-complement strand."
+        }
+      },
+      {
+        "fragment_id": "insert_y",
+        "primer": "forward",
+        "pcr_reaction_id": "amplify_insert_y",
+        "adds_junction_id": "junction_xy",
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 40,
+          "sequence": null,
+          "source_note": "Add the same designed internal bridge overlap as the 5' non-priming segment of the forward primer for insert_y."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_y_amplicon",
+          "orientation": "forward",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert_y template."
+        }
       },
       {
         "fragment_id": "insert_y",
         "primer": "reverse",
+        "pcr_reaction_id": "amplify_insert_y",
         "adds_junction_id": "junction_right",
-        "tail_bp": 30,
-        "tail_source_note": "Use the reverse complement of the destination right flank as the 5' primer tail."
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 40,
+          "sequence": null,
+          "source_note": "Use the reverse complement of the destination right flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_y_amplicon",
+          "orientation": "reverse_complement",
+          "source_note": "Choose the gene-specific 3' priming segment from insert_y on the reverse-complement strand."
+        }
+      }
+    ],
+    "assembly_setup_advisories": [
+      {
+        "kind": "pcr_cleanup",
+        "severity": "warn",
+        "note": "For assemblies of three or more PCR fragments, column purification is recommended before Gibson assembly."
+      },
+      {
+        "kind": "fragment_stoichiometry",
+        "severity": "warn",
+        "note": "Use approximately equimolar fragment amounts for multi-fragment vector assemblies."
       }
     ],
     "notes": [
-      "The internal fragment-fragment junction is allowed to differ in length from the terminal destination-derived junctions.",
+      "This multi-fragment example uses 40 bp overlaps as a practical starting point for a three-fragment Gibson assembly.",
+      "This example preserves source order from donor_construct by placing the lower bp fragment first.",
+      "The two primers that implement the internal junction_xy overlap belong to separate PCR reactions, one for insert_x and one for insert_y.",
       "Multi-fragment cartoons can be derived from the same adjacency chain by rendering one event sequence over this normalized junction model."
     ]
   }

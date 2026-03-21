@@ -27,6 +27,8 @@ syntax.
   - schema: `gentle.gibson_assembly_plan.v1`
 - These files are documentation resources for protocol/data-model design and
   are not yet executed by workflow-example tests.
+- Folder note:
+  - `docs/examples/plans/README.md`
 
 ## Generate adapter snippets
 

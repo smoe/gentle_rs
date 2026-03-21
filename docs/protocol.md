@@ -117,6 +117,7 @@ Top-level structure:
 - `fragments[]`
   - participating inserts or non-destination fragments
   - orientation plus per-end adaptation strategy
+  - optional source-coordinate hints for deterministic ordering
 - `assembly_order[]`
   - explicit left-to-right order of destination ends and inserts
   - supports future multi-fragment Gibson plans without changing the model
@@ -132,12 +133,98 @@ Top-level structure:
     - adjacency-consistent overlaps
   - advisory checks:
     - overlap-length design range
+    - fragment-count-aware overlap targets
     - overlap Tm
     - destination/fragment/reference uniqueness heuristics
 - `derived_design`
   - derived overlap sequences
-  - suggested primer tails
+  - primer design suggestions
   - advisory notes and validation outcomes
+
+Current draft value vocabulary:
+
+- `destination.topology_before_opening`
+  - `linear`
+  - `circular`
+- `destination.opening.mode`
+  - `defined_site`
+    - a user-selected opening site/window on an existing destination molecule
+  - reserved future values:
+    - `restriction_digest`
+    - `pcr_linearization`
+    - `inverse_pcr`
+- `destination.opening.uniqueness_requirement`
+  - `must_be_unambiguous`
+    - opening ambiguity is a hard validation error
+  - `advisory_only`
+    - ambiguity is surfaced, but not automatically fatal
+- `product.topology`
+  - `linear`
+  - `circular`
+- `fragments[].role`
+  - `insert`
+  - reserved future values:
+    - `backbone_fragment`
+    - `bridge_fragment`
+- `fragments[].orientation`
+  - `forward`
+  - `reverse`
+- `fragments[].source_span_1based`
+  - optional source-coordinate hint for plans that preserve source order
+  - shape:
+    - `source_seq_id`
+    - `start`
+    - `end`
+- `fragments[].left_end_strategy.mode` / `right_end_strategy.mode`
+  - `native_overlap`
+    - fragment terminus is already expected to satisfy the required overlap
+  - `primer_added_overlap`
+    - overlap is expected to be introduced via a primer tail
+    - this is the current draft bucket for overlap-extension / primer-stitching
+      style adaptation
+  - reserved future values:
+    - `synthetic_terminal_sequence`
+    - `library_defined_overlap`
+- `assembly_order[].kind`
+  - `destination_end`
+  - `fragment`
+- `junctions[].overlap_source`
+  - `derive_from_destination_left_flank`
+  - `derive_from_destination_right_flank`
+  - `derive_from_adjacent_fragment_ends`
+  - `designed_bridge_sequence`
+    - internal junction overlap chosen as a synthetic bridge/adaptor sequence
+  - reserved future value:
+    - `user_specified_sequence`
+- `validation_policy.adjacency_overlap_mismatch`
+  - `error`
+  - `warn`
+- `validation_policy.uniqueness_checks.*`
+  - `off`
+  - `warn`
+  - `error`
+- `validation_policy.reference_contexts[].severity`
+  - `warn`
+  - `error`
+
+Input-vs-derived boundary in the draft model:
+
+- Intended user/planner inputs:
+  - `destination`
+  - `product`
+  - `fragments`
+  - `assembly_order`
+  - `junctions[].required_overlap_bp`
+  - `junctions[].distinct_from`
+  - `validation_policy`
+- Intended normalized/derived outputs:
+  - `derived_design.junction_overlaps`
+  - `derived_design.primer_design_suggestions`
+  - `derived_design.notes`
+- Transition fields that may begin as user hints and later become resolved
+  values:
+  - `junctions[].overlap_source`
+  - fragment end strategies (`native_overlap` vs `primer_added_overlap`)
 
 Interpretation:
 
@@ -147,6 +234,12 @@ Interpretation:
   required overlap regions.
 - Inserts may already satisfy those terminal overlaps or may require primer-tail
   adaptation.
+- For plans that preserve an existing source order, fragment ordering should
+  follow ascending bp coordinates (low bp positions first) unless an explicit
+  alternative order is requested.
+- For multi-fragment plans, internal fragment-fragment junctions may be created
+  through primer-added bridge overlaps rather than relying on pre-existing
+  native overlap.
 - Uniqueness is best treated in layers:
   - destination opening uniqueness: hard validation
   - left/right terminal overlap distinctness: hard validation
@@ -156,24 +249,85 @@ Design intent:
 
 - make the same JSON artifact useful for:
   - preflight Gibson validation
-  - primer-tail derivation
+  - primer design derivation
   - workflow/macro instantiation
   - factual protocol-cartoon generation
   - reproducible AI-facing project context
+
+Practical overlap heuristics (draft defaults):
+
+- single-insert / two-fragment style assemblies often fit comfortably in the
+  20-40 bp range
+- multi-fragment assemblies should usually move toward longer overlaps
+- a practical starting rule for the draft model is:
+  - 1-2 assembled fragments: 20-40 bp overlaps
+  - 3-5 assembled fragments: 40 bp overlaps
+  - 6+ assembled fragments: 50-100 bp overlaps
+- internal multi-fragment junctions introduced by primer-added bridge overlaps
+  should follow the same fragment-count-aware guidance rather than being treated
+  as exempt from overlap design heuristics
+
+Primer design conventions (draft):
+
+- Gibson primer suggestions should be modeled as two-part primers:
+  - `overlap_5prime`
+    - non-priming 5' overlap segment used for assembly of adjacent fragments
+  - `priming_3prime`
+    - gene-specific 3' priming segment used for PCR amplification from the
+      source template
+- Primer design should start from an in silico assembled product/junction view,
+  then work backward to fragment-specific PCR primers.
+- Overlap choice is best treated as Tm-aware rather than length-only:
+  - simple PCR-fragment-into-vector assemblies may use shorter overlaps when
+    overlap Tm is already adequate
+  - more complex or multi-fragment assemblies often justify longer overlaps
+- The overlap region may lie entirely within one adjacent member or be split
+  across the two members around a junction.
+- Two primers that implement the same overlap sequence can still belong to
+  different PCR reactions, because each primes a different template fragment.
+
+Assembly setup heuristics (draft advisory layer):
+
+- linearized destination can be prepared by PCR amplification or by restriction
+  digestion
+- PCR cleanup is not always required, but carryover should stay modest
+  relative to the final assembly reaction volume
+- column purification is especially worth recommending for:
+  - assemblies of three or more PCR fragments
+  - assemblies involving fragments longer than ~5 kb
+- direct vector + insert assemblies often benefit from insert concentration
+  above vector concentration
+- multi-fragment vector assemblies should generally move toward equimolar
+  fragment usage
+- some constructs may validate in silico but still perform poorly because of
+  biological burden or instability in the propagation host
+  (for example repeats or toxic products)
+
+Planning implication:
+
+- these factors should usually surface as `derived_design` advisories or future
+  execution/setup guidance, not as hard failures in the core Gibson junction
+  model
 
 Normalization/derivation phases:
 
 1. Resolve the destination opening into explicit `dest_left` / `dest_right`
    terminal context.
 2. Normalize `assembly_order[]` into one adjacency chain.
+   - when fragments carry compatible `source_span_1based` hints for one source
+     context, default normalization should preserve ascending bp order
 3. Materialize one `junction` per adjacent pair in that chain.
 4. Derive required overlap sequences from destination flanks and/or adjacent
    fragment termini.
+   - internal multi-fragment junctions may instead use designed bridge
+     sequences introduced by primer-added overlaps
 5. Detect whether each fragment end already satisfies its required overlap or
    requires adaptation (for example primer-added tails).
 6. Run hard validation and advisory design checks.
-7. Expose derived overlaps, primer-tail suggestions, and cartoon-ready event
+7. Expose derived overlaps, primer design suggestions, and cartoon-ready event
    semantics through `derived_design`.
+8. Attach reaction/setup advisories (cleanup, stoichiometry, host-risk notes)
+   without conflating them with the hard overlap/junction logic.
 
 Current invariants for the draft model:
 
@@ -182,12 +336,23 @@ Current invariants for the draft model:
 - terminal junctions are the ones adjacent to the opened destination ends.
 - terminal junction distinctness is a hard validation rule for opened
   destination-vector Gibson plans.
+- when source-order hints are present and no contrary manual order is given,
+  low bp positions should precede high bp positions in normalization.
 - destination-opening uniqueness is a hard validation rule.
 - broader destination/fragment/genome uniqueness checks are advisory unless a
   stricter policy is requested.
 - `derived_design` may contain unresolved/null sequences at pure planning time;
   this allows the same schema to exist before sequence extraction or primer
   design has been run.
+- `junctions[].distinct_from` is currently intended primarily for terminal
+  destination-defined junctions, not as a requirement that every internal
+  fragment-fragment junction be globally unique.
+- `native_overlap` is an expectation about the fragment terminus; it still
+  requires sequence confirmation in validation/derivation.
+- `designed_bridge_sequence` should be treated as a designed internal overlap,
+  suitable for primer-stitching style workflows; GENtle should validate it for
+  distinctness/design heuristics rather than treating it as biologically
+  privileged just because it was user-supplied.
 
 ## Core entities
 
