@@ -2,6 +2,10 @@
 
 This is the canonical entry page for GENtle tutorials.
 
+Machine-readable catalog source:
+
+- [`docs/tutorial/catalog.json`](./catalog.json)
+
 GENtle currently has two tutorial families:
 
 - executable tutorials generated from versioned workflow examples
@@ -102,12 +106,17 @@ When adding a tutorial, decide and document all three of these explicitly:
 Contributors should link new tutorials from this page in the same change so
 discovery remains centralized.
 
+Machine-readable discovery should also be updated in the same change:
+
+- [`docs/tutorial/catalog.json`](./catalog.json)
+
 ## Maintenance Direction
 
 Current chosen direction:
 
 - keep executable tutorials grounded in `docs/tutorial/manifest.json` and
   workflow examples
+- keep discovery metadata grounded in `docs/tutorial/catalog.json`
 - keep manual/tutorial-reference pages, but surface them through this one
   canonical landing page
 - keep the distinction between tutorial, recipe, and reference material

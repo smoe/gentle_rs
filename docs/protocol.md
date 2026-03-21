@@ -53,9 +53,18 @@ cargo run --bin gentle_examples_docs -- --check
 
 Tutorial manifest + generated outputs:
 
+- discovery catalog: `docs/tutorial/catalog.json`
+- discovery schema: `gentle.tutorial_catalog.v1`
 - manifest: `docs/tutorial/manifest.json`
 - schema: `gentle.tutorial_manifest.v1`
 - committed generated outputs: `docs/tutorial/generated/`
+
+Catalog/manifest split:
+
+- `docs/tutorial/catalog.json` is the canonical discovery layer for all
+  tutorials, including hand-written walkthroughs and agent/reference guides.
+- `docs/tutorial/manifest.json` remains the executable source for generated
+  chapter output and tutorial runtime checks.
 
 Generate/check tutorial outputs:
 

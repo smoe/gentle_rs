@@ -1,0 +1,69 @@
+{
+  "schema": "gentle.tutorial_catalog.v1",
+  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. This catalog complements, but does not replace, the executable tutorial generation manifest.",
+  "entry_page": "docs/tutorial/README.md",
+  "generated_runtime": {
+    "manifest_path": "docs/tutorial/manifest.json",
+    "manifest_schema": "gentle.tutorial_manifest.v1",
+    "generated_readme": "docs/tutorial/generated/README.md",
+    "generation_report": "docs/tutorial/generated/report.json"
+  },
+  "entries": [
+    {
+      "id": "generated_hub",
+      "title": "GENtle Tutorial (Generated)",
+      "path": "docs/tutorial/generated/README.md",
+      "type": "executable_collection",
+      "status": "generated+checked",
+      "source": "generated_from_manifest",
+      "audiences": [
+        "new_users",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Generated from docs/tutorial/manifest.json and validated by tutorial-check."
+    },
+    {
+      "id": "tp73_promoter_luciferase_gui",
+      "title": "TP73 Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+      "path": "docs/tutorial/tp73_promoter_luciferase_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning"
+      ],
+      "notes": "Hand-written GUI-first tutorial with explicit engine and CLI mapping."
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_gui",
+      "title": "Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)",
+      "path": "docs/tutorial/two_sequence_dotplot_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "visual_learning"
+      ],
+      "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison."
+    },
+    {
+      "id": "agent_interfaces",
+      "title": "GENtle Agent Interfaces Tutorial",
+      "path": "docs/agent_interfaces_tutorial.md",
+      "type": "operational_reference",
+      "status": "manual/reference",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "agent_users",
+        "cli_first",
+        "mcp_users",
+        "contributors"
+      ],
+      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+    }
+  ]
+}

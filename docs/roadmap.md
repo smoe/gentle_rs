@@ -385,6 +385,11 @@ order. Durable architecture constraints and decisions remain in
     - generated executable chapter hub
     - hand-written GUI walkthroughs
     - agent/reference tutorial material
+  - canonical machine-readable discovery catalog now exists at:
+    `docs/tutorial/catalog.json` (`gentle.tutorial_catalog.v1`)
+    - current role: unified discovery metadata for generated and hand-written
+      tutorial pages
+    - intended future role: shared source for tutorial discovery surfaces
   - tutorial pages now distinguish their role more explicitly:
     `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
   - tutorial manifest source:
@@ -749,6 +754,7 @@ Notes:
      agent/reference tutorials remain hand-written markdown
      - current mitigation is the canonical landing page
        `docs/tutorial/README.md`
+       plus discovery metadata in `docs/tutorial/catalog.json`
      - future improvement should move toward smaller per-tutorial authoring
        units with generated unified indexing rather than one large manifest plus
        separate discovery paths

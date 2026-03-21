@@ -378,6 +378,11 @@ Practical rule:
       agent-facing/reference tutorials
     - keeps tutorial type/status labels explicit so executable and
       hand-written material are distinguishable at discovery time
+  - canonical machine-readable tutorial discovery catalog:
+    `docs/tutorial/catalog.json`
+    - schema: `gentle.tutorial_catalog.v1`
+    - lists both generated tutorial collections and hand-written pages
+    - intended future consumer for tutorial discovery surfaces
   - tutorial manifest source: `docs/tutorial/manifest.json`
   - tutorial schema: `gentle.tutorial_manifest.v1`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
