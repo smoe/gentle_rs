@@ -373,6 +373,11 @@ Practical rule:
   - schema: `gentle.workflow_example.v1`
   - snippet generator binary: `gentle_examples_docs`
   - generated adapter snippets: `docs/examples/generated/*.md`
+  - canonical human-facing tutorial entry page: `docs/tutorial/README.md`
+    - aggregates generated executable chapters, GUI walkthroughs, and
+      agent-facing/reference tutorials
+    - keeps tutorial type/status labels explicit so executable and
+      hand-written material are distinguishable at discovery time
   - tutorial manifest source: `docs/tutorial/manifest.json`
   - tutorial schema: `gentle.tutorial_manifest.v1`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
@@ -385,6 +390,12 @@ Practical rule:
     - `GENTLE_SKIP_REMOTE_TESTS=1` force-disables remote-resource tests
       regardless of `GENTLE_TEST_ONLINE`
     - `skip`: parse/validate only
+  - tutorial information-architecture rule:
+    - users should have one canonical landing page for tutorials
+    - executable chapters may remain generated, but manual walkthroughs and
+      reference guides must be linked from the same entry point
+    - distinction between tutorial, recipe, and reference material should be
+      explicit in page metadata/catalog text
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)

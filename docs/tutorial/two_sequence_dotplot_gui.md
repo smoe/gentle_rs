@@ -1,5 +1,10 @@
 # Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)
 
+> Type: `GUI walkthrough`
+> Status: `manual`
+> Drift note: this page is screenshot-backed and useful for visual onboarding,
+> but it is more exposed to GUI layout drift than generated tutorial chapters.
+
 This tutorial shows a practical and biologically meaningful comparison:
 
 1. fetch one TP73 cDNA sequence,

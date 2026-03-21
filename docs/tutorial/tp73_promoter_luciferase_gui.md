@@ -1,5 +1,11 @@
 # TP73 Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)
 
+> Type: `GUI walkthrough + CLI mapping`
+> Status: `manual/hybrid`
+> Drift note: this page is hand-written, but it is intentionally tied to shared
+> engine/CLI operations and links to executable tutorial material where
+> available.
+
 This tutorial is a GUI-first walkthrough for planning a TP73 promoter luciferase
 construct in GENtle.
 

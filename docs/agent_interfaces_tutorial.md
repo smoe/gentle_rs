@@ -1,5 +1,10 @@
 # GENtle Agent Interfaces Tutorial
 
+> Type: `operational reference tutorial`
+> Status: `manual/reference`
+> Audience: users operating GENtle through GUI assistant, CLI/shared shell, MCP,
+> or external coding agents.
+
 Last updated: 2026-03-07
 
 This is a self-standing tutorial for using GENtle with AI/agent systems.

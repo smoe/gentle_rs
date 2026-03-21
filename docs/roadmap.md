@@ -380,6 +380,13 @@ order. Durable architecture constraints and decisions remain in
       `uniprot projection-show`
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
+  - canonical tutorial landing page now exists at `docs/tutorial/README.md`
+    and links:
+    - generated executable chapter hub
+    - hand-written GUI walkthroughs
+    - agent/reference tutorial material
+  - tutorial pages now distinguish their role more explicitly:
+    `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
   - tutorial manifest source:
     `docs/tutorial/manifest.json` (`gentle.tutorial_manifest.v1`)
   - tutorial chapters now include explicit narrative learning objectives and
@@ -737,6 +744,14 @@ Notes:
      - PCR selection-first chapter and TP73 Step 5 now include explicit
        queue-capture and batch-results checklists; broader chapter coverage
        remains pending
+   - tutorial authoring is still structurally split:
+     executable chapters come from `docs/tutorial/manifest.json`, while GUI and
+     agent/reference tutorials remain hand-written markdown
+     - current mitigation is the canonical landing page
+       `docs/tutorial/README.md`
+     - future improvement should move toward smaller per-tutorial authoring
+       units with generated unified indexing rather than one large manifest plus
+       separate discovery paths
    - TP73 cDNA-vs-genomic dotplot tutorial now has an explicit screenshot
      coverage checklist in `docs/tutorial/two_sequence_dotplot_gui.md`; pending
      additions are focused on dotplot-stage captures (`10..11`) to complete the
