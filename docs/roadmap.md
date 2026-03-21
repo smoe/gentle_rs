@@ -433,6 +433,15 @@ order. Durable architecture constraints and decisions remain in
     - local committed inputs only
     - explicit GUI checkpoints for preview, exports, and cartoon visibility
     - explicit shared CLI parity check through `gibson preview`
+  - executable `Open Tutorial Project...` baseline added for Gibson specialist
+    testing:
+    - workflow example:
+      `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+    - generated chapter:
+      `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
+    - role:
+      - preloads stable destination/insert IDs for the manual Gibson testing
+        walkthrough
   - dedicated online TP53 isoform architecture chapter added:
     `tp53_isoform_architecture_online` (backed by canonical
     `tp53_isoform_architecture_online` workflow example and curated panel

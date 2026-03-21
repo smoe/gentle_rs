@@ -2032,6 +2032,10 @@ Tutorial projects:
   - `docs/tutorial/gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking
+  - generated tutorial-project baseline:
+    - `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
+    - preloads stable `gibson_destination_pgex` and `gibson_insert_demo`
+      sequence IDs for the manual Gibson specialist walkthrough
   - `docs/tutorial/two_sequence_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).

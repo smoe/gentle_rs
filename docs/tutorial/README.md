@@ -33,6 +33,8 @@ If you want to test the new destination-first Gibson specialist end-to-end:
 
 - Use the Gibson specialist testing tutorial:
   [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md)
+- fastest setup path:
+  [`docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`](./generated/chapters/15_gibson_specialist_testing_baseline.md)
 
 If you want a sequence-analysis example with screenshots:
 

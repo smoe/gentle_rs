@@ -20,6 +20,23 @@ should do:
 5. exports machine-readable plan/preview outputs, and
 6. matches the shared-shell/CLI `gibson preview` result.
 
+## Fastest Setup
+
+Recommended route:
+
+1. `File -> Open Tutorial Project...`
+2. choose `Prepare a Gibson specialist testing baseline (offline)`
+3. continue below from `Step 3`
+
+That tutorial-project baseline is backed by the executable workflow example:
+
+- [`docs/examples/workflows/gibson_specialist_testing_baseline.json`](../examples/workflows/gibson_specialist_testing_baseline.json)
+
+It loads these stable sequence IDs for you:
+
+- `gibson_destination_pgex`
+- `gibson_insert_demo`
+
 ## What You Will Test
 
 By the end of this tutorial, you should have verified all of these:
@@ -53,6 +70,8 @@ Why these inputs:
   functional testing of the specialist UI and preview/export flow.
 
 ## Step 1: Load the Two Input Sequences
+
+Skip this step if you started from `Open Tutorial Project...`.
 
 GUI:
 
@@ -100,9 +119,13 @@ What to verify:
 
 Use the circular `pGEX` sequence as the destination.
 
+If you started from the tutorial-project baseline, the expected destination
+ID is `gibson_destination_pgex`.
+
 GUI:
 
 1. in `Destination`, choose the circular `pGEX` sequence you loaded in Step 1
+   or the tutorial-project destination `gibson_destination_pgex`
 2. keep `opening = defined site`
 3. enter:
    - `start_0based = 240`

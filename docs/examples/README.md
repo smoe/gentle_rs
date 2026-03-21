@@ -74,6 +74,12 @@ Validate committed tutorial output against fresh generation:
 cargo run --bin gentle_examples_docs -- tutorial-check
 ```
 
+Relevant executable Gibson specialist setup baseline:
+
+- `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+  - loads one circular destination and one linear insert under stable IDs for
+    `Open Tutorial Project...` and GUI specialist testing
+
 ## Test examples
 
 Run default (offline-safe) example tests:

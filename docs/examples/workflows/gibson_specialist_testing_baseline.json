@@ -1,0 +1,35 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "gibson_specialist_testing_baseline",
+  "title": "Prepare a Gibson specialist testing baseline (offline)",
+  "summary": "Loads a circular pGEX destination and one small synthetic insert under stable IDs so the destination-first Gibson specialist can be tested immediately through Open Tutorial Project or CLI workflow replay.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX-3X.gb",
+    "docs/tutorial/inputs/gibson_insert_demo.fa"
+  ],
+  "tags": [
+    "tutorial",
+    "gibson",
+    "gui",
+    "protocol_cartoon",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_gibson_specialist_testing_baseline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX-3X.gb",
+          "as_id": "gibson_destination_pgex"
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "docs/tutorial/inputs/gibson_insert_demo.fa",
+          "as_id": "gibson_insert_demo"
+        }
+      }
+    ]
+  }
+}

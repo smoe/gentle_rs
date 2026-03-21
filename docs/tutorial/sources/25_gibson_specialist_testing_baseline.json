@@ -1,0 +1,61 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "gibson_specialist_testing_baseline",
+  "title": "Prepare a Gibson specialist testing baseline (offline)",
+  "generated_chapter": {
+    "order": 15,
+    "example_id": "gibson_specialist_testing_baseline",
+    "tier": "core",
+    "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
+    "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
+    "use_cases": [
+      "You want to test `Patterns -> Gibson...` without manually importing files first.",
+      "You want a stable tutorial-project baseline that can be opened from the GUI and replayed from the CLI.",
+      "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
+    ],
+    "gui_steps": [
+      "Open `File -> Open Tutorial Project...` and choose `Prepare a Gibson specialist testing baseline (offline)`.",
+      "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+      "Continue with [`docs/tutorial/gibson_specialist_testing_gui.md`](../gibson_specialist_testing_gui.md) from `Step 3` onward to exercise the Gibson specialist itself."
+    ],
+    "learning_objectives": [
+      "Use executable tutorial projects as deterministic GUI test baselines.",
+      "Recognize the stable sequence IDs that the Gibson testing guide expects.",
+      "Replay the same baseline from GUI and CLI without changing biological setup."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "deterministic_workflows",
+      "sequence_lineage"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "destination seq_id = gibson_destination_pgex",
+        "where_used": "Gibson specialist destination selection after tutorial project open",
+        "why_it_matters": "Keeps the circular vector choice stable across tutorial-project, GUI, and CLI replay paths.",
+        "how_to_derive": "This workflow assigns the ID directly during `LoadFile`."
+      },
+      {
+        "parameter": "insert seq_id = gibson_insert_demo",
+        "where_used": "Gibson specialist insert selection after tutorial project open",
+        "why_it_matters": "Provides one deterministic linear insert for overlap and primer derivation checks.",
+        "how_to_derive": "This workflow assigns the ID directly during `LoadFile`."
+      },
+      {
+        "parameter": "workflow example = gibson_specialist_testing_baseline",
+        "where_used": "`Open Tutorial Project...` and CLI workflow replay",
+        "why_it_matters": "This is the canonical executable setup layer behind the hand-written Gibson testing walkthrough.",
+        "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json"
+    ],
+    "retain_outputs": [],
+    "checkpoints": [
+      "The tutorial project opens with exactly the expected destination and insert IDs already loaded.",
+      "The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.",
+      "The hand-written Gibson testing guide can start from this baseline without any additional sequence imports."
+    ]
+  }
+}

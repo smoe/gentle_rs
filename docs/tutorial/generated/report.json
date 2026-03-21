@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 14,
+  "chapter_count": 15,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -22,26 +22,28 @@
     "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md",
     "chapters/14_tp73_cdna_genomic_dotplot_online.md",
+    "chapters/15_gibson_specialist_testing_baseline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "d2ea83af75adbcda55eb199695ad527411ac77cc",
+    "README.md": "53a1c95865c089c688a1d5999367c6556eb9324b",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "6466e32451db5c334bcb7550ba8cb5e4cccb6026",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "bc7ad9c6343c0b77f61592e188867afbfe129de6",
-    "chapters/03_load_and_digest_pgex.md": "34be39ef121493a27e53bcb0fdeb624b2e6f583e",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "6d6f30dd8a4a2ec3651e6555f21ff9db50b4cf34",
-    "chapters/05_guides_filter_and_generate_oligos.md": "da1fd28de194448e4d46bce3a030c1f92f90cac2",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "0875775eb99f2f8b85b9ef312c1830e040194af3",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "159c26531165f1ab175b1b6a676b7ab2078eb323",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "df6321f062ee7c60154c5aeb44dadf2dbcf8cdac",
+    "chapters/03_load_and_digest_pgex.md": "44af64ed57a807d8c53c5b49fdfac8aa5d9105f7",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "e6eac7d8d164610ed9cbed2580cd8026eec01e87",
+    "chapters/05_guides_filter_and_generate_oligos.md": "51e43aa68618460e2ad1ffdcf5b955641ff43354",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "453681a8fa7d473ae22a19c3636cb139a4393c69",
     "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "f239f420ccc57341dbc9809bbb3b2a2958260819",
-    "chapters/09_prepare_reference_genome_online.md": "9b5df5f0ccac23b244f4bf22bece2c99afe3e922",
-    "chapters/10_tp53_isoform_architecture_online.md": "47889942cdb54bc940ac97fe1f1cb61d90a00b56",
-    "chapters/11_tp63_anchor_extension_online.md": "dcd5caf0044db53dca9ecfbd5348f617f0aafb04",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "312dbb31f6f10c215d1464ccc9561470e2bbb550",
-    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "0d26a113e3f4ec42fa7ba573cc2f845fe756d8db",
-    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "0cdc83be05622bde0f3d35fef67e8f9986bc251a"
+    "chapters/08_contribute_to_gentle_development.md": "ec6111b5f3fcc6ba9fbac8aaf71dde3301d05bd0",
+    "chapters/09_prepare_reference_genome_online.md": "953d7ae954cda6022d9638261d543fe57f7ff355",
+    "chapters/10_tp53_isoform_architecture_online.md": "a69e58d63082d50ecb1a8ddeae9dfc068db04c67",
+    "chapters/11_tp63_anchor_extension_online.md": "efeb0652c66a84d785cb6a38a831aaf9e7794b0d",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "ca580b3968326d06cc06aa66a7b2a524a0e50096",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "5f2037e59074861510cca443bd28bbd2ddf38dd7",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "1736969a548640ec642bf24642663d8d04199c45",
+    "chapters/15_gibson_specialist_testing_baseline.md": "899b46fb946502360d3f67393ff59755d2ce6eb4"
   },
   "chapters": [
     {
@@ -258,6 +260,21 @@
         "online_opt_in"
       ],
       "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "gibson_specialist_testing_baseline",
+      "order": 15,
+      "title": "Prepare a Gibson specialist testing baseline (offline)",
+      "tier": "core",
+      "example_id": "gibson_specialist_testing_baseline",
+      "example_source": "docs/examples/workflows/gibson_specialist_testing_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
       "retained_artifacts": []
     }
   ]
