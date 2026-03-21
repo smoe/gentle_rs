@@ -1041,6 +1041,9 @@ pub fn preview_gibson_assembly_plan(
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: 5' overlap plus 3' gene-specific priming segment. Full generic PCR controls remain outside this specialist flow.".to_string(),
     );
+    preview
+        .notes
+        .push(GentleEngine::primer_tm_model_description());
     preview.notes.push(
         "The protocol-cartoon payload remains conceptual for the two-fragment Gibson mechanism while captions and labels are rebound from the resolved plan.".to_string(),
     );
@@ -2061,6 +2064,117 @@ mod tests {
                 .iter()
                 .any(|row| row.contains("Could not derive a Gibson priming segment"))
         );
+    }
+
+    #[test]
+    fn preview_pgex_tutorial_window_derives_primers_under_default_gibson_targets() {
+        let mut engine = GentleEngine::new();
+        let mut destination = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb")
+            .expect("pGEX fixture")
+            .into_iter()
+            .next()
+            .expect("pGEX sequence");
+        destination.set_name("gibson_destination_pgex".to_string());
+        let mut insert = DNAsequence::from_sequence(
+            "ATGGCTACCGTTAAGCTGACCTGATCGTACGATGCTAGCTTGACCGATTCGATGACCTGACTGATCGATGCTTACGGTACCGATGCTAGTCCGATGACCTTGACGATCGTAGCTAACGTTGACCTGATCGATGCTAGCTTACCGGATCAGTACGATGCTAGTCGATGACCTTGACTACGATCGTAGCTAACGATGCTTACCGATGACCTGATCGTACGATGCTAGCTTGACCGATTCGATGACCTGACTGATCGATGCTAACCGTTAAGCTGACCTGATCGTACGATGCTAGCTTGACCGATTCGATGACCTGA",
+        )
+        .expect("insert sequence");
+        insert.set_name("gibson_insert_demo".to_string());
+        engine
+            .state_mut()
+            .sequences
+            .insert("gibson_destination_pgex".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("gibson_insert_demo".to_string(), insert);
+
+        let plan: GibsonAssemblyPlan = serde_json::from_str(
+            r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "pgex_tutorial_preview",
+  "title": "pGEX Gibson tutorial",
+  "summary": "single insert into tutorial destination",
+  "destination": {
+    "seq_id": "gibson_destination_pgex",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "SmaI",
+      "start_0based": 938,
+      "end_0based_exclusive": 944,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "gibson_ui_test_product"},
+  "fragments": [
+    {
+      "id": "insert_1",
+      "seq_id": "gibson_insert_demo",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_1"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_1"},
+      "required_overlap_bp": 30,
+      "overlap_partition": {"left_member_bp": 30, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_1"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 30,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 30},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 30,
+      "overlap_bp_max": 30,
+      "minimum_overlap_tm_celsius": 60.0,
+      "priming_segment_tm_min_celsius": 58.0,
+      "priming_segment_tm_max_celsius": 68.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 35,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#,
+        )
+        .expect("plan json");
+
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
+        assert!(
+            preview.can_execute,
+            "tutorial preview should execute, got errors: {:?}",
+            preview.errors
+        );
+        assert_eq!(preview.primer_suggestions.len(), 2);
     }
 
     #[test]

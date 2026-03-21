@@ -584,13 +584,19 @@ Patterns menu:
        - minimum overlap Tₘ
        - priming-segment Tₘ window
        - priming-segment length window
-       - displayed Tₘ values are currently the shared deterministic first-pass
-         estimate used across GENtle, not a richer thermodynamic model
+       - displayed Tₘ values use the shared nearest-neighbor model used across
+         GENtle:
+         fixed 50 mM monovalent salt, fixed 250 nM total oligo concentration,
+         exact-complement duplex assumption, no mismatch/dangling-end/Mg
+         correction, fallback to the simple 2/4 estimate for ambiguous or very
+         short sequences
     4. `Review`
        - resolves terminal overlaps
        - derives insert primer suggestions as `5' overlap + 3' priming`
        - shows blocking errors, warnings, and the factual Gibson cartoon
        - findings and status text are copyable directly from the window
+       - preview notes repeat the shared Tₘ-model assumptions so GUI and CLI
+         users see the same explanation
     5. `Outputs`
        - export plan JSON
        - export preview JSON

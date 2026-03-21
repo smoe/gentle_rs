@@ -64,6 +64,8 @@ order. Durable architecture constraints and decisions remain in
     - validation/advisory findings
     - destination opening suggestions from MCS annotations and unique
       restriction cutters, including blunt/sticky-end labels
+    - shared Tₘ-model assumptions surfaced in preview notes and Gibson-window
+      help so GUI/CLI users see the same explanation
     - protocol-cartoon preview/export
     - Routine Assistant handoff when the destination already uses existing
       linear termini
@@ -1681,7 +1683,8 @@ Repeated multi-tool gaps to prioritize:
          cross-gene ambiguity
        - keep this as deterministic guidance input; final pair scoring still
          runs through shared primer report contracts
-     - pair interaction checks and richer thermodynamic scoring
+     - pair interaction checks and richer ion-/structure-aware thermodynamic
+       scoring beyond the current shared nearest-neighbor baseline
      - saved/reusable primer sets with explicit versioning
      - async-capable batch off-target/specificity checks so primer-pair
        selection can run multiple BLAST searches through agent/MCP/CLI routes

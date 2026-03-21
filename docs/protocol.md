@@ -362,6 +362,8 @@ Top-level structure:
   - full primer sequence plus explicit `overlap_5prime` and
     `priming_3prime` segments
 - `warnings[]`, `errors[]`, `notes[]`
+  - includes the shared Tₘ-model note used by GUI/CLI so the assumptions stay
+    visible to the user
 - `cartoon`
   - built-in protocol id plus template bindings for the shared
     protocol-cartoon renderer
@@ -377,6 +379,13 @@ Current v1 scope and limits:
 - user influence over PCR design stays high-level and Gibson-specific:
   overlap bp range, minimum overlap Tm, priming-segment Tm window, and
   priming-segment length window
+- current Tₘ fields use the shared GENtle nearest-neighbor estimate with fixed
+  assumptions:
+  - exact complement
+  - 50 mM monovalent salt
+  - 250 nM total oligo concentration
+  - no mismatch/dangling-end/Mg correction
+  - fallback to the simple 2/4 estimate for ambiguous or very short sequences
 - generic PCR/qPCR request editing is intentionally out of scope for this
   specialist flow
 

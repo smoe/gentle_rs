@@ -2132,7 +2132,41 @@ impl GentleEngine {
         ret
     }
 
+    pub(crate) fn primer_tm_model_description() -> String {
+        format!(
+            "Displayed Tₘ values use GENtle's shared SantaLucia nearest-neighbor estimate with fixed assumptions: exact complement, {:.0} mM monovalent salt, {:.0} nM total oligo concentration, and no mismatch/dangling-end/Mg correction. Very short or ambiguous sequences fall back to the simple 2/4 estimate.",
+            Self::primer_tm_monovalent_salt_molar() * 1_000.0,
+            Self::primer_tm_total_oligo_concentration_molar() * 1_000_000_000.0
+        )
+    }
+
     pub(crate) fn estimate_primer_tm_c(primer: &[u8]) -> f64 {
+        if primer.is_empty() {
+            return 0.0;
+        }
+        let Some(canonical) = Self::canonical_dna_bases(primer) else {
+            return Self::estimate_primer_tm_wallace_c(primer);
+        };
+        if canonical.len() < 2 {
+            return Self::estimate_primer_tm_wallace_c(&canonical);
+        }
+        Self::estimate_primer_tm_nearest_neighbor_c(&canonical)
+            .unwrap_or_else(|| Self::estimate_primer_tm_wallace_c(&canonical))
+    }
+
+    fn canonical_dna_bases(primer: &[u8]) -> Option<Vec<u8>> {
+        let mut out = Vec::with_capacity(primer.len());
+        for base in primer {
+            let upper = base.to_ascii_uppercase();
+            match upper {
+                b'A' | b'C' | b'G' | b'T' => out.push(upper),
+                _ => return None,
+            }
+        }
+        Some(out)
+    }
+
+    fn estimate_primer_tm_wallace_c(primer: &[u8]) -> f64 {
         let mut at = 0usize;
         let mut gc = 0usize;
         for base in primer {
@@ -2143,6 +2177,71 @@ impl GentleEngine {
             }
         }
         (2 * at + 4 * gc) as f64
+    }
+
+    fn estimate_primer_tm_nearest_neighbor_c(primer: &[u8]) -> Option<f64> {
+        let mut delta_h_kcal_per_mol = 0.2;
+        let mut delta_s_cal_per_mol_k = -5.7;
+
+        for terminal_base in [primer.first().copied()?, primer.last().copied()?] {
+            if matches!(terminal_base, b'A' | b'T') {
+                delta_h_kcal_per_mol += 2.2;
+                delta_s_cal_per_mol_k += 6.9;
+            }
+        }
+
+        for pair in primer.windows(2) {
+            let (pair_h, pair_s) =
+                Self::primer_tm_nearest_neighbor_parameters(pair[0], pair[1])?;
+            delta_h_kcal_per_mol += pair_h;
+            delta_s_cal_per_mol_k += pair_s;
+        }
+
+        let salt = Self::primer_tm_monovalent_salt_molar();
+        let concentration = Self::primer_tm_total_oligo_concentration_molar();
+        let duplex_phosphates_per_strand = primer.len().saturating_sub(1) as f64;
+        delta_s_cal_per_mol_k += 0.368 * duplex_phosphates_per_strand * salt.ln();
+
+        let concentration_term =
+            (concentration / 4.0).ln() * Self::primer_tm_gas_constant_cal_per_mol_k();
+        let denominator = delta_s_cal_per_mol_k + concentration_term;
+        if !denominator.is_finite() || denominator >= 0.0 {
+            return None;
+        }
+
+        let tm_kelvin = (delta_h_kcal_per_mol * 1_000.0) / denominator;
+        if !tm_kelvin.is_finite() || tm_kelvin <= 0.0 {
+            return None;
+        }
+        Some(tm_kelvin - 273.15)
+    }
+
+    fn primer_tm_nearest_neighbor_parameters(left: u8, right: u8) -> Option<(f64, f64)> {
+        match (left, right) {
+            (b'A', b'A') | (b'T', b'T') => Some((-7.9, -22.2)),
+            (b'A', b'T') => Some((-7.2, -20.4)),
+            (b'T', b'A') => Some((-7.2, -21.3)),
+            (b'C', b'A') | (b'T', b'G') => Some((-8.5, -22.7)),
+            (b'G', b'T') | (b'A', b'C') => Some((-8.4, -22.4)),
+            (b'C', b'T') | (b'A', b'G') => Some((-7.8, -21.0)),
+            (b'G', b'A') | (b'T', b'C') => Some((-8.2, -22.2)),
+            (b'C', b'G') => Some((-10.6, -27.2)),
+            (b'G', b'C') => Some((-9.8, -24.4)),
+            (b'G', b'G') | (b'C', b'C') => Some((-8.0, -19.9)),
+            _ => None,
+        }
+    }
+
+    fn primer_tm_monovalent_salt_molar() -> f64 {
+        0.05
+    }
+
+    fn primer_tm_total_oligo_concentration_molar() -> f64 {
+        250e-9
+    }
+
+    fn primer_tm_gas_constant_cal_per_mol_k() -> f64 {
+        1.9872
     }
 
     pub(super) fn max_contiguous_match_run_with_shift(left: &[u8], right: &[u8]) -> usize {
@@ -3616,5 +3715,43 @@ impl GentleEngine {
             ret.push(start);
         }
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_primer_tm_uses_nearest_neighbor_for_canonical_oligos() {
+        let primer = b"AAAATCGATCGATCGATCGATCGATCGATC";
+        let tm = GentleEngine::estimate_primer_tm_c(primer);
+        let wallace = GentleEngine::estimate_primer_tm_wallace_c(primer);
+        assert!(
+            (50.0..85.0).contains(&tm),
+            "nearest-neighbor Tm should stay in a realistic range, got {tm}"
+        );
+        assert!(
+            (tm - wallace).abs() > 5.0,
+            "nearest-neighbor estimate should materially differ from the Wallace estimate ({tm} vs {wallace})"
+        );
+    }
+
+    #[test]
+    fn estimate_primer_tm_falls_back_for_ambiguous_oligos() {
+        let primer = b"ACGTNN";
+        assert_eq!(
+            GentleEngine::estimate_primer_tm_c(primer),
+            GentleEngine::estimate_primer_tm_wallace_c(primer)
+        );
+    }
+
+    #[test]
+    fn primer_tm_model_description_mentions_shared_assumptions() {
+        let description = GentleEngine::primer_tm_model_description();
+        assert!(description.contains("SantaLucia"));
+        assert!(description.contains("50"));
+        assert!(description.contains("250"));
+        assert!(description.contains("fall back"));
     }
 }

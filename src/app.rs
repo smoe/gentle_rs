@@ -13607,7 +13607,7 @@ Error: `{err}`"
         };
         let destination_opening_suggestions = self.current_gibson_destination_opening_suggestions();
         let mut selected_opening_suggestion: Option<GibsonDestinationOpeningSuggestion> = None;
-        let tm_help = "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4). Long 30 bp overlaps can therefore read quite high; treat them as a first-pass screening heuristic.";
+        let tm_help = GentleEngine::primer_tm_model_description();
 
         ui.separator();
         ui.heading("Destination");
@@ -13792,16 +13792,22 @@ Error: `{err}`"
         ui.heading("Design Targets");
         ui.horizontal(|ui| {
             ui.label("overlap min/max bp");
-            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0));
-            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0));
-            ui.label("minimum overlap Tₘ (°C)").on_hover_text(tm_help);
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
+            );
+            ui.label("minimum overlap Tₘ (°C)")
+                .on_hover_text(&tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
                     .desired_width(80.0),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("priming Tₘ window (°C)").on_hover_text(tm_help);
+            ui.label("priming Tₘ window (°C)")
+                .on_hover_text(&tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_priming_tm_min_celsius)
                     .desired_width(80.0),
@@ -13827,6 +13833,7 @@ Error: `{err}`"
                     .desired_width(f32::INFINITY),
             );
         });
+        ui.small(tm_help.as_str());
 
         ui.separator();
         ui.heading("Review");
@@ -13891,7 +13898,7 @@ Error: `{err}`"
                     ui.strong("junction");
                     ui.strong("members");
                     ui.strong("overlap");
-                    ui.strong("Tₘ (°C)").on_hover_text(tm_help);
+                    ui.strong("Tₘ (°C)").on_hover_text(&tm_help);
                     ui.end_row();
                     for junction in &preview.resolved_junctions {
                         ui.monospace(&junction.junction_id);
@@ -13904,7 +13911,7 @@ Error: `{err}`"
                             junction.overlap_bp, junction.overlap_sequence
                         ));
                         ui.label(format!("{:.1} °C", junction.overlap_tm_celsius))
-                            .on_hover_text(tm_help);
+                            .on_hover_text(&tm_help);
                         ui.end_row();
                     }
                 });
@@ -13928,7 +13935,7 @@ Error: `{err}`"
                             primer.overlap_5prime.length_bp,
                             primer.overlap_5prime.tm_celsius
                         ))
-                        .on_hover_text(tm_help);
+                        .on_hover_text(&tm_help);
                         ui.small(format!(
                             "{} ({} bp, {:.1} °C, hits={})",
                             primer.priming_3prime.sequence,
@@ -13936,7 +13943,7 @@ Error: `{err}`"
                             primer.priming_3prime.tm_celsius,
                             primer.priming_3prime.anneal_hits
                         ))
-                        .on_hover_text(tm_help);
+                        .on_hover_text(&tm_help);
                         ui.end_row();
                     }
                 });
@@ -14019,9 +14026,7 @@ Error: `{err}`"
                 ui.small(
                     "Specific cutter suggestion: use this when you want one concrete restriction site and its end geometry, for example `SmaI` for blunt ends.",
                 );
-                ui.small(
-                    "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4), so long overlaps can read quite high.",
-                );
+                ui.small(tm_help.as_str());
                 ui.small(active_context_summary);
             });
     }
