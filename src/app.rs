@@ -48,10 +48,12 @@ use crate::{
     },
     enzymes,
     gibson_planning::{
-        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonPlanAssemblyMember,
+        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
+        GibsonPlanAssemblyMember,
         GibsonPlanDesignTargets, GibsonPlanDestination, GibsonPlanEndStrategy, GibsonPlanFragment,
         GibsonPlanJunction, GibsonPlanOpening, GibsonPlanOverlapPartition, GibsonPlanProduct,
         GibsonPlanUniquenessChecks, GibsonPlanValidationPolicy,
+        suggest_gibson_destination_openings,
     },
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
@@ -795,6 +797,7 @@ struct TutorialProjectEntry {
     chapter_order: usize,
     chapter_title: String,
     chapter_summary: String,
+    chapter_guide_path: Option<String>,
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
@@ -2862,6 +2865,61 @@ impl GENtleApp {
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
+    }
+
+    fn open_help_tutorial_path(
+        &mut self,
+        tutorial_path: &str,
+        fallback_title: &str,
+        fallback_summary: &str,
+    ) -> std::result::Result<(), String> {
+        let resolved_path = if Path::new(tutorial_path).is_absolute() {
+            PathBuf::from(tutorial_path)
+        } else {
+            Self::resolve_runtime_doc_path(tutorial_path).ok_or_else(|| {
+                format!("Tutorial guide '{}' could not be resolved at runtime", tutorial_path)
+            })?
+        };
+        let markdown = Self::load_help_markdown_from_path(&resolved_path).ok_or_else(|| {
+            format!(
+                "Tutorial guide '{}' could not be loaded",
+                resolved_path.display()
+            )
+        })?;
+        if self.help_tutorial_entries.is_empty() {
+            self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+        }
+        let resolved_string = resolved_path.to_string_lossy().to_string();
+        let tutorial_index = match self
+            .help_tutorial_entries
+            .iter()
+            .position(|entry| entry.path == resolved_string)
+        {
+            Some(index) => index,
+            None => {
+                let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+                    let trimmed = fallback_title.trim();
+                    if trimmed.is_empty() {
+                        Self::markdown_title_from_path(&resolved_path)
+                    } else {
+                        trimmed.to_string()
+                    }
+                });
+                let summary = if fallback_summary.trim().is_empty() {
+                    tutorial_path.to_string()
+                } else {
+                    fallback_summary.trim().to_string()
+                };
+                self.help_tutorial_entries.push(HelpTutorialDocEntry {
+                    title,
+                    path: resolved_string,
+                    summary,
+                });
+                self.help_tutorial_entries.len() - 1
+            }
+        };
+        self.open_help_tutorial_doc(tutorial_index);
+        Ok(())
     }
 
     fn generate_shell_help_markdown_for(interface: ShellHelpInterface) -> String {
@@ -5481,6 +5539,7 @@ Error: `{err}`"
                 chapter_order: chapter.order,
                 chapter_title: chapter.title,
                 chapter_summary: chapter.summary,
+                chapter_guide_path: chapter.guide_path,
                 tier: chapter.tier,
                 example,
                 repo_root: repo_root.clone(),
@@ -5488,6 +5547,13 @@ Error: `{err}`"
         }
         entries.sort_by(|left, right| left.chapter_order.cmp(&right.chapter_order));
         Ok(entries)
+    }
+
+    fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {
+        format!(
+            "docs/tutorial/generated/chapters/{:02}_{}.md",
+            entry.chapter_order, entry.chapter_id
+        )
     }
 
     fn open_tutorial_project_chapter(&mut self, chapter_id: &str) {
@@ -5566,6 +5632,22 @@ Error: `{err}`"
             "Opened tutorial project: {} ({})",
             entry.chapter_title, entry.chapter_id
         );
+        let guide_path = entry
+            .chapter_guide_path
+            .clone()
+            .unwrap_or_else(|| Self::tutorial_project_generated_chapter_path(&entry));
+        let guide_summary = if entry.chapter_guide_path.is_some() {
+            format!("tutorial project guide: {}", entry.chapter_title)
+        } else {
+            format!("generated tutorial chapter: {}", entry.chapter_title)
+        };
+        if let Err(err) = self.open_help_tutorial_path(
+            &guide_path,
+            &entry.chapter_title,
+            &guide_summary,
+        ) {
+            self.app_status.push_str(&format!(" | guide unavailable: {err}"));
+        }
     }
 
     fn prompt_open_project(&mut self) {
@@ -13365,6 +13447,49 @@ Error: `{err}`"
         }
     }
 
+    fn current_gibson_destination_opening_suggestions(
+        &self,
+    ) -> std::result::Result<Vec<GibsonDestinationOpeningSuggestion>, String> {
+        let destination_id = self.gibson_destination_seq_id.trim();
+        if destination_id.is_empty() {
+            return Ok(vec![]);
+        }
+        let engine = self
+            .engine
+            .read()
+            .map_err(|_| "Could not read engine state for Gibson opening suggestions".to_string())?;
+        suggest_gibson_destination_openings(&engine, destination_id)
+            .map_err(|err| err.message)
+    }
+
+    fn gibson_destination_suggestion_geometry_label(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> String {
+        match suggestion.end_geometry.as_str() {
+            "blunt" => "blunt".to_string(),
+            "5prime_overhang" => format!(
+                "5' overhang ({} bp)",
+                suggestion.overhang_bp.unwrap_or(0)
+            ),
+            "3prime_overhang" => format!(
+                "3' overhang ({} bp)",
+                suggestion.overhang_bp.unwrap_or(0)
+            ),
+            "feature_span" => "feature span".to_string(),
+            _ => suggestion.end_geometry.clone(),
+        }
+    }
+
+    fn apply_gibson_destination_opening_suggestion(
+        &mut self,
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) {
+        self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+        self.gibson_opening_start_0based = suggestion.start_0based.to_string();
+        self.gibson_opening_end_0based_exclusive = suggestion.end_0based_exclusive.to_string();
+        self.gibson_status = format!("Applied Gibson opening suggestion: {}", suggestion.label);
+    }
+
     fn render_gibson_contents(&mut self, ui: &mut Ui) {
         self.render_specialist_window_nav(ui);
         ui.label(
@@ -13390,6 +13515,8 @@ Error: `{err}`"
                 })
                 .unwrap_or_else(|| "not found".to_string())
         };
+        let destination_opening_suggestions = self.current_gibson_destination_opening_suggestions();
+        let mut selected_opening_suggestion: Option<GibsonDestinationOpeningSuggestion> = None;
 
         ui.separator();
         ui.heading("Destination");
@@ -13471,6 +13598,55 @@ Error: `{err}`"
                     .desired_width(120.0),
             );
         });
+        match &destination_opening_suggestions {
+            Ok(suggestions) if !suggestions.is_empty() => {
+                ui.small(
+                    "Suggested openings come from the selected sequence's MCS annotations and unique restriction sites. Choosing one fills the defined-site window but keeps the coordinates editable.",
+                );
+                egui::Grid::new("gibson_destination_opening_suggestions")
+                    .num_columns(4)
+                    .spacing([12.0, 6.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Suggestion");
+                        ui.strong("Ends");
+                        ui.strong("Source");
+                        ui.label("");
+                        ui.end_row();
+                        for suggestion in suggestions {
+                            ui.label(suggestion.label.as_str())
+                                .on_hover_text(suggestion.summary.as_str());
+                            ui.label(
+                                Self::gibson_destination_suggestion_geometry_label(suggestion),
+                            );
+                            ui.label(if suggestion.kind == "mcs_feature" {
+                                "MCS feature"
+                            } else if suggestion.in_mcs_context {
+                                "MCS / unique cutter"
+                            } else {
+                                "unique cutter"
+                            });
+                            if ui.button("Use").clicked() {
+                                selected_opening_suggestion = Some(suggestion.clone());
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+            Ok(_) => {
+                if !self.gibson_destination_seq_id.trim().is_empty() {
+                    ui.small(
+                        "No MCS-linked or unique-cutter suggestions were found for the current destination. You can still enter an opening span directly or use the active selection.",
+                    );
+                }
+            }
+            Err(err) => {
+                ui.small(format!("Opening suggestions unavailable: {err}"));
+            }
+        }
+        if let Some(suggestion) = selected_opening_suggestion.as_ref() {
+            self.apply_gibson_destination_opening_suggestion(suggestion);
+        }
 
         ui.separator();
         ui.heading("Insert");
@@ -28935,6 +29111,30 @@ mod tests {
     }
 
     #[test]
+    fn open_help_tutorial_path_adds_dynamic_entry_and_loads_markdown() {
+        let temp = tempdir().expect("tempdir");
+        let tutorial_path = temp.path().join("tutorial.md");
+        fs::write(&tutorial_path, "# Dynamic Tutorial\n\nWalkthrough.\n").expect("write tutorial");
+
+        let mut app = GENtleApp::default();
+        app.open_help_tutorial_path(
+            tutorial_path.to_string_lossy().as_ref(),
+            "Fallback Tutorial",
+            "dynamic guide",
+        )
+        .expect("open direct tutorial path");
+
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(app.show_help_dialog);
+        assert_eq!(app.help_tutorial_title, "Dynamic Tutorial");
+        assert!(app.help_tutorial_markdown.contains("Walkthrough."));
+        assert!(app
+            .help_tutorial_entries
+            .iter()
+            .any(|entry| entry.path == tutorial_path.to_string_lossy()));
+    }
+
+    #[test]
     fn command_palette_includes_routine_assistant_entry() {
         let app = GENtleApp::default();
         let entries = app.collect_command_palette_entries();
@@ -29437,6 +29637,23 @@ mod tests {
                 .any(|entry| entry.title == "GENtle Agent Interfaces Tutorial"),
             "Expected curated tutorial help entries to include the agent interfaces tutorial"
         );
+    }
+
+    #[test]
+    fn open_tutorial_project_chapter_opens_linked_guide() {
+        let mut app = GENtleApp::default();
+
+        app.open_tutorial_project_chapter("gibson_specialist_testing_baseline");
+
+        assert!(app.app_status.contains("Opened tutorial project"));
+        assert!(app.show_help_dialog);
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(app
+            .help_tutorial_title
+            .contains("Gibson Specialist Testing Tutorial"));
+        assert!(app
+            .help_tutorial_markdown
+            .contains("Patterns -> Gibson..."));
     }
 
     #[test]

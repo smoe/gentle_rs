@@ -1,4 +1,4 @@
-# Prepare a Gibson specialist testing baseline (offline)
+# Gibson Specialist Starter Project (offline)
 
 - Chapter id: `gibson_specialist_testing_baseline`
 - Tier: `core`
@@ -37,9 +37,9 @@ This chapter exists to remove setup friction from Gibson specialist testing. The
 
 ## GUI First
 
-1. Open `File -> Open Tutorial Project...` and choose `Prepare a Gibson specialist testing baseline (offline)`.
+1. Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.
 2. Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
-3. Continue with [`docs/tutorial/gibson_specialist_testing_gui.md`](../gibson_specialist_testing_gui.md) from `Step 3` onward to exercise the Gibson specialist itself.
+3. The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself.
 
 ## Command Equivalent (After GUI)
 

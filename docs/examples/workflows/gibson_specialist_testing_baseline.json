@@ -1,7 +1,7 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "gibson_specialist_testing_baseline",
-  "title": "Prepare a Gibson specialist testing baseline (offline)",
+  "title": "Gibson Specialist Starter Project (offline)",
   "summary": "Loads a circular pGEX destination and one small synthetic insert under stable IDs so the destination-first Gibson specialist can be tested immediately through Open Tutorial Project or CLI workflow replay.",
   "test_mode": "always",
   "required_files": [

@@ -25,8 +25,9 @@ should do:
 Recommended route:
 
 1. `File -> Open Tutorial Project...`
-2. choose `Prepare a Gibson specialist testing baseline (offline)`
-3. continue below from `Step 3`
+2. choose `Gibson Specialist Starter Project (offline)`
+3. the Help window should open automatically on this guide
+4. continue below from `Step 3`
 
 That tutorial-project baseline is backed by the executable workflow example:
 
@@ -127,7 +128,9 @@ GUI:
 1. in `Destination`, choose the circular `pGEX` sequence you loaded in Step 1
    or the tutorial-project destination `gibson_destination_pgex`
 2. keep `opening = defined site`
-3. enter:
+3. preferred route: in `Suggested openings`, click `Use` on the
+   `SmaI | blunt | ...` row if it is offered from the MCS annotation
+4. fallback route if you want a fixed coordinate-only test:
    - `start_0based = 240`
    - `end_0based_exclusive = 246`
 
@@ -141,6 +144,9 @@ Optional prefill check:
 
 Notes:
 
+- if the destination already carries MCS/unique-cutter knowledge, the specialist
+  should now suggest openings biologically rather than forcing you to start from
+  raw coordinates alone
 - `240..246` is only a stable tutorial opening window for UI testing.
 - This tutorial checks the mechanics of the specialist, not whether this exact
   insertion site is biologically optimal.

@@ -1,11 +1,12 @@
 {
   "schema": "gentle.tutorial_source.v2",
   "id": "gibson_specialist_testing_baseline",
-  "title": "Prepare a Gibson specialist testing baseline (offline)",
+  "title": "Gibson Specialist Starter Project (offline)",
   "generated_chapter": {
     "order": 15,
     "example_id": "gibson_specialist_testing_baseline",
     "tier": "core",
+    "guide_path": "docs/tutorial/gibson_specialist_testing_gui.md",
     "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
     "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
     "use_cases": [
@@ -14,9 +15,9 @@
       "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
     ],
     "gui_steps": [
-      "Open `File -> Open Tutorial Project...` and choose `Prepare a Gibson specialist testing baseline (offline)`.",
+      "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
       "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-      "Continue with [`docs/tutorial/gibson_specialist_testing_gui.md`](../gibson_specialist_testing_gui.md) from `Step 3` onward to exercise the Gibson specialist itself."
+      "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
     ],
     "learning_objectives": [
       "Use executable tutorial projects as deterministic GUI test baselines.",

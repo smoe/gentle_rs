@@ -59,6 +59,7 @@
       "title": "Load FASTA, branch, and reverse-complement",
       "example_id": "load_branch_reverse_complement_pgex_fasta",
       "tier": "core",
+      "guide_path": null,
       "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
       "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
       "use_cases": [
@@ -110,6 +111,7 @@
       "title": "Find and extend the right genomic target (local catalog)",
       "example_id": "prepare_extract_extend_localproject_gene",
       "tier": "core",
+      "guide_path": null,
       "summary": "Use assets/genomes.json + annotation-driven gene targeting, then extend the anchored sequence directly in the DNA window.",
       "narrative": "Many investigations start with \"which exact genomic interval should I look at\" rather than \"which cloning operation should I run\". This chapter introduces the practical sequence-selection loop: choose a prepared genome from `assets/genomes.json`, narrow candidates with annotation-backed gene filtering, extract the target interval, and then widen context with 5'/3' anchor extension as needed for promoter/splice/regulatory interpretation. The same workflow also clarifies where GenBank/EMBL imports fit: exported GenBank/EMBL records are loadable directly, and GenBank entries carrying NCBI `ACCESSION ... REGION:` metadata can be mapped to genome coordinates and extended by the same anchor controls.",
       "use_cases": [
@@ -174,6 +176,7 @@
       "title": "Load pGEX and digest with BamHI/EcoRI",
       "example_id": "load_and_digest_pgex",
       "tier": "core",
+      "guide_path": null,
       "summary": "Introduce restriction digest planning and deterministic fragment products.",
       "narrative": "Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.",
       "use_cases": [
@@ -224,6 +227,7 @@
       "title": "Gibson two-fragment overlap planning baseline",
       "example_id": "gibson_two_fragment_overlap_preview",
       "tier": "core",
+      "guide_path": null,
       "summary": "Use the built-in Gibson routine baseline to validate overlap assumptions and generate deterministic preview assemblies.",
       "narrative": "Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order preview sequences for review and communication.",
       "use_cases": [
@@ -287,6 +291,7 @@
       "title": "Guide practical filtering and oligo generation",
       "example_id": "guides_filter_and_generate_oligos",
       "tier": "core",
+      "guide_path": null,
       "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
       "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
       "use_cases": [
@@ -337,6 +342,7 @@
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
       "example_id": "digest_ligation_extract_region_minimal",
       "tier": "core",
+      "guide_path": null,
       "summary": "Run a full mini-loop from fragment production to assembled product extraction.",
       "narrative": "This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.",
       "use_cases": [
@@ -388,6 +394,7 @@
       "title": "Guide oligo export (CSV + protocol)",
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
+      "guide_path": null,
       "summary": "Export representative machine-readable and human-readable artifacts.",
       "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
       "use_cases": [
@@ -441,6 +448,7 @@
       "title": "Contribute to GENtle development",
       "example_id": "contribute_gentle_development_baseline",
       "tier": "advanced",
+      "guide_path": null,
       "summary": "Executable contributor onboarding from baseline run to test/documentation checks.",
       "narrative": "Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.",
       "use_cases": [
@@ -492,6 +500,7 @@
       "title": "Prepare a reference genome cache (online)",
       "example_id": "prepare_reference_genome_online",
       "tier": "online",
+      "guide_path": null,
       "summary": "Document network-dependent preparation without destabilizing offline default checks.",
       "narrative": "Reference-genome preparation is crucial for genome-anchored cloning interpretation, but it depends on online resources and local tool setup. This chapter keeps that path explicit and opt-in so default tutorial checks remain robust.",
       "use_cases": [
@@ -545,6 +554,7 @@
       "title": "TP53 isoform architecture expert panel (online)",
       "example_id": "tp53_isoform_architecture_online",
       "tier": "online",
+      "guide_path": null,
       "summary": "Build a TP53 locus project and export Figure-1-style transcript/protein isoform architecture from one deterministic engine route.",
       "narrative": "This chapter demonstrates a publication-oriented use case: derive TP53 from a prepared GRCh38 reference, import a curated isoform panel, and render transcript/protein architecture from the same expert-view payload used by GUI and shell interfaces. The focus is parity and provenance, not manual figure drawing.",
       "use_cases": [
@@ -604,6 +614,7 @@
       "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
       "example_id": "tp63_extend_anchor_online",
       "tier": "online",
+      "guide_path": null,
       "summary": "Prepare Human GRCh38, inspect TP63 genomic coordinates, extract TP63, and extend the anchored sequence by 2000 bp on each side.",
       "narrative": "This chapter focuses on day-to-day genome-anchored sequence inspection: identify TP63 in GRCh38, verify coordinates before extraction, and then widen the visible anchored region directly in the DNA sequence window. The key point is that extension remains deterministic and provenance-preserving, whether triggered in the GUI or via shell/CLI operations.",
       "use_cases": [
@@ -662,6 +673,7 @@
       "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
       "example_id": "tp53_multi_gene_sparse_mapping_online",
       "tier": "online",
+      "guide_path": null,
       "summary": "Prepare GRCh38, extract TP53, then map RNA reads with origin_mode=multi_gene_sparse against TP53-family targets.",
       "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. After extracting the TP53 locus from GRCh38, you run `InterpretRnaReads` with `multi_gene_sparse` so the index can include additional target genes (for example TP53/TP63/TP73) in one run. The goal is to keep genome anchoring and multi-gene interpretation in the same reproducible workflow contract.",
       "use_cases": [
@@ -726,6 +738,7 @@
       "title": "Selection-first PCR batch primer design (offline)",
       "example_id": "pcr_selection_batch_primer_pairs_offline",
       "tier": "core",
+      "guide_path": null,
       "summary": "Queue TP73-AS2 promoter-proximal ROIs from local TP73 sequence context, then run deterministic batch primer-pair reports with optional extracted-region copies.",
       "narrative": "This chapter is PCR-focused and biology-anchored without requiring genome mapping mechanics. You work directly on local TP73 locus sequence (`test_files/tp73.ncbi.gb`), queue promoter-proximal regions around TP73-AS2, run one shared primer-constraint set across queued regions, and review/export deterministic batch results (`..._r01`, `..._r02`). This prepares a practical assay baseline before entering the separate luciferase cloning tutorial.",
       "use_cases": [
@@ -806,6 +819,7 @@
       "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
       "example_id": "tp73_cdna_genomic_dotplot_online",
       "tier": "online",
+      "guide_path": null,
       "summary": "Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).",
       "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.",
       "use_cases": [
@@ -859,9 +873,10 @@
     {
       "id": "gibson_specialist_testing_baseline",
       "order": 15,
-      "title": "Prepare a Gibson specialist testing baseline (offline)",
+      "title": "Gibson Specialist Starter Project (offline)",
       "example_id": "gibson_specialist_testing_baseline",
       "tier": "core",
+      "guide_path": "docs/tutorial/gibson_specialist_testing_gui.md",
       "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
       "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
       "use_cases": [
@@ -870,9 +885,9 @@
         "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
       ],
       "gui_steps": [
-        "Open `File -> Open Tutorial Project...` and choose `Prepare a Gibson specialist testing baseline (offline)`.",
+        "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
         "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-        "Continue with [`docs/tutorial/gibson_specialist_testing_gui.md`](../gibson_specialist_testing_gui.md) from `Step 3` onward to exercise the Gibson specialist itself."
+        "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
       ],
       "learning_objectives": [
         "Use executable tutorial projects as deterministic GUI test baselines.",
