@@ -2681,7 +2681,8 @@ mod tests {
     use super::*;
     use gentle::test_support::{
         demo_jaspar_pfm_text, demo_rebase_withrefm_text, write_demo_jaspar_pfm,
-        write_demo_pool_json, write_demo_rebase_withrefm,
+        write_demo_pool_json, write_demo_rebase_withrefm, write_demo_workflow_json,
+        write_demo_workflow_with_shebang,
     };
     use std::fs;
     use std::sync::Mutex;
@@ -2786,8 +2787,7 @@ mod tests {
     #[test]
     fn test_load_json_arg_reads_existing_file_without_at_prefix() {
         let dir = tempdir().expect("temp dir");
-        let path = dir.path().join("workflow.json");
-        fs::write(&path, r#"{"run_id":"from_file","ops":[]}"#).expect("write workflow");
+        let path = write_demo_workflow_json(dir.path(), "workflow.json", "from_file");
         let loaded = load_json_arg(path.to_str().expect("utf-8 path")).expect("load json");
         assert_eq!(loaded, r#"{"run_id":"from_file","ops":[]}"#);
     }
@@ -2795,12 +2795,7 @@ mod tests {
     #[test]
     fn test_load_json_arg_strips_shebang_from_file() {
         let dir = tempdir().expect("temp dir");
-        let path = dir.path().join("workflow.gsh");
-        fs::write(
-            &path,
-            "#!/usr/bin/env -S gentle_cli workflow\n{\"run_id\":\"with_shebang\",\"ops\":[]}\n",
-        )
-        .expect("write workflow");
+        let path = write_demo_workflow_with_shebang(dir.path(), "workflow.gsh", "with_shebang");
         let loaded = load_json_arg(path.to_str().expect("utf-8 path")).expect("load json");
         assert_eq!(loaded.trim(), r#"{"run_id":"with_shebang","ops":[]}"#);
     }

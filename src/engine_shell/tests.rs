@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
-use crate::test_support::{decision_trace_fixture_state, write_demo_pool_json};
+use crate::test_support::{
+    decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
+    write_demo_workflow_with_shebang,
+};
 use gb_io::seq::{Feature, FeatureKind, Location};
 use std::fs;
 #[cfg(unix)]
@@ -154,8 +157,7 @@ fn parse_workflow_json_payload_accepts_wrapped_example() {
 #[test]
 fn parse_json_payload_reads_existing_file_without_at_prefix() {
     let dir = tempdir().expect("temp dir");
-    let path = dir.path().join("workflow.json");
-    fs::write(&path, r#"{"run_id":"from_file","ops":[]}"#).expect("write workflow");
+    let path = write_demo_workflow_json(dir.path(), "workflow.json", "from_file");
     let loaded = parse_json_payload(path.to_str().expect("utf-8 path")).expect("parse payload");
     assert_eq!(loaded, r#"{"run_id":"from_file","ops":[]}"#);
 }
@@ -163,12 +165,7 @@ fn parse_json_payload_reads_existing_file_without_at_prefix() {
 #[test]
 fn parse_json_payload_strips_shebang_from_file() {
     let dir = tempdir().expect("temp dir");
-    let path = dir.path().join("workflow.gsh");
-    fs::write(
-        &path,
-        "#!/usr/bin/env -S gentle_cli workflow\n{\"run_id\":\"from_shebang\",\"ops\":[]}\n",
-    )
-    .expect("write workflow");
+    let path = write_demo_workflow_with_shebang(dir.path(), "workflow.gsh", "from_shebang");
     let loaded = parse_json_payload(path.to_str().expect("utf-8 path")).expect("parse payload");
     assert_eq!(loaded.trim(), r#"{"run_id":"from_shebang","ops":[]}"#);
 }

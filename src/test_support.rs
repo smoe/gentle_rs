@@ -75,6 +75,23 @@ pub fn demo_jaspar_pfm_text() -> &'static str {
     DEMO_JASPAR_PFM
 }
 
+/// Writes a minimal workflow JSON file with the given `run_id`.
+pub fn write_demo_workflow_json(dir: &Path, filename: &str, run_id: &str) -> PathBuf {
+    let path = dir.join(filename);
+    let payload = format!(r#"{{"run_id":"{run_id}","ops":[]}}"#);
+    fs::write(&path, payload).expect("write workflow");
+    path
+}
+
+/// Writes a shebang-prefixed workflow JSON file with the given `run_id`.
+pub fn write_demo_workflow_with_shebang(dir: &Path, filename: &str, run_id: &str) -> PathBuf {
+    let path = dir.join(filename);
+    let payload =
+        format!("#!/usr/bin/env -S gentle_cli workflow\n{{\"run_id\":\"{run_id}\",\"ops\":[]}}\n");
+    fs::write(&path, payload).expect("write workflow");
+    path
+}
+
 /// Writes a minimal deterministic REBASE `.withrefm` fixture and returns its path.
 pub fn write_demo_rebase_withrefm(dir: &Path) -> PathBuf {
     let path = dir.join("rebase.withrefm");
