@@ -62,6 +62,8 @@ order. Durable architecture constraints and decisions remain in
     - resolved terminal overlaps
     - Gibson-specific primer suggestions (`5' overlap + 3' priming`)
     - validation/advisory findings
+    - destination opening suggestions from MCS annotations and unique
+      restriction cutters, including blunt/sticky-end labels
     - protocol-cartoon preview/export
     - Routine Assistant handoff when the destination already uses existing
       linear termini
@@ -442,6 +444,8 @@ order. Durable architecture constraints and decisions remain in
     - role:
       - preloads stable destination/insert IDs for the manual Gibson testing
         walkthrough
+      - now opens the matching Help/Tutorial guide automatically when the
+        starter project is opened from the GUI
   - dedicated online TP53 isoform architecture chapter added:
     `tp53_isoform_architecture_online` (backed by canonical
     `tp53_isoform_architecture_online` workflow example and curated panel
@@ -1557,6 +1561,8 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       `Patterns -> Gibson...`
   - current single-insert v1 now covers:
     - destination opening resolution (`existing_termini` or `defined_site`)
+    - destination opening suggestions from annotated MCS spans and unique
+      restriction sites
     - terminal overlap derivation
     - Gibson-specific primer suggestions
       (`5' overlap + 3' gene-specific priming segment`)

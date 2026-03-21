@@ -7,15 +7,18 @@
 //! and protocol-cartoon rendering from one shared derivation path.
 
 use crate::{
+    enzymes::active_restriction_enzymes,
     engine::{EngineError, ErrorCode, GentleEngine},
+    feature_location::collect_location_ranges_usize,
     protocol_cartoon::{
         DnaEndStyle, OverhangPolarity, ProtocolCartoonKind, ProtocolCartoonTemplateBindings,
         ProtocolCartoonTemplateEventBinding, ProtocolCartoonTemplateFeatureBinding,
         ProtocolCartoonTemplateMoleculeBinding,
     },
+    restriction_enzyme::RestrictionEnzymeSite,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub const GIBSON_ASSEMBLY_PLAN_SCHEMA: &str = "gentle.gibson_assembly_plan.v1";
 pub const GIBSON_ASSEMBLY_PREVIEW_SCHEMA: &str = "gentle.gibson_assembly_preview.v1";
@@ -173,6 +176,20 @@ pub struct GibsonPlanReferenceContext {
     pub severity: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GibsonDestinationOpeningSuggestion {
+    pub kind: String,
+    pub label: String,
+    pub summary: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub enzyme_name: Option<String>,
+    pub end_geometry: String,
+    pub overhang_bp: Option<usize>,
+    pub in_mcs_context: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct GibsonAssemblyPreview {
@@ -307,6 +324,14 @@ struct GibsonPrimerCandidate {
     anneal_hits: usize,
 }
 
+#[derive(Debug, Clone)]
+struct GibsonMcsFeatureHint {
+    label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    candidate_enzymes: Vec<String>,
+}
+
 impl GentleEngine {
     /// Preview one restricted v1 Gibson assembly plan without mutating engine state.
     pub fn preview_gibson_assembly_plan(
@@ -315,6 +340,371 @@ impl GentleEngine {
     ) -> Result<GibsonAssemblyPreview, EngineError> {
         preview_gibson_assembly_plan(self, plan)
     }
+
+    /// Suggest destination openings for the Gibson specialist UI.
+    pub fn suggest_gibson_destination_openings(
+        &self,
+        seq_id: &str,
+    ) -> Result<Vec<GibsonDestinationOpeningSuggestion>, EngineError> {
+        suggest_gibson_destination_openings(self, seq_id)
+    }
+}
+
+pub fn suggest_gibson_destination_openings(
+    engine: &GentleEngine,
+    seq_id: &str,
+) -> Result<Vec<GibsonDestinationOpeningSuggestion>, EngineError> {
+    let seq_id = seq_id.trim();
+    if seq_id.is_empty() {
+        return Ok(vec![]);
+    }
+    let dna = engine
+        .state()
+        .sequences
+        .get(seq_id)
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Destination sequence '{}' not found", seq_id),
+        })?;
+    let seq_len = dna.len();
+    if seq_len == 0 {
+        return Ok(vec![]);
+    }
+
+    let mut suggestions = vec![];
+    let mcs_hints = collect_mcs_feature_hints(dna);
+    let unique_sites = unique_forward_sites(dna);
+
+    for hint in &mcs_hints {
+        suggestions.push(GibsonDestinationOpeningSuggestion {
+            kind: "mcs_feature".to_string(),
+            label: format!(
+                "{} ({}..{})",
+                hint.label,
+                hint.start_0based + 1,
+                hint.end_0based_exclusive
+            ),
+            summary: format!(
+                "Use the annotated MCS feature span as the destination opening window; fills defined-site {}..{} (0-based).",
+                hint.start_0based, hint.end_0based_exclusive
+            ),
+            start_0based: hint.start_0based,
+            end_0based_exclusive: hint.end_0based_exclusive,
+            enzyme_name: None,
+            end_geometry: "feature_span".to_string(),
+            overhang_bp: None,
+            in_mcs_context: true,
+        });
+    }
+
+    let mut seen_enzymes = HashSet::new();
+    let mut mcs_site_suggestions = vec![];
+    for hint in &mcs_hints {
+        for enzyme_name in &hint.candidate_enzymes {
+            let Some(site) = unique_sites.get(enzyme_name) else {
+                continue;
+            };
+            if !seen_enzymes.insert(enzyme_name.clone()) {
+                continue;
+            }
+            if let Some(suggestion) = restriction_site_suggestion(site, true, seq_len) {
+                mcs_site_suggestions.push(suggestion);
+            }
+        }
+    }
+    mcs_site_suggestions.sort_by(|left, right| {
+        geometry_priority(&left.end_geometry)
+            .cmp(&geometry_priority(&right.end_geometry))
+            .then(left.start_0based.cmp(&right.start_0based))
+            .then(left.label.cmp(&right.label))
+    });
+    if !mcs_site_suggestions.is_empty() {
+        suggestions.extend(mcs_site_suggestions);
+        return Ok(suggestions);
+    }
+
+    let mut fallback_unique_sites = unique_sites
+        .values()
+        .filter_map(|site| restriction_site_suggestion(site, false, seq_len))
+        .collect::<Vec<_>>();
+    fallback_unique_sites.sort_by(|left, right| {
+        geometry_priority(&left.end_geometry)
+            .cmp(&geometry_priority(&right.end_geometry))
+            .then(left.start_0based.cmp(&right.start_0based))
+            .then(left.label.cmp(&right.label))
+    });
+    suggestions.extend(fallback_unique_sites);
+    Ok(suggestions)
+}
+
+fn unique_forward_sites<'a>(
+    dna: &'a crate::dna_sequence::DNAsequence,
+) -> HashMap<String, &'a RestrictionEnzymeSite> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut first_sites: HashMap<String, &RestrictionEnzymeSite> = HashMap::new();
+    for site in dna.restriction_enzyme_sites().iter().filter(|site| site.forward_strand) {
+        let name = site.enzyme.name.clone();
+        *counts.entry(name.clone()).or_insert(0) += 1;
+        first_sites.entry(name).or_insert(site);
+    }
+    first_sites
+        .into_iter()
+        .filter_map(|(name, site)| (counts.get(&name).copied() == Some(1)).then_some((name, site)))
+        .collect()
+}
+
+fn restriction_site_suggestion(
+    site: &RestrictionEnzymeSite,
+    in_mcs_context: bool,
+    seq_len: usize,
+) -> Option<GibsonDestinationOpeningSuggestion> {
+    let start_0based = usize::try_from(site.offset).ok()?;
+    let end_0based_exclusive = start_0based.checked_add(site.enzyme.sequence.len())?;
+    if end_0based_exclusive > seq_len {
+        return None;
+    }
+    let (end_geometry, overhang_bp, geometry_label) =
+        restriction_end_geometry_descriptor(site.enzyme.overlap);
+    let context_label = if in_mcs_context {
+        "MCS-linked unique cutter"
+    } else {
+        "Unique cutter"
+    };
+    Some(GibsonDestinationOpeningSuggestion {
+        kind: "unique_restriction_site".to_string(),
+        label: format!(
+            "{} | {} | {}..{}",
+            site.enzyme.name,
+            geometry_label,
+            start_0based + 1,
+            end_0based_exclusive
+        ),
+        summary: format!(
+            "{} {} using recognition span {}..{} (1-based); fills defined-site {}..{} (0-based).",
+            context_label,
+            site.enzyme.name,
+            start_0based + 1,
+            end_0based_exclusive,
+            start_0based,
+            end_0based_exclusive
+        ),
+        start_0based,
+        end_0based_exclusive,
+        enzyme_name: Some(site.enzyme.name.clone()),
+        end_geometry: end_geometry.to_string(),
+        overhang_bp,
+        in_mcs_context,
+    })
+}
+
+fn restriction_end_geometry_descriptor(overlap: isize) -> (&'static str, Option<usize>, String) {
+    if overlap == 0 {
+        ("blunt", None, "blunt".to_string())
+    } else if overlap > 0 {
+        let bp = overlap as usize;
+        (
+            "5prime_overhang",
+            Some(bp),
+            format!("5' overhang ({} bp)", bp),
+        )
+    } else {
+        let bp = overlap.unsigned_abs();
+        (
+            "3prime_overhang",
+            Some(bp),
+            format!("3' overhang ({} bp)", bp),
+        )
+    }
+}
+
+fn geometry_priority(end_geometry: &str) -> usize {
+    match end_geometry {
+        "blunt" => 0,
+        "5prime_overhang" => 1,
+        "3prime_overhang" => 2,
+        "feature_span" => 3,
+        _ => 4,
+    }
+}
+
+fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<GibsonMcsFeatureHint> {
+    let lookup = rebase_name_lookup_by_normalized();
+    let available_sites: HashSet<String> = dna
+        .restriction_enzyme_sites()
+        .iter()
+        .filter(|site| site.forward_strand)
+        .map(|site| site.enzyme.name.clone())
+        .collect();
+    let mut hints = vec![];
+    for feature in dna.features() {
+        let mcs_hint = feature
+            .qualifier_values("mcs_expected_sites".into())
+            .next()
+            .is_some()
+            || feature
+                .qualifier_values("mcs_preset".into())
+                .next()
+                .is_some()
+            || feature_first_nonempty_qualifier(
+                feature,
+                &["label", "note", "gene", "name", "standard_name"],
+            )
+            .map(|text| text_mentions_mcs(&text))
+            .unwrap_or(false);
+        if !mcs_hint {
+            continue;
+        }
+
+        let mut ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        if ranges.is_empty() {
+            continue;
+        }
+        let start_0based = ranges.iter().map(|(start, _)| *start).min().unwrap_or(0);
+        let end_0based_exclusive = ranges
+            .iter()
+            .map(|(_, end)| *end)
+            .max()
+            .unwrap_or(start_0based);
+        if end_0based_exclusive <= start_0based {
+            continue;
+        }
+
+        let mut candidate_enzymes = vec![];
+        let mut seen_candidates = HashSet::new();
+        for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+            for token in raw
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                if let Some(name) = canonicalize_rebase_enzyme_name(token, &lookup) {
+                    if seen_candidates.insert(name.clone()) && available_sites.contains(&name) {
+                        candidate_enzymes.push(name);
+                    }
+                } else {
+                    for name in extract_rebase_enzyme_names_from_text(token, &lookup) {
+                        if seen_candidates.insert(name.clone()) && available_sites.contains(&name) {
+                            candidate_enzymes.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        for key in ["note", "label", "gene", "name", "standard_name"] {
+            for raw in feature.qualifier_values(key.into()) {
+                for name in extract_rebase_enzyme_names_from_text(raw, &lookup) {
+                    if seen_candidates.insert(name.clone()) && available_sites.contains(&name) {
+                        candidate_enzymes.push(name);
+                    }
+                }
+            }
+        }
+
+        let label = feature_first_nonempty_qualifier(
+            feature,
+            &["label", "standard_name", "name", "gene", "note"],
+        )
+        .unwrap_or_else(|| "Multiple Cloning Site (MCS)".to_string());
+        hints.push(GibsonMcsFeatureHint {
+            label,
+            start_0based,
+            end_0based_exclusive,
+            candidate_enzymes,
+        });
+    }
+    hints.sort_by(|left, right| {
+        left.start_0based
+            .cmp(&right.start_0based)
+            .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+            .then(left.label.cmp(&right.label))
+    });
+    hints
+}
+
+fn normalize_enzyme_match_token(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
+fn rebase_name_lookup_by_normalized() -> HashMap<String, String> {
+    let mut lookup = HashMap::new();
+    for enzyme in active_restriction_enzymes() {
+        let normalized = normalize_enzyme_match_token(&enzyme.name);
+        if !normalized.is_empty() {
+            lookup.entry(normalized).or_insert(enzyme.name);
+        }
+    }
+    lookup
+}
+
+fn canonicalize_rebase_enzyme_name(
+    raw: &str,
+    lookup: &HashMap<String, String>,
+) -> Option<String> {
+    let normalized = normalize_enzyme_match_token(raw);
+    lookup.get(&normalized).cloned()
+}
+
+fn extract_rebase_enzyme_names_from_text(
+    text: &str,
+    lookup: &HashMap<String, String>,
+) -> Vec<String> {
+    let tokens = text
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut out = vec![];
+    let mut seen = HashSet::new();
+    let mut push_candidate = |candidate: String| {
+        if let Some(name) = canonicalize_rebase_enzyme_name(&candidate, lookup) {
+            if seen.insert(name.clone()) {
+                out.push(name);
+            }
+        }
+    };
+    for idx in 0..tokens.len() {
+        push_candidate(tokens[idx].clone());
+        if idx + 1 < tokens.len() {
+            push_candidate(format!("{}{}", tokens[idx], tokens[idx + 1]));
+        }
+        if idx + 2 < tokens.len() {
+            push_candidate(format!(
+                "{}{}{}",
+                tokens[idx],
+                tokens[idx + 1],
+                tokens[idx + 2]
+            ));
+        }
+    }
+    out
+}
+
+fn text_mentions_mcs(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("multiple cloning site")
+        || lower == "mcs"
+        || lower.contains(" mcs ")
+        || lower.starts_with("mcs ")
+        || lower.ends_with(" mcs")
+        || lower.contains("(mcs)")
+}
+
+fn feature_first_nonempty_qualifier(feature: &gb_io::seq::Feature, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        for value in feature.qualifier_values((*key).into()) {
+            let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+            let normalized = normalized.trim().to_string();
+            if !normalized.is_empty() {
+                return Some(normalized);
+            }
+        }
+    }
+    None
 }
 
 pub fn preview_gibson_assembly_plan(
@@ -1421,7 +1811,8 @@ fn normalized_orientation(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dna_sequence::DNAsequence, engine::ProjectState};
+    use crate::{dna_sequence::DNAsequence, engine::ProjectState, enzymes::active_restriction_enzymes};
+    use gb_io::seq::{Feature, FeatureKind, Location};
 
     fn test_engine_with_sequences() -> GentleEngine {
         let mut engine = GentleEngine::new();
@@ -1441,6 +1832,14 @@ mod tests {
         engine.state_mut().sequences.insert("insert_x_amplicon".to_string(), insert);
         engine.state_mut().display = ProjectState::default().display;
         engine
+    }
+
+    fn restriction_ready_dna(sequence: &str) -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence(sequence).expect("sequence");
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.update_computed_features();
+        dna
     }
 
     fn single_insert_plan() -> GibsonAssemblyPlan {
@@ -1533,6 +1932,45 @@ mod tests {
         assert_eq!(preview.resolved_junctions.len(), 2);
         assert_eq!(preview.primer_suggestions.len(), 2);
         assert_eq!(preview.cartoon.protocol_id, "gibson.two_fragment");
+    }
+
+    #[test]
+    fn suggest_gibson_destination_openings_prefers_mcs_blunt_unique_cutter() {
+        let mut dna = restriction_ready_dna("TTTGGATCCAAACCCGGGTTTGAATTCTTT");
+        dna.set_circular(true);
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("misc_feature"),
+            location: Location::simple_range(3, 21),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("Multiple Cloning Site (MCS)".to_string()),
+                ),
+                (
+                    "note".into(),
+                    Some("contains BamHI, SmaI and EcoR I".to_string()),
+                ),
+            ],
+        });
+        let mut engine = GentleEngine::new();
+        engine.state_mut().sequences.insert("vector".to_string(), dna);
+
+        let suggestions =
+            suggest_gibson_destination_openings(&engine, "vector").expect("suggestions");
+
+        assert!(!suggestions.is_empty());
+        assert_eq!(suggestions[0].kind, "mcs_feature");
+        let site_order = suggestions
+            .iter()
+            .filter_map(|row| row.enzyme_name.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(site_order.first().copied(), Some("SmaI"));
+        let smai = suggestions
+            .iter()
+            .find(|row| row.enzyme_name.as_deref() == Some("SmaI"))
+            .expect("SmaI suggestion");
+        assert_eq!(smai.end_geometry, "blunt");
+        assert!(smai.in_mcs_context);
     }
 
     #[test]

@@ -95,6 +95,8 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub example_id: String,
     pub tier: TutorialTier,
     #[serde(default)]
+    pub guide_path: Option<String>,
+    #[serde(default)]
     pub summary: String,
     #[serde(default)]
     pub narrative: String,
@@ -151,6 +153,7 @@ impl TutorialSourceGeneratedChapterSection {
             title,
             example_id: self.example_id,
             tier: self.tier,
+            guide_path: self.guide_path,
             summary: self.summary,
             narrative: self.narrative,
             use_cases: self.use_cases,
@@ -244,6 +247,8 @@ pub struct TutorialChapter {
     pub title: String,
     pub example_id: String,
     pub tier: TutorialTier,
+    #[serde(default)]
+    pub guide_path: Option<String>,
     #[serde(default)]
     pub summary: String,
     #[serde(default)]
@@ -1014,6 +1019,14 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 "Tutorial chapter '{}' must reference at least one concept",
                 chapter.id
             ));
+        }
+        if let Some(guide_path) = &chapter.guide_path {
+            if guide_path.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank guide_path",
+                    chapter.id
+                ));
+            }
         }
         if !seen_ids.insert(chapter.id.clone()) {
             return Err(format!(

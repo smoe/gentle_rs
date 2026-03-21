@@ -571,6 +571,10 @@ Patterns menu:
        - choose `existing termini` or `defined opening`
        - active DNA window pre-fills the destination by default when possible
        - optionally fill opening coordinates from the active DNA selection
+       - suggests biologically meaningful openings from MCS annotations and
+         unique restriction sites when the destination already exposes them
+       - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
+         such as `SmaI` can be chosen directly from the specialist
     2. `Insert`
        - choose one insert sequence and orientation
     3. `Design Targets`
@@ -2013,6 +2017,8 @@ Tutorial projects:
 
 - `Open Tutorial Project...` builds a project from canonical tutorial workflow
   examples (`docs/examples/workflows`) and opens it immediately for inspection.
+- When a tutorial chapter declares a matching guide, the Help window opens that
+  tutorial page automatically so the next GUI steps are visible right away.
 - tutorial project discovery now consults `docs/tutorial/catalog.json` first and
   resolves the executable manifest/runtime chapter list from the catalog's
   `generated_runtime.manifest_path`
@@ -2036,6 +2042,8 @@ Tutorial projects:
     - `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
     - preloads stable `gibson_destination_pgex` and `gibson_insert_demo`
       sequence IDs for the manual Gibson specialist walkthrough
+    - `Gibson Specialist Starter Project (offline)` also opens the matching
+      Help/Tutorial guide automatically
   - `docs/tutorial/two_sequence_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).

@@ -35,6 +35,8 @@ If you want to test the new destination-first Gibson specialist end-to-end:
   [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md)
 - fastest setup path:
   [`docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`](./generated/chapters/15_gibson_specialist_testing_baseline.md)
+  - in the app, `File -> Open Tutorial Project...` -> `Gibson Specialist Starter Project (offline)`
+    now opens the starter project and the matching Help/Tutorial guide together
 
 If you want a sequence-analysis example with screenshots:
 
