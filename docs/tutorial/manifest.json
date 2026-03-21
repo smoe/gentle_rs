@@ -704,19 +704,22 @@
       "title": "Selection-first PCR batch primer design (offline)",
       "example_id": "pcr_selection_batch_primer_pairs_offline",
       "tier": "core",
-      "summary": "Capture current-selection and feature-derived ROIs, then run deterministic batch primer-pair reports with optional extracted-region copies.",
-      "narrative": "Regular PCR planning often starts in the DNA window: one drag/text selection plus one or more selected features define practical assay targets. This chapter makes that flow explicit. Queue mixed ROI sources, run one shared constraint set across all queued regions, optionally create extracted-region copies, and review/export each result from the batch-results table with deterministic report naming (`..._r01`, `..._r02`).",
+      "summary": "Queue TP73-AS2 promoter-proximal ROIs from local TP73 sequence context, then run deterministic batch primer-pair reports with optional extracted-region copies.",
+      "narrative": "This chapter is PCR-focused and biology-anchored without requiring genome mapping mechanics. You work directly on local TP73 locus sequence (`test_files/tp73.ncbi.gb`), queue promoter-proximal regions around TP73-AS2, run one shared primer-constraint set across queued regions, and review/export deterministic batch results (`..._r01`, `..._r02`). This prepares a practical assay baseline before entering the separate luciferase cloning tutorial.",
       "use_cases": [
         "You want to combine one ad hoc mouse/text selection with one or more annotated features in one PCR batch run.",
+        "You want to amplify TP73-AS2 promoter-proximal windows from local TP73 sequence context.",
         "You want to design primer pairs for several selected regions without retyping ROI coordinates.",
+        "You want PCR-first preparation that cleanly feeds later promoter-luciferase planning.",
         "You need copied sequence artifacts for each PCR target before forwarding to other workflows.",
         "You want deterministic report IDs for review and export."
       ],
       "gui_steps": [
-        "Load `test_files/pGEX_3X.fa` and open `Engine Ops -> Primer and qPCR design reports`.",
+        "Load `test_files/tp73.ncbi.gb` and open `Engine Ops -> Primer and qPCR design reports`.",
+        "Locate `TP73-AS2` annotation and make one promoter-proximal ROI selection near the antisense transcript 5' boundary (for example around genomic coordinates `61720..62120`).",
         "Create one map/text ROI selection, then use DNA-window `PCR ROI -> Add current selection to queue`.",
-        "Select one or more annotation features, then use DNA-window `PCR ROI -> Add selected feature(s) to queue`.",
-        "In `Design primer pairs`, set shared constraints and a `report_id` base (for example `pcr_batch_demo`).",
+        "Select the `TP73-AS2` feature (or another nearby regulatory feature) and use DNA-window `PCR ROI -> Add selected feature(s) to queue`.",
+        "In `Design primer pairs`, set shared constraints and a `report_id` base (for example `tp73_as2_promoter_batch`).",
         "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
         "In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off)."
       ],
@@ -732,6 +735,12 @@
       ],
       "parameter_notes": [
         {
+          "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
+          "where_used": "Design primer pairs ROI fields and queue sourcing around TP73-AS2",
+          "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
+          "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary."
+        },
+        {
           "parameter": "PCR ROI source action (`Add current selection` vs `Add selected feature(s)`)",
           "where_used": "DNA-window `PCR ROI` menu before queue execution",
           "why_it_matters": "Defines whether region bounds come from manual selection or feature coordinates and keeps queue-source labels interpretable.",
@@ -741,7 +750,7 @@
           "parameter": "DesignPrimerPairs.report_id base",
           "where_used": "batch execution in Design primer pairs form",
           "why_it_matters": "Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.",
-          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_promoter_batch`)."
+          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`)."
         },
         {
           "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
@@ -753,13 +762,14 @@
       "follow_up_commands": [
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
         "cargo run --bin gentle_cli -- shell 'primers list-reports'",
-        "cargo run --bin gentle_cli -- shell 'primers show-report pcr_batch_demo_r01'",
-        "cargo run --bin gentle_cli -- shell 'primers export-report pcr_batch_demo_r01 pcr_batch_demo_r01.json'"
+        "cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'",
+        "cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_batch_r01 tp73_as2_promoter_batch_r01.json'"
       ],
       "retain_outputs": [],
       "checkpoints": [
         "PCR queue rows include both current-selection and selected-feature source labels.",
         "Two primer reports are created with deterministic `_r01`/`_r02` suffixes and appear in batch results.",
+        "If your runtime falls back to the internal primer backend, reports may validly contain zero accepted pairs under strict constraints; report creation/export behavior remains deterministic.",
         "If copy toggle is enabled, each batch-results row includes a copy ID and `Open` jumps to that extracted sequence.",
         "At least one report can be shown and exported from the batch-results row actions without manual JSON editing."
       ]
