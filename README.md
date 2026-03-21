@@ -13,10 +13,10 @@ underlying molecular events.
 
 Built-in conceptual Gibson Assembly strip: two input fragments, 5' chew-back,
 annealing across the homologous overlap, polymerase fill-in, and ligase
-sealing. This is meant to show how protocol templates can become readable,
-factual visual companions to executable GENtle workflows.
+sealing. It shows how executable GENtle workflows can also carry readable,
+factual visual explanations of the underlying molecular events.
 
-The README figure was generated with:
+This README figure is rendered directly by the shared protocol-cartoon engine:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -25,23 +25,8 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/gibson_two_fragment_protocol_cartoon.svg
 ```
 
-To start from a canonical editable protocol-cartoon template instead of the
-built-in render directly, use:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon template-export \
-  gibson.two_fragment \
-  gibson.two_fragment.template.json
-```
-
-Then tweak the exported JSON and render it with
-`protocol-cartoon render-template-svg ...` or apply overrides with
-`protocol-cartoon render-with-bindings ...`.
-
-The protocol-cartoon command surface intentionally stays canonical under
-`protocol-cartoon ...` so scripted and AI-guided use does not need to choose
-between overlapping alias names.
+Canonical protocol-cartoon templates start from readable defaults and can then
+be adapted to the actual parameters of a concrete cloning routine.
 
 ## Principles
 
