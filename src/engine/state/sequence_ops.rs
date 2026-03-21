@@ -659,6 +659,17 @@ impl GentleEngine {
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::ValidateProtocolCartoonTemplate { template_path } => {
+                Self::push_unique_token(&mut summary.file_paths, template_path);
+            }
+            Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
+                template_path,
+                bindings_path,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.file_paths, template_path);
+                Self::push_unique_token(&mut summary.file_paths, bindings_path);
+            }
             Operation::FetchGenBankAccession { .. }
             | Operation::FetchUniprotLinkedGenBank { .. } => {}
             Operation::DigestContainer { container_id, .. }
@@ -749,6 +760,7 @@ impl GentleEngine {
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. }
         | Operation::RenderProtocolCartoonSvg { path, .. }
         | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
+        | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { path, .. }
         | Operation::ExportProtocolCartoonTemplateJson { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
@@ -770,6 +782,7 @@ impl GentleEngine {
             | Operation::RenderPoolGelSvg { path, .. }
             | Operation::RenderProtocolCartoonSvg { path, .. }
             | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
+            | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { path, .. }
             | Operation::ExportProtocolCartoonTemplateJson { path, .. }
             | Operation::ExportDnaLadders { path, .. }
             | Operation::ExportRnaLadders { path, .. }

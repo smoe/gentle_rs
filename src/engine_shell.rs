@@ -564,6 +564,14 @@ pub enum ShellCommand {
         template_path: String,
         output: String,
     },
+    ValidateProtocolCartoonTemplate {
+        template_path: String,
+    },
+    RenderProtocolCartoonTemplateWithBindingsSvg {
+        template_path: String,
+        bindings_path: String,
+        output: String,
+    },
     ExportProtocolCartoonTemplateJson {
         protocol: ProtocolCartoonKind,
         output: String,
@@ -4304,6 +4312,18 @@ impl ShellCommand {
             } => format!(
                 "render protocol cartoon template '{}' to '{}'",
                 template_path, output
+            ),
+            Self::ValidateProtocolCartoonTemplate { template_path } => format!(
+                "validate protocol cartoon template '{}'",
+                template_path
+            ),
+            Self::RenderProtocolCartoonTemplateWithBindingsSvg {
+                template_path,
+                bindings_path,
+                output,
+            } => format!(
+                "render protocol cartoon template '{}' with bindings '{}' to '{}'",
+                template_path, bindings_path, output
             ),
             Self::ExportProtocolCartoonTemplateJson { protocol, output } => format!(
                 "export protocol cartoon template '{}' to '{}'",
@@ -9133,7 +9153,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "protocol-cartoon" => {
             if tokens.len() < 2 {
                 return Err(
-                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-export"
+                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export"
                         .to_string(),
                 );
             }
@@ -9187,6 +9207,51 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "template-validate" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "protocol-cartoon template-validate requires TEMPLATE.json"
+                                .to_string(),
+                        );
+                    }
+                    let template_path = tokens[2].trim();
+                    if template_path.is_empty() {
+                        return Err(
+                            "protocol-cartoon template-validate requires non-empty TEMPLATE.json"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::ValidateProtocolCartoonTemplate {
+                        template_path: tokens[2].clone(),
+                    })
+                }
+                "render-with-bindings" => {
+                    if tokens.len() != 5 {
+                        return Err(
+                            "protocol-cartoon render-with-bindings requires TEMPLATE.json BINDINGS.json OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    let template_path = tokens[2].trim();
+                    if template_path.is_empty() {
+                        return Err(
+                            "protocol-cartoon render-with-bindings requires non-empty TEMPLATE.json"
+                                .to_string(),
+                        );
+                    }
+                    let bindings_path = tokens[3].trim();
+                    if bindings_path.is_empty() {
+                        return Err(
+                            "protocol-cartoon render-with-bindings requires non-empty BINDINGS.json"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
+                        template_path: tokens[2].clone(),
+                        bindings_path: tokens[3].clone(),
+                        output: tokens[4].clone(),
+                    })
+                }
                 "template-export" => {
                     if tokens.len() != 4 {
                         return Err(
@@ -9212,7 +9277,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-export)"
+                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export)"
                 )),
             }
         }
@@ -10989,6 +11054,34 @@ pub fn execute_shell_command_with_options(
             let op_result = engine
                 .apply(Operation::RenderProtocolCartoonTemplateSvg {
                     template_path: template_path.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ValidateProtocolCartoonTemplate { template_path } => {
+            let op_result = engine
+                .apply(Operation::ValidateProtocolCartoonTemplate {
+                    template_path: template_path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
+            template_path,
+            bindings_path,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
+                    template_path: template_path.clone(),
+                    bindings_path: bindings_path.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

@@ -777,6 +777,8 @@ cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
 cargo run --bin gentle_cli -- protocol-cartoon list
 cargo run --bin gentle_cli -- protocol-cartoon render-svg gibson.two_fragment gibson.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
+cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/protocol_cartoon/demo_template.json
+cargo run --bin gentle_cli -- protocol-cartoon render-with-bindings docs/examples/protocol_cartoon/demo_template.json docs/examples/protocol_cartoon/demo_bindings.json demo.bound.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-export gibson.two_fragment gibson.template.json
 cargo run --bin gentle_cli -- render-protocol-cartoon-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
 cargo run --bin gentle_cli -- shell 'help'
@@ -905,6 +907,8 @@ Shared shell command:
     - `protocol-cartoon list`
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
     - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+    - `protocol-cartoon template-validate TEMPLATE.json`
+    - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
     - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg`
@@ -1217,6 +1221,12 @@ Rendering export commands:
   - Calls engine operation `RenderProtocolCartoonTemplateSvg`.
   - Loads template JSON schema `gentle.protocol_cartoon_template.v1` and resolves
     sparse defaults before rendering.
+- `protocol-cartoon template-validate TEMPLATE.json`
+  - Calls engine operation `ValidateProtocolCartoonTemplate`.
+  - Validates template JSON schema `gentle.protocol_cartoon_template.v1` and resolved cartoon semantics without writing SVG output.
+- `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
+  - Calls engine operation `RenderProtocolCartoonTemplateWithBindingsSvg`.
+  - Applies binding JSON schema `gentle.protocol_cartoon_template_bindings.v1` to the template before resolving and rendering.
 - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
   - Calls engine operation `ExportProtocolCartoonTemplateJson`.
   - Exports canonical built-in template JSON (`gentle.protocol_cartoon_template.v1`)

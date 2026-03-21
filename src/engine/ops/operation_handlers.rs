@@ -1275,6 +1275,95 @@ impl GentleEngine {
                     spec.id, template_path, path
                 ));
             }
+            Operation::ValidateProtocolCartoonTemplate { template_path } => {
+                let template_json =
+                    std::fs::read_to_string(&template_path).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not read protocol cartoon template '{}': {e}",
+                            template_path
+                        ),
+                    })?;
+                let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
+                    serde_json::from_str(&template_json).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not parse protocol cartoon template JSON from '{}': {e}",
+                            template_path
+                        ),
+                    })?;
+                let spec = crate::protocol_cartoon::resolve_protocol_cartoon_template(&template)
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Invalid protocol cartoon template '{}': {}",
+                            template_path, e
+                        ),
+                    })?;
+                result.messages.push(format!(
+                    "Validated protocol cartoon template '{}' from '{}' (events={})",
+                    spec.id,
+                    template_path,
+                    spec.events.len()
+                ));
+            }
+            Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
+                template_path,
+                bindings_path,
+                path,
+            } => {
+                let template_json =
+                    std::fs::read_to_string(&template_path).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not read protocol cartoon template '{}': {e}",
+                            template_path
+                        ),
+                    })?;
+                let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
+                    serde_json::from_str(&template_json).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not parse protocol cartoon template JSON from '{}': {e}",
+                            template_path
+                        ),
+                    })?;
+                let bindings_json =
+                    std::fs::read_to_string(&bindings_path).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not read protocol cartoon bindings '{}': {e}",
+                            bindings_path
+                        ),
+                    })?;
+                let bindings: crate::protocol_cartoon::ProtocolCartoonTemplateBindings =
+                    serde_json::from_str(&bindings_json).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not parse protocol cartoon bindings JSON from '{}': {e}",
+                            bindings_path
+                        ),
+                    })?;
+                let spec = crate::protocol_cartoon::resolve_protocol_cartoon_template_with_bindings(
+                    &template, &bindings,
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid protocol cartoon template/bindings ('{}', '{}'): {}",
+                        template_path, bindings_path, e
+                    ),
+                })?;
+                let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write SVG output '{path}': {e}"),
+                })?;
+                result.messages.push(format!(
+                    "Wrote protocol cartoon template SVG for '{}' from '{}' with bindings '{}' to '{}'",
+                    spec.id, template_path, bindings_path, path
+                ));
+            }
             Operation::ExportProtocolCartoonTemplateJson { protocol, path } => {
                 let template =
                     crate::protocol_cartoon::protocol_cartoon_template_for_kind(&protocol);

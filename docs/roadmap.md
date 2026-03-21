@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-20
+Last updated: 2026-03-21
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -257,11 +257,18 @@ order. Durable architecture constraints and decisions remain in
 - Protocol-cartoon SVG generation baseline is now available:
   - engine operation `RenderProtocolCartoonSvg { protocol, path }`
   - engine operation `RenderProtocolCartoonTemplateSvg { template_path, path }`
+  - engine operation `ValidateProtocolCartoonTemplate { template_path }`
+  - top-level README now embeds a deterministic built-in Gibson strip rendered
+    from the shared protocol-cartoon engine route
+  - engine operation
+    `RenderProtocolCartoonTemplateWithBindingsSvg { template_path, bindings_path, path }`
   - engine operation `ExportProtocolCartoonTemplateJson { protocol, path }`
   - shared-shell/CLI routes:
     - `protocol-cartoon list`
     - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
     - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+    - `protocol-cartoon template-validate TEMPLATE.json`
+    - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
     - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
     - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
@@ -272,11 +279,18 @@ order. Durable architecture constraints and decisions remain in
     - molecule payload supports:
       - topology: `linear|circular`
       - feature fragments with explicit lengths/colors
-      - linear-end styles: `blunt` or sticky (`5'`/`3'`, explicit nt length)
+      - optional split strand coloring and per-strand lengths per feature
+        (top/bottom independently)
+      - linear-end styles:
+        `NotShown`, `Continuation`, `Blunt`, or
+        `Sticky { polarity: FivePrime|ThreePrime, nt }`
     - template schema baseline:
       - `gentle.protocol_cartoon_template.v1`
       - sparse template inputs are expanded with deterministic defaults
         (action/caption/topology/end styles/feature lengths/palette)
+    - bindings schema baseline:
+      - `gentle.protocol_cartoon_template_bindings.v1`
+      - deterministic overrides target defaults and event/molecule/feature ids
     - validation rejects malformed cartoons (empty ids/events, zero-length
       features, circular molecules with linear end styles, zero-nt sticky ends)
 - Deterministic process run-bundle export baseline is now implemented:
@@ -1469,6 +1483,9 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
   - baseline shipped: two-fragment overlap planning preview + Gibson-specific
     preflight overlap diagnostics.
   - next: one-insert, multi-insert, circularize-fragment workflows.
+  - extend the protocol-cartoon baseline from `gibson.two_fragment` to
+    multi-fragment Gibson assembly, including circular assembled products and
+    canonical template/binding support for the generated explanatory strip.
 - NEBuilder HiFi:
   - one-insert and multi-insert assembly workflows.
 - In-Fusion:

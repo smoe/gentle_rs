@@ -1,0 +1,66 @@
+{
+  "schema": "gentle.protocol_cartoon_template_bindings.v1",
+  "template_id": "demo.cut_sticky_ligate",
+  "defaults": {
+    "feature_length_bp": 120
+  },
+  "event_overrides": [
+    {
+      "event_id": "context",
+      "caption": "Two linear fragments prepared for compatible sticky-end assembly."
+    },
+    {
+      "event_id": "sticky",
+      "caption": "Restriction digest exposes 8-nt compatible overhangs."
+    },
+    {
+      "event_id": "ligation",
+      "caption": "Annealed overhangs are sealed into one product molecule."
+    }
+  ],
+  "molecule_overrides": [
+    {
+      "event_id": "sticky",
+      "molecule_id": "fragment_a_sticky",
+      "right_end": {
+        "Sticky": {
+          "polarity": "ThreePrime",
+          "nt": 8
+        }
+      }
+    },
+    {
+      "event_id": "sticky",
+      "molecule_id": "fragment_b_sticky",
+      "left_end": {
+        "Sticky": {
+          "polarity": "FivePrime",
+          "nt": 8
+        }
+      }
+    }
+  ],
+  "feature_overrides": [
+    {
+      "event_id": "context",
+      "molecule_id": "fragment_a",
+      "feature_id": "a_site",
+      "length_bp": 24,
+      "color_hex": "#d68f2a"
+    },
+    {
+      "event_id": "context",
+      "molecule_id": "fragment_b",
+      "feature_id": "b_site",
+      "length_bp": 24,
+      "color_hex": "#d68f2a"
+    },
+    {
+      "event_id": "ligation",
+      "molecule_id": "product",
+      "feature_id": "junction",
+      "length_bp": 24,
+      "color_hex": "#d68f2a"
+    }
+  ]
+}
