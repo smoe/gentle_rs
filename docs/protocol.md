@@ -103,6 +103,8 @@ Current draft operations:
 - `RenderPoolGelSvg { inputs, path, ladders? }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
+- `ValidateProtocolCartoonTemplate { template_path }`
+- `RenderProtocolCartoonTemplateWithBindingsSvg { template_path, bindings_path, path }`
 - `ExportProtocolCartoonTemplateJson { protocol, path }`
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
@@ -296,9 +298,11 @@ external coding agent runtime, see:
   - `protocol-cartoon list`
   - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
   - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+  - `protocol-cartoon template-validate TEMPLATE.json`
+  - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
   - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
-  - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
-  - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
+  - command surface is intentionally canonical: protocol-cartoon routes do not
+    expose extra alias names
 
 - Python adapter wrapper (`integrations/python/gentle_py`):
   - thin subprocess-based wrapper over `gentle_cli`
@@ -1039,8 +1043,14 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - internal model used by renderer:
     - event -> molecules -> feature fragments
     - molecule topology supports `linear|circular`
-    - linear molecules may carry end styles (`blunt` or sticky `5'`/`3'` with
-      explicit nt overhang length)
+    - linear molecules may carry end styles
+      (`NotShown`, `Continuation`, `Blunt`, or
+      `Sticky { polarity: FivePrime|ThreePrime, nt }`)
+    - feature fragments can optionally render different top-strand and
+      bottom-strand colors and lengths, plus strand-specific nicks after a
+      segment boundary; this is useful for annealed overlaps, exonuclease
+      chew-back cartoons with single-stranded tails, and polymerase-filled
+      intermediates that still require ligase
   - malformed protocol cartoon specs fail validation and render deterministic
     invalid-spec SVG diagnostics instead of panicking.
 - Output:
@@ -1056,6 +1066,34 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - resolves sparse event/molecule/feature rows using deterministic defaults
     (action/caption/topology/end styles/feature length/palette).
   - validates resolved cartoon semantics before rendering.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
+
+`ValidateProtocolCartoonTemplate` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+- Behavior:
+  - reads and parses template JSON deterministically.
+  - resolves sparse defaults and validates resolved cartoon semantics.
+  - emits validation diagnostics through operation result messages; no SVG is
+    written.
+- Output:
+  - non-mutating validation result suitable for pre-render checks in CLI/GUI
+    flows.
+
+`RenderProtocolCartoonTemplateWithBindingsSvg` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+  - `bindings_path` (JSON file path, schema
+    `gentle.protocol_cartoon_template_bindings.v1`)
+  - `path` (output SVG)
+- Behavior:
+  - loads template and binding payloads.
+  - applies deterministic ID-targeted overrides (defaults, event, molecule,
+    feature) and then resolves the bound template.
+  - validates resolved semantics before SVG rendering.
 - Output:
   - deterministic SVG artifact; operation is non-mutating.
 

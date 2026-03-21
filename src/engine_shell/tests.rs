@@ -354,16 +354,8 @@ fn parse_protocol_cartoon_render_svg() {
 }
 
 #[test]
-fn parse_render_protocol_cartoon_svg_alias() {
-    let cmd =
-        parse_shell_line("render-protocol-cartoon-svg gibson out.svg").expect("parse command");
-    match cmd {
-        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
-            assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
-            assert_eq!(output, "out.svg");
-        }
-        other => panic!("unexpected command: {other:?}"),
-    }
+fn reject_render_protocol_cartoon_svg_alias() {
+    assert!(parse_shell_line("render-protocol-cartoon-svg gibson out.svg").is_err());
 }
 
 #[test]
@@ -383,19 +375,8 @@ fn parse_protocol_cartoon_render_template_svg() {
 }
 
 #[test]
-fn parse_render_protocol_cartoon_template_svg_alias() {
-    let cmd = parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg")
-        .expect("parse command");
-    match cmd {
-        ShellCommand::RenderProtocolCartoonTemplateSvg {
-            template_path,
-            output,
-        } => {
-            assert_eq!(template_path, "template.json");
-            assert_eq!(output, "out.svg");
-        }
-        other => panic!("unexpected command: {other:?}"),
-    }
+fn reject_render_protocol_cartoon_template_svg_alias() {
+    assert!(parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg").is_err());
 }
 
 #[test]
@@ -406,6 +387,38 @@ fn parse_protocol_cartoon_template_export() {
         ShellCommand::ExportProtocolCartoonTemplateJson { protocol, output } => {
             assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
             assert_eq!(output, "out.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_protocol_cartoon_template_validate() {
+    let cmd = parse_shell_line("protocol-cartoon template-validate template.json")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::ValidateProtocolCartoonTemplate { template_path } => {
+            assert_eq!(template_path, "template.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_protocol_cartoon_render_with_bindings() {
+    let cmd = parse_shell_line(
+        "protocol-cartoon render-with-bindings template.json bindings.json out.svg",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
+            template_path,
+            bindings_path,
+            output,
+        } => {
+            assert_eq!(template_path, "template.json");
+            assert_eq!(bindings_path, "bindings.json");
+            assert_eq!(output, "out.svg");
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -481,6 +494,90 @@ fn execute_render_protocol_cartoon_template_svg() {
     let svg = fs::read_to_string(output).expect("read protocol cartoon template svg");
     assert!(svg.contains("<svg"));
     assert!(svg.contains("demo.protocol"));
+}
+
+#[test]
+fn execute_protocol_cartoon_template_validate() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("temp dir");
+    let template = tmp.path().join("template.validate.json");
+    fs::write(
+        &template,
+        r#"{
+            "id":"demo.protocol",
+            "events":[
+                {"id":"step_a","title":"Step A"}
+            ]
+        }"#,
+    )
+    .expect("write template json");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ValidateProtocolCartoonTemplate {
+            template_path: template.display().to_string(),
+        },
+    )
+    .expect("execute protocol cartoon template validate");
+    assert!(!out.state_changed);
+    let message = out.output["result"]["messages"][0]
+        .as_str()
+        .expect("validate message string");
+    assert!(message.contains("Validated protocol cartoon template 'demo.protocol'"));
+    assert!(message.contains("(events=1)"));
+}
+
+#[test]
+fn execute_render_protocol_cartoon_template_with_bindings_svg() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("temp dir");
+    let template = tmp.path().join("template.bindings.json");
+    fs::write(
+        &template,
+        r#"{
+            "id":"demo.protocol",
+            "events":[
+                {
+                    "id":"step_a",
+                    "title":"Step A",
+                    "molecules":[
+                        {
+                            "id":"mol_a",
+                            "features":[
+                                {"id":"frag_a","label":"Fragment A","length_bp":42}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }"#,
+    )
+    .expect("write template json");
+    let bindings = tmp.path().join("bindings.json");
+    fs::write(
+        &bindings,
+        r#"{
+            "template_id":"demo.protocol",
+            "event_overrides":[
+                {"event_id":"step_a","title":"Bound Step","caption":"Bound caption"}
+            ]
+        }"#,
+    )
+    .expect("write bindings json");
+    let output = tmp.path().join("template.bound.svg");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
+            template_path: template.display().to_string(),
+            bindings_path: bindings.display().to_string(),
+            output: output.display().to_string(),
+        },
+    )
+    .expect("execute render protocol cartoon with bindings");
+    assert!(!out.state_changed);
+    let svg = fs::read_to_string(output).expect("read protocol cartoon template svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Bound Step"));
+    assert!(svg.contains("Bound caption"));
 }
 
 #[test]

@@ -2,8 +2,9 @@
 //!
 //! This module defines a reusable abstraction for protocol cartoons:
 //! DNA molecules (linear or circular) are composed of colored feature fragments,
-//! optional sticky/blunt end styles, and protocol events arranged as a sequence
-//! of snapshots.
+//! optional linear-end styles (hidden, continuation, blunt, or sticky),
+//! optional per-strand feature colors, and protocol events arranged as a
+//! sequence of snapshots.
 
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +34,7 @@ impl ProtocolCartoonKind {
     pub fn summary(&self) -> &'static str {
         match self {
             Self::GibsonTwoFragment => {
-                "Event-sequence cartoon with sticky/blunt ends and linear/circular molecule glyphs"
+                "Event-sequence cartoon with continuation/sticky/blunt ends and strand-separated DNA glyphs"
             }
         }
     }
@@ -153,7 +154,105 @@ pub struct ProtocolCartoonTemplateFeature {
     #[serde(default)]
     pub length_bp: Option<usize>,
     #[serde(default)]
+    pub top_length_bp: Option<usize>,
+    #[serde(default)]
+    pub bottom_length_bp: Option<usize>,
+    #[serde(default)]
     pub color_hex: Option<String>,
+    #[serde(default)]
+    pub bottom_color_hex: Option<String>,
+    #[serde(default)]
+    pub top_nick_after: Option<bool>,
+    #[serde(default)]
+    pub bottom_nick_after: Option<bool>,
+}
+
+/// JSON-facing protocol-cartoon template binding schema (v1).
+///
+/// Bindings provide deterministic override values (for example protocol-derived
+/// overlap lengths/end styles) without modifying the source template file.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplateBindings {
+    #[serde(default = "protocol_cartoon_template_bindings_schema_id")]
+    pub schema: String,
+    #[serde(default)]
+    pub template_id: Option<String>,
+    #[serde(default)]
+    pub defaults: ProtocolCartoonTemplateBindingsDefaults,
+    #[serde(default)]
+    pub event_overrides: Vec<ProtocolCartoonTemplateEventBinding>,
+    #[serde(default)]
+    pub molecule_overrides: Vec<ProtocolCartoonTemplateMoleculeBinding>,
+    #[serde(default)]
+    pub feature_overrides: Vec<ProtocolCartoonTemplateFeatureBinding>,
+}
+
+/// Optional default overrides for template resolution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ProtocolCartoonTemplateBindingsDefaults {
+    #[serde(default)]
+    pub event_caption: Option<String>,
+    #[serde(default)]
+    pub event_action: Option<ProtocolCartoonAction>,
+    #[serde(default)]
+    pub molecule_topology: Option<DnaTopologyCartoon>,
+    #[serde(default)]
+    pub linear_end_style: Option<DnaEndStyle>,
+    #[serde(default)]
+    pub feature_length_bp: Option<usize>,
+    #[serde(default)]
+    pub palette: Option<Vec<String>>,
+}
+
+/// Event-level binding override.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplateEventBinding {
+    pub event_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub caption: Option<String>,
+    #[serde(default)]
+    pub action: Option<ProtocolCartoonAction>,
+}
+
+/// Molecule-level binding override.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplateMoleculeBinding {
+    pub event_id: String,
+    pub molecule_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub topology: Option<DnaTopologyCartoon>,
+    #[serde(default)]
+    pub left_end: Option<DnaEndStyle>,
+    #[serde(default)]
+    pub right_end: Option<DnaEndStyle>,
+}
+
+/// Feature-level binding override.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProtocolCartoonTemplateFeatureBinding {
+    pub event_id: String,
+    pub molecule_id: String,
+    pub feature_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub length_bp: Option<usize>,
+    #[serde(default)]
+    pub top_length_bp: Option<usize>,
+    #[serde(default)]
+    pub bottom_length_bp: Option<usize>,
+    #[serde(default)]
+    pub color_hex: Option<String>,
+    #[serde(default)]
+    pub bottom_color_hex: Option<String>,
+    #[serde(default)]
+    pub top_nick_after: Option<bool>,
+    #[serde(default)]
+    pub bottom_nick_after: Option<bool>,
 }
 
 /// One feature fragment shown as a colored span in a molecule cartoon.
@@ -162,7 +261,12 @@ pub struct DnaFeatureCartoon {
     pub id: String,
     pub label: String,
     pub length_bp: usize,
+    pub top_length_bp: usize,
+    pub bottom_length_bp: usize,
     pub color_hex: String,
+    pub bottom_color_hex: String,
+    pub top_nick_after: bool,
+    pub bottom_nick_after: bool,
 }
 
 /// Cartoon topology for a DNA molecule glyph.
@@ -189,8 +293,13 @@ impl OverhangPolarity {
 }
 
 /// End style for a linear DNA cartoon.
+///
+/// `Continuation` means the molecule continues off-panel and should render as a
+/// truncated/ruptured edge rather than a biologically meaningful terminus.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DnaEndStyle {
+    NotShown,
+    Continuation,
     Blunt,
     Sticky {
         polarity: OverhangPolarity,
@@ -313,12 +422,29 @@ impl ProtocolCartoonSpec {
                     }
                 }
                 for feature in &molecule.features {
-                    if feature.length_bp == 0 {
+                    if feature.top_length_bp == 0 && feature.bottom_length_bp == 0 {
                         return Err(format!(
-                            "Feature '{}' in molecule '{}' has zero length",
+                            "Feature '{}' in molecule '{}' has zero top/bottom strand length",
                             feature.id, molecule.id
                         ));
                     }
+                    if feature.top_length_bp > feature.length_bp
+                        || feature.bottom_length_bp > feature.length_bp
+                    {
+                        return Err(format!(
+                            "Feature '{}' in molecule '{}' exceeds canonical feature length on one strand",
+                            feature.id, molecule.id
+                        ));
+                    }
+                }
+                let top_total_bp: usize = molecule.features.iter().map(|f| f.top_length_bp).sum();
+                let bottom_total_bp: usize =
+                    molecule.features.iter().map(|f| f.bottom_length_bp).sum();
+                if top_total_bp == 0 || bottom_total_bp == 0 {
+                    return Err(format!(
+                        "Molecule '{}' in event '{}' must retain non-zero top and bottom strand length",
+                        molecule.id, event.id
+                    ));
                 }
             }
         }
@@ -328,6 +454,10 @@ impl ProtocolCartoonSpec {
 
 fn protocol_cartoon_template_schema_id() -> String {
     "gentle.protocol_cartoon_template.v1".to_string()
+}
+
+fn protocol_cartoon_template_bindings_schema_id() -> String {
+    "gentle.protocol_cartoon_template_bindings.v1".to_string()
 }
 
 fn default_template_event_caption() -> String {
@@ -387,6 +517,203 @@ fn normalize_template_defaults(
         normalized.palette = default_template_palette();
     }
     normalized
+}
+
+fn update_if_some_string(target: &mut String, value: &Option<String>) {
+    if let Some(value) = value {
+        *target = value.clone();
+    }
+}
+
+fn apply_bindings_defaults(
+    template_defaults: &mut ProtocolCartoonTemplateDefaults,
+    bindings_defaults: &ProtocolCartoonTemplateBindingsDefaults,
+) {
+    if let Some(value) = bindings_defaults.event_caption.as_ref() {
+        template_defaults.event_caption = value.clone();
+    }
+    if let Some(value) = bindings_defaults.event_action.as_ref() {
+        template_defaults.event_action = value.clone();
+    }
+    if let Some(value) = bindings_defaults.molecule_topology.as_ref() {
+        template_defaults.molecule_topology = value.clone();
+    }
+    if let Some(value) = bindings_defaults.linear_end_style.as_ref() {
+        template_defaults.linear_end_style = value.clone();
+    }
+    if let Some(value) = bindings_defaults.feature_length_bp {
+        template_defaults.feature_length_bp = value.max(1);
+    }
+    if let Some(value) = bindings_defaults.palette.as_ref() {
+        template_defaults.palette = value.clone();
+    }
+}
+
+fn find_event_mut<'a>(
+    template: &'a mut ProtocolCartoonTemplate,
+    event_id: &str,
+) -> Option<&'a mut ProtocolCartoonTemplateEvent> {
+    template
+        .events
+        .iter_mut()
+        .find(|event| event.id.trim() == event_id.trim())
+}
+
+fn find_molecule_mut<'a>(
+    event: &'a mut ProtocolCartoonTemplateEvent,
+    molecule_id: &str,
+) -> Option<&'a mut ProtocolCartoonTemplateMolecule> {
+    event
+        .molecules
+        .iter_mut()
+        .find(|molecule| molecule.id.trim() == molecule_id.trim())
+}
+
+fn find_feature_mut<'a>(
+    molecule: &'a mut ProtocolCartoonTemplateMolecule,
+    feature_id: &str,
+) -> Option<&'a mut ProtocolCartoonTemplateFeature> {
+    molecule
+        .features
+        .iter_mut()
+        .find(|feature| feature.id.trim() == feature_id.trim())
+}
+
+/// Apply deterministic bindings to a protocol cartoon template.
+pub fn apply_protocol_cartoon_template_bindings(
+    template: &ProtocolCartoonTemplate,
+    bindings: &ProtocolCartoonTemplateBindings,
+) -> Result<ProtocolCartoonTemplate, String> {
+    let expected_schema = protocol_cartoon_template_bindings_schema_id();
+    let schema = bindings.schema.trim();
+    if !schema.is_empty() && schema != expected_schema {
+        return Err(format!(
+            "Unsupported protocol cartoon template bindings schema '{}' (expected '{}')",
+            schema, expected_schema
+        ));
+    }
+
+    if let Some(template_id) = bindings
+        .template_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if template.id.trim() != template_id {
+            return Err(format!(
+                "Template id mismatch: bindings expect '{}' but template id is '{}'",
+                template_id, template.id
+            ));
+        }
+    }
+
+    let mut bound = template.clone();
+    let bound_template_id = bound.id.clone();
+    apply_bindings_defaults(&mut bound.defaults, &bindings.defaults);
+
+    for event_binding in &bindings.event_overrides {
+        let event_id = event_binding.event_id.trim();
+        if event_id.is_empty() {
+            return Err("Event binding has empty event_id".to_string());
+        }
+        let event = find_event_mut(&mut bound, event_id).ok_or_else(|| {
+            format!(
+                "Event binding references unknown event_id '{}' in template '{}'",
+                event_id, bound_template_id
+            )
+        })?;
+        update_if_some_string(&mut event.title, &event_binding.title);
+        update_if_some_string(&mut event.caption, &event_binding.caption);
+        if let Some(action) = event_binding.action.as_ref() {
+            event.action = Some(action.clone());
+        }
+    }
+
+    for molecule_binding in &bindings.molecule_overrides {
+        let event_id = molecule_binding.event_id.trim();
+        let molecule_id = molecule_binding.molecule_id.trim();
+        if event_id.is_empty() || molecule_id.is_empty() {
+            return Err(
+                "Molecule binding requires non-empty event_id and molecule_id".to_string(),
+            );
+        }
+        let event = find_event_mut(&mut bound, event_id).ok_or_else(|| {
+            format!(
+                "Molecule binding references unknown event_id '{}' in template '{}'",
+                event_id, bound_template_id
+            )
+        })?;
+        let molecule = find_molecule_mut(event, molecule_id).ok_or_else(|| {
+            format!(
+                "Molecule binding references unknown molecule_id '{}' in event '{}'",
+                molecule_id, event_id
+            )
+        })?;
+        update_if_some_string(&mut molecule.label, &molecule_binding.label);
+        if let Some(topology) = molecule_binding.topology.as_ref() {
+            molecule.topology = Some(topology.clone());
+        }
+        if let Some(left_end) = molecule_binding.left_end.as_ref() {
+            molecule.left_end = Some(left_end.clone());
+        }
+        if let Some(right_end) = molecule_binding.right_end.as_ref() {
+            molecule.right_end = Some(right_end.clone());
+        }
+    }
+
+    for feature_binding in &bindings.feature_overrides {
+        let event_id = feature_binding.event_id.trim();
+        let molecule_id = feature_binding.molecule_id.trim();
+        let feature_id = feature_binding.feature_id.trim();
+        if event_id.is_empty() || molecule_id.is_empty() || feature_id.is_empty() {
+            return Err(
+                "Feature binding requires non-empty event_id, molecule_id, and feature_id"
+                    .to_string(),
+            );
+        }
+        let event = find_event_mut(&mut bound, event_id).ok_or_else(|| {
+            format!(
+                "Feature binding references unknown event_id '{}' in template '{}'",
+                event_id, bound_template_id
+            )
+        })?;
+        let molecule = find_molecule_mut(event, molecule_id).ok_or_else(|| {
+            format!(
+                "Feature binding references unknown molecule_id '{}' in event '{}'",
+                molecule_id, event_id
+            )
+        })?;
+        let feature = find_feature_mut(molecule, feature_id).ok_or_else(|| {
+            format!(
+                "Feature binding references unknown feature_id '{}' in molecule '{}'",
+                feature_id, molecule_id
+            )
+        })?;
+        update_if_some_string(&mut feature.label, &feature_binding.label);
+        if let Some(length_bp) = feature_binding.length_bp {
+            feature.length_bp = Some(length_bp.max(1));
+        }
+        if let Some(top_length_bp) = feature_binding.top_length_bp {
+            feature.top_length_bp = Some(top_length_bp);
+        }
+        if let Some(bottom_length_bp) = feature_binding.bottom_length_bp {
+            feature.bottom_length_bp = Some(bottom_length_bp);
+        }
+        if let Some(color_hex) = feature_binding.color_hex.as_ref() {
+            feature.color_hex = Some(color_hex.clone());
+        }
+        if let Some(bottom_color_hex) = feature_binding.bottom_color_hex.as_ref() {
+            feature.bottom_color_hex = Some(bottom_color_hex.clone());
+        }
+        if let Some(top_nick_after) = feature_binding.top_nick_after {
+            feature.top_nick_after = Some(top_nick_after);
+        }
+        if let Some(bottom_nick_after) = feature_binding.bottom_nick_after {
+            feature.bottom_nick_after = Some(bottom_nick_after);
+        }
+    }
+
+    Ok(bound)
 }
 
 /// Resolve a sparse template into a concrete, render-ready protocol cartoon
@@ -467,14 +794,27 @@ pub fn resolve_protocol_cartoon_template(
                     .length_bp
                     .unwrap_or(defaults.feature_length_bp)
                     .max(1);
+                let top_length_bp = feature.top_length_bp.unwrap_or(length_bp);
+                let bottom_length_bp = feature.bottom_length_bp.unwrap_or(length_bp);
                 let color_hex = feature.color_hex.clone().unwrap_or_else(|| {
                     defaults.palette[feature_idx % defaults.palette.len()].clone()
                 });
+                let bottom_color_hex = feature
+                    .bottom_color_hex
+                    .clone()
+                    .unwrap_or_else(|| color_hex.clone());
+                let top_nick_after = feature.top_nick_after.unwrap_or(false);
+                let bottom_nick_after = feature.bottom_nick_after.unwrap_or(false);
                 features.push(DnaFeatureCartoon {
                     id: feature_id,
                     label: feature_label,
                     length_bp,
+                    top_length_bp,
+                    bottom_length_bp,
                     color_hex,
+                    bottom_color_hex,
+                    top_nick_after,
+                    bottom_nick_after,
                 });
             }
 
@@ -525,9 +865,34 @@ pub fn resolve_protocol_cartoon_template(
     Ok(spec)
 }
 
+/// Resolve a sparse template into a concrete, render-ready protocol cartoon
+/// spec after applying deterministic bindings.
+pub fn resolve_protocol_cartoon_template_with_bindings(
+    template: &ProtocolCartoonTemplate,
+    bindings: &ProtocolCartoonTemplateBindings,
+) -> Result<ProtocolCartoonSpec, String> {
+    let bound_template = apply_protocol_cartoon_template_bindings(template, bindings)?;
+    resolve_protocol_cartoon_template(&bound_template)
+}
+
 /// Render one protocol cartoon template as deterministic SVG.
 pub fn render_protocol_cartoon_template_svg(template: &ProtocolCartoonTemplate) -> String {
     match resolve_protocol_cartoon_template(template) {
+        Ok(spec) => render_protocol_cartoon_spec_svg(&spec),
+        Err(message) => {
+            let id = ensure_non_empty(&template.id, "unknown".to_string());
+            render_invalid_protocol_svg(&id, &message)
+        }
+    }
+}
+
+/// Render one protocol cartoon template as deterministic SVG after applying
+/// bindings.
+pub fn render_protocol_cartoon_template_with_bindings_svg(
+    template: &ProtocolCartoonTemplate,
+    bindings: &ProtocolCartoonTemplateBindings,
+) -> String {
+    match resolve_protocol_cartoon_template_with_bindings(template, bindings) {
         Ok(spec) => render_protocol_cartoon_spec_svg(&spec),
         Err(message) => {
             let id = ensure_non_empty(&template.id, "unknown".to_string());
@@ -576,7 +941,12 @@ pub fn protocol_cartoon_spec_for_kind(kind: &ProtocolCartoonKind) -> ProtocolCar
                     id: "invalid_feature".to_string(),
                     label: "Invalid".to_string(),
                     length_bp: 1,
+                    top_length_bp: 1,
+                    bottom_length_bp: 1,
                     color_hex: "#8ea7b1".to_string(),
+                    bottom_color_hex: "#8ea7b1".to_string(),
+                    top_nick_after: false,
+                    bottom_nick_after: false,
                 }],
                 left_end: Some(DnaEndStyle::Blunt),
                 right_end: Some(DnaEndStyle::Blunt),
@@ -598,12 +968,12 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
     }
 
     let panel_w = 308.0_f32;
-    let panel_h = 510.0_f32;
+    let panel_h = 292.0_f32;
     let panel_gap = 24.0_f32;
     let margin_x = 36.0_f32;
     let margin_y = 28.0_f32;
-    let header_h = 92.0_f32;
-    let footer_h = 26.0_f32;
+    let header_h = 86.0_f32;
+    let footer_h = 20.0_f32;
 
     let event_count = spec.events.len() as f32;
     let body_w = event_count * panel_w + (event_count - 1.0).max(0.0) * panel_gap;
@@ -739,7 +1109,7 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
             "pc_caption",
         );
 
-        let mut molecule_y = panel_top + 132.0;
+        let mut molecule_y = panel_top + 126.0;
         for molecule in &event.molecules {
             render_molecule(
                 &mut svg,
@@ -748,7 +1118,7 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
                 molecule_y,
                 panel_w - 32.0,
             );
-            molecule_y += 84.0;
+            molecule_y += 72.0;
         }
 
         if idx + 1 < spec.events.len() {
@@ -807,14 +1177,14 @@ fn render_linear_molecule(
     y: f32,
     width: f32,
 ) {
-    let total_bp: usize = molecule
+    let canonical_total_bp: usize = molecule
         .features
         .iter()
         .map(|f| f.length_bp)
         .sum::<usize>()
         .max(1);
-    let body_w = (width - 8.0).max(80.0);
-    let body_x = x + 4.0;
+    let body_w = (width * 0.62).clamp(132.0, 188.0);
+    let body_x = x + (width - body_w) * 0.5;
 
     let mut left_top = body_x;
     let mut left_bottom = body_x;
@@ -830,48 +1200,103 @@ fn render_linear_molecule(
         render_end_annotation(svg, x + width, y + 34.0, false, end);
     }
 
-    svg.push_str(&format!(
-        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" rx=\"4\" fill=\"#c8d9de\"/>",
-        left_top,
-        y,
-        (right_top - left_top).max(2.0)
-    ));
-    svg.push_str(&format!(
-        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" rx=\"4\" fill=\"#c8d9de\"/>",
-        left_bottom,
-        y + 11.0,
-        (right_bottom - left_bottom).max(2.0)
-    ));
-
-    let mut cursor = body_x;
+    let shared_left = left_top.min(left_bottom);
+    let shared_right = right_top.max(right_bottom);
+    let shared_w = (shared_right - shared_left).max(2.0);
+    let mut slot_cursor = shared_left;
+    let mut top_spans: Vec<(f32, f32, String)> = vec![];
+    let mut bottom_spans: Vec<(f32, f32, String)> = vec![];
+    let mut top_nicks: Vec<f32> = vec![];
+    let mut bottom_nicks: Vec<f32> = vec![];
     for (feature_idx, feature) in molecule.features.iter().enumerate() {
-        let frac = feature.length_bp as f32 / total_bp as f32;
-        let seg_w = if feature_idx + 1 == molecule.features.len() {
-            (body_x + body_w - cursor).max(0.5)
+        let slot_w = if feature_idx + 1 == molecule.features.len() {
+            (shared_right - slot_cursor).max(0.5)
         } else {
-            (body_w * frac).max(0.5)
+            (shared_w * (feature.length_bp as f32 / canonical_total_bp as f32)).max(0.5)
         };
-        let color = normalize_hex_color(&feature.color_hex);
-        svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
-            cursor, y, seg_w, color
-        ));
-        svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
-            cursor,
-            y + 11.0,
-            seg_w,
-            color
-        ));
-        cursor += seg_w;
+        let top_seg_w = if feature.top_length_bp == 0 {
+            0.0
+        } else {
+            (slot_w * (feature.top_length_bp as f32 / feature.length_bp as f32)).max(0.5)
+        };
+        let bottom_seg_w = if feature.bottom_length_bp == 0 {
+            0.0
+        } else {
+            (slot_w * (feature.bottom_length_bp as f32 / feature.length_bp as f32)).max(0.5)
+        };
+        let top_color = normalize_hex_color(&feature.color_hex);
+        let bottom_color = normalize_hex_color(&feature.bottom_color_hex);
+        if top_seg_w > 0.0 {
+            push_linear_span(&mut top_spans, slot_cursor, top_seg_w, top_color);
+        }
+        if bottom_seg_w > 0.0 {
+            push_linear_span(&mut bottom_spans, slot_cursor, bottom_seg_w, bottom_color);
+        }
+        let boundary_x = slot_cursor + slot_w;
+        if feature.top_nick_after
+            && feature_idx + 1 < molecule.features.len()
+            && feature.top_length_bp > 0
+            && molecule.features[feature_idx + 1].top_length_bp > 0
+        {
+            top_nicks.push(boundary_x);
+        }
+        if feature.bottom_nick_after
+            && feature_idx + 1 < molecule.features.len()
+            && feature.bottom_length_bp > 0
+            && molecule.features[feature_idx + 1].bottom_length_bp > 0
+        {
+            bottom_nicks.push(boundary_x);
+        }
+        slot_cursor += slot_w;
     }
 
+    for (span_x, span_w, color) in top_spans {
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
+            span_x, y, span_w, color
+        ));
+    }
+    for (span_x, span_w, color) in bottom_spans {
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
+            span_x,
+            y + 11.0,
+            span_w,
+            color
+        ));
+    }
+    for nick_x in top_nicks {
+        render_strand_nick(svg, nick_x, y);
+    }
+    for nick_x in bottom_nicks {
+        render_strand_nick(svg, nick_x, y + 11.0);
+    }
+
+    if let Some(DnaEndStyle::Continuation) = molecule.left_end.as_ref() {
+        render_continuation_marker(svg, left_top.min(left_bottom), y, true);
+    }
+    if let Some(DnaEndStyle::Continuation) = molecule.right_end.as_ref() {
+        render_continuation_marker(svg, right_top.max(right_bottom), y, false);
+    }
+
+}
+
+fn push_linear_span(spans: &mut Vec<(f32, f32, String)>, x: f32, width: f32, color: String) {
+    if let Some((last_x, last_w, last_color)) = spans.last_mut() {
+        let last_end = *last_x + *last_w;
+        if *last_color == color && (last_end - x).abs() <= 0.2 {
+            *last_w = (x + width) - *last_x;
+            return;
+        }
+    }
+    spans.push((x, width, color));
+}
+
+fn render_strand_nick(svg: &mut String, x: f32, y: f32) {
     svg.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#86a5af\" stroke-width=\"1\"/>",
-        body_x,
-        y + 24.0,
-        body_x + body_w,
-        y + 24.0
+        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"2.4\" height=\"8\" rx=\"1.0\" fill=\"url(#pc_bg)\"/>",
+        x - 1.2,
+        y
     ));
 }
 
@@ -882,32 +1307,59 @@ fn render_circular_molecule(
     y: f32,
     width: f32,
 ) {
-    let total_bp: usize = molecule
+    let total_top_bp: usize = molecule
         .features
         .iter()
-        .map(|f| f.length_bp)
+        .map(|f| f.top_length_bp)
+        .sum::<usize>()
+        .max(1);
+    let total_bottom_bp: usize = molecule
+        .features
+        .iter()
+        .map(|f| f.bottom_length_bp)
         .sum::<usize>()
         .max(1);
     let cx = x + width * 0.5;
-    let cy = y + 16.0;
-    let r = (width * 0.24).clamp(16.0, 30.0);
+    let cy = y + 18.0;
+    let top_r = (width * 0.22).clamp(14.0, 28.0);
+    let bottom_r = top_r + 7.0;
 
     svg.push_str(&format!(
-        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"#c8d9de\" stroke-width=\"10\"/>",
-        cx, cy, r
+        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"#c8d9de\" stroke-width=\"4\"/>",
+        cx, cy, top_r
+    ));
+    svg.push_str(&format!(
+        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"#c8d9de\" stroke-width=\"4\"/>",
+        cx, cy, bottom_r
     ));
 
-    let mut start = -std::f32::consts::FRAC_PI_2;
+    let mut start_top = -std::f32::consts::FRAC_PI_2;
+    let mut start_bottom = -std::f32::consts::FRAC_PI_2;
     for feature in &molecule.features {
-        let span = std::f32::consts::TAU * (feature.length_bp as f32 / total_bp as f32);
-        let end = start + span;
-        let color = normalize_hex_color(&feature.color_hex);
-        let path = arc_path(cx, cy, r, start, end);
-        svg.push_str(&format!(
-            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"10\" stroke-linecap=\"butt\"/>",
-            path, color
-        ));
-        start = end;
+        let top_color = normalize_hex_color(&feature.color_hex);
+        let bottom_color = normalize_hex_color(&feature.bottom_color_hex);
+        if feature.top_length_bp > 0 {
+            let top_span =
+                std::f32::consts::TAU * (feature.top_length_bp as f32 / total_top_bp as f32);
+            let end_top = start_top + top_span;
+            let top_path = arc_path(cx, cy, top_r, start_top, end_top);
+            svg.push_str(&format!(
+                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"4\" stroke-linecap=\"butt\"/>",
+                top_path, top_color
+            ));
+            start_top = end_top;
+        }
+        if feature.bottom_length_bp > 0 {
+            let bottom_span =
+                std::f32::consts::TAU * (feature.bottom_length_bp as f32 / total_bottom_bp as f32);
+            let end_bottom = start_bottom + bottom_span;
+            let bottom_path = arc_path(cx, cy, bottom_r, start_bottom, end_bottom);
+            svg.push_str(&format!(
+                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"4\" stroke-linecap=\"butt\"/>",
+                bottom_path, bottom_color
+            ));
+            start_bottom = end_bottom;
+        }
     }
 }
 
@@ -936,6 +1388,8 @@ fn overhang_len_px(nt: usize) -> f32 {
 
 fn apply_left_end_style(left_top: &mut f32, left_bottom: &mut f32, end: &DnaEndStyle) {
     match end {
+        DnaEndStyle::NotShown => {}
+        DnaEndStyle::Continuation => {}
         DnaEndStyle::Blunt => {}
         DnaEndStyle::Sticky { polarity, nt } => {
             let delta = overhang_len_px(*nt);
@@ -949,6 +1403,8 @@ fn apply_left_end_style(left_top: &mut f32, left_bottom: &mut f32, end: &DnaEndS
 
 fn apply_right_end_style(right_top: &mut f32, right_bottom: &mut f32, end: &DnaEndStyle) {
     match end {
+        DnaEndStyle::NotShown => {}
+        DnaEndStyle::Continuation => {}
         DnaEndStyle::Blunt => {}
         DnaEndStyle::Sticky { polarity, nt } => {
             let delta = overhang_len_px(*nt);
@@ -962,6 +1418,8 @@ fn apply_right_end_style(right_top: &mut f32, right_bottom: &mut f32, end: &DnaE
 
 fn render_end_annotation(svg: &mut String, x: f32, y: f32, is_left: bool, end: &DnaEndStyle) {
     let text = match end {
+        DnaEndStyle::NotShown => return,
+        DnaEndStyle::Continuation => return,
         DnaEndStyle::Blunt => "blunt".to_string(),
         DnaEndStyle::Sticky { polarity, nt } => format!("{} {}nt", polarity.label(), nt),
     };
@@ -974,6 +1432,79 @@ fn render_end_annotation(svg: &mut String, x: f32, y: f32, is_left: bool, end: &
         anchor,
         escape_xml(&text)
     ));
+}
+
+fn render_continuation_marker(svg: &mut String, edge_x: f32, y: f32, is_left: bool) {
+    let zig = 7.0_f32;
+    let gap = 6.0_f32;
+    let dot_base_x = if is_left {
+        edge_x - 20.0
+    } else {
+        edge_x + 20.0
+    };
+    let dot_step = if is_left { 6.0 } else { -6.0 };
+    if is_left {
+        svg.push_str(&format!(
+            "<path d=\"M {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} Z\" fill=\"url(#pc_bg)\"/>",
+            edge_x + 0.4,
+            y - 0.8,
+            edge_x - zig,
+            y + 1.4,
+            edge_x + 0.4,
+            y + 3.8,
+            edge_x - zig,
+            y + 6.2,
+            edge_x + 0.4,
+            y + 8.8
+        ));
+        svg.push_str(&format!(
+            "<path d=\"M {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} Z\" fill=\"url(#pc_bg)\"/>",
+            edge_x + 0.4,
+            y + 10.2,
+            edge_x - zig,
+            y + 12.4,
+            edge_x + 0.4,
+            y + 14.8,
+            edge_x - zig,
+            y + 17.2,
+            edge_x + 0.4,
+            y + 19.8
+        ));
+    } else {
+        svg.push_str(&format!(
+            "<path d=\"M {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} Z\" fill=\"url(#pc_bg)\"/>",
+            edge_x - 0.4,
+            y - 0.8,
+            edge_x + zig,
+            y + 1.4,
+            edge_x - 0.4,
+            y + 3.8,
+            edge_x + zig,
+            y + 6.2,
+            edge_x - 0.4,
+            y + 8.8
+        ));
+        svg.push_str(&format!(
+            "<path d=\"M {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1} Z\" fill=\"url(#pc_bg)\"/>",
+            edge_x - 0.4,
+            y + 10.2,
+            edge_x + zig,
+            y + 12.4,
+            edge_x - 0.4,
+            y + 14.8,
+            edge_x + zig,
+            y + 17.2,
+            edge_x - 0.4,
+            y + 19.8
+        ));
+    }
+    for idx in 0..3 {
+        svg.push_str(&format!(
+            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"1.5\" fill=\"#88a3ad\"/>",
+            dot_base_x + idx as f32 * dot_step,
+            y + gap + idx as f32 * 2.6
+        ));
+    }
 }
 
 fn append_wrapped_text(
@@ -1076,7 +1607,12 @@ fn protocol_cartoon_template_from_spec(spec: ProtocolCartoonSpec) -> ProtocolCar
                                 id: feature.id,
                                 label: feature.label,
                                 length_bp: Some(feature.length_bp),
+                                top_length_bp: Some(feature.top_length_bp),
+                                bottom_length_bp: Some(feature.bottom_length_bp),
                                 color_hex: Some(feature.color_hex),
+                                bottom_color_hex: Some(feature.bottom_color_hex),
+                                top_nick_after: Some(feature.top_nick_after),
+                                bottom_nick_after: Some(feature.bottom_nick_after),
                             })
                             .collect(),
                         left_end: molecule.left_end,
@@ -1093,221 +1629,384 @@ fn gibson_two_fragment_template() -> ProtocolCartoonTemplate {
 }
 
 fn gibson_two_fragment_spec() -> ProtocolCartoonSpec {
+    // Keep the homologous overlap visually stable across all panels by using
+    // the same displayed canonical total (150 bp) for separate fragments and
+    // joined intermediates, while compressing the non-overlap sequence bodies
+    // in the later panels.
+    const DISPLAY_OVERLAP_BP: usize = 30;
+    const DISPLAY_CHEW_TAIL_BP: usize = 12;
+    const DISPLAY_JOINED_TAIL_BP: usize = 12;
+    const DISPLAY_FRAGMENT_TOTAL_BP: usize = 150;
+    const DISPLAY_PRE_JOIN_BODY_BP: usize = DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP;
+    const DISPLAY_CHEW_BODY_BP: usize =
+        DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP - DISPLAY_CHEW_TAIL_BP;
+    const DISPLAY_JOINED_BODY_BP: usize =
+        (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP - (DISPLAY_JOINED_TAIL_BP * 2)) / 2;
+    const DISPLAY_SEALED_BODY_BP: usize =
+        (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP) / 2;
+
     ProtocolCartoonSpec {
         id: "gibson.two_fragment".to_string(),
-        title: "GENtle Protocol Cartoon: Gibson Two-Fragment Assembly".to_string(),
-        summary:
-            "Feature-colored DNA cartoons with explicit sticky/blunt ends across event sequence"
-                .to_string(),
+        title: "GENtle Protocol Cartoon: Gibson Two-Fragment (A+B)".to_string(),
+        summary: "Five-step Gibson mechanism with origin colors (A=yellow, B=blue) and a 30 bp homologous overlap".to_string(),
         events: vec![
             ProtocolCartoonEvent {
                 id: "context".to_string(),
-                title: "Reaction Context".to_string(),
-                caption:
-                    "Two linear dsDNA molecules with designed overlap enter one isothermal mix."
-                        .to_string(),
+                title: "Context".to_string(),
+                caption: "Fragment A ends with a 30 bp homologous sequence at its 3' end, and fragment B starts with the same 30 bp sequence at its 5' end.".to_string(),
                 action: ProtocolCartoonAction::Context,
                 molecules: vec![
                     DnaMoleculeCartoon {
-                        id: "fragment_a".to_string(),
-                        label: "Fragment A".to_string(),
+                        id: "fragment_a_context".to_string(),
+                        label: "A".to_string(),
                         topology: DnaTopologyCartoon::Linear,
                         features: vec![
                             DnaFeatureCartoon {
-                                id: "a_backbone".to_string(),
-                                label: "Backbone".to_string(),
-                                length_bp: 980,
-                                color_hex: "#0f5d75".to_string(),
+                                id: "a_body".to_string(),
+                                label: "A body".to_string(),
+                                length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                top_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                bottom_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                color_hex: "#f2c94c".to_string(),
+                                bottom_color_hex: "#f2c94c".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
                                 id: "a_overlap".to_string(),
-                                label: "Overlap".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
+                                label: "A 30 bp overlap".to_string(),
+                                length_bp: DISPLAY_OVERLAP_BP,
+                                top_length_bp: DISPLAY_OVERLAP_BP,
+                                bottom_length_bp: DISPLAY_OVERLAP_BP,
+                                color_hex: "#55a84f".to_string(),
+                                bottom_color_hex: "#55a84f".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                         ],
-                        left_end: Some(DnaEndStyle::Blunt),
+                        left_end: Some(DnaEndStyle::Continuation),
                         right_end: Some(DnaEndStyle::Blunt),
                     },
                     DnaMoleculeCartoon {
-                        id: "fragment_b".to_string(),
-                        label: "Fragment B".to_string(),
+                        id: "fragment_b_context".to_string(),
+                        label: "B".to_string(),
                         topology: DnaTopologyCartoon::Linear,
                         features: vec![
                             DnaFeatureCartoon {
                                 id: "b_overlap".to_string(),
-                                label: "Overlap".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
+                                label: "B 30 bp overlap".to_string(),
+                                length_bp: DISPLAY_OVERLAP_BP,
+                                top_length_bp: DISPLAY_OVERLAP_BP,
+                                bottom_length_bp: DISPLAY_OVERLAP_BP,
+                                color_hex: "#55a84f".to_string(),
+                                bottom_color_hex: "#55a84f".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
-                                id: "b_insert".to_string(),
-                                label: "Insert".to_string(),
-                                length_bp: 760,
-                                color_hex: "#e3b230".to_string(),
+                                id: "b_body".to_string(),
+                                label: "B body".to_string(),
+                                length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                top_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                bottom_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
+                                color_hex: "#2f80ed".to_string(),
+                                bottom_color_hex: "#2f80ed".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                         ],
                         left_end: Some(DnaEndStyle::Blunt),
-                        right_end: Some(DnaEndStyle::Blunt),
+                        right_end: Some(DnaEndStyle::Continuation),
                     },
                 ],
             },
             ProtocolCartoonEvent {
                 id: "chew_back".to_string(),
                 title: "Chew-back".to_string(),
-                caption:
-                    "Exonuclease exposes complementary overhangs; sticky ends become explicit."
-                        .to_string(),
-                action: ProtocolCartoonAction::Cut,
+                caption: "A 5' exonuclease chews back both fragments past the homologous ends, exposing the full 30 bp overlap plus a short unique single-stranded tail on each 3' end.".to_string(),
+                action: ProtocolCartoonAction::Custom {
+                    label: "5' Exonuclease".to_string(),
+                },
                 molecules: vec![
                     DnaMoleculeCartoon {
                         id: "fragment_a_chewed".to_string(),
-                        label: "A after exonuclease".to_string(),
+                        label: "A (chewed)".to_string(),
                         topology: DnaTopologyCartoon::Linear,
                         features: vec![
                             DnaFeatureCartoon {
-                                id: "a_backbone".to_string(),
-                                label: "Backbone".to_string(),
-                                length_bp: 980,
-                                color_hex: "#0f5d75".to_string(),
+                                id: "a_body_ds".to_string(),
+                                label: "A body (duplex)".to_string(),
+                                length_bp: DISPLAY_CHEW_BODY_BP,
+                                top_length_bp: DISPLAY_CHEW_BODY_BP,
+                                bottom_length_bp: DISPLAY_CHEW_BODY_BP,
+                                color_hex: "#f2c94c".to_string(),
+                                bottom_color_hex: "#f2c94c".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
-                                id: "a_overlap".to_string(),
-                                label: "Overlap".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
+                                id: "a_body_ss".to_string(),
+                                label: "A unique 3' tail".to_string(),
+                                length_bp: DISPLAY_CHEW_TAIL_BP,
+                                top_length_bp: DISPLAY_CHEW_TAIL_BP,
+                                bottom_length_bp: 0,
+                                color_hex: "#f2c94c".to_string(),
+                                bottom_color_hex: "#f2c94c".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
+                                id: "a_overlap_ss".to_string(),
+                                label: "A exposed 30 bp overlap".to_string(),
+                                length_bp: DISPLAY_OVERLAP_BP,
+                                top_length_bp: DISPLAY_OVERLAP_BP,
+                                bottom_length_bp: 0,
+                                color_hex: "#55a84f".to_string(),
+                                bottom_color_hex: "#55a84f".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                         ],
-                        left_end: Some(DnaEndStyle::Blunt),
+                        left_end: Some(DnaEndStyle::Continuation),
                         right_end: Some(DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
-                            nt: 20,
+                            nt: 30,
                         }),
                     },
                     DnaMoleculeCartoon {
                         id: "fragment_b_chewed".to_string(),
-                        label: "B after exonuclease".to_string(),
+                        label: "B (chewed)".to_string(),
                         topology: DnaTopologyCartoon::Linear,
                         features: vec![
                             DnaFeatureCartoon {
-                                id: "b_overlap".to_string(),
-                                label: "Overlap".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
+                                id: "b_overlap_ss".to_string(),
+                                label: "B exposed 30 bp overlap".to_string(),
+                                length_bp: DISPLAY_OVERLAP_BP,
+                                top_length_bp: 0,
+                                bottom_length_bp: DISPLAY_OVERLAP_BP,
+                                color_hex: "#55a84f".to_string(),
+                                bottom_color_hex: "#55a84f".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
-                                id: "b_insert".to_string(),
-                                label: "Insert".to_string(),
-                                length_bp: 760,
-                                color_hex: "#e3b230".to_string(),
+                                id: "b_body_ss".to_string(),
+                                label: "B unique 3' tail".to_string(),
+                                length_bp: DISPLAY_CHEW_TAIL_BP,
+                                top_length_bp: 0,
+                                bottom_length_bp: DISPLAY_CHEW_TAIL_BP,
+                                color_hex: "#2f80ed".to_string(),
+                                bottom_color_hex: "#2f80ed".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
+                                id: "b_body_ds".to_string(),
+                                label: "B body (duplex)".to_string(),
+                                length_bp: DISPLAY_CHEW_BODY_BP,
+                                top_length_bp: DISPLAY_CHEW_BODY_BP,
+                                bottom_length_bp: DISPLAY_CHEW_BODY_BP,
+                                color_hex: "#2f80ed".to_string(),
+                                bottom_color_hex: "#2f80ed".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                         ],
                         left_end: Some(DnaEndStyle::Sticky {
-                            polarity: OverhangPolarity::FivePrime,
-                            nt: 20,
+                            polarity: OverhangPolarity::ThreePrime,
+                            nt: 30,
                         }),
-                        right_end: Some(DnaEndStyle::Blunt),
+                        right_end: Some(DnaEndStyle::Continuation),
                     },
                 ],
             },
             ProtocolCartoonEvent {
                 id: "anneal".to_string(),
                 title: "Anneal".to_string(),
-                caption:
-                    "Complementary overhangs pair in register; fragments align before covalent sealing."
-                        .to_string(),
+                caption: "The exposed 3' overhangs anneal through the 30 bp homologous region, while the extra yellow and blue sequence-unique tails remain single-stranded.".to_string(),
                 action: ProtocolCartoonAction::Anneal,
                 molecules: vec![DnaMoleculeCartoon {
                     id: "annealed_intermediate".to_string(),
-                    label: "Annealed intermediate".to_string(),
+                    label: "A+B annealed".to_string(),
                     topology: DnaTopologyCartoon::Linear,
                     features: vec![
                         DnaFeatureCartoon {
-                            id: "a_backbone".to_string(),
-                            label: "Backbone".to_string(),
-                            length_bp: 980,
-                            color_hex: "#0f5d75".to_string(),
+                            id: "a_body_ds".to_string(),
+                            label: "A body (duplex)".to_string(),
+                            length_bp: DISPLAY_JOINED_BODY_BP,
+                            top_length_bp: DISPLAY_JOINED_BODY_BP,
+                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
+                            color_hex: "#f2c94c".to_string(),
+                            bottom_color_hex: "#f2c94c".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "overlap".to_string(),
-                            label: "Overlap duplex".to_string(),
-                            length_bp: 26,
-                            color_hex: "#1aa3a1".to_string(),
+                            id: "a_body_ss".to_string(),
+                            label: "A unique single-stranded tail".to_string(),
+                            length_bp: DISPLAY_JOINED_TAIL_BP,
+                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            bottom_length_bp: 0,
+                            color_hex: "#f2c94c".to_string(),
+                            bottom_color_hex: "#f2c94c".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "b_insert".to_string(),
-                            label: "Insert".to_string(),
-                            length_bp: 760,
-                            color_hex: "#e3b230".to_string(),
+                            id: "hybrid_overlap".to_string(),
+                            label: "30 bp annealed overlap".to_string(),
+                            length_bp: DISPLAY_OVERLAP_BP,
+                            top_length_bp: DISPLAY_OVERLAP_BP,
+                            bottom_length_bp: DISPLAY_OVERLAP_BP,
+                            color_hex: "#55a84f".to_string(),
+                            bottom_color_hex: "#55a84f".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "b_body_ss".to_string(),
+                            label: "B unique single-stranded tail".to_string(),
+                            length_bp: DISPLAY_JOINED_TAIL_BP,
+                            top_length_bp: 0,
+                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            color_hex: "#2f80ed".to_string(),
+                            bottom_color_hex: "#2f80ed".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "b_body_ds".to_string(),
+                            label: "B body (duplex)".to_string(),
+                            length_bp: DISPLAY_JOINED_BODY_BP,
+                            top_length_bp: DISPLAY_JOINED_BODY_BP,
+                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
+                            color_hex: "#2f80ed".to_string(),
+                            bottom_color_hex: "#2f80ed".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
                         },
                     ],
-                    left_end: Some(DnaEndStyle::Blunt),
-                    right_end: Some(DnaEndStyle::Blunt),
+                    left_end: Some(DnaEndStyle::Continuation),
+                    right_end: Some(DnaEndStyle::Continuation),
                 }],
             },
             ProtocolCartoonEvent {
-                id: "extend_and_seal".to_string(),
-                title: "Extend + Seal".to_string(),
-                caption:
-                    "Polymerase fills gaps and ligase restores covalent continuity across both strands."
-                        .to_string(),
+                id: "extend".to_string(),
+                title: "Extend".to_string(),
+                caption: "DNA polymerase fills the single-stranded tails, restoring duplex DNA but leaving one nick on each strand for ligase to seal.".to_string(),
+                action: ProtocolCartoonAction::Extend,
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "extended_intermediate".to_string(),
+                    label: "A+B extended duplex".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![
+                        DnaFeatureCartoon {
+                            id: "a_body_ds".to_string(),
+                            label: "A body (duplex)".to_string(),
+                            length_bp: DISPLAY_JOINED_BODY_BP,
+                            top_length_bp: DISPLAY_JOINED_BODY_BP,
+                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
+                            color_hex: "#f2c94c".to_string(),
+                            bottom_color_hex: "#f2c94c".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: true,
+                        },
+                        DnaFeatureCartoon {
+                            id: "a_tail_filled".to_string(),
+                            label: "A tail filled by polymerase".to_string(),
+                            length_bp: DISPLAY_JOINED_TAIL_BP,
+                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            color_hex: "#f2c94c".to_string(),
+                            bottom_color_hex: "#f2c94c".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "hybrid_overlap".to_string(),
+                            label: "Annealed overlap".to_string(),
+                            length_bp: DISPLAY_OVERLAP_BP,
+                            top_length_bp: DISPLAY_OVERLAP_BP,
+                            bottom_length_bp: DISPLAY_OVERLAP_BP,
+                            color_hex: "#55a84f".to_string(),
+                            bottom_color_hex: "#55a84f".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "b_tail_filled".to_string(),
+                            label: "B tail filled by polymerase".to_string(),
+                            length_bp: DISPLAY_JOINED_TAIL_BP,
+                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
+                            color_hex: "#2f80ed".to_string(),
+                            bottom_color_hex: "#2f80ed".to_string(),
+                            top_nick_after: true,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "b_body_ds".to_string(),
+                            label: "B body (duplex)".to_string(),
+                            length_bp: DISPLAY_JOINED_BODY_BP,
+                            top_length_bp: DISPLAY_JOINED_BODY_BP,
+                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
+                            color_hex: "#2f80ed".to_string(),
+                            bottom_color_hex: "#2f80ed".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                    ],
+                    left_end: Some(DnaEndStyle::Continuation),
+                    right_end: Some(DnaEndStyle::Continuation),
+                }],
+            },
+            ProtocolCartoonEvent {
+                id: "seal".to_string(),
+                title: "Seal".to_string(),
+                caption: "DNA ligase seals nicks; the assembled duplex is covalently continuous while retaining A/B color origin.".to_string(),
                 action: ProtocolCartoonAction::Seal,
-                molecules: vec![
-                    DnaMoleculeCartoon {
-                        id: "assembled_linear".to_string(),
-                        label: "Assembled linear product".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "a_backbone".to_string(),
-                                label: "Backbone".to_string(),
-                                length_bp: 980,
-                                color_hex: "#0f5d75".to_string(),
-                            },
-                            DnaFeatureCartoon {
-                                id: "overlap".to_string(),
-                                label: "Joined overlap".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
-                            },
-                            DnaFeatureCartoon {
-                                id: "b_insert".to_string(),
-                                label: "Insert".to_string(),
-                                length_bp: 760,
-                                color_hex: "#e3b230".to_string(),
-                            },
-                        ],
-                        left_end: Some(DnaEndStyle::Blunt),
-                        right_end: Some(DnaEndStyle::Blunt),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "assembled_circular".to_string(),
-                        label: "Circularized representation".to_string(),
-                        topology: DnaTopologyCartoon::Circular,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "a_backbone".to_string(),
-                                label: "Backbone".to_string(),
-                                length_bp: 980,
-                                color_hex: "#0f5d75".to_string(),
-                            },
-                            DnaFeatureCartoon {
-                                id: "overlap".to_string(),
-                                label: "Junction".to_string(),
-                                length_bp: 26,
-                                color_hex: "#1aa3a1".to_string(),
-                            },
-                            DnaFeatureCartoon {
-                                id: "b_insert".to_string(),
-                                label: "Insert".to_string(),
-                                length_bp: 760,
-                                color_hex: "#e3b230".to_string(),
-                            },
-                        ],
-                        left_end: None,
-                        right_end: None,
-                    },
-                ],
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "sealed_product".to_string(),
+                    label: "A+B sealed product".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![
+                        DnaFeatureCartoon {
+                            id: "a_body".to_string(),
+                            label: "A body".to_string(),
+                            length_bp: DISPLAY_SEALED_BODY_BP,
+                            top_length_bp: DISPLAY_SEALED_BODY_BP,
+                            bottom_length_bp: DISPLAY_SEALED_BODY_BP,
+                            color_hex: "#f2c94c".to_string(),
+                            bottom_color_hex: "#f2c94c".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "hybrid_overlap".to_string(),
+                            label: "Scarless overlap junction".to_string(),
+                            length_bp: DISPLAY_OVERLAP_BP,
+                            top_length_bp: DISPLAY_OVERLAP_BP,
+                            bottom_length_bp: DISPLAY_OVERLAP_BP,
+                            color_hex: "#55a84f".to_string(),
+                            bottom_color_hex: "#55a84f".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "b_body".to_string(),
+                            label: "B body".to_string(),
+                            length_bp: DISPLAY_SEALED_BODY_BP,
+                            top_length_bp: DISPLAY_SEALED_BODY_BP,
+                            bottom_length_bp: DISPLAY_SEALED_BODY_BP,
+                            color_hex: "#2f80ed".to_string(),
+                            bottom_color_hex: "#2f80ed".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                    ],
+                    left_end: Some(DnaEndStyle::Continuation),
+                    right_end: Some(DnaEndStyle::Continuation),
+                }],
             },
         ],
     }
@@ -1337,13 +2036,23 @@ mod tests {
                                 id: "f1".to_string(),
                                 label: "f1".to_string(),
                                 length_bp: 120,
+                                top_length_bp: 120,
+                                bottom_length_bp: 120,
                                 color_hex: "#004488".to_string(),
+                                bottom_color_hex: "#004488".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
                                 id: "f2".to_string(),
                                 label: "f2".to_string(),
                                 length_bp: 80,
+                                top_length_bp: 80,
+                                bottom_length_bp: 80,
                                 color_hex: "#ee9933".to_string(),
+                                bottom_color_hex: "#ee9933".to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
                             },
                         ],
                         left_end: Some(DnaEndStyle::Sticky {
@@ -1360,7 +2069,12 @@ mod tests {
                             id: "c1".to_string(),
                             label: "c1".to_string(),
                             length_bp: 300,
+                            top_length_bp: 300,
+                            bottom_length_bp: 300,
                             color_hex: "#118833".to_string(),
+                            bottom_color_hex: "#118833".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
                         }],
                         left_end: None,
                         right_end: None,
@@ -1509,6 +2223,100 @@ mod tests {
     }
 
     #[test]
+    fn resolve_template_with_bindings_applies_overrides() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [
+                    {
+                        "id": "e1",
+                        "title": "Original",
+                        "molecules": [
+                            {
+                                "id": "m1",
+                                "label": "Mol",
+                                "features": [
+                                    { "id": "f1", "label": "Feat", "length_bp": 100 }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }"#,
+        )
+        .expect("deserialize template");
+        let bindings: ProtocolCartoonTemplateBindings = serde_json::from_str(
+            r##"{
+                "template_id": "demo.protocol",
+                "defaults": { "feature_length_bp": 75 },
+                "event_overrides": [
+                    { "event_id": "e1", "title": "Bound Title", "action": "Cut" }
+                ],
+                "molecule_overrides": [
+                    { "event_id": "e1", "molecule_id": "m1", "right_end": { "Sticky": { "polarity": "FivePrime", "nt": 9 } } }
+                ],
+                "feature_overrides": [
+                    { "event_id": "e1", "molecule_id": "m1", "feature_id": "f1", "length_bp": 333, "color_hex": "#112233" }
+                ]
+            }"##,
+        )
+        .expect("deserialize bindings");
+
+        let spec = resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+            .expect("resolve template with bindings");
+        assert_eq!(spec.events[0].title, "Bound Title");
+        assert_eq!(spec.events[0].action, ProtocolCartoonAction::Cut);
+        assert_eq!(
+            spec.events[0].molecules[0].right_end,
+            Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::FivePrime,
+                nt: 9
+            })
+        );
+        assert_eq!(spec.events[0].molecules[0].features[0].length_bp, 333);
+        assert_eq!(spec.events[0].molecules[0].features[0].color_hex, "#112233");
+    }
+
+    #[test]
+    fn resolve_template_with_bindings_rejects_unknown_schema() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [{ "id": "e1" }]
+            }"#,
+        )
+        .expect("deserialize template");
+        let bindings: ProtocolCartoonTemplateBindings = serde_json::from_str(
+            r#"{
+                "schema": "gentle.protocol_cartoon_template_bindings.v0"
+            }"#,
+        )
+        .expect("deserialize bindings");
+        let err = resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+            .expect_err("schema mismatch");
+        assert!(err.contains("Unsupported protocol cartoon template bindings schema"));
+    }
+
+    #[test]
+    fn render_template_with_bindings_svg_uses_bound_values() {
+        let template: ProtocolCartoonTemplate = serde_json::from_str(
+            r#"{
+                "id": "demo.protocol",
+                "events": [{ "id": "e1", "title": "T" }]
+            }"#,
+        )
+        .expect("deserialize template");
+        let bindings: ProtocolCartoonTemplateBindings = serde_json::from_str(
+            r#"{
+                "event_overrides": [{ "event_id": "e1", "title": "Bound Event" }]
+            }"#,
+        )
+        .expect("deserialize bindings");
+        let svg = render_protocol_cartoon_template_with_bindings_svg(&template, &bindings);
+        assert!(svg.contains("Bound Event"));
+    }
+
+    #[test]
     fn parse_protocol_cartoon_aliases() {
         assert_eq!(
             ProtocolCartoonKind::parse_id("gibson.two_fragment"),
@@ -1540,8 +2348,65 @@ mod tests {
     #[test]
     fn gibson_spec_is_event_sequence() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
-        assert!(spec.events.len() >= 4);
+        assert_eq!(spec.events.len(), 5);
         assert_eq!(spec.events[0].action, ProtocolCartoonAction::Context);
+    }
+
+    #[test]
+    fn gibson_chew_back_uses_3prime_overhangs() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
+        assert_eq!(
+            spec.events[1].molecules[0].right_end,
+            Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::ThreePrime,
+                nt: 30
+            })
+        );
+        assert_eq!(
+            spec.events[1].molecules[1].left_end,
+            Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::ThreePrime,
+                nt: 30
+            })
+        );
+    }
+
+    #[test]
+    fn gibson_anneal_retains_single_stranded_unique_tails() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
+        let anneal = &spec.events[2].molecules[0];
+        assert_eq!(anneal.features[1].top_length_bp, 12);
+        assert_eq!(anneal.features[1].bottom_length_bp, 0);
+        assert_eq!(anneal.features[2].top_length_bp, 30);
+        assert_eq!(anneal.features[2].bottom_length_bp, 30);
+        assert_eq!(anneal.features[3].top_length_bp, 0);
+        assert_eq!(anneal.features[3].bottom_length_bp, 12);
+    }
+
+    #[test]
+    fn gibson_extend_leaves_two_strand_specific_nicks() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
+        let extend = &spec.events[3].molecules[0];
+        assert!(extend.features[0].bottom_nick_after);
+        assert!(!extend.features[0].top_nick_after);
+        assert!(extend.features[3].top_nick_after);
+        assert!(!extend.features[3].bottom_nick_after);
+    }
+
+    #[test]
+    fn gibson_overlap_keeps_stable_display_total_across_panels() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
+        let display_total = |molecule: &DnaMoleculeCartoon| -> usize {
+            molecule.features.iter().map(|feature| feature.length_bp).sum()
+        };
+
+        assert_eq!(display_total(&spec.events[0].molecules[0]), 150);
+        assert_eq!(display_total(&spec.events[0].molecules[1]), 150);
+        assert_eq!(display_total(&spec.events[1].molecules[0]), 150);
+        assert_eq!(display_total(&spec.events[1].molecules[1]), 150);
+        assert_eq!(display_total(&spec.events[2].molecules[0]), 150);
+        assert_eq!(display_total(&spec.events[3].molecules[0]), 150);
+        assert_eq!(display_total(&spec.events[4].molecules[0]), 150);
     }
 
     #[test]
@@ -1587,10 +2452,152 @@ mod tests {
     fn render_gibson_svg_contains_expected_labels() {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::GibsonTwoFragment);
         assert!(svg.contains("<svg"));
-        assert!(svg.contains("Reaction Context"));
+        assert!(svg.contains("Context"));
         assert!(svg.contains("Chew-back"));
-        assert!(svg.contains("Extend + Seal"));
-        assert!(svg.contains("Circularized representation"));
+        assert!(svg.contains("Extend"));
+        assert!(svg.contains("Seal"));
+        assert!(svg.contains("30 bp"));
+    }
+
+    #[test]
+    fn render_not_shown_end_omits_end_label() {
+        let mut spec = custom_test_spec();
+        spec.events[0].molecules[0].left_end = Some(DnaEndStyle::NotShown);
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(!svg.contains("5&apos; 6nt"));
+    }
+
+    #[test]
+    fn render_continuation_end_draws_dots_without_label() {
+        let spec = ProtocolCartoonSpec {
+            id: "continuation.test".to_string(),
+            title: "Continuation".to_string(),
+            summary: "continuation markers".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "evt".to_string(),
+                title: "Continuation".to_string(),
+                caption: "DNA continues beyond the panel".to_string(),
+                action: ProtocolCartoonAction::Context,
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "mol".to_string(),
+                    label: "Fragment".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![DnaFeatureCartoon {
+                        id: "body".to_string(),
+                        label: "Body".to_string(),
+                        length_bp: 60,
+                        top_length_bp: 60,
+                        bottom_length_bp: 60,
+                        color_hex: "#55a84f".to_string(),
+                        bottom_color_hex: "#55a84f".to_string(),
+                        top_nick_after: false,
+                        bottom_nick_after: false,
+                    }],
+                    left_end: Some(DnaEndStyle::Continuation),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert_eq!(svg.matches("fill=\"#88a3ad\"").count(), 3);
+        assert!(!svg.contains(">blunt<"));
+        assert!(!svg.contains("5&apos;"));
+        assert!(!svg.contains("3&apos;"));
+    }
+
+    #[test]
+    fn render_split_overlap_uses_distinct_top_and_bottom_colors() {
+        let spec = ProtocolCartoonSpec {
+            id: "split.overlap".to_string(),
+            title: "Split Overlap".to_string(),
+            summary: "top/bottom strand colors differ in overlap".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "anneal".to_string(),
+                title: "Anneal".to_string(),
+                caption: "Hybridized overlap".to_string(),
+                action: ProtocolCartoonAction::Anneal,
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "hybrid".to_string(),
+                    label: "Hybrid".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![DnaFeatureCartoon {
+                        id: "overlap".to_string(),
+                        label: "overlap".to_string(),
+                        length_bp: 30,
+                        top_length_bp: 30,
+                        bottom_length_bp: 30,
+                        color_hex: "#d7ae2f".to_string(),
+                        bottom_color_hex: "#66aefb".to_string(),
+                        top_nick_after: false,
+                        bottom_nick_after: false,
+                    }],
+                    left_end: Some(DnaEndStyle::NotShown),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("#d7ae2f"));
+        assert!(svg.contains("#66aefb"));
+    }
+
+    #[test]
+    fn render_merges_adjacent_same_color_spans_on_one_strand() {
+        let spec = ProtocolCartoonSpec {
+            id: "merged.spans".to_string(),
+            title: "Merged Spans".to_string(),
+            summary: "adjacent same-color spans should render continuously".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "evt".to_string(),
+                title: "Merged".to_string(),
+                caption: "same-color adjacency".to_string(),
+                action: ProtocolCartoonAction::Context,
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "mol".to_string(),
+                    label: "Merged".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![
+                        DnaFeatureCartoon {
+                            id: "body_ds".to_string(),
+                            label: "duplex".to_string(),
+                            length_bp: 10,
+                            top_length_bp: 10,
+                            bottom_length_bp: 10,
+                            color_hex: "#111111".to_string(),
+                            bottom_color_hex: "#111111".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "body_ss".to_string(),
+                            label: "top tail".to_string(),
+                            length_bp: 5,
+                            top_length_bp: 5,
+                            bottom_length_bp: 0,
+                            color_hex: "#111111".to_string(),
+                            bottom_color_hex: "#111111".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "other".to_string(),
+                            label: "other".to_string(),
+                            length_bp: 10,
+                            top_length_bp: 10,
+                            bottom_length_bp: 10,
+                            color_hex: "#222222".to_string(),
+                            bottom_color_hex: "#222222".to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                    ],
+                    left_end: Some(DnaEndStyle::NotShown),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert_eq!(svg.matches("fill=\"#111111\"").count(), 2);
     }
 
     #[test]

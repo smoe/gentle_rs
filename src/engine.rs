@@ -4028,6 +4028,14 @@ pub enum Operation {
         template_path: String,
         path: String,
     },
+    ValidateProtocolCartoonTemplate {
+        template_path: String,
+    },
+    RenderProtocolCartoonTemplateWithBindingsSvg {
+        template_path: String,
+        bindings_path: String,
+        path: String,
+    },
     ExportProtocolCartoonTemplateJson {
         protocol: ProtocolCartoonKind,
         path: String,
@@ -5958,6 +5966,8 @@ impl GentleEngine {
                 "RenderPoolGelSvg".to_string(),
                 "RenderProtocolCartoonSvg".to_string(),
                 "RenderProtocolCartoonTemplateSvg".to_string(),
+                "ValidateProtocolCartoonTemplate".to_string(),
+                "RenderProtocolCartoonTemplateWithBindingsSvg".to_string(),
                 "ExportProtocolCartoonTemplateJson".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "ExportDnaLadders".to_string(),
@@ -6997,6 +7007,8 @@ impl GentleEngine {
                 | Operation::RenderPoolGelSvg { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
+                | Operation::ValidateProtocolCartoonTemplate { .. }
+                | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { .. }
                 | Operation::ExportProtocolCartoonTemplateJson { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }

@@ -1,5 +1,5 @@
 {
-   "command_count": 231,
+   "command_count": 233,
    "commands": [
       {
          "aliases": [
@@ -247,9 +247,7 @@
          "usage": "protocol-cartoon list"
       },
       {
-         "aliases": [
-            "render-protocol-cartoon-svg"
-         ],
+         "aliases": [],
          "engine_operations": [
             "RenderProtocolCartoonSvg"
          ],
@@ -263,9 +261,7 @@
          "usage": "protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg"
       },
       {
-         "aliases": [
-            "render-protocol-cartoon-template-svg"
-         ],
+         "aliases": [],
          "engine_operations": [
             "RenderProtocolCartoonTemplateSvg"
          ],
@@ -277,6 +273,34 @@
          "path": "protocol-cartoon render-template-svg",
          "summary": "Render protocol cartoon SVG from a template JSON file.",
          "usage": "protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ValidateProtocolCartoonTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon template-validate",
+         "summary": "Validate one protocol cartoon template JSON file.",
+         "usage": "protocol-cartoon template-validate TEMPLATE.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderProtocolCartoonTemplateWithBindingsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon render-with-bindings",
+         "summary": "Render protocol cartoon SVG from template + bindings JSON files.",
+         "usage": "protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg"
       },
       {
          "aliases": [],
