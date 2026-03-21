@@ -1,4 +1,8 @@
-//! Feature-expert, splicing, and isoform helper routines used by engine operations.
+//! Feature-expert, splicing, and isoform helper routines used by engine
+//! operations.
+//!
+//! This module keeps feature-oriented interpretation logic close together so
+//! inspection/render/export operations reuse the same qualifier parsing rules.
 
 use super::*;
 

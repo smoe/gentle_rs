@@ -1,4 +1,7 @@
 //! Genome track import/parsing helpers for BED/BigWig/VCF and BLAST features.
+//!
+//! Parsers and generated-feature cleanup live here so every track-ingestion path
+//! reuses the same normalization rules.
 
 use super::*;
 

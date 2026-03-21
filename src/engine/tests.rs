@@ -1,4 +1,7 @@
-//! Engine test module extracted from engine.rs.
+//! Engine regression tests for the shared operation/state contract.
+//!
+//! These tests intentionally exercise the public engine surface across helper
+//! module boundaries instead of re-testing each private extraction in isolation.
 
 use super::*;
 use crate::genomes::BlastHit;

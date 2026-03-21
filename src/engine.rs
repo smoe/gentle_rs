@@ -78,10 +78,15 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
+/// Stable identifier for one sequence entry stored in `ProjectState.sequences`.
 pub type SeqId = String;
+/// Stable identifier for one executed operation journal row.
 pub type OpId = String;
+/// Caller-supplied identifier that groups operations into one workflow/run.
 pub type RunId = String;
+/// Stable identifier for one lineage graph node.
 pub type NodeId = String;
+/// Stable identifier for one wet-lab-style container record.
 pub type ContainerId = String;
 pub use crate::feature_expert::{
     FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
@@ -196,6 +201,10 @@ const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 
+// Private decomposition slices of the engine implementation. Shared public
+// contracts stay in this file; heavy helpers and operation families live in the
+// corresponding `src/engine/*` module so future edits can land in one focused
+// area without changing adapter-visible APIs.
 #[path = "engine/ops/candidate_guides.rs"]
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]
@@ -5322,6 +5331,10 @@ impl MetricExpressionParser {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// One deterministic workflow run: ordered operations with a caller-supplied
 /// `run_id`.
+///
+/// Operations are applied sequentially. The current workflow executor is not
+/// transactional: if a later step fails, earlier successful steps remain in
+/// state and in the operation journal.
 pub struct Workflow {
     pub run_id: RunId,
     pub ops: Vec<Operation>,
@@ -5329,6 +5342,9 @@ pub struct Workflow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Canonical result payload returned after one operation completes.
+///
+/// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
+/// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
     pub op_id: OpId,
     pub created_seq_ids: Vec<SeqId>,
@@ -5591,6 +5607,7 @@ impl fmt::Display for EngineError {
 
 impl Error for EngineError {}
 
+/// Engine capability snapshot used by adapters for discovery/negotiation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Capabilities {
     pub protocol_version: String,
@@ -5599,6 +5616,7 @@ pub struct Capabilities {
     pub deterministic_operation_log: bool,
 }
 
+/// Compact sequence row used by state-summary style adapter surfaces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineSequenceSummary {
     pub id: String,
@@ -5607,6 +5625,7 @@ pub struct EngineSequenceSummary {
     pub circular: bool,
 }
 
+/// Compact container row used by shell/CLI inspection surfaces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineContainerSummary {
     pub id: String,
@@ -5615,6 +5634,7 @@ pub struct EngineContainerSummary {
     pub members: Vec<String>,
 }
 
+/// Compact arrangement row used by shell/CLI inspection surfaces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineArrangementSummary {
     pub id: String,
@@ -5624,6 +5644,7 @@ pub struct EngineArrangementSummary {
     pub ladders: Vec<String>,
 }
 
+/// Machine-readable snapshot of top-level engine state counts and summaries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineStateSummary {
     pub sequence_count: usize,
@@ -5635,12 +5656,25 @@ pub struct EngineStateSummary {
     pub display: DisplaySettings,
 }
 
+/// Minimal execution contract shared by concrete engine implementations.
+///
+/// Adapters should prefer this trait boundary when they only need to submit
+/// operations/workflows and inspect the resulting snapshot.
 pub trait Engine {
+    /// Apply one operation and append it to the deterministic operation log.
     fn apply(&mut self, op: Operation) -> Result<OpResult, EngineError>;
+    /// Apply a workflow in order using the workflow's caller-supplied `run_id`.
     fn apply_workflow(&mut self, wf: Workflow) -> Result<Vec<OpResult>, EngineError>;
+    /// Borrow the current canonical project snapshot.
     fn snapshot(&self) -> &ProjectState;
 }
 
+/// Default in-process engine implementation used by GUI, CLI, and scripting
+/// adapters.
+///
+/// The engine owns canonical project state plus a deterministic operation
+/// journal and undo/redo history. Helper modules under `src/engine/` extend
+/// this type rather than introducing parallel execution layers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GentleEngine {
     state: ProjectState,
@@ -5659,6 +5693,7 @@ impl GentleEngine {
         256
     }
 
+    /// Construct a new empty engine with default history settings.
     pub fn new() -> Self {
         let mut ret = Self::default();
         if ret.history_limit == 0 {
@@ -5667,6 +5702,11 @@ impl GentleEngine {
         ret
     }
 
+    /// Construct an engine from persisted state and reconcile derived indexes.
+    ///
+    /// This is the preferred rehydration path when loading project JSON because
+    /// it restores lineage/container helper structures that may lag behind older
+    /// on-disk snapshots.
     pub fn from_state(state: ProjectState) -> Self {
         let mut ret = Self {
             state,
@@ -5680,10 +5720,16 @@ impl GentleEngine {
         ret
     }
 
+    /// Borrow the canonical mutable-independent project snapshot.
     pub fn state(&self) -> &ProjectState {
         &self.state
     }
 
+    /// Mutably borrow the canonical project snapshot.
+    ///
+    /// Direct mutation is intended for tightly controlled internal call sites;
+    /// adapter code should normally prefer `apply`/`apply_workflow` so lineage,
+    /// journaling, and parity guarantees remain intact.
     pub fn state_mut(&mut self) -> &mut ProjectState {
         &mut self.state
     }
@@ -6966,6 +7012,7 @@ impl GentleEngine {
         )
     }
 
+    /// Return the immutable deterministic operation journal for this engine.
     pub fn operation_log(&self) -> &[OperationRecord] {
         &self.journal
     }
@@ -7108,6 +7155,10 @@ impl GentleEngine {
         Ok(result)
     }
 
+    /// Apply a workflow while streaming long-running progress payloads.
+    ///
+    /// Progress callbacks are cooperative: returning `false` requests
+    /// cancellation for operations that support it.
     pub fn apply_workflow_with_progress<F>(
         &mut self,
         wf: Workflow,

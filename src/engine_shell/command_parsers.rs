@@ -1,4 +1,9 @@
-//! Extracted command parser helpers for candidate/guide/macro/routine/planning families.
+//! Extracted command parser helpers for candidate/guide/macro/routine/planning
+//! families.
+//!
+//! Keep large command-family token parsing here so `engine_shell.rs` can remain
+//! the readable public contract surface while still routing every family
+//! through one shared parser.
 
 use super::*;
 

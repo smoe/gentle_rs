@@ -91,6 +91,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+// Private parser slices for large command families. Shared public command and
+// execution contracts stay in this file so GUI Shell and CLI shell keep one
+// visible behavior surface.
 mod command_parsers;
 use command_parsers::*;
 
@@ -379,6 +382,8 @@ impl MacroTemplatePreflightReport {
     }
 }
 
+/// GUI-facing UI-intent verb emitted by shell commands that ask an adapter to
+/// open or focus a specific tool surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentAction {
     Open,
@@ -386,6 +391,7 @@ pub enum UiIntentAction {
 }
 
 impl UiIntentAction {
+    /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -394,6 +400,7 @@ impl UiIntentAction {
     }
 }
 
+/// GUI-facing UI-intent destination understood by adapter shells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentTarget {
     PreparedReferences,
@@ -443,6 +450,7 @@ impl UiIntentTarget {
         }
     }
 
+    /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::PreparedReferences => "prepared-references",
@@ -458,6 +466,11 @@ impl UiIntentTarget {
     }
 }
 
+/// Canonical parsed shared-shell command enum.
+///
+/// GUI Shell, `gentle_cli shell`, and any future textual shell adapter should
+/// parse into this enum and then execute through
+/// `execute_shell_command_with_options`.
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
     Help {
@@ -1250,12 +1263,15 @@ pub enum ShellCommand {
 
 const SCREENSHOT_DISABLED_MESSAGE: &str = "screenshot-window is disabled by security policy";
 
+/// Deterministic result envelope returned after one shell command executes.
 #[derive(Debug, Clone)]
 pub struct ShellRunResult {
     pub state_changed: bool,
     pub output: Value,
 }
 
+/// Adapter policy switches that gate optional shell capabilities at execution
+/// time.
 #[derive(Debug, Clone, Copy)]
 pub struct ShellExecutionOptions {
     pub allow_screenshots: bool,
@@ -1272,6 +1288,7 @@ impl Default for ShellExecutionOptions {
 }
 
 impl ShellExecutionOptions {
+    /// Build execution options from process environment defaults.
     pub fn from_env() -> Self {
         let raw = std::env::var("GENTLE_ALLOW_SCREENSHOTS").unwrap_or_default();
         let allow_screenshots = cfg!(feature = "screenshot-capture")
@@ -6157,6 +6174,7 @@ impl ShellCommand {
     }
 }
 
+/// Render default text help for the shared shell command surface.
 pub fn shell_help_text() -> String {
     render_shell_help_text(None).unwrap_or_else(|e| format!("Could not render shell help: {e}"))
 }
@@ -8973,6 +8991,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+/// Parse tokenized shell input into one canonical `ShellCommand`.
 pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.is_empty() {
         return Err("Missing shell command".to_string());
@@ -10064,11 +10083,13 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+/// Split and parse one raw shell command line.
 pub fn parse_shell_line(line: &str) -> Result<ShellCommand, String> {
     let tokens = split_shell_words(line)?;
     parse_shell_tokens(&tokens)
 }
 
+/// Split one raw shell line using the shared quoting/escaping rules.
 pub fn split_shell_words(line: &str) -> Result<Vec<String>, String> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mode {
@@ -10653,6 +10674,7 @@ fn execute_agent_suggested_commands(
     (changed, rows)
 }
 
+/// Execute one parsed shell command with default policy options.
 pub fn execute_shell_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -10660,6 +10682,11 @@ pub fn execute_shell_command(
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
+/// Execute one parsed shell command against the shared engine.
+///
+/// This is the main adapter-neutral execution entry point for the textual shell
+/// surface. Callers are expected to parse first, then execute here instead of
+/// re-implementing command behavior in frontend code.
 pub fn execute_shell_command_with_options(
     engine: &mut GentleEngine,
     command: &ShellCommand,

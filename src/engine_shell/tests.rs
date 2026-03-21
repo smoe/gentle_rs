@@ -1,4 +1,8 @@
-//! Engine shell tests extracted from engine_shell.rs.
+//! Shared-shell regression tests for parser and executor parity.
+//!
+//! These tests exercise the public shell surface across parser helpers,
+//! execution routing, and engine integration instead of treating each helper as
+//! an isolated API.
 
 use super::*;
 use crate::dna_sequence::DNAsequence;

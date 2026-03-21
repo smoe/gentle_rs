@@ -1,4 +1,7 @@
 //! Lineage graph and container/arrangement helper routines.
+//!
+//! Container-first project semantics and lineage bookkeeping live together here
+//! because most mutations need to keep both models in sync.
 
 use super::*;
 
@@ -49,6 +52,8 @@ impl GentleEngine {
         }
     }
 
+    /// Append one macro-instance audit record, allocating ids/defaults as
+    /// needed.
     pub fn record_lineage_macro_instance(&mut self, mut instance: LineageMacroInstance) -> String {
         if instance.macro_instance_id.trim().is_empty() {
             instance.macro_instance_id = self.next_macro_instance_id();
@@ -72,6 +77,7 @@ impl GentleEngine {
         instance.macro_instance_id
     }
 
+    /// Borrow the persistent macro-instance audit trail in insertion order.
     pub fn lineage_macro_instances(&self) -> &[LineageMacroInstance] {
         &self.state.lineage.macro_instances
     }

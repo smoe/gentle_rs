@@ -1,4 +1,7 @@
 //! Candidate-set summary, metric computation, and expression-evaluation helpers.
+//!
+//! Keep reusable candidate inspection/reporting code here so candidate-related
+//! operations and adapters share one scoring vocabulary.
 
 use super::*;
 
@@ -20,6 +23,7 @@ impl GentleEngine {
         )
     }
 
+    /// Summarize all stored candidate sets in deterministic name order.
     pub fn list_candidate_sets(&self) -> Vec<CandidateSetSummary> {
         let store = self.read_candidate_store();
         let mut set_names: Vec<String> = store.sets.keys().cloned().collect();
@@ -37,6 +41,7 @@ impl GentleEngine {
             .collect()
     }
 
+    /// Return one paged candidate-set slice plus total-count pagination data.
     pub fn inspect_candidate_set_page(
         &self,
         set_name: &str,
@@ -70,6 +75,7 @@ impl GentleEngine {
         Ok((set, total, clamped_offset))
     }
 
+    /// Summarize which metric keys are present across one candidate set.
     pub fn list_candidate_set_metrics(
         &self,
         set_name: &str,

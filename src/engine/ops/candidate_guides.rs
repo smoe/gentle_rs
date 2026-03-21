@@ -1,4 +1,7 @@
 //! Candidate-set generation/scoring and guide-design operation handlers.
+//!
+//! Add new candidate/guide operation families here when they share storage or
+//! scoring helpers, rather than branching adapter-specific command paths.
 
 use super::*;
 

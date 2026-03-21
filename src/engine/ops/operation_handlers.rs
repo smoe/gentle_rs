@@ -1,4 +1,8 @@
-//! Core operation dispatch handler for Engine::apply_internal.
+//! Core operation dispatch handler for `GentleEngine::apply_internal`.
+//!
+//! This file is the mutation hub that maps one `Operation` variant onto the
+//! appropriate helper routines. Keep adapter entry points thin and route new
+//! engine behavior through this shared dispatch path.
 
 use super::*;
 use crate::uniprot::UniprotNucleotideXref;

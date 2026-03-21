@@ -1,6 +1,7 @@
 //! DNA sequence-window wrapper and per-window controls.
 //!
-//! `WindowDna` is the viewport/lifecycle shell around [`MainAreaDna`]:
+//! `WindowDna` is the viewport/lifecycle shell around
+//! [`MainAreaDna`](crate::main_area_dna::MainAreaDna):
 //! - it owns deferred sequence loading for lazy-open paths,
 //! - it handles viewport-scoped controls such as help/main/configuration,
 //! - it forwards ready-to-render sequence-window work into `MainAreaDna`.

@@ -1,4 +1,8 @@
 //! RNA-read report storage, parsing, scoring, and export helper routines.
+//!
+//! The RNA-read pipeline is large enough to deserve its own implementation
+//! slice, but it still extends the shared engine contract rather than creating
+//! a separate subsystem.
 
 use super::*;
 

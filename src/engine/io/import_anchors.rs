@@ -1,4 +1,7 @@
 //! GenBank region parsing, inferred anchor metadata, and import-origin helpers.
+//!
+//! Import-time heuristics stay here to keep file-format interpretation out of
+//! adapters and out of unrelated operation handlers.
 
 use super::*;
 

@@ -1,4 +1,8 @@
-//! Sequence/digestion and primer/overhang utility routines used by core operations.
+//! Sequence/digestion and primer/overhang utility routines used by core
+//! operations.
+//!
+//! Keep low-level sequence manipulation helpers here so restriction/ligation,
+//! primer design, and export paths reuse one implementation.
 
 use super::*;
 
