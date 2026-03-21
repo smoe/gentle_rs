@@ -85,6 +85,81 @@ cargo run --bin gentle_examples_docs -- tutorial-catalog-generate
 cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 ```
 
+## Draft design resources
+
+### `gentle.gibson_assembly_plan.v1`
+
+Purpose:
+
+- describe one Gibson cloning project in a destination-first way,
+- separate user-specified plan inputs from derived design consequences,
+- provide one canonical JSON artifact that future routines, primer design, and
+  protocol-cartoon rendering can all read from.
+
+Status:
+
+- draft schema and documentation artifact only
+- not yet accepted by a direct engine operation in this release
+
+Canonical example:
+
+- `docs/examples/plans/gibson_destination_first_single_insert.json`
+
+Top-level structure:
+
+- `schema`, `id`, `title`, `summary`
+- `destination`
+  - destination molecule (`seq_id`, prior topology)
+  - explicit opening definition (`mode`, label, resulting left/right ends)
+- `product`
+  - intended output topology and output-id hint
+- `fragments[]`
+  - participating inserts or non-destination fragments
+  - orientation plus per-end adaptation strategy
+- `assembly_order[]`
+  - explicit left-to-right order of destination ends and inserts
+  - supports future multi-fragment Gibson plans without changing the model
+- `junctions[]`
+  - one record per adjacent join
+  - required overlap length
+  - whether overlap is derived from destination context or user-specified
+  - explicit `distinct_from` constraints for terminal junctions
+- `validation_policy`
+  - hard requirements:
+    - unique/unambiguous destination opening
+    - distinct terminal junctions
+    - adjacency-consistent overlaps
+  - advisory checks:
+    - overlap-length design range
+    - overlap Tm
+    - destination/fragment/reference uniqueness heuristics
+- `derived_design`
+  - derived overlap sequences
+  - suggested primer tails
+  - advisory notes and validation outcomes
+
+Interpretation:
+
+- Gibson plans are modeled as explicit assembly junctions around an opened
+  destination, not merely as an unordered bag of fragments.
+- The destination opening defines two terminal junctions, and therefore two
+  required overlap regions.
+- Inserts may already satisfy those terminal overlaps or may require primer-tail
+  adaptation.
+- Uniqueness is best treated in layers:
+  - destination opening uniqueness: hard validation
+  - left/right terminal overlap distinctness: hard validation
+  - destination/fragment/genome uniqueness heuristics: advisory checks
+
+Design intent:
+
+- make the same JSON artifact useful for:
+  - preflight Gibson validation
+  - primer-tail derivation
+  - workflow/macro instantiation
+  - factual protocol-cartoon generation
+  - reproducible AI-facing project context
+
 ## Core entities
 
 ### ProjectState

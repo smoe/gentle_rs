@@ -17,6 +17,16 @@ syntax.
 - `online`: executed only when `GENTLE_TEST_ONLINE=1`
 - `skip`: parsed and documented, but not executed in automated tests
 
+## Draft design-resource examples
+
+- Draft, non-executable planning/design artifacts may live outside
+  `docs/examples/workflows/`.
+- Current draft resource example:
+  - `docs/examples/plans/gibson_destination_first_single_insert.json`
+  - schema: `gentle.gibson_assembly_plan.v1`
+- These files are documentation resources for protocol/data-model design and
+  are not yet executed by workflow-example tests.
+
 ## Generate adapter snippets
 
 Generate Markdown snippets for CLI/shell/JS/Lua:
