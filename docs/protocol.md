@@ -55,6 +55,12 @@ Tutorial manifest + generated outputs:
 
 - discovery catalog: `docs/tutorial/catalog.json`
 - discovery schema: `gentle.tutorial_catalog.v1`
+- discovery source units:
+  - `docs/tutorial/sources/catalog_meta.json`
+  - `docs/tutorial/sources/*.json`
+- source-unit schemas:
+  - `gentle.tutorial_catalog_meta.v1`
+  - `gentle.tutorial_source.v1`
 - manifest: `docs/tutorial/manifest.json`
 - schema: `gentle.tutorial_manifest.v1`
 - committed generated outputs: `docs/tutorial/generated/`
@@ -63,6 +69,7 @@ Catalog/manifest split:
 
 - `docs/tutorial/catalog.json` is the canonical discovery layer for all
   tutorials, including hand-written walkthroughs and agent/reference guides.
+- `docs/tutorial/sources/` is the authoring layer for that catalog.
 - `docs/tutorial/manifest.json` remains the executable source for generated
   chapter output and tutorial runtime checks.
 - GUI help/tutorial discovery may consume the catalog directly for curated
@@ -74,6 +81,8 @@ Generate/check tutorial outputs:
 ```bash
 cargo run --bin gentle_examples_docs -- tutorial-generate
 cargo run --bin gentle_examples_docs -- tutorial-check
+cargo run --bin gentle_examples_docs -- tutorial-catalog-generate
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 ```
 
 ## Core entities

@@ -21,7 +21,7 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Generated from docs/tutorial/manifest.json and validated by tutorial-check."
+      "notes": "Generated from docs/tutorial/manifest.json and executable workflows; validated by tutorial-check."
     },
     {
       "id": "tp73_promoter_luciferase_gui",

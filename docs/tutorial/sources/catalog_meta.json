@@ -1,0 +1,11 @@
+{
+  "schema": "gentle.tutorial_catalog_meta.v1",
+  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. This catalog complements, but does not replace, the executable tutorial generation manifest.",
+  "entry_page": "docs/tutorial/README.md",
+  "generated_runtime": {
+    "manifest_path": "docs/tutorial/manifest.json",
+    "manifest_schema": "gentle.tutorial_manifest.v1",
+    "generated_readme": "docs/tutorial/generated/README.md",
+    "generation_report": "docs/tutorial/generated/report.json"
+  }
+}

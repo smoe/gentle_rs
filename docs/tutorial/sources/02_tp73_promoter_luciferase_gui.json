@@ -1,0 +1,15 @@
+{
+  "schema": "gentle.tutorial_source.v1",
+  "order": 2,
+  "id": "tp73_promoter_luciferase_gui",
+  "title": "TP73 Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+  "path": "docs/tutorial/tp73_promoter_luciferase_gui.md",
+  "type": "gui_walkthrough",
+  "status": "manual/hybrid",
+  "source": "hand_written_markdown",
+  "audiences": [
+    "gui_first",
+    "cloning_planning"
+  ],
+  "notes": "Hand-written GUI-first tutorial with explicit engine and CLI mapping."
+}

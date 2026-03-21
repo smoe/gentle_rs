@@ -395,6 +395,12 @@ order. Durable architecture constraints and decisions remain in
         `Open Tutorial Project...`
     - intended future role: broader shared source for tutorial discovery
       surfaces beyond the current GUI/help path
+  - tutorial discovery authoring now has an explicit source layer:
+    - `docs/tutorial/sources/catalog_meta.json`
+    - `docs/tutorial/sources/*.json`
+    - generation/check commands:
+      - `gentle_examples_docs tutorial-catalog-generate`
+      - `gentle_examples_docs tutorial-catalog-check`
   - tutorial pages now distinguish their role more explicitly:
     `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
   - tutorial manifest source:
@@ -756,10 +762,12 @@ Notes:
        remains pending
    - tutorial authoring is still structurally split:
      executable chapters come from `docs/tutorial/manifest.json`, while GUI and
-     agent/reference tutorials remain hand-written markdown
+     agent/reference tutorials still keep their narrative content in
+     hand-written markdown
      - current mitigation is the canonical landing page
        `docs/tutorial/README.md`
-       plus discovery metadata in `docs/tutorial/catalog.json`
+       plus generated discovery metadata in `docs/tutorial/catalog.json`
+       sourced from `docs/tutorial/sources/`
      - future improvement should move toward smaller per-tutorial authoring
        units with generated unified indexing rather than one large manifest plus
        separate discovery paths

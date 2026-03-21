@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.tutorial_source.v1",
+  "order": 1,
+  "id": "generated_hub",
+  "title": "GENtle Tutorial (Generated)",
+  "path": "docs/tutorial/generated/README.md",
+  "type": "executable_collection",
+  "status": "generated+checked",
+  "source": "generated_from_manifest",
+  "audiences": [
+    "new_users",
+    "cli_first",
+    "contributors"
+  ],
+  "notes": "Generated from docs/tutorial/manifest.json and executable workflows; validated by tutorial-check."
+}

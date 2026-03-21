@@ -1,0 +1,17 @@
+{
+  "schema": "gentle.tutorial_source.v1",
+  "order": 4,
+  "id": "agent_interfaces",
+  "title": "GENtle Agent Interfaces Tutorial",
+  "path": "docs/agent_interfaces_tutorial.md",
+  "type": "operational_reference",
+  "status": "manual/reference",
+  "source": "hand_written_markdown",
+  "audiences": [
+    "agent_users",
+    "cli_first",
+    "mcp_users",
+    "contributors"
+  ],
+  "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+}

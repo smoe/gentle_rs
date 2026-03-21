@@ -1,9 +1,11 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
 use gentle::workflow_examples::{
-    DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_WORKFLOW_EXAMPLE_DIR,
-    DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_generated, generate_tutorial_docs,
-    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
+    DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
+    DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
+    DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
+    check_tutorial_generated, generate_tutorial_docs, generate_workflow_example_docs,
+    load_workflow_examples, validate_example_required_files, write_tutorial_catalog_from_sources,
 };
 use serde_json::json;
 use std::{
@@ -18,6 +20,8 @@ enum Mode {
     ExampleCheck,
     TutorialGenerate,
     TutorialCheck,
+    TutorialCatalogGenerate,
+    TutorialCatalogCheck,
 }
 
 #[derive(Debug)]
@@ -26,6 +30,9 @@ struct CliArgs {
     mode: Mode,
     source_dir: String,
     example_output_dir: String,
+    tutorial_catalog: String,
+    tutorial_catalog_meta: String,
+    tutorial_source_dir: String,
     tutorial_manifest: String,
     tutorial_output_dir: String,
     repo_root: String,
@@ -38,6 +45,9 @@ impl Default for CliArgs {
             mode: Mode::ExampleGenerate,
             source_dir: DEFAULT_WORKFLOW_EXAMPLE_DIR.to_string(),
             example_output_dir: DEFAULT_WORKFLOW_SNIPPET_DIR.to_string(),
+            tutorial_catalog: DEFAULT_TUTORIAL_CATALOG_PATH.to_string(),
+            tutorial_catalog_meta: DEFAULT_TUTORIAL_CATALOG_META_PATH.to_string(),
+            tutorial_source_dir: DEFAULT_TUTORIAL_SOURCE_DIR.to_string(),
             tutorial_manifest: DEFAULT_TUTORIAL_MANIFEST_PATH.to_string(),
             tutorial_output_dir: DEFAULT_TUTORIAL_OUTPUT_DIR.to_string(),
             repo_root: ".".to_string(),
@@ -51,15 +61,23 @@ fn usage() {
 gentle_examples_docs [generate] [--source DIR] [--output DIR]\n  \
 gentle_examples_docs --check [--source DIR]\n  \
 gentle_examples_docs tutorial-generate [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
-gentle_examples_docs tutorial-check [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n\n  \
+gentle_examples_docs tutorial-check [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
+gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
+gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n\n  \
 Defaults:\n  \
   --source {}\n  \
   --output {}\n  \
+  --tutorial-catalog {}\n  \
+  --catalog-meta {}\n  \
+  --tutorial-sources {}\n  \
   --manifest {}\n  \
   --tutorial-output {}\n  \
   --repo-root .",
         DEFAULT_WORKFLOW_EXAMPLE_DIR,
         DEFAULT_WORKFLOW_SNIPPET_DIR,
+        DEFAULT_TUTORIAL_CATALOG_PATH,
+        DEFAULT_TUTORIAL_CATALOG_META_PATH,
+        DEFAULT_TUTORIAL_SOURCE_DIR,
         DEFAULT_TUTORIAL_MANIFEST_PATH,
         DEFAULT_TUTORIAL_OUTPUT_DIR
     );
@@ -100,6 +118,27 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.tutorial_output_dir = args[idx + 1].clone();
                 idx += 2;
             }
+            "--tutorial-catalog" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing FILE after --tutorial-catalog".to_string());
+                }
+                parsed.tutorial_catalog = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--catalog-meta" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing FILE after --catalog-meta".to_string());
+                }
+                parsed.tutorial_catalog_meta = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--tutorial-sources" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing DIR after --tutorial-sources".to_string());
+                }
+                parsed.tutorial_source_dir = args[idx + 1].clone();
+                idx += 2;
+            }
             "--manifest" => {
                 if idx + 1 >= args.len() {
                     return Err("Missing FILE after --manifest".to_string());
@@ -124,6 +163,14 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             }
             "tutorial-check" => {
                 parsed.mode = Mode::TutorialCheck;
+                idx += 1;
+            }
+            "tutorial-catalog-generate" => {
+                parsed.mode = Mode::TutorialCatalogGenerate;
+                idx += 1;
+            }
+            "tutorial-catalog-check" => {
+                parsed.mode = Mode::TutorialCatalogCheck;
                 idx += 1;
             }
             other => {
@@ -191,6 +238,42 @@ fn run_tutorial_check_mode(
     Ok(())
 }
 
+fn run_tutorial_catalog_generate_mode(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<(), String> {
+    let catalog = write_tutorial_catalog_from_sources(meta_path, source_dir, output_path)?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "tutorial-catalog-generate",
+        "entry_count": catalog.entries.len(),
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize tutorial catalog generation report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_tutorial_catalog_check_mode(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<(), String> {
+    let catalog = check_tutorial_catalog_generated(meta_path, source_dir, output_path)?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "tutorial-catalog-check",
+        "entry_count": catalog.entries.len(),
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize tutorial catalog check report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let parsed = match parse_args(&args) {
@@ -208,6 +291,9 @@ fn main() {
 
     let source_dir = PathBuf::from(parsed.source_dir);
     let example_output = PathBuf::from(parsed.example_output_dir);
+    let tutorial_catalog = PathBuf::from(parsed.tutorial_catalog);
+    let tutorial_catalog_meta = PathBuf::from(parsed.tutorial_catalog_meta);
+    let tutorial_source_dir = PathBuf::from(parsed.tutorial_source_dir);
     let tutorial_manifest = PathBuf::from(parsed.tutorial_manifest);
     let tutorial_output = PathBuf::from(parsed.tutorial_output_dir);
     let repo_root = PathBuf::from(parsed.repo_root);
@@ -225,6 +311,16 @@ fn main() {
             &tutorial_manifest,
             &tutorial_output,
             &repo_root,
+        ),
+        Mode::TutorialCatalogGenerate => run_tutorial_catalog_generate_mode(
+            &tutorial_catalog_meta,
+            &tutorial_source_dir,
+            &tutorial_catalog,
+        ),
+        Mode::TutorialCatalogCheck => run_tutorial_catalog_check_mode(
+            &tutorial_catalog_meta,
+            &tutorial_source_dir,
+            &tutorial_catalog,
         ),
     };
     if let Err(e) = result {

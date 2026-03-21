@@ -17,9 +17,13 @@ pub const DEFAULT_WORKFLOW_SNIPPET_DIR: &str = "docs/examples/generated";
 pub const ONLINE_EXAMPLE_TEST_ENV: &str = "GENTLE_TEST_ONLINE";
 pub const SKIP_REMOTE_TESTS_ENV: &str = "GENTLE_SKIP_REMOTE_TESTS";
 pub const TUTORIAL_CATALOG_SCHEMA: &str = "gentle.tutorial_catalog.v1";
+pub const TUTORIAL_CATALOG_META_SCHEMA: &str = "gentle.tutorial_catalog_meta.v1";
+pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v1";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
+pub const DEFAULT_TUTORIAL_CATALOG_META_PATH: &str = "docs/tutorial/sources/catalog_meta.json";
+pub const DEFAULT_TUTORIAL_SOURCE_DIR: &str = "docs/tutorial/sources";
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
 pub const DEFAULT_TUTORIAL_OUTPUT_DIR: &str = "docs/tutorial/generated";
 
@@ -57,6 +61,49 @@ pub struct TutorialCatalog {
     pub generated_runtime: TutorialCatalogGeneratedRuntime,
     #[serde(default)]
     pub entries: Vec<TutorialCatalogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCatalogMeta {
+    #[serde(default = "default_tutorial_catalog_meta_schema")]
+    pub schema: String,
+    #[serde(default)]
+    pub description: String,
+    pub entry_page: String,
+    pub generated_runtime: TutorialCatalogGeneratedRuntime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialSourceUnit {
+    #[serde(default = "default_tutorial_source_schema")]
+    pub schema: String,
+    pub order: usize,
+    pub id: String,
+    pub title: String,
+    pub path: String,
+    #[serde(rename = "type")]
+    pub entry_type: String,
+    pub status: String,
+    pub source: String,
+    #[serde(default)]
+    pub audiences: Vec<String>,
+    #[serde(default)]
+    pub notes: String,
+}
+
+impl TutorialSourceUnit {
+    fn into_catalog_entry(self) -> TutorialCatalogEntry {
+        TutorialCatalogEntry {
+            id: self.id,
+            title: self.title,
+            path: self.path,
+            entry_type: self.entry_type,
+            status: self.status,
+            source: self.source,
+            audiences: self.audiences,
+            notes: self.notes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,6 +271,14 @@ fn default_example_schema() -> String {
 
 fn default_tutorial_catalog_schema() -> String {
     TUTORIAL_CATALOG_SCHEMA.to_string()
+}
+
+fn default_tutorial_catalog_meta_schema() -> String {
+    TUTORIAL_CATALOG_META_SCHEMA.to_string()
+}
+
+fn default_tutorial_source_schema() -> String {
+    TUTORIAL_SOURCE_SCHEMA.to_string()
 }
 
 fn default_tutorial_manifest_schema() -> String {
@@ -438,6 +493,28 @@ fn parse_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, String
     })
 }
 
+fn parse_tutorial_catalog_meta(meta_path: &Path) -> Result<TutorialCatalogMeta, String> {
+    let raw = fs::read_to_string(meta_path).map_err(|e| {
+        format!(
+            "Could not read tutorial catalog meta '{}': {e}",
+            display_path(meta_path)
+        )
+    })?;
+    serde_json::from_str::<TutorialCatalogMeta>(&raw).map_err(|e| {
+        format!(
+            "Could not parse tutorial catalog meta '{}': {e}",
+            display_path(meta_path)
+        )
+    })
+}
+
+fn parse_tutorial_source_unit(path: &Path) -> Result<TutorialSourceUnit, String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("Could not read tutorial source '{}': {e}", display_path(path)))?;
+    serde_json::from_str::<TutorialSourceUnit>(&raw)
+        .map_err(|e| format!("Could not parse tutorial source '{}': {e}", display_path(path)))
+}
+
 pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, String> {
     let catalog = parse_tutorial_catalog(catalog_path)?;
     if catalog.schema != TUTORIAL_CATALOG_SCHEMA {
@@ -502,6 +579,180 @@ pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, Str
         }
     }
     Ok(catalog)
+}
+
+pub fn load_tutorial_catalog_meta(meta_path: &Path) -> Result<TutorialCatalogMeta, String> {
+    let meta = parse_tutorial_catalog_meta(meta_path)?;
+    if meta.schema != TUTORIAL_CATALOG_META_SCHEMA {
+        return Err(format!(
+            "Tutorial catalog meta '{}' uses unsupported schema '{}'; expected '{}'",
+            display_path(meta_path),
+            meta.schema,
+            TUTORIAL_CATALOG_META_SCHEMA
+        ));
+    }
+    if meta.entry_page.trim().is_empty() {
+        return Err(format!(
+            "Tutorial catalog meta '{}' has empty entry_page",
+            display_path(meta_path)
+        ));
+    }
+    if meta.generated_runtime.manifest_path.trim().is_empty()
+        || meta.generated_runtime.manifest_schema.trim().is_empty()
+        || meta.generated_runtime.generated_readme.trim().is_empty()
+        || meta.generated_runtime.generation_report.trim().is_empty()
+    {
+        return Err(format!(
+            "Tutorial catalog meta '{}' has incomplete generated_runtime fields",
+            display_path(meta_path)
+        ));
+    }
+    Ok(meta)
+}
+
+pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourceUnit>, String> {
+    let entries = fs::read_dir(source_dir).map_err(|e| {
+        format!(
+            "Could not read tutorial source directory '{}': {e}",
+            display_path(source_dir)
+        )
+    })?;
+    let mut json_paths = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("json"))
+                    .unwrap_or(false)
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name != "catalog_meta.json")
+                    .unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+    json_paths.sort();
+    if json_paths.is_empty() {
+        return Err(format!(
+            "Tutorial source directory '{}' has no source JSON files",
+            display_path(source_dir)
+        ));
+    }
+    let mut units = Vec::new();
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut seen_orders: HashSet<usize> = HashSet::new();
+    for path in json_paths {
+        let unit = parse_tutorial_source_unit(&path)?;
+        if unit.schema != TUTORIAL_SOURCE_SCHEMA {
+            return Err(format!(
+                "Tutorial source '{}' uses unsupported schema '{}'; expected '{}'",
+                display_path(&path),
+                unit.schema,
+                TUTORIAL_SOURCE_SCHEMA
+            ));
+        }
+        if unit.id.trim().is_empty()
+            || unit.title.trim().is_empty()
+            || unit.path.trim().is_empty()
+            || unit.entry_type.trim().is_empty()
+            || unit.status.trim().is_empty()
+            || unit.source.trim().is_empty()
+        {
+            return Err(format!(
+                "Tutorial source '{}' has one or more empty required fields",
+                display_path(&path)
+            ));
+        }
+        if !seen_ids.insert(unit.id.clone()) {
+            return Err(format!(
+                "Tutorial source directory '{}' has duplicate tutorial id '{}'",
+                display_path(source_dir),
+                unit.id
+            ));
+        }
+        if !seen_orders.insert(unit.order) {
+            return Err(format!(
+                "Tutorial source directory '{}' has duplicate tutorial order '{}'",
+                display_path(source_dir),
+                unit.order
+            ));
+        }
+        units.push(unit);
+    }
+    units.sort_by(|left, right| left.order.cmp(&right.order));
+    Ok(units)
+}
+
+pub fn generate_tutorial_catalog_from_sources(
+    meta_path: &Path,
+    source_dir: &Path,
+) -> Result<TutorialCatalog, String> {
+    let meta = load_tutorial_catalog_meta(meta_path)?;
+    let units = load_tutorial_source_units(source_dir)?;
+    let entries = units
+        .into_iter()
+        .map(TutorialSourceUnit::into_catalog_entry)
+        .collect::<Vec<_>>();
+    Ok(TutorialCatalog {
+        schema: TUTORIAL_CATALOG_SCHEMA.to_string(),
+        description: meta.description,
+        entry_page: meta.entry_page,
+        generated_runtime: meta.generated_runtime,
+        entries,
+    })
+}
+
+pub fn write_tutorial_catalog_from_sources(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<TutorialCatalog, String> {
+    let catalog = generate_tutorial_catalog_from_sources(meta_path, source_dir)?;
+    let serialized = serde_json::to_string_pretty(&catalog)
+        .map_err(|e| format!("Could not serialize tutorial catalog: {e}"))?;
+    fs::write(output_path, format!("{serialized}\n")).map_err(|e| {
+        format!(
+            "Could not write tutorial catalog '{}': {e}",
+            display_path(output_path)
+        )
+    })?;
+    Ok(catalog)
+}
+
+pub fn check_tutorial_catalog_generated(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<TutorialCatalog, String> {
+    if !output_path.exists() {
+        return Err(format!(
+            "Expected tutorial catalog '{}' does not exist. Run `tutorial-catalog-generate` first.",
+            display_path(output_path)
+        ));
+    }
+    let expected = generate_tutorial_catalog_from_sources(meta_path, source_dir)?;
+    let expected_bytes = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&expected)
+            .map_err(|e| format!("Could not serialize expected tutorial catalog: {e}"))?
+    )
+    .into_bytes();
+    let actual_bytes = fs::read(output_path).map_err(|e| {
+        format!(
+            "Could not read tutorial catalog '{}': {e}",
+            display_path(output_path)
+        )
+    })?;
+    if actual_bytes != expected_bytes {
+        return Err(format!(
+            "Committed tutorial catalog '{}' does not match generated output. Run `tutorial-catalog-generate`.",
+            display_path(output_path)
+        ));
+    }
+    Ok(expected)
 }
 
 pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, String> {
@@ -1845,6 +2096,14 @@ mod tests {
         PathBuf::from(DEFAULT_TUTORIAL_CATALOG_PATH)
     }
 
+    fn tutorial_catalog_meta_path() -> PathBuf {
+        PathBuf::from(DEFAULT_TUTORIAL_CATALOG_META_PATH)
+    }
+
+    fn tutorial_source_dir() -> PathBuf {
+        PathBuf::from(DEFAULT_TUTORIAL_SOURCE_DIR)
+    }
+
     fn tutorial_output_dir() -> PathBuf {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
     }
@@ -1970,6 +2229,35 @@ mod tests {
             "catalog manifest path should exist: '{}'",
             display_path(&generated_manifest)
         );
+    }
+
+    #[test]
+    fn tutorial_source_units_generate_committed_catalog() {
+        let generated = generate_tutorial_catalog_from_sources(
+            &tutorial_catalog_meta_path(),
+            &tutorial_source_dir(),
+        )
+        .expect("generate tutorial catalog from sources");
+        let committed =
+            load_tutorial_catalog(&tutorial_catalog_path()).expect("load committed tutorial catalog");
+        let generated_json =
+            serde_json::to_string_pretty(&generated).expect("serialize generated tutorial catalog");
+        let committed_json =
+            serde_json::to_string_pretty(&committed).expect("serialize committed tutorial catalog");
+        assert_eq!(
+            generated_json, committed_json,
+            "committed tutorial catalog should match generated source units"
+        );
+    }
+
+    #[test]
+    fn tutorial_catalog_check_passes_on_committed_tree() {
+        check_tutorial_catalog_generated(
+            &tutorial_catalog_meta_path(),
+            &tutorial_source_dir(),
+            &tutorial_catalog_path(),
+        )
+        .expect("committed tutorial catalog should match source units");
     }
 
     #[test]

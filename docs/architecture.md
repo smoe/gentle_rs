@@ -384,6 +384,15 @@ Practical rule:
     - lists both generated tutorial collections and hand-written pages
     - current consumer for GUI help/tutorial discovery
     - source of runtime manifest resolution for `Open Tutorial Project...`
+  - tutorial discovery authoring source units:
+    - `docs/tutorial/sources/catalog_meta.json`
+      (`gentle.tutorial_catalog_meta.v1`)
+    - `docs/tutorial/sources/*.json`
+      (`gentle.tutorial_source.v1`)
+    - generated via:
+      `gentle_examples_docs tutorial-catalog-generate`
+    - checked via:
+      `gentle_examples_docs tutorial-catalog-check`
   - tutorial manifest source: `docs/tutorial/manifest.json`
   - tutorial schema: `gentle.tutorial_manifest.v1`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
