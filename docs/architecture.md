@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-11
+Last updated: 2026-03-21
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -783,6 +783,17 @@ Command surface:
   - Restriction routines validate enzyme resolution and digest-sanity semantics
     (distinct enzyme inputs, recognition-site presence, fragment-index and
     extract-range checks) before mutation.
+- Gibson specialist destination-opening suggestions must remain shared-model
+  derived:
+  - the selected destination sequence may contribute MCS-aware opening hints
+    through existing feature annotations plus actual unique restriction-site
+    resolution on that sequence
+  - end geometry (`blunt`, `5' overhang`, `3' overhang`) must come from the
+    shared restriction-enzyme model, not adapter-local heuristics
+  - GUI may present those suggestions in a specialist-friendly way, but it must
+    not hard-code vector-specific sites or maintain a separate biology rule set
+  - this keeps destination-first Gibson planning aligned with the same
+    annotation and restriction-site evidence already used elsewhere in GENtle
 
 Concrete patch plan: routine-application assistant and alternative-awareness
 

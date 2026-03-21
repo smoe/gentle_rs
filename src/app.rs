@@ -13480,6 +13480,87 @@ Error: `{err}`"
         }
     }
 
+    fn humanize_gibson_ui_text(raw: &str) -> String {
+        raw.replace("Tm", "Tₘ").replace(" C", " °C")
+    }
+
+    fn gibson_active_context_summary(&self) -> String {
+        match self.active_dna_window_context() {
+            Some((seq_id, Some((start, end)))) => {
+                format!("Active DNA window: {seq_id} | selection {start}..{end} (0-based)")
+            }
+            Some((seq_id, None)) => format!("Active DNA window: {seq_id} | no selection"),
+            None => "Active DNA window: none".to_string(),
+        }
+    }
+
+    fn gibson_use_active_sequence_tooltip(&self) -> String {
+        match self.active_dna_window_context() {
+            Some((seq_id, _)) => format!(
+                "Fill the destination from the currently focused DNA window.\nCurrent active sequence: {seq_id}"
+            ),
+            None => "Fill the destination from the currently focused DNA window.\nNo active DNA window is currently available.".to_string(),
+        }
+    }
+
+    fn gibson_use_active_selection_tooltip(&self) -> String {
+        match self.active_dna_window_context() {
+            Some((seq_id, Some((start, end)))) => format!(
+                "Fill the opening start/end from the current selection in the focused DNA window.\nCurrent active selection: {seq_id} {start}..{end} (0-based)"
+            ),
+            Some((seq_id, None)) => format!(
+                "Fill the opening start/end from the current selection in the focused DNA window.\nCurrent active DNA window: {seq_id} (no active selection)"
+            ),
+            None => "Fill the opening start/end from the current selection in the focused DNA window.\nNo active DNA window is currently available.".to_string(),
+        }
+    }
+
+    fn gibson_destination_suggestion_source_label(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> &'static str {
+        if suggestion.kind == "mcs_feature" {
+            "MCS feature"
+        } else if suggestion.in_mcs_context {
+            "MCS / unique cutter"
+        } else {
+            "unique cutter"
+        }
+    }
+
+    fn gibson_destination_suggestion_help_text(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> String {
+        let why = if suggestion.kind == "mcs_feature" {
+            "Choose the full MCS feature when you want the annotated cloning region as a whole and do not want to commit to one cutter yet."
+        } else {
+            "Choose a specific cutter when you want the opening tied to one known restriction site and its end geometry."
+        };
+        format!("{}\n{}", suggestion.summary, why)
+    }
+
+    fn gibson_preview_findings_text(preview: &GibsonAssemblyPreview) -> String {
+        let mut lines = vec![];
+        if !preview.errors.is_empty() {
+            lines.push(format!("blocking errors: {}", preview.errors.len()));
+            for row in &preview.errors {
+                lines.push(format!("- {}", Self::humanize_gibson_ui_text(row)));
+            }
+        }
+        if !preview.warnings.is_empty() {
+            lines.push(format!("warnings: {}", preview.warnings.len()));
+            for row in &preview.warnings {
+                lines.push(format!("- {}", Self::humanize_gibson_ui_text(row)));
+            }
+        }
+        if !preview.notes.is_empty() {
+            lines.push("notes:".to_string());
+            for row in &preview.notes {
+                lines.push(format!("- {}", Self::humanize_gibson_ui_text(row)));
+            }
+        }
+        lines.join("\n")
+    }
+
     fn apply_gibson_destination_opening_suggestion(
         &mut self,
         suggestion: &GibsonDestinationOpeningSuggestion,
@@ -13496,10 +13577,13 @@ Error: `{err}`"
             "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
         );
         ui.small(
-            "This specialist stays Gibson-specific on purpose: overlap/Tm targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
+            "This specialist stays Gibson-specific on purpose: overlap/Tₘ targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
         );
 
         let sequence_ids = self.project_sequence_ids_for_blast();
+        let active_context_summary = self.gibson_active_context_summary();
+        let active_sequence_tooltip = self.gibson_use_active_sequence_tooltip();
+        let active_selection_tooltip = self.gibson_use_active_selection_tooltip();
         let destination_topology = {
             let destination_id = self.gibson_destination_seq_id.trim().to_string();
             self.engine
@@ -13517,6 +13601,8 @@ Error: `{err}`"
         };
         let destination_opening_suggestions = self.current_gibson_destination_opening_suggestions();
         let mut selected_opening_suggestion: Option<GibsonDestinationOpeningSuggestion> = None;
+        let tm_help =
+            "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4). Long 30 bp overlaps can therefore read quite high; treat them as a first-pass screening heuristic.";
 
         ui.separator();
         ui.heading("Destination");
@@ -13540,7 +13626,7 @@ Error: `{err}`"
             ui.text_edit_singleline(&mut self.gibson_destination_seq_id);
             if ui
                 .button("Use Active Sequence")
-                .on_hover_text("Fill destination from the currently focused DNA window")
+                .on_hover_text(active_sequence_tooltip)
                 .clicked()
             {
                 if let Some((seq_id, _)) = self.active_dna_window_context() {
@@ -13552,6 +13638,7 @@ Error: `{err}`"
             }
         });
         ui.small(format!("topology: {destination_topology}"));
+        ui.small(active_context_summary.clone());
         ui.horizontal(|ui| {
             ui.label("opening");
             egui::ComboBox::from_id_salt("gibson_opening_mode")
@@ -13570,9 +13657,7 @@ Error: `{err}`"
                 });
             if ui
                 .button("Use Active Selection")
-                .on_hover_text(
-                    "Fill opening start/end from the current selection in the focused DNA window",
-                )
+                .on_hover_text(active_selection_tooltip)
                 .clicked()
             {
                 if let Some((seq_id, Some((start, end)))) = self.active_dna_window_context() {
@@ -13603,30 +13688,44 @@ Error: `{err}`"
                 ui.small(
                     "Suggested openings come from the selected sequence's MCS annotations and unique restriction sites. Choosing one fills the defined-site window but keeps the coordinates editable.",
                 );
+                ui.small(
+                    "Choose the MCS feature row when you want the annotated cloning region as a whole. Choose a specific cutter row when you want one known site and its blunt/sticky-end geometry.",
+                );
                 egui::Grid::new("gibson_destination_opening_suggestions")
                     .num_columns(4)
                     .spacing([12.0, 6.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        ui.strong("Suggestion");
-                        ui.strong("Ends");
-                        ui.strong("Source");
+                        ui.strong("Suggestion").on_hover_text(
+                            "MCS feature rows use the whole annotated cloning region. Specific cutter rows use one unique restriction site.",
+                        );
+                        ui.strong("Ends").on_hover_text(
+                            "Feature span means an annotation-defined window. Blunt / 5' / 3' rows come from actual restriction-cutter geometry.",
+                        );
+                        ui.strong("Source").on_hover_text(
+                            "MCS feature = annotation span. MCS / unique cutter = annotation-backed site that is also a unique cutter on the selected destination.",
+                        );
                         ui.label("");
                         ui.end_row();
                         for suggestion in suggestions {
+                            let suggestion_help =
+                                Self::gibson_destination_suggestion_help_text(suggestion);
                             ui.label(suggestion.label.as_str())
-                                .on_hover_text(suggestion.summary.as_str());
+                                .on_hover_text(suggestion_help.clone());
                             ui.label(
                                 Self::gibson_destination_suggestion_geometry_label(suggestion),
-                            );
-                            ui.label(if suggestion.kind == "mcs_feature" {
-                                "MCS feature"
-                            } else if suggestion.in_mcs_context {
-                                "MCS / unique cutter"
-                            } else {
-                                "unique cutter"
-                            });
-                            if ui.button("Use").clicked() {
+                            )
+                            .on_hover_text(suggestion_help.clone());
+                            ui.label(Self::gibson_destination_suggestion_source_label(suggestion))
+                                .on_hover_text(suggestion_help.clone());
+                            if ui
+                                .button("Use")
+                                .on_hover_text(format!(
+                                    "{}\nFill the `defined opening` fields from this suggestion.",
+                                    suggestion_help
+                                ))
+                                .clicked()
+                            {
                                 selected_opening_suggestion = Some(suggestion.clone());
                             }
                             ui.end_row();
@@ -13694,14 +13793,16 @@ Error: `{err}`"
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
             );
-            ui.label("minimum overlap Tm C");
+            ui.label("minimum overlap Tₘ (°C)")
+                .on_hover_text(tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
                     .desired_width(80.0),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("priming Tm window C");
+            ui.label("priming Tₘ window (°C)")
+                .on_hover_text(tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_priming_tm_min_celsius)
                     .desired_width(80.0),
@@ -13761,24 +13862,24 @@ Error: `{err}`"
                     egui::Color32::from_rgb(190, 70, 70),
                     format!("blocking errors: {}", preview.errors.len()),
                 );
-                for row in &preview.errors {
-                    ui.small(format!("- {row}"));
-                }
             }
             if !preview.warnings.is_empty() {
                 ui.colored_label(
                     egui::Color32::from_rgb(170, 120, 20),
                     format!("warnings: {}", preview.warnings.len()),
                 );
-                for row in &preview.warnings {
-                    ui.small(format!("- {row}"));
-                }
             }
-            if !preview.notes.is_empty() {
-                ui.small("notes");
-                for row in &preview.notes {
-                    ui.small(format!("- {row}"));
-                }
+            if !preview.errors.is_empty() || !preview.warnings.is_empty() || !preview.notes.is_empty()
+            {
+                let mut findings_text = Self::gibson_preview_findings_text(&preview);
+                let findings_rows = findings_text.lines().count().clamp(4, 10);
+                ui.small("Preview findings (copyable)");
+                ui.add(
+                    egui::TextEdit::multiline(&mut findings_text)
+                        .desired_rows(findings_rows)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
             }
 
             ui.separator();
@@ -13789,7 +13890,7 @@ Error: `{err}`"
                     ui.strong("junction");
                     ui.strong("members");
                     ui.strong("overlap");
-                    ui.strong("Tm C");
+                    ui.strong("Tₘ (°C)").on_hover_text(tm_help);
                     ui.end_row();
                     for junction in &preview.resolved_junctions {
                         ui.monospace(&junction.junction_id);
@@ -13801,7 +13902,8 @@ Error: `{err}`"
                             "{} bp | {}",
                             junction.overlap_bp, junction.overlap_sequence
                         ));
-                        ui.label(format!("{:.1}", junction.overlap_tm_celsius));
+                        ui.label(format!("{:.1} °C", junction.overlap_tm_celsius))
+                            .on_hover_text(tm_help);
                         ui.end_row();
                     }
                 });
@@ -13820,18 +13922,20 @@ Error: `{err}`"
                         ui.monospace(&primer.primer_id);
                         ui.monospace(&primer.full_sequence);
                         ui.small(format!(
-                            "{} ({} bp, {:.1} C)",
+                            "{} ({} bp, {:.1} °C)",
                             primer.overlap_5prime.sequence,
                             primer.overlap_5prime.length_bp,
                             primer.overlap_5prime.tm_celsius
-                        ));
+                        ))
+                        .on_hover_text(tm_help);
                         ui.small(format!(
-                            "{} ({} bp, {:.1} C, hits={})",
+                            "{} ({} bp, {:.1} °C, hits={})",
                             primer.priming_3prime.sequence,
                             primer.priming_3prime.length_bp,
                             primer.priming_3prime.tm_celsius,
                             primer.priming_3prime.anneal_hits
-                        ));
+                        ))
+                        .on_hover_text(tm_help);
                         ui.end_row();
                     }
                 });
@@ -13894,8 +13998,31 @@ Error: `{err}`"
 
         if !self.gibson_status.trim().is_empty() {
             ui.separator();
-            ui.monospace(self.gibson_status.clone());
+            ui.small("Status (copyable)");
+            let mut status_text = Self::humanize_gibson_ui_text(&self.gibson_status);
+            let status_rows = status_text.lines().count().clamp(2, 5);
+            ui.add(
+                egui::TextEdit::multiline(&mut status_text)
+                    .desired_rows(status_rows)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace),
+            );
         }
+        ui.separator();
+        egui::CollapsingHeader::new("Quick Help")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.small(
+                    "MCS feature suggestion: use this when the annotated cloning region is known, but you do not want to commit to one cutter yet.",
+                );
+                ui.small(
+                    "Specific cutter suggestion: use this when you want one concrete restriction site and its end geometry, for example `SmaI` for blunt ends.",
+                );
+                ui.small(
+                    "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4), so long overlaps can read quite high.",
+                );
+                ui.small(active_context_summary);
+            });
     }
 
     fn render_gibson_dialog(&mut self, ctx: &egui::Context) {
@@ -13915,10 +14042,16 @@ Error: `{err}`"
                     .collapsible(false)
                     .resizable(true)
                     .default_size(Vec2::new(1040.0, 820.0))
-                    .show(ctx, |ui| self.render_gibson_contents(ui));
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| self.render_gibson_contents(ui));
+                    });
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    self.render_gibson_contents(ui);
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.render_gibson_contents(ui));
                 });
                 if Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
@@ -28944,6 +29077,15 @@ mod tests {
         app.open_gibson_dialog();
 
         assert_eq!(app.gibson_destination_seq_id, "active_seq");
+    }
+
+    #[test]
+    fn humanize_gibson_ui_text_formats_tm_and_celsius() {
+        let raw = "minimum overlap Tm 60.0 C";
+        assert_eq!(
+            GENtleApp::humanize_gibson_ui_text(raw),
+            "minimum overlap Tₘ 60.0 °C"
+        );
     }
 
     #[test]
