@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -312,6 +312,30 @@ order. Durable architecture constraints and decisions remain in
       - deterministic overrides target defaults and event/molecule/feature ids
     - validation rejects malformed cartoons (empty ids/events, zero-length
       features, circular molecules with linear end styles, zero-nt sticky ends)
+- Top-level README showcase expansion is now underway:
+  - shipped showcase figures now cover distinct GENtle usage modes:
+    - built-in Gibson protocol cartoon
+    - TP53/p53 isoform architecture from Ensembl 116 geometry plus curated
+      isoform panel overlays
+    - TP73 cDNA-vs-genomic dotplot derived locally from `test_files/tp73.ncbi.gb`
+      and rasterized to README PNG via `gentle_examples_docs svg-png`
+      (`resvg`) while preserving bp axis labels
+  - current README dotplot path is intentionally offline:
+    - derive `NM_001126241.3` from local TP73 GenBank feature geometry
+    - compute dotplot through shared `DeriveTranscriptSequences` +
+      `ComputeDotplot` + `RenderDotplotSvg` engine routes
+    - convert SVG -> PNG in docs tooling to keep README rendering lightweight
+  - next showcase candidates queued on the same track:
+    - end-to-end cloning assembly
+      (`docs/examples/workflows/digest_ligation_extract_region_minimal.json`)
+    - TP53-family sparse RNA mapping
+      (`docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json`)
+    - batch primer design
+      (`docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json`)
+    - guide export and protocol handoff
+      (`docs/examples/workflows/guides_export_csv_and_protocol.json`)
+    - TP73 promoter luciferase assay planning
+      (`docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`)
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command

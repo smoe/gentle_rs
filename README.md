@@ -6,6 +6,16 @@ operation mapped to a deterministic in silico counterpart. The same engine can
 therefore execute a workflow, validate its assumptions, and render graphical
 protocol cartoons that explain the underlying molecular events.
 
+The same engine also fits into broader computational biology workflows where
+external reference data matters. Prepared genome annotations, curated expert
+panels, and other imported resources can contribute directly to the same
+project state used by the GUI, CLI, and automation, so showcase figures remain
+auditable instead of being redrawn by hand.
+
+## Showcases
+
+### Gibson Protocol Cartoon
+
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
 
 Built-in conceptual Gibson Assembly strip: two input fragments, 5' chew-back,
@@ -13,23 +23,7 @@ annealing across the homologous overlap, polymerase fill-in, and ligase
 sealing. It shows how executable GENtle workflows can also carry readable,
 factual visual explanations of the underlying molecular events.
 
-GENtle also fits naturally into broader computational biology workflows where
-external reference data matters. Prepared genome annotations, curated expert
-panels, and other imported resources can contribute directly to the same
-engine state that powers GUI, CLI, and automation, so showcase figures stay
-auditable instead of being redrawn by hand.
-
-![GENtle TP53/p53 isoform architecture](docs/figures/tp53_isoform_architecture.svg)
-
-Curated TP53/p53 isoform architecture showcase: transcript/CDS geometry comes
-from the Ensembl 116 TP53 annotation on GRCh38, while isoform labels and
-protein-domain blocks come from the curated panel resource in
-`assets/panels/tp53_isoforms_v1.json`. The figure is rendered through the same
-shared expert-view route used by GENtle interfaces rather than from a
-standalone illustration.
-
-The Gibson README figure is rendered directly by the shared protocol-cartoon
-engine:
+This README figure is rendered directly by the shared protocol-cartoon engine:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -38,18 +32,9 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/gibson_two_fragment_protocol_cartoon.svg
 ```
 
-The TP53/p53 figure was generated with:
-
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  workflow @docs/figures/tp53_isoform_architecture.workflow.json
-```
-
 Canonical protocol-cartoon templates start from readable defaults and can then
-be adapted to the actual parameters of a concrete cloning routine.
-
-To start from a canonical editable protocol-cartoon template instead of the
-built-in render directly, use:
+be adapted to the actual parameters of a concrete cloning routine. To start
+from an editable template instead of the built-in render directly, use:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -65,6 +50,47 @@ Then tweak the exported JSON and render it with
 The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose
 between overlapping alias names.
+
+### TP53/P53 Isoform Architecture
+
+![GENtle TP53/p53 isoform architecture](docs/figures/tp53_isoform_architecture.svg)
+
+Curated TP53/p53 isoform architecture showcase: transcript/CDS geometry comes
+from the Ensembl 116 TP53 annotation on GRCh38, while isoform labels and
+protein-domain blocks come from the curated panel resource in
+`assets/panels/tp53_isoforms_v1.json`. The figure is rendered through the same
+shared expert-view route used by GENtle interfaces rather than from a
+standalone illustration.
+
+The TP53/p53 figure was generated with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  workflow @docs/figures/tp53_isoform_architecture.workflow.json
+```
+
+### TP73 cDNA vs Genomic Dotplot
+
+![GENtle TP73 cDNA vs genomic dotplot](docs/figures/tp73_cdna_genomic_dotplot.png)
+
+Offline TP73 cDNA-vs-genomic showcase: the `NM_001126241.3` transcript is
+derived locally from `test_files/tp73.ncbi.gb`, aligned against the same TP73
+genomic locus with the shared dotplot engine route, and then rasterized to PNG
+for README display while preserving the basepair axis labels.
+
+The TP73 dotplot figure was generated with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_readme_dotplot.state.json \
+  workflow @docs/figures/tp73_cdna_genomic_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_cdna_genomic_dotplot.svg \
+  docs/figures/tp73_cdna_genomic_dotplot.png \
+  --drop-dotplot-metadata
+```
 
 ## Principles
 

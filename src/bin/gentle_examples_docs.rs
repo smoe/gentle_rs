@@ -8,6 +8,8 @@ use gentle::workflow_examples::{
     generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
     write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
 };
+use regex::Regex;
+use resvg::{self, tiny_skia, usvg};
 use serde_json::json;
 use std::{
     env,
@@ -19,6 +21,7 @@ use std::{
 enum Mode {
     ExampleGenerate,
     ExampleCheck,
+    SvgPng,
     TutorialGenerate,
     TutorialCheck,
     TutorialCatalogGenerate,
@@ -33,6 +36,10 @@ struct CliArgs {
     mode: Mode,
     source_dir: String,
     example_output_dir: String,
+    svg_input: String,
+    png_output: String,
+    svg_scale: f32,
+    drop_dotplot_metadata: bool,
     tutorial_catalog: String,
     tutorial_catalog_meta: String,
     tutorial_source_dir: String,
@@ -48,6 +55,10 @@ impl Default for CliArgs {
             mode: Mode::ExampleGenerate,
             source_dir: DEFAULT_WORKFLOW_EXAMPLE_DIR.to_string(),
             example_output_dir: DEFAULT_WORKFLOW_SNIPPET_DIR.to_string(),
+            svg_input: String::new(),
+            png_output: String::new(),
+            svg_scale: 1.0,
+            drop_dotplot_metadata: false,
             tutorial_catalog: DEFAULT_TUTORIAL_CATALOG_PATH.to_string(),
             tutorial_catalog_meta: DEFAULT_TUTORIAL_CATALOG_META_PATH.to_string(),
             tutorial_source_dir: DEFAULT_TUTORIAL_SOURCE_DIR.to_string(),
@@ -63,6 +74,7 @@ fn usage() {
         "Usage:\n  \
 gentle_examples_docs [generate] [--source DIR] [--output DIR]\n  \
 gentle_examples_docs --check [--source DIR]\n  \
+gentle_examples_docs svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]\n  \
 gentle_examples_docs tutorial-generate [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
 gentle_examples_docs tutorial-check [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
 gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
@@ -99,6 +111,19 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             }
             "--check" => {
                 parsed.mode = Mode::ExampleCheck;
+                idx += 1;
+            }
+            "--scale" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing N after --scale".to_string());
+                }
+                parsed.svg_scale = args[idx + 1]
+                    .parse::<f32>()
+                    .map_err(|e| format!("Could not parse --scale '{}': {e}", args[idx + 1]))?;
+                idx += 2;
+            }
+            "--drop-dotplot-metadata" => {
+                parsed.drop_dotplot_metadata = true;
                 idx += 1;
             }
             "--source" => {
@@ -162,6 +187,10 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.mode = Mode::ExampleGenerate;
                 idx += 1;
             }
+            "svg-png" => {
+                parsed.mode = Mode::SvgPng;
+                idx += 1;
+            }
             "tutorial-generate" => {
                 parsed.mode = Mode::TutorialGenerate;
                 idx += 1;
@@ -187,6 +216,16 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 idx += 1;
             }
             other => {
+                if parsed.mode == Mode::SvgPng && parsed.svg_input.is_empty() {
+                    parsed.svg_input = other.to_string();
+                    idx += 1;
+                    continue;
+                }
+                if parsed.mode == Mode::SvgPng && parsed.png_output.is_empty() {
+                    parsed.png_output = other.to_string();
+                    idx += 1;
+                    continue;
+                }
                 return Err(format!("Unknown argument '{other}'"));
             }
         }
@@ -215,6 +254,87 @@ fn run_generate_mode(source_dir: &Path, output_dir: &Path) -> Result<(), String>
     let report = generate_workflow_example_docs(source_dir, output_dir)?;
     let pretty = serde_json::to_string_pretty(&report)
         .map_err(|e| format!("Could not serialize generation report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn strip_dotplot_metadata_text(svg: &str) -> Result<String, String> {
+    let metadata_re = Regex::new(
+        r#"<text\b[^>]*>(?:Dotplot workspace export:[^<]*|rendered_cells=[^<]*|x:\s[^<]*|y:\s[^<]*|GENtle dotplot SVG export)</text>"#,
+    )
+    .map_err(|e| format!("Could not compile dotplot metadata regex: {e}"))?;
+    Ok(metadata_re.replace_all(svg, "").into_owned())
+}
+
+fn run_svg_png_mode(
+    input_path: &Path,
+    output_path: &Path,
+    scale: f32,
+    drop_dotplot_metadata: bool,
+) -> Result<(), String> {
+    if input_path.as_os_str().is_empty() {
+        return Err("svg-png requires INPUT.svg".to_string());
+    }
+    if output_path.as_os_str().is_empty() {
+        return Err("svg-png requires OUTPUT.png".to_string());
+    }
+    if !(scale.is_finite() && scale > 0.0) {
+        return Err(format!(
+            "svg-png requires a positive finite --scale value, got {scale}"
+        ));
+    }
+
+    let mut svg_text = std::fs::read_to_string(input_path)
+        .map_err(|e| format!("Could not read SVG '{}': {e}", input_path.display()))?;
+    if drop_dotplot_metadata {
+        svg_text = strip_dotplot_metadata_text(&svg_text)?;
+    }
+
+    let mut opt = usvg::Options {
+        resources_dir: std::fs::canonicalize(input_path)
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.to_path_buf())),
+        ..usvg::Options::default()
+    };
+    opt.fontdb_mut().load_system_fonts();
+
+    let tree = usvg::Tree::from_str(&svg_text, &opt)
+        .map_err(|e| format!("Could not parse SVG '{}': {e}", input_path.display()))?;
+    let pixmap_size = tree
+        .size()
+        .to_int_size()
+        .scale_by(scale)
+        .ok_or_else(|| format!("Could not scale SVG size by {scale}"))?;
+    let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
+        .ok_or_else(|| {
+            format!(
+                "Could not allocate PNG canvas {}x{}",
+                pixmap_size.width(),
+                pixmap_size.height()
+            )
+        })?;
+    let transform = if (scale - 1.0).abs() <= f32::EPSILON {
+        tiny_skia::Transform::default()
+    } else {
+        tiny_skia::Transform::from_scale(scale, scale)
+    };
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    pixmap
+        .save_png(output_path)
+        .map_err(|e| format!("Could not write PNG '{}': {e}", output_path.display()))?;
+
+    let summary = json!({
+        "status": "ok",
+        "mode": "svg-png",
+        "input_path": input_path.to_string_lossy(),
+        "output_path": output_path.to_string_lossy(),
+        "scale": scale,
+        "drop_dotplot_metadata": drop_dotplot_metadata,
+        "width": pixmap_size.width(),
+        "height": pixmap_size.height(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize svg-png summary: {e}"))?;
     println!("{pretty}");
     Ok(())
 }
@@ -346,9 +466,17 @@ fn main() {
     let tutorial_manifest = PathBuf::from(parsed.tutorial_manifest);
     let tutorial_output = PathBuf::from(parsed.tutorial_output_dir);
     let repo_root = PathBuf::from(parsed.repo_root);
+    let svg_input = PathBuf::from(parsed.svg_input);
+    let png_output = PathBuf::from(parsed.png_output);
     let result = match parsed.mode {
         Mode::ExampleGenerate => run_generate_mode(&source_dir, &example_output),
         Mode::ExampleCheck => run_check_mode(&source_dir),
+        Mode::SvgPng => run_svg_png_mode(
+            &svg_input,
+            &png_output,
+            parsed.svg_scale,
+            parsed.drop_dotplot_metadata,
+        ),
         Mode::TutorialGenerate => run_tutorial_generate_mode(
             &source_dir,
             &tutorial_manifest,
@@ -385,5 +513,51 @@ fn main() {
     if let Err(e) = result {
         eprintln!("{e}");
         process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Mode, parse_args, strip_dotplot_metadata_text};
+
+    #[test]
+    fn parse_svg_png_mode_with_cleanup_flag() {
+        let args = vec![
+            "svg-png".to_string(),
+            "input.svg".to_string(),
+            "output.png".to_string(),
+            "--scale".to_string(),
+            "1.5".to_string(),
+            "--drop-dotplot-metadata".to_string(),
+        ];
+        let parsed = parse_args(&args).expect("parse svg-png args");
+        assert_eq!(parsed.mode, Mode::SvgPng);
+        assert_eq!(parsed.svg_input, "input.svg");
+        assert_eq!(parsed.png_output, "output.png");
+        assert!((parsed.svg_scale - 1.5).abs() < 1e-6);
+        assert!(parsed.drop_dotplot_metadata);
+    }
+
+    #[test]
+    fn strip_dotplot_metadata_preserves_axis_labels() {
+        let svg = concat!(
+            "<svg>",
+            "<text>Dotplot workspace export: dotplot_primary</text>",
+            "<text>rendered_cells=42 sampled_points=77 sample_stride=1</text>",
+            "<text>x: tp73_cdna</text>",
+            "<text>y: tp73_genomic</text>",
+            "<text>1</text>",
+            "<text>5026</text>",
+            "<text>GENtle dotplot SVG export</text>",
+            "</svg>"
+        );
+        let cleaned = strip_dotplot_metadata_text(svg).expect("strip metadata");
+        assert!(!cleaned.contains("Dotplot workspace export:"));
+        assert!(!cleaned.contains("rendered_cells="));
+        assert!(!cleaned.contains("x: tp73_cdna"));
+        assert!(!cleaned.contains("y: tp73_genomic"));
+        assert!(!cleaned.contains("GENtle dotplot SVG export"));
+        assert!(cleaned.contains("<text>1</text>"));
+        assert!(cleaned.contains("<text>5026</text>"));
     }
 }

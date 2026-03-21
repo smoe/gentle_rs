@@ -1,0 +1,38 @@
+{
+  "run_id": "readme_tp73_cdna_genomic_dotplot",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_genomic_local"
+      }
+    },
+    {
+      "DeriveTranscriptSequences": {
+        "seq_id": "tp73_genomic_local",
+        "feature_ids": [
+          99
+        ],
+        "output_prefix": "tp73_readme"
+      }
+    },
+    {
+      "ComputeDotplot": {
+        "seq_id": "tp73_readme__f100__nm_001126241_3",
+        "reference_seq_id": "tp73_genomic_local",
+        "mode": "pair_forward",
+        "word_size": 7,
+        "step_bp": 1,
+        "max_mismatches": 0,
+        "store_as": "tp73_cdna_vs_genomic_dotplot"
+      }
+    },
+    {
+      "RenderDotplotSvg": {
+        "seq_id": "tp73_readme__f100__nm_001126241_3",
+        "dotplot_id": "tp73_cdna_vs_genomic_dotplot",
+        "path": "docs/figures/tp73_cdna_genomic_dotplot.svg"
+      }
+    }
+  ]
+}

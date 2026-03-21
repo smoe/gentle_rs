@@ -82,6 +82,7 @@ egui_commonmark = { version = "0.22.0", default-features = false, features = ["p
 egui-file-dialog = "*" #  For file dialogs.
 copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
+resvg = "0.45.1"
 rfd = "*"
 reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
