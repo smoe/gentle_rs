@@ -1,13 +1,10 @@
 # GENtle
 
-GENtle is a DNA and cloning workbench reimplemented for both interactive use and automation.
-
-The cloning process is presented as a workflow. Every biotechnical operation is
-mapped to an in silico representation of the same.
-
-Protocols can explain themselves through graphical templates. The same engine
-that executes a workflow can also render a deterministic cartoon of the
-underlying molecular events.
+GENtle is a DNA and cloning workbench for both interactive use and automation.
+Cloning projects are represented as workflows, with each biotechnical
+operation mapped to a deterministic in silico counterpart. The same engine can
+therefore execute a workflow, validate its assumptions, and render graphical
+protocol cartoons that explain the underlying molecular events.
 
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
 
