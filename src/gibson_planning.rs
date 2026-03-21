@@ -1567,8 +1567,8 @@ mod tests {
     fn preview_reports_impossible_priming_targets() {
         let engine = test_engine_with_sequences();
         let mut plan = single_insert_plan();
-        plan.validation_policy.design_targets.priming_segment_tm_min_celsius = 90.0;
-        plan.validation_policy.design_targets.priming_segment_tm_max_celsius = 95.0;
+        plan.validation_policy.design_targets.priming_segment_tm_min_celsius = 200.0;
+        plan.validation_policy.design_targets.priming_segment_tm_max_celsius = 210.0;
         let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
         assert!(!preview.can_execute);
         assert!(preview
@@ -1581,7 +1581,7 @@ mod tests {
     fn preview_existing_linear_termini_enables_routine_handoff() {
         let mut engine = GentleEngine::new();
         let destination = DNAsequence::from_sequence(
-            "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
+            "ATGCGTACGATTCGATGCACTGATCGTACGTAGCTAACGTAGGCTAAC",
         )
         .expect("destination sequence");
         let insert = DNAsequence::from_sequence(
