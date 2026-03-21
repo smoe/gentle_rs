@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
-use crate::test_support::decision_trace_fixture_state;
+use crate::test_support::{decision_trace_fixture_state, write_demo_pool_json};
 use gb_io::seq::{Feature, FeatureKind, Location};
 use std::fs;
 #[cfg(unix)]
@@ -6233,35 +6233,7 @@ fn parse_import_pool_with_prefix() {
 #[test]
 fn execute_import_pool_loads_members_into_engine_state() {
     let td = tempdir().expect("tempdir");
-    let pool_path = td.path().join("demo.pool.gentle.json");
-    let pool_json = json!({
-        "schema": "gentle.pool.v1",
-        "pool_id": "demo_pool",
-        "human_id": "demo",
-        "member_count": 1,
-        "members": [
-            {
-                "seq_id": "member_1",
-                "human_id": "member_1",
-                "name": "Member One",
-                "sequence": "ATGCATGC",
-                "length_bp": 8,
-                "topology": "linear",
-                "ends": {
-                    "end_type": "blunt",
-                    "forward_5": "",
-                    "forward_3": "",
-                    "reverse_5": "",
-                    "reverse_3": ""
-                }
-            }
-        ]
-    });
-    fs::write(
-        &pool_path,
-        serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
-    )
-    .expect("write pool json");
+    let pool_path = write_demo_pool_json(td.path());
 
     let mut state = ProjectState::default();
     state.sequences.insert(

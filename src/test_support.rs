@@ -10,6 +10,15 @@ use crate::engine::{
     RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
 };
+use serde_json::json;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n";
+const DEMO_JASPAR_PFM: &str =
+    ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
 
 /// Synthetic project state with one routine-decision trace used in parity tests.
 pub(crate) fn decision_trace_fixture_state() -> ProjectState {
@@ -54,4 +63,52 @@ pub(crate) fn decision_trace_fixture_state() -> ProjectState {
         .expect("trace store"),
     );
     state
+}
+
+/// Writes a minimal deterministic REBASE `.withrefm` fixture and returns its path.
+pub(crate) fn write_demo_rebase_withrefm(dir: &Path) -> PathBuf {
+    let path = dir.join("rebase.withrefm");
+    fs::write(&path, DEMO_REBASE_WITHREFM).expect("write rebase input");
+    path
+}
+
+/// Writes a minimal deterministic JASPAR PFM fixture and returns its path.
+pub(crate) fn write_demo_jaspar_pfm(dir: &Path) -> PathBuf {
+    let path = dir.join("motifs.pfm");
+    fs::write(&path, DEMO_JASPAR_PFM).expect("write jaspar input");
+    path
+}
+
+/// Writes a minimal deterministic pool-export fixture and returns its path.
+pub(crate) fn write_demo_pool_json(dir: &Path) -> PathBuf {
+    let path = dir.join("demo.pool.gentle.json");
+    let pool_json = json!({
+        "schema": "gentle.pool.v1",
+        "pool_id": "demo_pool",
+        "human_id": "demo",
+        "member_count": 1,
+        "members": [
+            {
+                "seq_id": "member_1",
+                "human_id": "member_1",
+                "name": "Member One",
+                "sequence": "ATGCATGC",
+                "length_bp": 8,
+                "topology": "linear",
+                "ends": {
+                    "end_type": "blunt",
+                    "forward_5": "",
+                    "forward_3": "",
+                    "reverse_5": "",
+                    "reverse_3": ""
+                }
+            }
+        ]
+    });
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+    )
+    .expect("write pool json");
+    path
 }
