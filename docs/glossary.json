@@ -247,9 +247,7 @@
          "usage": "protocol-cartoon list"
       },
       {
-         "aliases": [
-            "render-protocol-cartoon-svg"
-         ],
+         "aliases": [],
          "engine_operations": [
             "RenderProtocolCartoonSvg"
          ],
@@ -263,9 +261,7 @@
          "usage": "protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg"
       },
       {
-         "aliases": [
-            "render-protocol-cartoon-template-svg"
-         ],
+         "aliases": [],
          "engine_operations": [
             "RenderProtocolCartoonTemplateSvg"
          ],

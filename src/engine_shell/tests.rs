@@ -354,16 +354,8 @@ fn parse_protocol_cartoon_render_svg() {
 }
 
 #[test]
-fn parse_render_protocol_cartoon_svg_alias() {
-    let cmd =
-        parse_shell_line("render-protocol-cartoon-svg gibson out.svg").expect("parse command");
-    match cmd {
-        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
-            assert_eq!(protocol, ProtocolCartoonKind::GibsonTwoFragment);
-            assert_eq!(output, "out.svg");
-        }
-        other => panic!("unexpected command: {other:?}"),
-    }
+fn reject_render_protocol_cartoon_svg_alias() {
+    assert!(parse_shell_line("render-protocol-cartoon-svg gibson out.svg").is_err());
 }
 
 #[test]
@@ -383,19 +375,8 @@ fn parse_protocol_cartoon_render_template_svg() {
 }
 
 #[test]
-fn parse_render_protocol_cartoon_template_svg_alias() {
-    let cmd = parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg")
-        .expect("parse command");
-    match cmd {
-        ShellCommand::RenderProtocolCartoonTemplateSvg {
-            template_path,
-            output,
-        } => {
-            assert_eq!(template_path, "template.json");
-            assert_eq!(output, "out.svg");
-        }
-        other => panic!("unexpected command: {other:?}"),
-    }
+fn reject_render_protocol_cartoon_template_svg_alias() {
+    assert!(parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg").is_err());
 }
 
 #[test]

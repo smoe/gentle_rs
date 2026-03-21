@@ -301,8 +301,8 @@ external coding agent runtime, see:
   - `protocol-cartoon template-validate TEMPLATE.json`
   - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
   - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
-  - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
-  - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
+  - command surface is intentionally canonical: protocol-cartoon routes do not
+    expose extra alias names
 
 - Python adapter wrapper (`integrations/python/gentle_py`):
   - thin subprocess-based wrapper over `gentle_cli`

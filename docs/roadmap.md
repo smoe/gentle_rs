@@ -270,8 +270,8 @@ order. Durable architecture constraints and decisions remain in
     - `protocol-cartoon template-validate TEMPLATE.json`
     - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
-    - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg` (alias)
-    - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg` (alias)
+    - command surface intentionally stays canonical under
+      `protocol-cartoon ...` without extra aliases
   - first shipped protocol id: `gibson.two_fragment`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence

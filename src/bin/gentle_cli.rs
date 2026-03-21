@@ -463,9 +463,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n  \
-  gentle_cli [--state PATH|--project PATH] render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
@@ -2308,71 +2306,6 @@ fn run() -> Result<(), String> {
                     "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export)"
                 )),
             }
-        }
-        "render-protocol-cartoon-svg" => {
-            if args.len() != cmd_idx + 3 {
-                usage();
-                return Err(
-                    "render-protocol-cartoon-svg requires: PROTOCOL_ID OUTPUT.svg".to_string(),
-                );
-            }
-            let protocol_id = args[cmd_idx + 1].trim();
-            if protocol_id.is_empty() {
-                return Err(
-                    "render-protocol-cartoon-svg requires non-empty PROTOCOL_ID".to_string()
-                );
-            }
-            let output = &args[cmd_idx + 2];
-            let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                format!("Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)")
-            })?;
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderProtocolCartoonSvg {
-                    protocol,
-                    path: output.to_string(),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "render-protocol-cartoon-template-svg" => {
-            if args.len() != cmd_idx + 3 {
-                usage();
-                return Err(
-                    "render-protocol-cartoon-template-svg requires: TEMPLATE.json OUTPUT.svg"
-                        .to_string(),
-                );
-            }
-            let template_path = args[cmd_idx + 1].trim();
-            if template_path.is_empty() {
-                return Err(
-                    "render-protocol-cartoon-template-svg requires non-empty TEMPLATE.json"
-                        .to_string(),
-                );
-            }
-            let output = &args[cmd_idx + 2];
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderProtocolCartoonTemplateSvg {
-                    template_path: args[cmd_idx + 1].clone(),
-                    path: output.to_string(),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
         }
         "render-pool-gel-svg" | "render-gel-svg" => {
             let cmd_name = args[cmd_idx].as_str();

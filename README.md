@@ -39,6 +39,10 @@ Then tweak the exported JSON and render it with
 `protocol-cartoon render-template-svg ...` or apply overrides with
 `protocol-cartoon render-with-bindings ...`.
 
+The protocol-cartoon command surface intentionally stays canonical under
+`protocol-cartoon ...` so scripted and AI-guided use does not need to choose
+between overlapping alias names.
+
 ## Principles
 
 - One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.

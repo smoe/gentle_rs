@@ -9281,45 +9281,6 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
-        "render-protocol-cartoon-svg" => {
-            if tokens.len() != 3 {
-                return Err(
-                    "render-protocol-cartoon-svg requires PROTOCOL_ID OUTPUT.svg".to_string(),
-                );
-            }
-            let protocol_id = tokens[1].trim();
-            if protocol_id.is_empty() {
-                return Err(
-                    "render-protocol-cartoon-svg requires non-empty PROTOCOL_ID".to_string()
-                );
-            }
-            let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                format!("Unknown protocol cartoon '{protocol_id}' (run 'protocol-cartoon list')")
-            })?;
-            Ok(ShellCommand::RenderProtocolCartoonSvg {
-                protocol,
-                output: tokens[2].clone(),
-            })
-        }
-        "render-protocol-cartoon-template-svg" => {
-            if tokens.len() != 3 {
-                return Err(
-                    "render-protocol-cartoon-template-svg requires TEMPLATE.json OUTPUT.svg"
-                        .to_string(),
-                );
-            }
-            let template_path = tokens[1].trim();
-            if template_path.is_empty() {
-                return Err(
-                    "render-protocol-cartoon-template-svg requires non-empty TEMPLATE.json"
-                        .to_string(),
-                );
-            }
-            Ok(ShellCommand::RenderProtocolCartoonTemplateSvg {
-                template_path: tokens[1].clone(),
-                output: tokens[2].clone(),
-            })
-        }
         "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));

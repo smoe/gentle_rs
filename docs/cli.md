@@ -780,7 +780,6 @@ cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples
 cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/protocol_cartoon/demo_template.json
 cargo run --bin gentle_cli -- protocol-cartoon render-with-bindings docs/examples/protocol_cartoon/demo_template.json docs/examples/protocol_cartoon/demo_bindings.json demo.bound.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-export gibson.two_fragment gibson.template.json
-cargo run --bin gentle_cli -- render-protocol-cartoon-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
@@ -910,8 +909,6 @@ Shared shell command:
     - `protocol-cartoon template-validate TEMPLATE.json`
     - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
-    - `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
-    - `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg`
     - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
@@ -1231,10 +1228,9 @@ Rendering export commands:
   - Calls engine operation `ExportProtocolCartoonTemplateJson`.
   - Exports canonical built-in template JSON (`gentle.protocol_cartoon_template.v1`)
     for the requested protocol ID.
-- `render-protocol-cartoon-svg PROTOCOL_ID OUTPUT.svg`
-  - Alias for `protocol-cartoon render-svg ...`.
-- `render-protocol-cartoon-template-svg TEMPLATE.json OUTPUT.svg`
-  - Alias for `protocol-cartoon render-template-svg ...`.
+  - Protocol-cartoon commands intentionally use one canonical namespace with no
+    extra alias routes, which keeps scripted and AI-facing command selection
+    unambiguous.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
