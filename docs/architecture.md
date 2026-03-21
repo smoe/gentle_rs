@@ -803,6 +803,10 @@ Command surface:
     operation record instead of keeping a frontend-only shadow state
   - output sequence nodes (primers + assembled product) remain ordinary engine
     sequences linked by lineage edges, not a GUI-only side channel
+  - future feature transfer onto the assembled product must be explicit about
+    opening-consumed annotations (for example an MCS used as the insertion
+    site), so adapter-facing output never blindly preserves now-invalid vector
+    annotations
 
 Concrete patch plan: routine-application assistant and alternative-awareness
 
