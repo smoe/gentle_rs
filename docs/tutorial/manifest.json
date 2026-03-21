@@ -86,7 +86,8 @@
           "parameter": "LoadFile.path",
           "where_used": "operation 1",
           "why_it_matters": "Defines the exact source sequence. Wrong file path means a different biological starting point.",
-          "how_to_derive": "Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`)."
+          "how_to_derive": "Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`).",
+          "omit_when": ""
         },
         {
           "parameter": "Branch.output_id / ReverseComplement.output_id",
@@ -137,7 +138,8 @@
           "parameter": "PrepareGenome.genome_id / catalog_path / cache_dir",
           "where_used": "operation 1",
           "why_it_matters": "These fields define which reference source is prepared and where deterministic cache/index files are written.",
-          "how_to_derive": "Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build."
+          "how_to_derive": "Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build.",
+          "omit_when": ""
         },
         {
           "parameter": "Retrieve dialog Gene filter (regex) and Top matches",
@@ -150,7 +152,8 @@
           "parameter": "ExtendGenomeAnchor.side / length_bp / output_id",
           "where_used": "operation 3 and DNA-window anchor controls",
           "why_it_matters": "Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.",
-          "how_to_derive": "Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate."
+          "how_to_derive": "Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -197,7 +200,8 @@
           "parameter": "Digest.enzymes",
           "where_used": "operation 2",
           "why_it_matters": "The enzyme set determines cut positions and resulting fragment repertoire.",
-          "how_to_derive": "Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening)."
+          "how_to_derive": "Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening).",
+          "omit_when": ""
         },
         {
           "parameter": "Digest.output_prefix",
@@ -247,13 +251,15 @@
           "parameter": "left_seq_id / right_seq_id",
           "where_used": "template preflight + run",
           "why_it_matters": "Order defines the expected assembled product direction and adjacent overlap checks.",
-          "how_to_derive": "Choose fragment IDs in intended 5'->3' assembly order."
+          "how_to_derive": "Choose fragment IDs in intended 5'->3' assembly order.",
+          "omit_when": ""
         },
         {
           "parameter": "overlap_bp",
           "where_used": "Gibson family preflight check",
           "why_it_matters": "Controls suffix/prefix overlap length validation between adjacent fragments.",
-          "how_to_derive": "Use planned primer-homology length (commonly 15-40 bp for many Gibson workflows)."
+          "how_to_derive": "Use planned primer-homology length (commonly 15-40 bp for many Gibson workflows).",
+          "omit_when": ""
         },
         {
           "parameter": "assembly_prefix / output_id",
@@ -307,13 +313,15 @@
           "parameter": "FilterGuidesPractical.config.gc_min / gc_max",
           "where_used": "operation 2",
           "why_it_matters": "GC bounds trade off stability and synthesis/efficiency behavior.",
-          "how_to_derive": "Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints."
+          "how_to_derive": "Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints.",
+          "omit_when": ""
         },
         {
           "parameter": "GenerateGuideOligos.template_id",
           "where_used": "operation 3",
           "why_it_matters": "Template controls overhang/adaptor context for your cloning backbone.",
-          "how_to_derive": "Select the template matching your vector and cloning strategy."
+          "how_to_derive": "Select the template matching your vector and cloning strategy.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [],
@@ -355,13 +363,15 @@
           "parameter": "Ligation.protocol",
           "where_used": "operation 3",
           "why_it_matters": "Protocol controls compatibility logic (e.g., blunt vs sticky behavior).",
-          "how_to_derive": "Choose based on end chemistry produced by upstream digest products."
+          "how_to_derive": "Choose based on end chemistry produced by upstream digest products.",
+          "omit_when": ""
         },
         {
           "parameter": "ExtractRegion.from / to",
           "where_used": "operation 4",
           "why_it_matters": "Defines the exact segment handed to downstream interpretation.",
-          "how_to_derive": "Derive boundaries from feature coordinates or expected amplicon/design window."
+          "how_to_derive": "Derive boundaries from feature coordinates or expected amplicon/design window.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [],
@@ -404,13 +414,15 @@
           "parameter": "ExportGuideOligos.format",
           "where_used": "operation 3",
           "why_it_matters": "Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).",
-          "how_to_derive": "Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools."
+          "how_to_derive": "Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools.",
+          "omit_when": ""
         },
         {
           "parameter": "ExportGuideProtocolText.include_qc_checklist",
           "where_used": "operation 4",
           "why_it_matters": "Controls whether QC reminders are embedded in the generated protocol text.",
-          "how_to_derive": "Enable for handoff to wet-lab execution; disable only for compact machine-only summaries."
+          "how_to_derive": "Enable for handoff to wet-lab execution; disable only for compact machine-only summaries.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [],
@@ -456,7 +468,8 @@
           "parameter": "Workflow file path @docs/examples/workflows/...",
           "where_used": "command equivalent",
           "why_it_matters": "Ensures you are validating the same canonical routine used by docs/tests.",
-          "how_to_derive": "Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`."
+          "how_to_derive": "Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -506,13 +519,15 @@
           "parameter": "PrepareGenome.genome_id",
           "where_used": "operation 1",
           "why_it_matters": "Selects the exact reference build and annotation set.",
-          "how_to_derive": "Choose the genome build matching your experimental system and downstream coordinate system."
+          "how_to_derive": "Choose the genome build matching your experimental system and downstream coordinate system.",
+          "omit_when": ""
         },
         {
           "parameter": "PrepareGenome.catalog_path / cache_dir",
           "where_used": "operation 1",
           "why_it_matters": "Controls source catalog and local cache destination.",
-          "how_to_derive": "Use repository defaults unless your environment requires custom catalogs or cache locations."
+          "how_to_derive": "Use repository defaults unless your environment requires custom catalogs or cache locations.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -559,13 +574,15 @@
           "parameter": "ImportIsoformPanel.panel_path / panel_id / strict",
           "where_used": "operation 3",
           "why_it_matters": "Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.",
-          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked."
+          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.",
+          "omit_when": ""
         },
         {
           "parameter": "RenderIsoformArchitectureSvg.path",
           "where_used": "operation 4",
           "why_it_matters": "Controls deterministic export location used for tutorial artifact retention and figure review.",
-          "how_to_derive": "Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`."
+          "how_to_derive": "Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -615,13 +632,15 @@
           "parameter": "ExtractGenomeGene.gene_query / occurrence",
           "where_used": "operation 2 and Retrieve Genome Sequence dialog",
           "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
-          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit."
+          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.",
+          "omit_when": ""
         },
         {
           "parameter": "ExtendGenomeAnchor.side / length_bp",
           "where_used": "operations 3 and 4 + DNA window Extend controls",
           "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
-          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion."
+          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -671,19 +690,22 @@
           "parameter": "InterpretRnaReads.seed_feature_id",
           "where_used": "operation 3",
           "why_it_matters": "Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.",
-          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id."
+          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.",
+          "omit_when": ""
         },
         {
           "parameter": "InterpretRnaReads.origin_mode / target_gene_ids",
           "where_used": "operation 3",
           "why_it_matters": "Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).",
-          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question."
+          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.",
+          "omit_when": ""
         },
         {
           "parameter": "InterpretRnaReads.roi_seed_capture_enabled",
           "where_used": "operation 3",
           "why_it_matters": "Tracks request intent for future annotation-independent ROI capture layer.",
-          "how_to_derive": "Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance."
+          "how_to_derive": "Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance.",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -738,25 +760,29 @@
           "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
           "where_used": "Design primer pairs ROI fields and queue sourcing around TP73-AS2",
           "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
-          "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary."
+          "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.",
+          "omit_when": ""
         },
         {
           "parameter": "PCR ROI source action (`Add current selection` vs `Add selected feature(s)`)",
           "where_used": "DNA-window `PCR ROI` menu before queue execution",
           "why_it_matters": "Defines whether region bounds come from manual selection or feature coordinates and keeps queue-source labels interpretable.",
-          "how_to_derive": "Use current selection for ad hoc boundaries; use selected features for annotation-driven boundaries."
+          "how_to_derive": "Use current selection for ad hoc boundaries; use selected features for annotation-driven boundaries.",
+          "omit_when": ""
         },
         {
           "parameter": "DesignPrimerPairs.report_id base",
           "where_used": "batch execution in Design primer pairs form",
           "why_it_matters": "Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.",
-          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`)."
+          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).",
+          "omit_when": ""
         },
         {
           "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
           "where_used": "batch execution in Design primer pairs form",
           "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
-          "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off)."
+          "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [
@@ -809,13 +835,15 @@
           "parameter": "ComputeDotplot.word_size / step_bp / max_mismatches",
           "where_used": "operation 4",
           "why_it_matters": "These settings control sensitivity for dispersed exon-aligned signal in long genomic spans.",
-          "how_to_derive": "Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed."
+          "how_to_derive": "Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed.",
+          "omit_when": ""
         },
         {
           "parameter": "ComputeDotplot.reference_seq_id",
           "where_used": "operation 4",
           "why_it_matters": "Pairwise mode requires explicit reference identity for y-axis mapping.",
-          "how_to_derive": "Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter)."
+          "how_to_derive": "Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter).",
+          "omit_when": ""
         }
       ],
       "follow_up_commands": [

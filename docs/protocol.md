@@ -55,22 +55,23 @@ Tutorial manifest + generated outputs:
 
 - discovery catalog: `docs/tutorial/catalog.json`
 - discovery schema: `gentle.tutorial_catalog.v1`
-- discovery source units:
+- shared tutorial source units:
   - `docs/tutorial/sources/catalog_meta.json`
   - `docs/tutorial/sources/*.json`
 - source-unit schemas:
   - `gentle.tutorial_catalog_meta.v1`
-  - `gentle.tutorial_source.v1`
-- manifest: `docs/tutorial/manifest.json`
-- schema: `gentle.tutorial_manifest.v1`
+  - `gentle.tutorial_source.v2`
+- generated runtime manifest: `docs/tutorial/manifest.json`
+- runtime manifest schema: `gentle.tutorial_manifest.v1`
 - committed generated outputs: `docs/tutorial/generated/`
 
 Catalog/manifest split:
 
 - `docs/tutorial/catalog.json` is the canonical discovery layer for all
   tutorials, including hand-written walkthroughs and agent/reference guides.
-- `docs/tutorial/sources/` is the authoring layer for that catalog.
-- `docs/tutorial/manifest.json` remains the executable source for generated
+- `docs/tutorial/sources/` is the authoring layer for both the discovery
+  catalog and the executable tutorial runtime manifest.
+- `docs/tutorial/manifest.json` is a generated runtime contract used for
   chapter output and tutorial runtime checks.
 - GUI help/tutorial discovery may consume the catalog directly for curated
   ordering and metadata, while executable tutorial project materialization still
@@ -83,6 +84,8 @@ cargo run --bin gentle_examples_docs -- tutorial-generate
 cargo run --bin gentle_examples_docs -- tutorial-check
 cargo run --bin gentle_examples_docs -- tutorial-catalog-generate
 cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+cargo run --bin gentle_examples_docs -- tutorial-manifest-generate
+cargo run --bin gentle_examples_docs -- tutorial-manifest-check
 ```
 
 ## Draft design resources

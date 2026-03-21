@@ -1986,7 +1986,8 @@ Tutorial projects:
   resolves the executable manifest/runtime chapter list from the catalog's
   `generated_runtime.manifest_path`
 - Chapters are grouped by tier (`Core`, `Advanced`, `Online`) and keep the
-  chapter order from `docs/tutorial/manifest.json`.
+  chapter order from `docs/tutorial/manifest.json` (generated from
+  `docs/tutorial/sources/`).
 - Generated tutorial project files are written under the system temp directory
   (`.../gentle_tutorial_projects`) and opened without adding those temp files
   to the `Open Recent Project...` list.

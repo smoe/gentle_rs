@@ -1,0 +1,52 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "load_and_digest_pgex",
+  "title": "Load pGEX and digest with BamHI/EcoRI",
+  "generated_chapter": {
+    "order": 3,
+    "example_id": "load_and_digest_pgex",
+    "tier": "core",
+    "summary": "Introduce restriction digest planning and deterministic fragment products.",
+    "narrative": "Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.",
+    "use_cases": [
+      "You want to verify expected restriction fragments before ordering primers or designing ligations.",
+      "You need a reproducible digest baseline to compare against wet-lab gel expectations.",
+      "You plan to reuse fragment IDs in later operations."
+    ],
+    "gui_steps": [
+      "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
+      "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
+      "Review created fragment entries and confirm they are stored as independent sequence products."
+    ],
+    "learning_objectives": [
+      "Execute digest operations and inspect created fragment IDs.",
+      "Reason about multi-product lineage from one parent sequence.",
+      "Identify why stable IDs matter for follow-up ligation/extraction steps."
+    ],
+    "concepts": [
+      "deterministic_workflows",
+      "sequence_lineage"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "Digest.enzymes",
+        "where_used": "operation 2",
+        "why_it_matters": "The enzyme set determines cut positions and resulting fragment repertoire.",
+        "how_to_derive": "Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening)."
+      },
+      {
+        "parameter": "Digest.output_prefix",
+        "where_used": "operation 2",
+        "why_it_matters": "Controls deterministic fragment ID namespace.",
+        "how_to_derive": "Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).",
+        "omit_when": "Omit only if auto-generated IDs are acceptable for ad hoc inspection."
+      }
+    ],
+    "follow_up_commands": [],
+    "retain_outputs": [],
+    "checkpoints": [
+      "Digest operation completes and creates fragment sequence IDs.",
+      "Fragment IDs are deterministic across repeated runs."
+    ]
+  }
+}

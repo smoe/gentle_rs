@@ -401,9 +401,11 @@ order. Durable architecture constraints and decisions remain in
     - generation/check commands:
       - `gentle_examples_docs tutorial-catalog-generate`
       - `gentle_examples_docs tutorial-catalog-check`
+      - `gentle_examples_docs tutorial-manifest-generate`
+      - `gentle_examples_docs tutorial-manifest-check`
   - tutorial pages now distinguish their role more explicitly:
     `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
-  - tutorial manifest source:
+  - generated tutorial runtime manifest:
     `docs/tutorial/manifest.json` (`gentle.tutorial_manifest.v1`)
   - tutorial chapters now include explicit narrative learning objectives and
     concept tags, with generated recurrence mapping ("where this concept
@@ -761,16 +763,16 @@ Notes:
        queue-capture and batch-results checklists; broader chapter coverage
        remains pending
    - tutorial authoring is still structurally split:
-     executable chapters come from `docs/tutorial/manifest.json`, while GUI and
-     agent/reference tutorials still keep their narrative content in
+     executable chapter metadata now comes from `docs/tutorial/sources/`, while
+     GUI and agent/reference tutorials still keep their narrative content in
      hand-written markdown
      - current mitigation is the canonical landing page
        `docs/tutorial/README.md`
        plus generated discovery metadata in `docs/tutorial/catalog.json`
        sourced from `docs/tutorial/sources/`
-     - future improvement should move toward smaller per-tutorial authoring
-       units with generated unified indexing rather than one large manifest plus
-       separate discovery paths
+     - future improvement should reduce drift between source units and the
+       hand-written narrative bodies, rather than continuing to depend on a
+       single large manifest
    - TP73 cDNA-vs-genomic dotplot tutorial now has an explicit screenshot
      coverage checklist in `docs/tutorial/two_sequence_dotplot_gui.md`; pending
      additions are focused on dotplot-stage captures (`10..11`) to complete the

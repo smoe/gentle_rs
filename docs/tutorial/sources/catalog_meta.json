@@ -1,11 +1,63 @@
 {
   "schema": "gentle.tutorial_catalog_meta.v1",
-  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. This catalog complements, but does not replace, the executable tutorial generation manifest.",
+  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. Source units generate both this discovery catalog and the executable tutorial runtime manifest.",
   "entry_page": "docs/tutorial/README.md",
   "generated_runtime": {
     "manifest_path": "docs/tutorial/manifest.json",
     "manifest_schema": "gentle.tutorial_manifest.v1",
     "generated_readme": "docs/tutorial/generated/README.md",
     "generation_report": "docs/tutorial/generated/report.json"
-  }
+  },
+  "concepts": [
+    {
+      "id": "shared_engine_contract",
+      "name": "Shared Engine Contract",
+      "description": "GUI, CLI, shell, and scripting interfaces execute the same operation semantics."
+    },
+    {
+      "id": "deterministic_workflows",
+      "name": "Deterministic Workflows",
+      "description": "Operation chains should produce stable IDs and comparable outputs across repeated runs."
+    },
+    {
+      "id": "sequence_lineage",
+      "name": "Sequence Lineage",
+      "description": "Derived sequences are explicit products linked to upstream inputs and operations."
+    },
+    {
+      "id": "genome_catalog_targeting",
+      "name": "Genome Catalog Targeting",
+      "description": "Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context."
+    },
+    {
+      "id": "guide_design_pipeline",
+      "name": "Guide Design Pipeline",
+      "description": "Guide sets can be created, filtered, expanded to oligos, and exported with protocol context."
+    },
+    {
+      "id": "artifact_exports",
+      "name": "Artifact Exports",
+      "description": "Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing."
+    },
+    {
+      "id": "tutorial_drift_checks",
+      "name": "Tutorial Drift Checks",
+      "description": "Tutorial content is generated from executable examples and verified in automated checks."
+    },
+    {
+      "id": "contribution_loop",
+      "name": "Contribution Loop",
+      "description": "Contributions should couple code edits with docs updates and deterministic tests."
+    },
+    {
+      "id": "online_opt_in",
+      "name": "Online Opt-in Execution",
+      "description": "Network-dependent chapters remain explicit opt-in and do not break offline default CI."
+    },
+    {
+      "id": "isoform_architecture_panels",
+      "name": "Isoform Architecture Panels",
+      "description": "Curated transcript/protein architecture overlays can be imported and rendered as deterministic expert-view SVG outputs."
+    }
+  ]
 }

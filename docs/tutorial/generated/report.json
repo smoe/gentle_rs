@@ -25,7 +25,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "77df24121b077e8f0aa14e23bc6fe54683f65b29",
+    "README.md": "d2ea83af75adbcda55eb199695ad527411ac77cc",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "6466e32451db5c334bcb7550ba8cb5e4cccb6026",

@@ -18,7 +18,7 @@ pub const ONLINE_EXAMPLE_TEST_ENV: &str = "GENTLE_TEST_ONLINE";
 pub const SKIP_REMOTE_TESTS_ENV: &str = "GENTLE_SKIP_REMOTE_TESTS";
 pub const TUTORIAL_CATALOG_SCHEMA: &str = "gentle.tutorial_catalog.v1";
 pub const TUTORIAL_CATALOG_META_SCHEMA: &str = "gentle.tutorial_catalog_meta.v1";
-pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v1";
+pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v2";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
@@ -71,15 +71,13 @@ pub struct TutorialCatalogMeta {
     pub description: String,
     pub entry_page: String,
     pub generated_runtime: TutorialCatalogGeneratedRuntime,
+    #[serde(default)]
+    pub concepts: Vec<TutorialConcept>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TutorialSourceUnit {
-    #[serde(default = "default_tutorial_source_schema")]
-    pub schema: String,
+pub struct TutorialSourceCatalogSection {
     pub order: usize,
-    pub id: String,
-    pub title: String,
     pub path: String,
     #[serde(rename = "type")]
     pub entry_type: String,
@@ -91,11 +89,50 @@ pub struct TutorialSourceUnit {
     pub notes: String,
 }
 
-impl TutorialSourceUnit {
-    fn into_catalog_entry(self) -> TutorialCatalogEntry {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialSourceGeneratedChapterSection {
+    pub order: usize,
+    pub example_id: String,
+    pub tier: TutorialTier,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub narrative: String,
+    #[serde(default)]
+    pub use_cases: Vec<String>,
+    #[serde(default)]
+    pub gui_steps: Vec<String>,
+    #[serde(default)]
+    pub learning_objectives: Vec<String>,
+    #[serde(default)]
+    pub concepts: Vec<String>,
+    #[serde(default)]
+    pub parameter_notes: Vec<TutorialParameterNote>,
+    #[serde(default)]
+    pub follow_up_commands: Vec<String>,
+    #[serde(default)]
+    pub retain_outputs: Vec<String>,
+    #[serde(default)]
+    pub checkpoints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialSourceUnit {
+    #[serde(default = "default_tutorial_source_schema")]
+    pub schema: String,
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub catalog: Option<TutorialSourceCatalogSection>,
+    #[serde(default)]
+    pub generated_chapter: Option<TutorialSourceGeneratedChapterSection>,
+}
+
+impl TutorialSourceCatalogSection {
+    fn into_catalog_entry(self, id: String, title: String) -> TutorialCatalogEntry {
         TutorialCatalogEntry {
-            id: self.id,
-            title: self.title,
+            id,
+            title,
             path: self.path,
             entry_type: self.entry_type,
             status: self.status,
@@ -103,6 +140,54 @@ impl TutorialSourceUnit {
             audiences: self.audiences,
             notes: self.notes,
         }
+    }
+}
+
+impl TutorialSourceGeneratedChapterSection {
+    fn into_manifest_chapter(self, id: String, title: String) -> TutorialChapter {
+        TutorialChapter {
+            id,
+            order: self.order,
+            title,
+            example_id: self.example_id,
+            tier: self.tier,
+            summary: self.summary,
+            narrative: self.narrative,
+            use_cases: self.use_cases,
+            gui_steps: self.gui_steps,
+            learning_objectives: self.learning_objectives,
+            concepts: self.concepts,
+            parameter_notes: self.parameter_notes,
+            follow_up_commands: self.follow_up_commands,
+            retain_outputs: self.retain_outputs,
+            checkpoints: self.checkpoints,
+        }
+    }
+}
+
+impl TutorialSourceUnit {
+    fn into_catalog_entry(self) -> Option<(usize, TutorialCatalogEntry)> {
+        let TutorialSourceUnit {
+            id,
+            title,
+            catalog,
+            ..
+        } = self;
+        catalog.map(|catalog| {
+            let order = catalog.order;
+            let entry = catalog.into_catalog_entry(id, title);
+            (order, entry)
+        })
+    }
+
+    fn into_manifest_chapter(self) -> Option<TutorialChapter> {
+        let TutorialSourceUnit {
+            id,
+            title,
+            generated_chapter,
+            ..
+        } = self;
+        generated_chapter.map(|generated| generated.into_manifest_chapter(id, title))
     }
 }
 
@@ -643,7 +728,8 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
     }
     let mut units = Vec::new();
     let mut seen_ids: HashSet<String> = HashSet::new();
-    let mut seen_orders: HashSet<usize> = HashSet::new();
+    let mut seen_catalog_orders: HashSet<usize> = HashSet::new();
+    let mut seen_chapter_orders: HashSet<usize> = HashSet::new();
     for path in json_paths {
         let unit = parse_tutorial_source_unit(&path)?;
         if unit.schema != TUTORIAL_SOURCE_SCHEMA {
@@ -654,15 +740,15 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
                 TUTORIAL_SOURCE_SCHEMA
             ));
         }
-        if unit.id.trim().is_empty()
-            || unit.title.trim().is_empty()
-            || unit.path.trim().is_empty()
-            || unit.entry_type.trim().is_empty()
-            || unit.status.trim().is_empty()
-            || unit.source.trim().is_empty()
-        {
+        if unit.id.trim().is_empty() || unit.title.trim().is_empty() {
             return Err(format!(
                 "Tutorial source '{}' has one or more empty required fields",
+                display_path(&path)
+            ));
+        }
+        if unit.catalog.is_none() && unit.generated_chapter.is_none() {
+            return Err(format!(
+                "Tutorial source '{}' must define at least one of `catalog` or `generated_chapter`",
                 display_path(&path)
             ));
         }
@@ -673,16 +759,43 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
                 unit.id
             ));
         }
-        if !seen_orders.insert(unit.order) {
-            return Err(format!(
-                "Tutorial source directory '{}' has duplicate tutorial order '{}'",
-                display_path(source_dir),
-                unit.order
-            ));
+        if let Some(catalog) = &unit.catalog {
+            if catalog.path.trim().is_empty()
+                || catalog.entry_type.trim().is_empty()
+                || catalog.status.trim().is_empty()
+                || catalog.source.trim().is_empty()
+            {
+                return Err(format!(
+                    "Tutorial source '{}' has incomplete `catalog` fields",
+                    display_path(&path)
+                ));
+            }
+            if !seen_catalog_orders.insert(catalog.order) {
+                return Err(format!(
+                    "Tutorial source directory '{}' has duplicate tutorial catalog order '{}'",
+                    display_path(source_dir),
+                    catalog.order
+                ));
+            }
+        }
+        if let Some(generated) = &unit.generated_chapter {
+            if generated.example_id.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial source '{}' has incomplete `generated_chapter` fields",
+                    display_path(&path)
+                ));
+            }
+            if !seen_chapter_orders.insert(generated.order) {
+                return Err(format!(
+                    "Tutorial source directory '{}' has duplicate generated chapter order '{}'",
+                    display_path(source_dir),
+                    generated.order
+                ));
+            }
         }
         units.push(unit);
     }
-    units.sort_by(|left, right| left.order.cmp(&right.order));
+    units.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(units)
 }
 
@@ -694,15 +807,42 @@ pub fn generate_tutorial_catalog_from_sources(
     let units = load_tutorial_source_units(source_dir)?;
     let entries = units
         .into_iter()
-        .map(TutorialSourceUnit::into_catalog_entry)
+        .filter_map(TutorialSourceUnit::into_catalog_entry)
         .collect::<Vec<_>>();
+    let mut ordered_entries = entries;
+    ordered_entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.id.cmp(&right.1.id)));
     Ok(TutorialCatalog {
         schema: TUTORIAL_CATALOG_SCHEMA.to_string(),
         description: meta.description,
         entry_page: meta.entry_page,
         generated_runtime: meta.generated_runtime,
-        entries,
+        entries: ordered_entries.into_iter().map(|(_, entry)| entry).collect(),
     })
+}
+
+pub fn generate_tutorial_manifest_from_sources(
+    meta_path: &Path,
+    source_dir: &Path,
+) -> Result<TutorialManifest, String> {
+    let meta = load_tutorial_catalog_meta(meta_path)?;
+    if meta.concepts.is_empty() {
+        return Err(format!(
+            "Tutorial catalog meta '{}' must define tutorial concepts for manifest generation",
+            display_path(meta_path)
+        ));
+    }
+    let units = load_tutorial_source_units(source_dir)?;
+    let mut chapters = units
+        .into_iter()
+        .filter_map(TutorialSourceUnit::into_manifest_chapter)
+        .collect::<Vec<_>>();
+    chapters.sort_by(|left, right| left.order.cmp(&right.order).then_with(|| left.id.cmp(&right.id)));
+    let manifest = TutorialManifest {
+        schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
+        concepts: meta.concepts,
+        chapters,
+    };
+    Ok(manifest)
 }
 
 pub fn write_tutorial_catalog_from_sources(
@@ -720,6 +860,23 @@ pub fn write_tutorial_catalog_from_sources(
         )
     })?;
     Ok(catalog)
+}
+
+pub fn write_tutorial_manifest_from_sources(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<TutorialManifest, String> {
+    let manifest = generate_tutorial_manifest_from_sources(meta_path, source_dir)?;
+    let serialized = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Could not serialize tutorial manifest: {e}"))?;
+    fs::write(output_path, format!("{serialized}\n")).map_err(|e| {
+        format!(
+            "Could not write tutorial manifest '{}': {e}",
+            display_path(output_path)
+        )
+    })?;
+    Ok(manifest)
 }
 
 pub fn check_tutorial_catalog_generated(
@@ -749,6 +906,39 @@ pub fn check_tutorial_catalog_generated(
     if actual_bytes != expected_bytes {
         return Err(format!(
             "Committed tutorial catalog '{}' does not match generated output. Run `tutorial-catalog-generate`.",
+            display_path(output_path)
+        ));
+    }
+    Ok(expected)
+}
+
+pub fn check_tutorial_manifest_generated(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<TutorialManifest, String> {
+    if !output_path.exists() {
+        return Err(format!(
+            "Expected tutorial manifest '{}' does not exist. Run `tutorial-manifest-generate` first.",
+            display_path(output_path)
+        ));
+    }
+    let expected = generate_tutorial_manifest_from_sources(meta_path, source_dir)?;
+    let expected_bytes = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&expected)
+            .map_err(|e| format!("Could not serialize expected tutorial manifest: {e}"))?
+    )
+    .into_bytes();
+    let actual_bytes = fs::read(output_path).map_err(|e| {
+        format!(
+            "Could not read tutorial manifest '{}': {e}",
+            display_path(output_path)
+        )
+    })?;
+    if actual_bytes != expected_bytes {
+        return Err(format!(
+            "Committed tutorial manifest '{}' does not match generated output. Run `tutorial-manifest-generate`.",
             display_path(output_path)
         ));
     }
@@ -1570,8 +1760,11 @@ fn render_tutorial_index(
     let mut out = String::new();
     out.push_str("# GENtle Tutorial (Generated)\n\n");
     out.push_str("This folder is generated from:\n");
-    out.push_str("- `docs/tutorial/manifest.json`\n");
+    out.push_str("- `docs/tutorial/sources/catalog_meta.json`\n");
+    out.push_str("- `docs/tutorial/sources/*.json`\n");
     out.push_str("- `docs/examples/workflows/*.json`\n\n");
+    out.push_str("Generated runtime manifest:\n");
+    out.push_str("- `docs/tutorial/manifest.json`\n\n");
     out.push_str("Regenerate with:\n\n");
     out.push_str("```bash\n");
     out.push_str("cargo run --bin gentle_examples_docs -- tutorial-generate\n");
@@ -2258,6 +2451,35 @@ mod tests {
             &tutorial_catalog_path(),
         )
         .expect("committed tutorial catalog should match source units");
+    }
+
+    #[test]
+    fn tutorial_source_units_generate_committed_manifest() {
+        let generated = generate_tutorial_manifest_from_sources(
+            &tutorial_catalog_meta_path(),
+            &tutorial_source_dir(),
+        )
+        .expect("generate tutorial manifest from sources");
+        let committed =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load committed tutorial manifest");
+        let generated_json =
+            serde_json::to_string_pretty(&generated).expect("serialize generated tutorial manifest");
+        let committed_json =
+            serde_json::to_string_pretty(&committed).expect("serialize committed tutorial manifest");
+        assert_eq!(
+            generated_json, committed_json,
+            "committed tutorial manifest should match generated source units"
+        );
+    }
+
+    #[test]
+    fn tutorial_manifest_check_passes_on_committed_tree() {
+        check_tutorial_manifest_generated(
+            &tutorial_catalog_meta_path(),
+            &tutorial_source_dir(),
+            &tutorial_manifest_path(),
+        )
+        .expect("committed tutorial manifest should match source units");
     }
 
     #[test]

@@ -1,8 +1,12 @@
 # GENtle Tutorial (Generated)
 
 This folder is generated from:
-- `docs/tutorial/manifest.json`
+- `docs/tutorial/sources/catalog_meta.json`
+- `docs/tutorial/sources/*.json`
 - `docs/examples/workflows/*.json`
+
+Generated runtime manifest:
+- `docs/tutorial/manifest.json`
 
 Regenerate with:
 

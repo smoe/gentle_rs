@@ -1,0 +1,59 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "tp63_anchor_extension_online",
+  "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+  "generated_chapter": {
+    "order": 11,
+    "example_id": "tp63_extend_anchor_online",
+    "tier": "online",
+    "summary": "Prepare Human GRCh38, inspect TP63 genomic coordinates, extract TP63, and extend the anchored sequence by 2000 bp on each side.",
+    "narrative": "This chapter focuses on day-to-day genome-anchored sequence inspection: identify TP63 in GRCh38, verify coordinates before extraction, and then widen the visible anchored region directly in the DNA sequence window. The key point is that extension remains deterministic and provenance-preserving, whether triggered in the GUI or via shell/CLI operations.",
+    "use_cases": [
+      "You want to inspect promoter-proximal and downstream context around TP63 without manually typing coordinates.",
+      "You need to confirm annotated TP63 coordinates before creating an anchored sequence.",
+      "You want a reproducible +/-2 kb extension workflow that can be replayed by GUI and CLI users."
+    ],
+    "gui_steps": [
+      "Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.",
+      "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
+      "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
+    ],
+    "learning_objectives": [
+      "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
+      "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
+      "Map GUI actions to equivalent deterministic `ExtendGenomeAnchor` operations."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "genome_catalog_targeting",
+      "sequence_lineage",
+      "online_opt_in"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "ExtractGenomeGene.gene_query / occurrence",
+        "where_used": "operation 2 and Retrieve Genome Sequence dialog",
+        "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
+        "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit."
+      },
+      {
+        "parameter": "ExtendGenomeAnchor.side / length_bp",
+        "where_used": "operations 3 and 4 + DNA window Extend controls",
+        "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
+        "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20",
+      "cargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+    ],
+    "retain_outputs": [],
+    "checkpoints": [
+      "TP63 coordinate candidates are visible before extraction in Retrieve Genome Sequence workflows.",
+      "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
+      "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
+    ]
+  }
+}

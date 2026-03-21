@@ -388,13 +388,18 @@ Practical rule:
     - `docs/tutorial/sources/catalog_meta.json`
       (`gentle.tutorial_catalog_meta.v1`)
     - `docs/tutorial/sources/*.json`
-      (`gentle.tutorial_source.v1`)
-    - generated via:
+      (`gentle.tutorial_source.v2`)
+    - generated outputs:
+      - `docs/tutorial/catalog.json`
+      - `docs/tutorial/manifest.json`
+    - generation commands:
       `gentle_examples_docs tutorial-catalog-generate`
-    - checked via:
+      `gentle_examples_docs tutorial-manifest-generate`
+    - check commands:
       `gentle_examples_docs tutorial-catalog-check`
-  - tutorial manifest source: `docs/tutorial/manifest.json`
-  - tutorial schema: `gentle.tutorial_manifest.v1`
+      `gentle_examples_docs tutorial-manifest-check`
+  - generated tutorial runtime manifest: `docs/tutorial/manifest.json`
+  - tutorial runtime schema: `gentle.tutorial_manifest.v1`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
   - tutorial generator/check commands:
     - `gentle_examples_docs tutorial-generate`

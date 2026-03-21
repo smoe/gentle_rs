@@ -4,8 +4,9 @@ use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
     DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
     DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
-    check_tutorial_generated, generate_tutorial_docs, generate_workflow_example_docs,
-    load_workflow_examples, validate_example_required_files, write_tutorial_catalog_from_sources,
+    check_tutorial_generated, check_tutorial_manifest_generated, generate_tutorial_docs,
+    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
+    write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
 };
 use serde_json::json;
 use std::{
@@ -22,6 +23,8 @@ enum Mode {
     TutorialCheck,
     TutorialCatalogGenerate,
     TutorialCatalogCheck,
+    TutorialManifestGenerate,
+    TutorialManifestCheck,
 }
 
 #[derive(Debug)]
@@ -63,7 +66,9 @@ gentle_examples_docs --check [--source DIR]\n  \
 gentle_examples_docs tutorial-generate [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
 gentle_examples_docs tutorial-check [--source DIR] [--manifest FILE] [--tutorial-output DIR] [--repo-root DIR]\n  \
 gentle_examples_docs tutorial-catalog-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
-gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n\n  \
+gentle_examples_docs tutorial-catalog-check [--catalog-meta FILE] [--tutorial-sources DIR] [--tutorial-catalog FILE]\n  \
+gentle_examples_docs tutorial-manifest-generate [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n  \
+gentle_examples_docs tutorial-manifest-check [--catalog-meta FILE] [--tutorial-sources DIR] [--manifest FILE]\n\n  \
 Defaults:\n  \
   --source {}\n  \
   --output {}\n  \
@@ -173,6 +178,14 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 parsed.mode = Mode::TutorialCatalogCheck;
                 idx += 1;
             }
+            "tutorial-manifest-generate" => {
+                parsed.mode = Mode::TutorialManifestGenerate;
+                idx += 1;
+            }
+            "tutorial-manifest-check" => {
+                parsed.mode = Mode::TutorialManifestCheck;
+                idx += 1;
+            }
             other => {
                 return Err(format!("Unknown argument '{other}'"));
             }
@@ -274,6 +287,42 @@ fn run_tutorial_catalog_check_mode(
     Ok(())
 }
 
+fn run_tutorial_manifest_generate_mode(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<(), String> {
+    let manifest = write_tutorial_manifest_from_sources(meta_path, source_dir, output_path)?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "tutorial-manifest-generate",
+        "chapter_count": manifest.chapters.len(),
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize tutorial manifest generation report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_tutorial_manifest_check_mode(
+    meta_path: &Path,
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<(), String> {
+    let manifest = check_tutorial_manifest_generated(meta_path, source_dir, output_path)?;
+    let summary = json!({
+        "status": "ok",
+        "mode": "tutorial-manifest-check",
+        "chapter_count": manifest.chapters.len(),
+        "output_path": output_path.to_string_lossy(),
+    });
+    let pretty = serde_json::to_string_pretty(&summary)
+        .map_err(|e| format!("Could not serialize tutorial manifest check report: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let parsed = match parse_args(&args) {
@@ -321,6 +370,16 @@ fn main() {
             &tutorial_catalog_meta,
             &tutorial_source_dir,
             &tutorial_catalog,
+        ),
+        Mode::TutorialManifestGenerate => run_tutorial_manifest_generate_mode(
+            &tutorial_catalog_meta,
+            &tutorial_source_dir,
+            &tutorial_manifest,
+        ),
+        Mode::TutorialManifestCheck => run_tutorial_manifest_check_mode(
+            &tutorial_catalog_meta,
+            &tutorial_source_dir,
+            &tutorial_manifest,
         ),
     };
     if let Err(e) = result {

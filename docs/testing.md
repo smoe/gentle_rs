@@ -67,13 +67,16 @@ GENTLE_TEST_ONLINE=1 cargo test workflow_examples -- --test-threads=1
 
 Tutorial source + generated outputs are part of the test surface:
 
-- manifest: `docs/tutorial/manifest.json`
+- source units: `docs/tutorial/sources/`
+- generated runtime manifest: `docs/tutorial/manifest.json`
 - generated output: `docs/tutorial/generated/`
 
 Validation commands:
 
 ```bash
 cargo run --bin gentle_examples_docs -- tutorial-check
+cargo run --bin gentle_examples_docs -- tutorial-manifest-check
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 cargo test workflow_examples -- --test-threads=1
 ```
 

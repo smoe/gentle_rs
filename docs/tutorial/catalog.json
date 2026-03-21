@@ -1,6 +1,6 @@
 {
   "schema": "gentle.tutorial_catalog.v1",
-  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. This catalog complements, but does not replace, the executable tutorial generation manifest.",
+  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. Source units generate both this discovery catalog and the executable tutorial runtime manifest.",
   "entry_page": "docs/tutorial/README.md",
   "generated_runtime": {
     "manifest_path": "docs/tutorial/manifest.json",
@@ -15,13 +15,13 @@
       "path": "docs/tutorial/generated/README.md",
       "type": "executable_collection",
       "status": "generated+checked",
-      "source": "generated_from_manifest",
+      "source": "generated_from_tutorial_sources",
       "audiences": [
         "new_users",
         "cli_first",
         "contributors"
       ],
-      "notes": "Generated from docs/tutorial/manifest.json and executable workflows; validated by tutorial-check."
+      "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check."
     },
     {
       "id": "tp73_promoter_luciferase_gui",

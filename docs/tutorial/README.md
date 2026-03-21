@@ -43,7 +43,7 @@ If you want to use GENtle with agents, MCP, or the command line:
 
 | Tutorial | Type | Status | Best for | Notes |
 | --- | --- | --- | --- | --- |
-| [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/manifest.json` and executable workflows; validated by `tutorial-check`. |
+| [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/sources/` and executable workflows through the runtime manifest; validated by `tutorial-check`. |
 | [`docs/tutorial/tp73_promoter_luciferase_gui.md`](./tp73_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first cloning planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable PCR material. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
@@ -119,11 +119,12 @@ Machine-readable discovery should also be updated in the same change:
 
 Current chosen direction:
 
-- keep executable tutorials grounded in `docs/tutorial/manifest.json` and
-  workflow examples
-- keep discovery metadata grounded in:
-  - generated catalog: `docs/tutorial/catalog.json`
-  - per-tutorial source units under `docs/tutorial/sources/`
+- keep tutorial authoring grounded in per-tutorial source units under
+  `docs/tutorial/sources/`
+- generate both:
+  - discovery catalog: `docs/tutorial/catalog.json`
+  - executable runtime manifest: `docs/tutorial/manifest.json`
+- keep workflow execution grounded in `docs/examples/workflows/*.json`
 - keep manual/tutorial-reference pages, but surface them through this one
   canonical landing page
 - keep the distinction between tutorial, recipe, and reference material
@@ -131,6 +132,5 @@ Current chosen direction:
 
 Planned next documentation evolution:
 
-- converge toward one unified tutorial catalog
-- eventually move from one large manifest plus scattered manual pages toward
-  smaller per-tutorial authoring units with generated indexing
+- keep reducing drift between source units and hand-written narrative pages
+- explore stronger validation for manual tutorial bodies and page-local metadata

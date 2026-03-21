@@ -319,7 +319,8 @@ Canonical workflow examples are adapter-neutral JSON files:
 
 - source: `docs/examples/workflows/*.json`
 - generated adapter snippets: `docs/examples/generated/*.md`
-- tutorial manifest source: `docs/tutorial/manifest.json`
+- tutorial runtime manifest: `docs/tutorial/manifest.json`
+  (generated from `docs/tutorial/sources/`)
 - committed generated tutorial output: `docs/tutorial/generated/`
 
 Regenerate snippets on demand:
