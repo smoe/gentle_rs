@@ -1,4 +1,14 @@
 //! Main sequence-window GUI controller and interaction orchestration.
+//!
+//! `MainAreaDna` is the stateful GUI orchestration layer for one sequence
+//! window. It owns panel state, long-running task polling, and routing from UI
+//! gestures into shared engine/shell contracts.
+//!
+//! Architectural boundary:
+//! - window/viewport lifecycle belongs in `window_dna`
+//! - biological/business logic belongs in the engine
+//! - `MainAreaDna` coordinates sequence-window UI state and presentation
+//!   without becoming a second engine
 
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
@@ -3470,6 +3480,11 @@ struct RnaReadTask {
 }
 
 #[derive(Clone, Debug)]
+/// Stateful controller for one main DNA/sequence window.
+///
+/// This type is intentionally large because it stores nearly all mutable UI
+/// state for the window in one place so rendering, background-task polling, and
+/// engine-operation dispatch can share one coherent state machine.
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
     dna_display: Arc<RwLock<DnaDisplay>>,
@@ -3745,6 +3760,8 @@ impl MainAreaDna {
         kinds.into_iter().collect()
     }
 
+    /// Create a sequence-window controller with default UI state derived from
+    /// the active sequence id and optional shared engine context.
     pub fn new(
         dna: DNAsequence,
         seq_id: Option<String>,
@@ -4023,10 +4040,18 @@ impl MainAreaDna {
         self.opened_from_pool_context
     }
 
+    /// Replace placeholder DNA content after a deferred/lazy window open.
+    ///
+    /// The `true` flag preserves the "loaded from engine" semantics used by the
+    /// lazy open path rather than treating this as an ordinary in-window edit.
     pub fn replace_loaded_sequence(&mut self, dna: DNAsequence) {
         self.replace_active_dna(dna, true);
     }
 
+    /// Defer feature-tree construction until the first user interaction.
+    ///
+    /// This keeps first paint lighter for feature-dense windows opened through
+    /// lazy-load flows.
     pub fn defer_feature_tree_until_interaction(&mut self) {
         self.feature_tree_deferred_until_interaction = true;
     }
@@ -4767,6 +4792,11 @@ impl MainAreaDna {
         }
     }
 
+    /// Render one frame of the sequence window.
+    ///
+    /// This is the top-level orchestration pass for the main window: poll
+    /// background jobs, refresh engine-backed display state, and lay out the
+    /// root panels before delegating into the specialized render helpers below.
     pub fn render(&mut self, ctx: &egui::Context) {
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);

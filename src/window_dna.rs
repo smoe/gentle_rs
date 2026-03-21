@@ -1,4 +1,13 @@
 //! DNA sequence-window wrapper and per-window controls.
+//!
+//! `WindowDna` is the viewport/lifecycle shell around [`MainAreaDna`]:
+//! - it owns deferred sequence loading for lazy-open paths,
+//! - it handles viewport-scoped controls such as help/main/configuration,
+//! - it forwards ready-to-render sequence-window work into `MainAreaDna`.
+//!
+//! Keep adapter/window-lifecycle behavior here and route sequence-window
+//! editing/inspection logic into `MainAreaDna` so the architectural boundary
+//! stays clear for future edits.
 
 use crate::{
     app::{request_open_graphics_settings_from_native_menu, request_open_help_from_native_menu},
@@ -25,6 +34,11 @@ enum DeferredAnalysisFocus {
 }
 
 #[derive(Clone, Debug)]
+/// Viewport shell around the main DNA-window controller.
+///
+/// The main rule is:
+/// - `WindowDna` manages opening, deferred loading, and viewport-scoped chrome.
+/// - `MainAreaDna` owns the actual sequence-window UI state and rendering.
 pub struct WindowDna {
     main_area: MainAreaDna,
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
@@ -33,6 +47,7 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    /// Construct an eager sequence window when sequence content is already in hand.
     pub fn new(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
         Self {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
@@ -42,6 +57,8 @@ impl WindowDna {
         }
     }
 
+    /// Construct a lazy sequence window that resolves sequence payload from the
+    /// shared engine in the background before handing off to `MainAreaDna`.
     pub fn new_lazy(seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
         let (tx, rx) = mpsc::channel::<Result<DNAsequence, String>>();
         let thread_engine = engine.clone();
@@ -90,6 +107,10 @@ impl WindowDna {
         }
     }
 
+    /// Drive one viewport update.
+    ///
+    /// This polls deferred load state, renders viewport-scoped controls, and
+    /// then delegates the actual sequence-window layout to `MainAreaDna`.
     pub fn update(&mut self, ctx: &egui::Context) {
         if let Some(rx) = self.pending_dna_load.as_ref() {
             let recv_result = rx
