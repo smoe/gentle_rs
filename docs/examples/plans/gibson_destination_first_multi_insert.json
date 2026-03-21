@@ -88,6 +88,10 @@
         "id": "insert_x"
       },
       "required_overlap_bp": 40,
+      "overlap_partition": {
+        "left_member_bp": 40,
+        "right_member_bp": 0
+      },
       "overlap_source": "derive_from_destination_left_flank",
       "distinct_from": [
         "junction_right"
@@ -104,6 +108,10 @@
         "id": "insert_y"
       },
       "required_overlap_bp": 40,
+      "overlap_partition": {
+        "left_member_bp": 20,
+        "right_member_bp": 20
+      },
       "overlap_source": "designed_bridge_sequence",
       "distinct_from": []
     },
@@ -118,6 +126,10 @@
         "id": "dest_right"
       },
       "required_overlap_bp": 40,
+      "overlap_partition": {
+        "left_member_bp": 0,
+        "right_member_bp": 40
+      },
       "overlap_source": "derive_from_destination_right_flank",
       "distinct_from": [
         "junction_left"
@@ -189,7 +201,7 @@
           "mode": "junction_overlap",
           "length_bp": 40,
           "sequence": null,
-          "source_note": "Add the designed internal bridge overlap as the 5' non-priming segment of the reverse primer for insert_x."
+          "source_note": "Add the designed internal bridge overlap as the 5' non-priming segment of the reverse primer for insert_x; the junction is modeled as a 20/20 split across the two adjacent members."
         },
         "priming_3prime": {
           "template_seq_id": "insert_x_amplicon",
@@ -206,7 +218,7 @@
           "mode": "junction_overlap",
           "length_bp": 40,
           "sequence": null,
-          "source_note": "Add the same designed internal bridge overlap as the 5' non-priming segment of the forward primer for insert_y."
+          "source_note": "Add the same designed internal bridge overlap as the 5' non-priming segment of the forward primer for insert_y; the junction is modeled as a 20/20 split across the two adjacent members."
         },
         "priming_3prime": {
           "template_seq_id": "insert_y_amplicon",
@@ -247,6 +259,7 @@
     "notes": [
       "This multi-fragment example uses 40 bp overlaps as a practical starting point for a three-fragment Gibson assembly.",
       "This example preserves source order from donor_construct by placing the lower bp fragment first.",
+      "The internal junction_xy overlap is modeled as a split overlap across the two adjacent inserts rather than as a one-sided overlap.",
       "The two primers that implement the internal junction_xy overlap belong to separate PCR reactions, one for insert_x and one for insert_y.",
       "Multi-fragment cartoons can be derived from the same adjacency chain by rendering one event sequence over this normalized junction model."
     ]

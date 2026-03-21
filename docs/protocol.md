@@ -124,6 +124,7 @@ Top-level structure:
 - `junctions[]`
   - one record per adjacent join
   - required overlap length
+  - explicit overlap partition across the left/right adjacent members
   - whether overlap is derived from destination context or user-specified
   - explicit `distinct_from` constraints for terminal junctions
 - `validation_policy`
@@ -196,6 +197,17 @@ Current draft value vocabulary:
     - internal junction overlap chosen as a synthetic bridge/adaptor sequence
   - reserved future value:
     - `user_specified_sequence`
+- `junctions[].overlap_partition`
+  - explicit contribution of the overlap region from the adjacent members
+  - shape:
+    - `left_member_bp`
+    - `right_member_bp`
+  - invariant:
+    - `left_member_bp + right_member_bp == required_overlap_bp`
+  - examples:
+    - left-member only overlap: `30 + 0`
+    - right-member only overlap: `0 + 30`
+    - split overlap: `20 + 20`
 - `validation_policy.adjacency_overlap_mismatch`
   - `error`
   - `warn`
@@ -215,6 +227,7 @@ Input-vs-derived boundary in the draft model:
   - `fragments`
   - `assembly_order`
   - `junctions[].required_overlap_bp`
+  - `junctions[].overlap_partition`
   - `junctions[].distinct_from`
   - `validation_policy`
 - Intended normalized/derived outputs:
@@ -234,6 +247,11 @@ Interpretation:
   required overlap regions.
 - Inserts may already satisfy those terminal overlaps or may require primer-tail
   adaptation.
+- The overlap at one junction should be treated as a selection around the
+  in-silico junction, not merely as one scalar length:
+  - it may come entirely from the left member
+  - entirely from the right member
+  - or be split across both members
 - For plans that preserve an existing source order, fragment ordering should
   follow ascending bp coordinates (low bp positions first) unless an explicit
   alternative order is requested.
@@ -319,6 +337,8 @@ Normalization/derivation phases:
 3. Materialize one `junction` per adjacent pair in that chain.
 4. Derive required overlap sequences from destination flanks and/or adjacent
    fragment termini.
+   - respect the junction-specific overlap partition when choosing the final
+     overlap sequence around that adjacency
    - internal multi-fragment junctions may instead use designed bridge
      sequences introduced by primer-added overlaps
 5. Detect whether each fragment end already satisfies its required overlap or
@@ -334,6 +354,9 @@ Current invariants for the draft model:
 - `assembly_order[]` defines the intended adjacency order explicitly.
 - `junctions[]` should cover every adjacent pair in `assembly_order[]`.
 - terminal junctions are the ones adjacent to the opened destination ends.
+- `junctions[].overlap_partition.left_member_bp +
+   junctions[].overlap_partition.right_member_bp` should equal
+  `junctions[].required_overlap_bp`.
 - terminal junction distinctness is a hard validation rule for opened
   destination-vector Gibson plans.
 - when source-order hints are present and no contrary manual order is given,

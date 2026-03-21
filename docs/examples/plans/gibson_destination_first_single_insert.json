@@ -60,6 +60,10 @@
         "id": "insert_x"
       },
       "required_overlap_bp": 30,
+      "overlap_partition": {
+        "left_member_bp": 30,
+        "right_member_bp": 0
+      },
       "overlap_source": "derive_from_destination_left_flank",
       "distinct_from": [
         "junction_right"
@@ -76,6 +80,10 @@
         "id": "dest_right"
       },
       "required_overlap_bp": 30,
+      "overlap_partition": {
+        "left_member_bp": 0,
+        "right_member_bp": 30
+      },
       "overlap_source": "derive_from_destination_right_flank",
       "distinct_from": [
         "junction_left"
@@ -153,6 +161,7 @@
     ],
     "notes": [
       "Primer design should begin from the in silico assembled product so the destination-derived junctions are explicit before overlaps are assigned.",
+      "This single-insert example chooses terminal overlaps entirely from the destination-vector side of each junction.",
       "If insert termini already satisfy the required overlaps, end strategies may switch from primer_added_overlap to native_overlap.",
       "Future multi-fragment plans extend assembly_order and add one junction record per adjacent fragment pair."
     ]

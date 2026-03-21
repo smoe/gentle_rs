@@ -1525,6 +1525,8 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
   - draft model now documents low-bp-first source ordering guidance and
     primer-added designed bridge overlaps for internal multi-fragment
     junctions.
+  - draft model now captures one-sided versus split overlap selection at each
+    junction.
   - draft model now also separates assembly-setup advisories
     (cleanup/stoichiometry/host-risk) from hard junction validation.
   - draft model now represents Gibson primer suggestions explicitly as 5'
