@@ -382,7 +382,8 @@ Practical rule:
     `docs/tutorial/catalog.json`
     - schema: `gentle.tutorial_catalog.v1`
     - lists both generated tutorial collections and hand-written pages
-    - intended future consumer for tutorial discovery surfaces
+    - current consumer for GUI help/tutorial discovery
+    - source of runtime manifest resolution for `Open Tutorial Project...`
   - tutorial manifest source: `docs/tutorial/manifest.json`
   - tutorial schema: `gentle.tutorial_manifest.v1`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`

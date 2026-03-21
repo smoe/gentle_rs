@@ -1092,8 +1092,11 @@ The `Help` menu now includes:
 - `Reviewer Quickstart`: opens `docs/reviewer_preview.md` (internal preview checklist and known limitations)
 - `Shell Commands`: generated command reference from `docs/glossary.json`
   (usage + task summary per command)
-- `Tutorials`: opens tutorial markdown docs from `docs/tutorial/**` in the same
-  help window (`Topic` selector in the help header)
+- `Tutorials`: opens tutorial markdown docs in the same help window
+  (`Topic` selector in the help header)
+  - curated order now comes from `docs/tutorial/catalog.json` when available
+  - falls back to recursive markdown discovery under `docs/tutorial/**` if the
+    catalog is unavailable
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - Shell command reference includes an `Interface` selector:
@@ -1979,6 +1982,9 @@ Tutorial projects:
 
 - `Open Tutorial Project...` builds a project from canonical tutorial workflow
   examples (`docs/examples/workflows`) and opens it immediately for inspection.
+- tutorial project discovery now consults `docs/tutorial/catalog.json` first and
+  resolves the executable manifest/runtime chapter list from the catalog's
+  `generated_runtime.manifest_path`
 - Chapters are grouped by tier (`Core`, `Advanced`, `Online`) and keep the
   chapter order from `docs/tutorial/manifest.json`.
 - Generated tutorial project files are written under the system temp directory

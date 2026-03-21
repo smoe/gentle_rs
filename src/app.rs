@@ -68,8 +68,9 @@ use crate::{
         self, WindowBackdropKind, WindowBackdropSettings, with_window_content_inset,
     },
     workflow_examples::{
-        DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode,
-        TutorialTier, WorkflowExample, load_tutorial_manifest, load_workflow_examples,
+        DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH,
+        DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
+        load_tutorial_catalog, load_tutorial_manifest, load_workflow_examples,
         run_example_workflow_for_project_state, validate_example_required_files,
         validate_tutorial_manifest_against_examples,
     },
@@ -769,6 +770,13 @@ struct TutorialProjectEntry {
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
+}
+
+#[derive(Clone)]
+struct TutorialCatalogRuntimePaths {
+    repo_root: PathBuf,
+    manifest_path: PathBuf,
+    examples_dir: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -2640,6 +2648,42 @@ impl GENtleApp {
     }
 
     fn discover_help_tutorial_entries() -> Vec<HelpTutorialDocEntry> {
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
+            if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
+                let catalog_entries = catalog
+                    .entries
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
+                        let markdown =
+                            Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
+                        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+                            if entry.title.trim().is_empty() {
+                                Self::markdown_title_from_path(&resolved_path)
+                            } else {
+                                entry.title.clone()
+                            }
+                        });
+                        let mut summary = format!(
+                            "{}\ntype: {}\nstatus: {}",
+                            entry.path, entry.entry_type, entry.status
+                        );
+                        if !entry.notes.trim().is_empty() {
+                            summary.push('\n');
+                            summary.push_str(entry.notes.trim());
+                        }
+                        Some(HelpTutorialDocEntry {
+                            title,
+                            path: resolved_path.to_string_lossy().to_string(),
+                            summary,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if !catalog_entries.is_empty() {
+                    return catalog_entries;
+                }
+            }
+        }
         let Some(tutorial_root) = Self::resolve_runtime_doc_path("docs/tutorial") else {
             return vec![];
         };
@@ -2681,7 +2725,7 @@ impl GENtleApp {
             self.help_tutorial_selected = 0;
             self.help_tutorial_title = "Tutorial".to_string();
             self.help_tutorial_markdown =
-                "# Tutorials\n\nNo tutorial markdown files were found under `docs/tutorial`."
+                "# Tutorials\n\nNo tutorial entries were found from `docs/tutorial/catalog.json` or the `docs/tutorial` markdown tree."
                     .to_string();
             return false;
         }
@@ -5245,24 +5289,65 @@ Error: `{err}`"
             }
         }
         for candidate in candidates {
+            let catalog = candidate.join(DEFAULT_TUTORIAL_CATALOG_PATH);
             let manifest = candidate.join(DEFAULT_TUTORIAL_MANIFEST_PATH);
             let examples = candidate.join(DEFAULT_WORKFLOW_EXAMPLE_DIR);
-            if manifest.is_file() && examples.is_dir() {
+            if catalog.is_file() || (manifest.is_file() && examples.is_dir()) {
                 return Some(candidate);
             }
         }
         None
     }
 
-    fn load_tutorial_project_entries() -> std::result::Result<Vec<TutorialProjectEntry>, String> {
+    fn tutorial_catalog_runtime_paths() -> std::result::Result<TutorialCatalogRuntimePaths, String> {
         let repo_root = Self::detect_tutorial_repo_root().ok_or_else(|| {
             format!(
-                "Could not locate '{}' and '{}' from current runtime paths",
-                DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_WORKFLOW_EXAMPLE_DIR
+                "Could not locate '{}' or '{}' from current runtime paths",
+                DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH
             )
         })?;
-        let manifest_path = repo_root.join(DEFAULT_TUTORIAL_MANIFEST_PATH);
+        let catalog_path = repo_root.join(DEFAULT_TUTORIAL_CATALOG_PATH);
         let examples_dir = repo_root.join(DEFAULT_WORKFLOW_EXAMPLE_DIR);
+        if !examples_dir.is_dir() {
+            return Err(format!(
+                "Could not locate workflow examples directory '{}'",
+                examples_dir.display()
+            ));
+        }
+        if catalog_path.is_file() {
+            let catalog = load_tutorial_catalog(&catalog_path)?;
+            let manifest_path = repo_root.join(&catalog.generated_runtime.manifest_path);
+            if !manifest_path.is_file() {
+                return Err(format!(
+                    "Tutorial catalog references missing manifest '{}'",
+                    manifest_path.display()
+                ));
+            }
+            return Ok(TutorialCatalogRuntimePaths {
+                repo_root,
+                manifest_path,
+                examples_dir,
+            });
+        }
+        let manifest_path = repo_root.join(DEFAULT_TUTORIAL_MANIFEST_PATH);
+        if !manifest_path.is_file() {
+            return Err(format!(
+                "Could not locate tutorial manifest '{}'",
+                manifest_path.display()
+            ));
+        }
+        Ok(TutorialCatalogRuntimePaths {
+            repo_root,
+            manifest_path,
+            examples_dir,
+        })
+    }
+
+    fn load_tutorial_project_entries() -> std::result::Result<Vec<TutorialProjectEntry>, String> {
+        let runtime_paths = Self::tutorial_catalog_runtime_paths()?;
+        let repo_root = runtime_paths.repo_root;
+        let manifest_path = runtime_paths.manifest_path;
+        let examples_dir = runtime_paths.examples_dir;
         let manifest = load_tutorial_manifest(&manifest_path)?;
         let loaded_examples = load_workflow_examples(&examples_dir)?;
         validate_tutorial_manifest_against_examples(&manifest, &loaded_examples)?;
@@ -28188,6 +28273,17 @@ mod tests {
                 .iter()
                 .any(|entry| entry.chapter_id == "tp63_anchor_extension_online"),
             "Expected TP63 tutorial chapter to be present"
+        );
+    }
+
+    #[test]
+    fn tutorial_help_entries_include_agent_interfaces_from_catalog() {
+        let entries = GENtleApp::discover_help_tutorial_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.title == "GENtle Agent Interfaces Tutorial"),
+            "Expected curated tutorial help entries to include the agent interfaces tutorial"
         );
     }
 

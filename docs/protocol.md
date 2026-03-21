@@ -65,6 +65,9 @@ Catalog/manifest split:
   tutorials, including hand-written walkthroughs and agent/reference guides.
 - `docs/tutorial/manifest.json` remains the executable source for generated
   chapter output and tutorial runtime checks.
+- GUI help/tutorial discovery may consume the catalog directly for curated
+  ordering and metadata, while executable tutorial project materialization still
+  resolves through the manifest/workflow example path.
 
 Generate/check tutorial outputs:
 

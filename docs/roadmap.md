@@ -387,9 +387,14 @@ order. Durable architecture constraints and decisions remain in
     - agent/reference tutorial material
   - canonical machine-readable discovery catalog now exists at:
     `docs/tutorial/catalog.json` (`gentle.tutorial_catalog.v1`)
-    - current role: unified discovery metadata for generated and hand-written
-      tutorial pages
-    - intended future role: shared source for tutorial discovery surfaces
+    - current role:
+      - unified discovery metadata for generated and hand-written tutorial pages
+      - consumed by GUI help/tutorial discovery for curated ordering and
+        inclusion of agent/reference pages
+      - used as the root for resolving executable tutorial manifest location in
+        `Open Tutorial Project...`
+    - intended future role: broader shared source for tutorial discovery
+      surfaces beyond the current GUI/help path
   - tutorial pages now distinguish their role more explicitly:
     `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
   - tutorial manifest source:

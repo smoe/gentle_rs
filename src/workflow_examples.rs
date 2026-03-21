@@ -16,10 +16,48 @@ pub const DEFAULT_WORKFLOW_EXAMPLE_DIR: &str = "docs/examples/workflows";
 pub const DEFAULT_WORKFLOW_SNIPPET_DIR: &str = "docs/examples/generated";
 pub const ONLINE_EXAMPLE_TEST_ENV: &str = "GENTLE_TEST_ONLINE";
 pub const SKIP_REMOTE_TESTS_ENV: &str = "GENTLE_SKIP_REMOTE_TESTS";
+pub const TUTORIAL_CATALOG_SCHEMA: &str = "gentle.tutorial_catalog.v1";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
+pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
 pub const DEFAULT_TUTORIAL_OUTPUT_DIR: &str = "docs/tutorial/generated";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCatalogGeneratedRuntime {
+    pub manifest_path: String,
+    pub manifest_schema: String,
+    pub generated_readme: String,
+    pub generation_report: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCatalogEntry {
+    pub id: String,
+    pub title: String,
+    pub path: String,
+    #[serde(rename = "type")]
+    pub entry_type: String,
+    pub status: String,
+    pub source: String,
+    #[serde(default)]
+    pub audiences: Vec<String>,
+    #[serde(default)]
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCatalog {
+    #[serde(default = "default_tutorial_catalog_schema")]
+    pub schema: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub entry_page: String,
+    pub generated_runtime: TutorialCatalogGeneratedRuntime,
+    #[serde(default)]
+    pub entries: Vec<TutorialCatalogEntry>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialConcept {
@@ -182,6 +220,10 @@ pub struct WorkflowExample {
 
 fn default_example_schema() -> String {
     WORKFLOW_EXAMPLE_SCHEMA.to_string()
+}
+
+fn default_tutorial_catalog_schema() -> String {
+    TUTORIAL_CATALOG_SCHEMA.to_string()
 }
 
 fn default_tutorial_manifest_schema() -> String {
@@ -379,6 +421,87 @@ fn parse_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, Str
             display_path(manifest_path)
         )
     })
+}
+
+fn parse_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, String> {
+    let raw = fs::read_to_string(catalog_path).map_err(|e| {
+        format!(
+            "Could not read tutorial catalog '{}': {e}",
+            display_path(catalog_path)
+        )
+    })?;
+    serde_json::from_str::<TutorialCatalog>(&raw).map_err(|e| {
+        format!(
+            "Could not parse tutorial catalog '{}': {e}",
+            display_path(catalog_path)
+        )
+    })
+}
+
+pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, String> {
+    let catalog = parse_tutorial_catalog(catalog_path)?;
+    if catalog.schema != TUTORIAL_CATALOG_SCHEMA {
+        return Err(format!(
+            "Tutorial catalog '{}' uses unsupported schema '{}'; expected '{}'",
+            display_path(catalog_path),
+            catalog.schema,
+            TUTORIAL_CATALOG_SCHEMA
+        ));
+    }
+    if catalog.entry_page.trim().is_empty() {
+        return Err(format!(
+            "Tutorial catalog '{}' has empty entry_page",
+            display_path(catalog_path)
+        ));
+    }
+    if catalog.generated_runtime.manifest_path.trim().is_empty()
+        || catalog.generated_runtime.manifest_schema.trim().is_empty()
+        || catalog.generated_runtime.generated_readme.trim().is_empty()
+        || catalog.generated_runtime.generation_report.trim().is_empty()
+    {
+        return Err(format!(
+            "Tutorial catalog '{}' has incomplete generated_runtime fields",
+            display_path(catalog_path)
+        ));
+    }
+    if catalog.entries.is_empty() {
+        return Err(format!(
+            "Tutorial catalog '{}' has no entries",
+            display_path(catalog_path)
+        ));
+    }
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    for entry in &catalog.entries {
+        if entry.id.trim().is_empty() {
+            return Err(format!(
+                "Tutorial catalog '{}' contains entry with empty id",
+                display_path(catalog_path)
+            ));
+        }
+        if entry.title.trim().is_empty() {
+            return Err(format!("Tutorial catalog entry '{}' has empty title", entry.id));
+        }
+        if entry.path.trim().is_empty() {
+            return Err(format!("Tutorial catalog entry '{}' has empty path", entry.id));
+        }
+        if entry.entry_type.trim().is_empty() {
+            return Err(format!("Tutorial catalog entry '{}' has empty type", entry.id));
+        }
+        if entry.status.trim().is_empty() {
+            return Err(format!("Tutorial catalog entry '{}' has empty status", entry.id));
+        }
+        if entry.source.trim().is_empty() {
+            return Err(format!("Tutorial catalog entry '{}' has empty source", entry.id));
+        }
+        if !seen_ids.insert(entry.id.clone()) {
+            return Err(format!(
+                "Tutorial catalog '{}' has duplicate entry id '{}'",
+                display_path(catalog_path),
+                entry.id
+            ));
+        }
+    }
+    Ok(catalog)
 }
 
 pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, String> {
@@ -1718,6 +1841,10 @@ mod tests {
         PathBuf::from(DEFAULT_TUTORIAL_MANIFEST_PATH)
     }
 
+    fn tutorial_catalog_path() -> PathBuf {
+        PathBuf::from(DEFAULT_TUTORIAL_CATALOG_PATH)
+    }
+
     fn tutorial_output_dir() -> PathBuf {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
     }
@@ -1817,6 +1944,31 @@ mod tests {
         assert!(
             !manifest.chapters.is_empty(),
             "Expected at least one tutorial chapter"
+        );
+    }
+
+    #[test]
+    fn tutorial_catalog_parses_and_paths_exist() {
+        let catalog =
+            load_tutorial_catalog(&tutorial_catalog_path()).expect("load tutorial catalog");
+        assert!(
+            !catalog.entries.is_empty(),
+            "Expected at least one tutorial catalog entry"
+        );
+        for entry in &catalog.entries {
+            let path = PathBuf::from(&entry.path);
+            assert!(
+                path.exists(),
+                "tutorial catalog entry '{}' points to missing path '{}'",
+                entry.id,
+                display_path(&path)
+            );
+        }
+        let generated_manifest = PathBuf::from(&catalog.generated_runtime.manifest_path);
+        assert!(
+            generated_manifest.exists(),
+            "catalog manifest path should exist: '{}'",
+            display_path(&generated_manifest)
         );
     }
 
