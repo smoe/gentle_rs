@@ -113,6 +113,7 @@ What to verify:
   - `Destination`
   - `Insert`
   - `Design Targets`
+  - `Tₘ Model`
   - `Review`
   - `Outputs`
 
@@ -210,25 +211,35 @@ Expected interpretation:
 - the insert does not need to already contain those overlaps because the primer
   suggestions add them at the `5'` end
 
-## Step 8: Export the Outputs
+## Step 8: Apply and Export the Outputs
 
 GUI:
 
-1. click `Export Plan JSON...`
-2. save as:
+1. click `Apply Gibson Cloning`
+2. verify that new sequence nodes appear for:
+   - the left insert primer
+   - the right insert primer
+   - the assembled product
+3. in lineage, click the Gibson operation itself and confirm that the
+   specialist reopens with the saved plan loaded again
+4. click `Export Plan JSON...`
+5. save as:
    `~/Desktop/gibson_ui_test.plan.json`
-3. click `Export Preview JSON...`
-4. save as:
+6. click `Export Preview JSON...`
+7. save as:
    `~/Desktop/gibson_ui_test.preview.json`
-5. click `Export Primer Summary...`
-6. save as:
+8. click `Export Primer Summary...`
+9. save as:
    `~/Desktop/gibson_ui_test.primers.txt`
-7. click `Export Cartoon SVG...`
-8. save as:
+10. click `Export Cartoon SVG...`
+11. save as:
    `~/Desktop/gibson_ui_test.cartoon.svg`
 
 What to verify:
 
+- applying creates the expected primer/product sequence nodes
+- clicking the Gibson operation reopens the specialist without silently
+  executing again
 - all four files are written successfully
 - the primer summary is human-readable
 - the SVG opens and matches the in-window cartoon logic
@@ -283,11 +294,14 @@ Why this is expected:
 Mark the tutorial successful if all of these are true:
 
 - [ ] `Patterns -> Gibson...` opens and shows all five sections
+- [ ] `Tₘ Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
-- [ ] defined-site opening `240..246` is accepted
+- [ ] defined-site opening `938..944` is accepted
 - [ ] preview returns `2` resolved junctions
 - [ ] preview returns `2` primer suggestions
 - [ ] factual Gibson cartoon is visible
+- [ ] Gibson apply creates primer/product sequence nodes
+- [ ] clicking the Gibson operation reopens the specialist
 - [ ] plan, preview, primer summary, and cartoon export all succeed
 - [ ] CLI `gibson preview` reproduces the GUI preview byte-for-byte
 - [ ] routine handoff reports the current v1 limitation clearly instead of

@@ -5,7 +5,10 @@
 //! engine behavior through this shared dispatch path.
 
 use super::*;
-use crate::uniprot::UniprotNucleotideXref;
+use crate::{
+    gibson_planning::{derive_gibson_execution_plan, GibsonAssemblyPlan},
+    uniprot::UniprotNucleotideXref,
+};
 
 impl GentleEngine {
     fn dotplot_svg_xml_escape(raw: &str) -> String {
@@ -1387,6 +1390,48 @@ impl GentleEngine {
                     "Exported protocol cartoon template '{}' to '{}'",
                     protocol.id(),
                     path
+                ));
+            }
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                let plan: GibsonAssemblyPlan =
+                    serde_json::from_str(&plan_json).map_err(|err| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not parse Gibson assembly plan JSON: {err}"),
+                    })?;
+                let execution = derive_gibson_execution_plan(self, &plan)?;
+                parent_seq_ids = execution.parent_seq_ids.clone();
+                result.warnings.extend(execution.preview.warnings.clone());
+                for output in execution.outputs {
+                    let seq_id = self.unique_seq_id(&output.base_seq_id);
+                    let mut dna = output.dna;
+                    Self::prepare_sequence(&mut dna);
+                    let length_bp = dna.len();
+                    let topology_label = if dna.is_circular() {
+                        "circular"
+                    } else {
+                        "linear"
+                    };
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Created Gibson {} '{}' ({} bp, {})",
+                        output.kind.replace('_', " "),
+                        seq_id,
+                        length_bp,
+                        topology_label
+                    ));
+                }
+                let plan_label = execution.preview.plan_id.trim();
+                result.messages.push(format!(
+                    "Applied Gibson assembly plan '{}' from destination '{}' and insert '{}'",
+                    if plan_label.is_empty() {
+                        execution.preview.title.as_str()
+                    } else {
+                        plan_label
+                    },
+                    execution.preview.destination.seq_id,
+                    execution.preview.insert.seq_id
                 ));
             }
             Operation::CreateArrangementSerial {

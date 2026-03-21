@@ -399,6 +399,17 @@ fn parse_gibson_preview() {
 }
 
 #[test]
+fn parse_gibson_apply() {
+    let cmd = parse_shell_line("gibson apply @plan.json").expect("parse command");
+    match cmd {
+        ShellCommand::GibsonApply { request_json } => {
+            assert_eq!(request_json, "@plan.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_info() {
     let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
     match cmd {
@@ -711,6 +722,121 @@ fn execute_gibson_preview() {
     assert_eq!(
         written.get("schema").and_then(|value| value.as_str()),
         Some("gentle.gibson_assembly_preview.v1")
+    );
+}
+
+#[test]
+fn execute_gibson_apply_creates_output_sequences() {
+    let mut state = ProjectState::default();
+    let mut destination = DNAsequence::from_sequence(
+        "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
+    )
+    .expect("destination sequence");
+    destination.set_circular(true);
+    state
+        .sequences
+        .insert("destination_vector".to_string(), destination);
+    state.sequences.insert(
+        "insert_x_amplicon".to_string(),
+        DNAsequence::from_sequence(
+            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
+        )
+        .expect("insert sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let plan = r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "apply_test",
+  "title": "Apply test",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 24,
+      "minimum_overlap_tm_celsius": 48.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#;
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GibsonApply {
+            request_json: plan.to_string(),
+        },
+    )
+    .expect("execute gibson apply");
+    assert!(out.state_changed);
+    let created = out.output["result"]["created_seq_ids"]
+        .as_array()
+        .expect("created ids array");
+    assert_eq!(created.len(), 3);
+    assert!(engine.state().sequences.contains_key("out"));
+    assert!(
+        engine
+            .operation_log()
+            .iter()
+            .any(|record| matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. }))
     );
 }
 

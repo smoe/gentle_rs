@@ -782,6 +782,7 @@ cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/p
 cargo run --bin gentle_cli -- protocol-cartoon render-with-bindings docs/examples/protocol_cartoon/demo_template.json docs/examples/protocol_cartoon/demo_bindings.json demo.bound.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-export gibson.two_fragment gibson.template.json
 cargo run --bin gentle_cli -- gibson preview @docs/examples/plans/gibson_destination_first_single_insert.json --output gibson.preview.json
+cargo run --bin gentle_cli -- gibson apply @docs/examples/plans/gibson_destination_first_single_insert.json
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
@@ -1245,6 +1246,15 @@ Rendering export commands:
     - Gibson primer suggestions (`5' overlap + 3' priming`)
     - validation/advisory findings
     - protocol-cartoon bindings for the factual Gibson strip
+- `gibson apply PLAN_JSON_OR_@FILE`
+  - Calls engine operation `ApplyGibsonAssemblyPlan`.
+  - Consumes the same plan JSON accepted by `gibson preview`.
+  - Creates new project sequences for the Gibson outputs:
+    - left insert primer
+    - right insert primer
+    - assembled product
+  - Returns the standard mutating `OpResult`, including created sequence IDs,
+    warnings, messages, and the operation ID used for provenance/reopen flows.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.

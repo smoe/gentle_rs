@@ -57,6 +57,8 @@ order. Durable architecture constraints and decisions remain in
   - command palette action: `Gibson`
   - shared non-mutating preview path:
     `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - shared mutating apply path:
+    `gibson apply PLAN_JSON_OR_@FILE`
   - current scope:
     - single-insert, destination-first Gibson plan preview
     - resolved terminal overlaps
@@ -66,6 +68,11 @@ order. Durable architecture constraints and decisions remain in
       restriction cutters, including blunt/sticky-end labels
     - shared Tₘ-model assumptions surfaced in preview notes and Gibson-window
       help so GUI/CLI users see the same explanation
+    - dedicated `Tₘ Model` box in the Gibson window
+    - apply-time sequence creation for the two insert primers plus the
+      assembled product
+    - lineage reopen path: clicking a Gibson operation reopens the specialist
+      with the saved plan loaded again
     - protocol-cartoon preview/export
     - Routine Assistant handoff when the destination already uses existing
       linear termini
@@ -1593,6 +1600,7 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - preview response: `gentle.gibson_assembly_preview.v1`
     - shared shell/direct surface:
       `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+      `gibson apply PLAN_JSON_OR_@FILE`
     - GUI specialist:
       `Patterns -> Gibson...`
   - current single-insert v1 now covers:
@@ -1603,6 +1611,11 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - Gibson-specific primer suggestions
       (`5' overlap + 3' gene-specific priming segment`)
     - blocking/advisory validation
+    - deterministic creation of output sequence nodes for:
+      - left insert primer
+      - right insert primer
+      - assembled product
+    - lineage operation reopen behavior for Gibson apply
     - protocol-cartoon preview/export from the same resolved plan
   - next:
     - multi-fragment Gibson planning, preview, and cartoon generation

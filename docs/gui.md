@@ -584,6 +584,8 @@ Patterns menu:
        - minimum overlap Tₘ
        - priming-segment Tₘ window
        - priming-segment length window
+       - dedicated `Tₘ Model` box repeats the shared assumptions in a visually
+         separate section
        - displayed Tₘ values use the shared nearest-neighbor model used across
          GENtle:
          fixed 50 mM monovalent salt, fixed 250 nM total oligo concentration,
@@ -598,6 +600,11 @@ Patterns menu:
        - preview notes repeat the shared Tₘ-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`
+       - shows the exact primer/product nodes the current apply step will
+         create
+       - `Apply Gibson Cloning` runs one shared engine operation and creates
+         new sequence nodes for the two insert primers and the assembled
+         product
        - export plan JSON
        - export preview JSON
        - export primer summary
@@ -605,6 +612,8 @@ Patterns menu:
        - hand off to Routine Assistant when current execution paths can accept it
   - uses the same shared preview command as CLI/shell:
     - `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - shared mutating command parity:
+    - `gibson apply PLAN_JSON_OR_@FILE`
   - GUI-first testing tutorial:
     - `docs/tutorial/gibson_specialist_testing_gui.md`
   - deliberately does not embed the generic PCR/qPCR specialist UI
@@ -641,6 +650,9 @@ Node click behavior in lineage `Graph` view:
   pool member distribution available).
 - Double-click on an analysis node (`Dotplot` / `FlexibilityTrack`): opens the
   source sequence window.
+- Single-click on a Gibson operation square in the graph, or on the `Op` cell
+  for Gibson-created outputs in the table: reopens the Gibson specialist with
+  the saved plan loaded again for review.
 - Right-click context menu (graph and table node-id cells):
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that

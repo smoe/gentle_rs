@@ -563,6 +563,7 @@ pub struct GENtleApp {
     lineage_rows: Vec<LineageRow>,
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
+    lineage_reopenable_gibson_op_ids: HashSet<String>,
     lineage_node_groups: Vec<PersistedLineageNodeGroup>,
     lineage_group_form_label: String,
     lineage_group_form_members: String,
@@ -1623,6 +1624,13 @@ impl GibsonUiOpeningMode {
             Self::DefinedSite => "Defined opening",
         }
     }
+
+    fn from_plan_mode(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "existing_termini" | "existing-termini" => Self::ExistingTermini,
+            _ => Self::DefinedSite,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1643,6 +1651,13 @@ impl GibsonUiInsertOrientation {
         match self {
             Self::Forward => "Forward",
             Self::Reverse => "Reverse",
+        }
+    }
+
+    fn from_plan_orientation(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "reverse" | "rev" | "reverse_complement" => Self::Reverse,
+            _ => Self::Forward,
         }
     }
 }
@@ -1804,6 +1819,7 @@ impl Default for GENtleApp {
             lineage_rows: vec![],
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
+            lineage_reopenable_gibson_op_ids: HashSet::new(),
             lineage_node_groups: vec![],
             lineage_group_form_label: String::new(),
             lineage_group_form_members: String::new(),
@@ -13171,6 +13187,141 @@ Error: `{err}`"
         })
     }
 
+    fn load_gibson_plan_into_ui(&mut self, plan: &GibsonAssemblyPlan) {
+        self.gibson_destination_seq_id = plan.destination.seq_id.trim().to_string();
+        self.gibson_opening_mode = GibsonUiOpeningMode::from_plan_mode(&plan.destination.opening.mode);
+        self.gibson_opening_start_0based = plan
+            .destination
+            .opening
+            .start_0based
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        self.gibson_opening_end_0based_exclusive = plan
+            .destination
+            .opening
+            .end_0based_exclusive
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        if let Some(fragment) = plan.fragments.first() {
+            self.gibson_insert_seq_id = fragment.seq_id.trim().to_string();
+            self.gibson_insert_orientation =
+                GibsonUiInsertOrientation::from_plan_orientation(&fragment.orientation);
+        } else {
+            self.gibson_insert_seq_id.clear();
+            self.gibson_insert_orientation = GibsonUiInsertOrientation::Forward;
+        }
+        self.gibson_overlap_bp_min = plan.validation_policy.design_targets.overlap_bp_min.to_string();
+        self.gibson_overlap_bp_max = plan.validation_policy.design_targets.overlap_bp_max.to_string();
+        self.gibson_minimum_overlap_tm_celsius =
+            format!("{:.1}", plan.validation_policy.design_targets.minimum_overlap_tm_celsius);
+        self.gibson_priming_tm_min_celsius = format!(
+            "{:.1}",
+            plan.validation_policy
+                .design_targets
+                .priming_segment_tm_min_celsius
+        );
+        self.gibson_priming_tm_max_celsius = format!(
+            "{:.1}",
+            plan.validation_policy
+                .design_targets
+                .priming_segment_tm_max_celsius
+        );
+        self.gibson_priming_length_min_bp = plan
+            .validation_policy
+            .design_targets
+            .priming_segment_min_length_bp
+            .to_string();
+        self.gibson_priming_length_max_bp = plan
+            .validation_policy
+            .design_targets
+            .priming_segment_max_length_bp
+            .to_string();
+        self.gibson_output_id_hint = plan.product.output_id_hint.trim().to_string();
+    }
+
+    fn reopen_gibson_specialist_from_operation(
+        &mut self,
+        op_id: &str,
+    ) -> std::result::Result<bool, String> {
+        let plan_json = {
+            let engine = self
+                .engine
+                .read()
+                .map_err(|_| "Could not read engine state while reopening Gibson plan".to_string())?;
+            engine
+                .operation_log()
+                .iter()
+                .find(|record| record.result.op_id == op_id)
+                .and_then(|record| match &record.op {
+                    Operation::ApplyGibsonAssemblyPlan { plan_json } => Some(plan_json.clone()),
+                    _ => None,
+                })
+        };
+        let Some(plan_json) = plan_json else {
+            return Ok(false);
+        };
+        let plan: GibsonAssemblyPlan = serde_json::from_str(&plan_json)
+            .map_err(|err| format!("Could not parse stored Gibson plan JSON from '{op_id}': {err}"))?;
+        self.load_gibson_plan_into_ui(&plan);
+        self.gibson_preview_output = None;
+        self.gibson_preview_svg_uri.clear();
+        self.gibson_status = format!(
+            "Loaded Gibson cloning operation '{}' back into the specialist. Review the design or apply again explicitly.",
+            op_id
+        );
+        self.open_gibson_dialog();
+        self.run_gibson_preview();
+        Ok(true)
+    }
+
+    fn run_gibson_apply(&mut self) {
+        let plan = match self.build_gibson_plan_from_ui() {
+            Ok(plan) => plan,
+            Err(err) => {
+                self.gibson_status = format!("Gibson apply blocked: {err}");
+                return;
+            }
+        };
+        let request_json = match serde_json::to_string_pretty(&plan) {
+            Ok(text) => text,
+            Err(err) => {
+                self.gibson_status = format!("Could not serialize Gibson plan JSON: {err}");
+                return;
+            }
+        };
+        let command = ShellCommand::GibsonApply { request_json };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                let result_value = output
+                    .get("result")
+                    .cloned()
+                    .ok_or_else(|| "Missing result payload in Gibson apply output".to_string());
+                match result_value.and_then(|value| {
+                    serde_json::from_value::<OpResult>(value)
+                        .map_err(|err| format!("Could not parse Gibson apply result JSON: {err}"))
+                }) {
+                    Ok(result) => {
+                        let created = if result.created_seq_ids.is_empty() {
+                            "-".to_string()
+                        } else {
+                            result.created_seq_ids.join(", ")
+                        };
+                        self.gibson_status = format!(
+                            "Applied Gibson cloning via {}. Created nodes: {}. Click this Gibson operation in lineage to reopen the specialist later.",
+                            result.op_id, created
+                        );
+                    }
+                    Err(err) => {
+                        self.gibson_status = err;
+                    }
+                }
+            }
+            Err(err) => {
+                self.gibson_status = format!("Gibson apply failed: {err}");
+            }
+        }
+    }
+
     fn render_gibson_preview_svg(
         &mut self,
         preview: &GibsonAssemblyPreview,
@@ -13836,6 +13987,13 @@ Error: `{err}`"
         ui.small(tm_help.as_str());
 
         ui.separator();
+        ui.heading("Tₘ Model");
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.small("The Gibson specialist and CLI share one deterministic Tₘ model so preview numbers stay consistent across interfaces.");
+            ui.small(tm_help.as_str());
+        });
+
+        ui.separator();
         ui.heading("Review");
         ui.horizontal(|ui| {
             if ui
@@ -13966,7 +14124,77 @@ Error: `{err}`"
 
         ui.separator();
         ui.heading("Outputs");
+        if let Some(preview) = self.gibson_preview_output.as_ref() {
+            let planned_product_id = if self.gibson_output_id_hint.trim().is_empty() {
+                format!("{}_with_{}", preview.destination.seq_id, preview.insert.seq_id)
+            } else {
+                self.gibson_output_id_hint.trim().to_string()
+            };
+            let planned_product_length_bp = if preview
+                .destination
+                .opening_mode
+                .eq_ignore_ascii_case("existing_termini")
+            {
+                preview.destination.length_bp + preview.insert.length_bp
+            } else {
+                preview
+                    .destination
+                    .length_bp
+                    .saturating_sub(preview.destination.removed_span_bp.unwrap_or(0))
+                    + preview.insert.length_bp
+            };
+            let planned_product_topology = match self.build_gibson_plan_from_ui() {
+                Ok(plan) if plan.product.topology.trim().eq_ignore_ascii_case("circular") => {
+                    "circular"
+                }
+                Ok(_) => "linear",
+                Err(_) => preview.destination.actual_topology.as_str(),
+            };
+            ui.label("Planned output nodes");
+            egui::Grid::new("gibson_planned_outputs")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("kind");
+                    ui.strong("sequence id");
+                    ui.strong("shape");
+                    ui.end_row();
+                    for primer in &preview.primer_suggestions {
+                        let primer_kind = match primer.side.as_str() {
+                            "left_insert_primer" => "Left insert primer",
+                            "right_insert_primer" => "Right insert primer",
+                            _ => primer.side.as_str(),
+                        };
+                        ui.label(primer_kind);
+                        ui.monospace(&primer.primer_id);
+                        ui.label(format!("{} bp, linear", primer.full_sequence.len()));
+                        ui.end_row();
+                    }
+                    ui.label("Assembled product");
+                    ui.monospace(planned_product_id);
+                    ui.label(format!(
+                        "{} bp, {}",
+                        planned_product_length_bp, planned_product_topology
+                    ));
+                    ui.end_row();
+                });
+            ui.small(
+                "Applying creates these primer/product sequence nodes through one Gibson operation. If an ID already exists, GENtle adds a numeric suffix deterministically.",
+            );
+        } else {
+            ui.small(
+                "Preview first to see the exact primer and assembled-product nodes that Gibson apply will create.",
+            );
+        }
         ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Apply Gibson Cloning")
+                .on_hover_text(
+                    "Create new sequence nodes for the Gibson primers and assembled product through one shared engine operation",
+                )
+                .clicked()
+            {
+                self.run_gibson_apply();
+            }
             if ui
                 .button("Export Plan JSON...")
                 .on_hover_text("Export the canonical Gibson plan JSON currently implied by this window")
@@ -18765,7 +18993,14 @@ Error: `{err}`"
             return;
         }
 
-        let (rows, lineage_edges, op_label_by_id, containers, arrangements) = {
+        let (
+            rows,
+            lineage_edges,
+            op_label_by_id,
+            reopenable_gibson_op_ids,
+            containers,
+            arrangements,
+        ) = {
             let engine = self.engine.read().unwrap();
             let state = engine.state();
             let anchor_by_seq: HashMap<String, SequenceGenomeAnchorSummary> = engine
@@ -18786,6 +19021,7 @@ Error: `{err}`"
             let mut dotplot_op_by_id: HashMap<String, (String, String, Option<String>)> =
                 HashMap::new();
             let mut flex_track_op_by_id: HashMap<String, (String, String)> = HashMap::new();
+            let mut reopenable_gibson_op_ids: HashSet<String> = HashSet::new();
             #[derive(Clone)]
             struct PendingSvgExportRow {
                 source_seq_ids: Vec<String>,
@@ -18811,6 +19047,9 @@ Error: `{err}`"
                 op_created_count.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.len());
                 op_created_ids.insert(rec.result.op_id.clone(), rec.result.created_seq_ids.clone());
                 op_label_by_id.insert(rec.result.op_id.clone(), Self::summarize_operation(&rec.op));
+                if matches!(rec.op, Operation::ApplyGibsonAssemblyPlan { .. }) {
+                    reopenable_gibson_op_ids.insert(rec.result.op_id.clone());
+                }
                 if let Some(descriptor) = Self::lineage_retrieval_descriptor_from_operation(&rec.op)
                 {
                     op_retrieval_by_id.insert(rec.result.op_id.clone(), descriptor);
@@ -19479,12 +19718,20 @@ Error: `{err}`"
                 })
                 .collect();
             arrangements.sort_by(|a, b| a.arrangement_id.cmp(&b.arrangement_id));
-            (out, lineage_edges, op_label_by_id, containers, arrangements)
+            (
+                out,
+                lineage_edges,
+                op_label_by_id,
+                reopenable_gibson_op_ids,
+                containers,
+                arrangements,
+            )
         };
 
         self.lineage_rows = rows;
         self.lineage_edges = lineage_edges;
         self.lineage_op_label_by_id = op_label_by_id;
+        self.lineage_reopenable_gibson_op_ids = reopenable_gibson_op_ids;
         self.lineage_containers = containers;
         self.lineage_arrangements = arrangements;
         self.lineage_cache_stamp = stamp;
@@ -19798,6 +20045,9 @@ Error: `{err}`"
         if lower.contains("ligation") {
             return "ligation";
         }
+        if lower.contains("gibson") {
+            return "gibson";
+        }
         if lower.contains("pcr") {
             return "pcr";
         }
@@ -19842,6 +20092,7 @@ Error: `{err}`"
             "reverse_complement" => "RC",
             "digest" => "D",
             "ligation" => "L",
+            "gibson" => "GB",
             "pcr" => "P",
             "extract" => "E",
             "merge" => "M",
@@ -19877,6 +20128,7 @@ Error: `{err}`"
             "reverse_complement" => egui::Color32::from_rgb(84, 118, 172),
             "digest" => egui::Color32::from_rgb(176, 126, 70),
             "ligation" => egui::Color32::from_rgb(78, 144, 108),
+            "gibson" => egui::Color32::from_rgb(62, 142, 124),
             "pcr" => egui::Color32::from_rgb(72, 124, 186),
             "extract" => egui::Color32::from_rgb(153, 121, 74),
             "merge" => egui::Color32::from_rgb(96, 146, 88),
@@ -21057,6 +21309,7 @@ Error: `{err}`"
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
+        let mut reopen_gibson_from_operation: Option<String> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
         let mut graph_area_height = self
@@ -21880,6 +22133,28 @@ Error: `{err}`"
                                 let op_node_size = (14.0 * graph_zoom).clamp(10.0, 20.0);
                                 let op_rect =
                                     egui::Rect::from_center_size(mid, Vec2::splat(op_node_size));
+                                let is_reopenable_gibson_op = op_ids.len() == 1
+                                    && self
+                                        .lineage_reopenable_gibson_op_ids
+                                        .contains(&op_ids[0]);
+                                let mut op_response = ui.interact(
+                                    op_rect,
+                                    ui.id().with(("lineage_op", edge_idx)),
+                                    egui::Sense::click(),
+                                );
+                                let op_accessible_name =
+                                    Self::lineage_edge_accessible_name(&op_labels);
+                                op_response = if is_reopenable_gibson_op {
+                                    op_response.on_hover_text(format!(
+                                        "{}\nClick to reopen the Gibson specialist for this cloning operation.",
+                                        op_accessible_name
+                                    ))
+                                } else {
+                                    op_response.on_hover_text(op_accessible_name)
+                                };
+                                if is_reopenable_gibson_op && op_response.clicked() {
+                                    reopen_gibson_from_operation = Some(op_ids[0].clone());
+                                }
                                 let op_gap = op_node_size * 0.5 + 2.0 * graph_zoom;
                                 if edge_len > op_gap * 2.0 + 2.0 * graph_zoom {
                                     painter.line_segment(
@@ -21902,8 +22177,16 @@ Error: `{err}`"
                                     op_rect,
                                     2.0 * graph_zoom,
                                     egui::Stroke::new(
-                                        (1.1 * graph_zoom).clamp(1.0, 2.0),
-                                        egui::Color32::from_rgb(55, 55, 55),
+                                        if is_reopenable_gibson_op && op_response.hovered() {
+                                            (1.8 * graph_zoom).clamp(1.2, 2.6)
+                                        } else {
+                                            (1.1 * graph_zoom).clamp(1.0, 2.0)
+                                        },
+                                        if is_reopenable_gibson_op && op_response.hovered() {
+                                            egui::Color32::from_rgb(250, 220, 80)
+                                        } else {
+                                            egui::Color32::from_rgb(55, 55, 55)
+                                        },
                                     ),
                                     egui::StrokeKind::Inside,
                                 );
@@ -22942,23 +23225,43 @@ Error: `{err}`"
                                     ui.label(&row.origin);
                                 }
                                 let op_display = Self::compact_lineage_node_label(&row.created_by_op, 11);
-                                let op_response = ui
-                                    .allocate_ui_with_layout(
+                                let is_reopenable_gibson_op =
+                                    self.lineage_reopenable_gibson_op_ids.contains(&row.created_by_op);
+                                if is_reopenable_gibson_op {
+                                    let response = ui.add_sized(
                                         egui::vec2(92.0, ui.spacing().interact_size.y),
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(op_display.clone())
-                                                        .monospace(),
+                                        egui::Button::new(
+                                            egui::RichText::new(op_display.clone()).monospace(),
+                                        )
+                                        .small(),
+                                    );
+                                    let response = response.on_hover_text(format!(
+                                        "{}\nClick to reopen the Gibson specialist for this cloning operation.",
+                                        row.created_by_op
+                                    ));
+                                    if response.clicked() {
+                                        reopen_gibson_from_operation =
+                                            Some(row.created_by_op.clone());
+                                    }
+                                } else {
+                                    let op_response = ui
+                                        .allocate_ui_with_layout(
+                                            egui::vec2(92.0, ui.spacing().interact_size.y),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(op_display.clone())
+                                                            .monospace(),
+                                                    )
+                                                    .truncate(),
                                                 )
-                                                .truncate(),
-                                            )
-                                        },
-                                    )
-                                    .inner;
-                                if op_display != row.created_by_op {
-                                    op_response.on_hover_text(row.created_by_op.clone());
+                                            },
+                                        )
+                                        .inner;
+                                    if op_display != row.created_by_op {
+                                        op_response.on_hover_text(row.created_by_op.clone());
+                                    }
                                 }
                                 if row.kind == LineageNodeKind::Arrangement
                                     || row.kind == LineageNodeKind::Macro
@@ -23849,6 +24152,23 @@ Error: `{err}`"
         }
         if let Some((kind, seq_id, artifact_id)) = open_lineage_analysis {
             self.open_lineage_analysis_artifact(kind, &seq_id, &artifact_id);
+        }
+        if let Some(op_id) = reopen_gibson_from_operation {
+            match self.reopen_gibson_specialist_from_operation(&op_id) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.app_status = format!(
+                        "Operation '{}' does not carry a reopenable Gibson plan payload",
+                        op_id
+                    );
+                }
+                Err(err) => {
+                    self.app_status = format!(
+                        "Could not reopen Gibson specialist from operation '{}': {}",
+                        op_id, err
+                    );
+                }
+            }
         }
         if let Some(seq_id) = open_seq {
             self.open_sequence_window(&seq_id);
@@ -26509,6 +26829,33 @@ Error: `{err}`"
                 output_prefix.clone().unwrap_or_else(|| "-".to_string()),
                 unique.unwrap_or(false)
             ),
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                let parsed: Result<GibsonAssemblyPlan, _> = serde_json::from_str(plan_json);
+                match parsed {
+                    Ok(plan) => {
+                        let insert_seq_id = plan
+                            .fragments
+                            .first()
+                            .map(|fragment| fragment.seq_id.clone())
+                            .unwrap_or_else(|| "-".to_string());
+                        let opening_mode = if plan.destination.opening.mode.trim().is_empty() {
+                            "-".to_string()
+                        } else {
+                            plan.destination.opening.mode.trim().to_string()
+                        };
+                        let output = if plan.product.output_id_hint.trim().is_empty() {
+                            "-".to_string()
+                        } else {
+                            plan.product.output_id_hint.trim().to_string()
+                        };
+                        format!(
+                            "Gibson cloning: destination={}, insert={}, opening={}, output={}",
+                            plan.destination.seq_id, insert_seq_id, opening_mode, output
+                        )
+                    }
+                    Err(_) => "Gibson cloning".to_string(),
+                }
+            }
             Operation::Pcr {
                 template,
                 forward_primer,
@@ -29093,6 +29440,140 @@ mod tests {
             GENtleApp::humanize_gibson_ui_text(raw),
             "minimum overlap Tₘ 60.0 °C"
         );
+    }
+
+    #[test]
+    fn reopen_gibson_specialist_from_operation_loads_plan_and_preview() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            {
+                let mut dna = DNAsequence::from_sequence(
+                    "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
+                )
+                .expect("destination sequence");
+                dna.set_circular(true);
+                dna
+            },
+        );
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "insert_x_amplicon".to_string(),
+            DNAsequence::from_sequence(
+                "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
+            )
+            .expect("insert sequence"),
+        );
+        let plan_json = r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "ui_reopen_test",
+  "title": "UI reopen test",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "ui_reopen_out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 24,
+      "minimum_overlap_tm_celsius": 48.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#;
+        let result = app
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ApplyGibsonAssemblyPlan {
+                plan_json: plan_json.to_string(),
+            })
+            .expect("apply Gibson operation");
+
+        let reopened = app
+            .reopen_gibson_specialist_from_operation(&result.op_id)
+            .expect("reopen Gibson specialist");
+
+        assert!(reopened);
+        assert!(app.show_gibson_dialog);
+        assert_eq!(app.gibson_destination_seq_id, "destination_vector");
+        assert_eq!(app.gibson_insert_seq_id, "insert_x_amplicon");
+        assert_eq!(app.gibson_output_id_hint, "ui_reopen_out");
+        assert!(app.gibson_preview_output.is_some());
+    }
+
+    #[test]
+    fn summarize_operation_apply_gibson_includes_key_context() {
+        let summary = GENtleApp::summarize_operation(&Operation::ApplyGibsonAssemblyPlan {
+            plan_json: r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "destination": {"seq_id": "dest", "opening": {"mode": "defined_site"}},
+  "product": {"output_id_hint": "assembled"},
+  "fragments": [{"seq_id": "insert"}]
+}"#
+            .to_string(),
+        });
+        assert!(summary.contains("Gibson cloning"));
+        assert!(summary.contains("destination=dest"));
+        assert!(summary.contains("insert=insert"));
+        assert!(summary.contains("output=assembled"));
     }
 
     #[test]

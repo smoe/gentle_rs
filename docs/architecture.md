@@ -794,6 +794,15 @@ Command surface:
     not hard-code vector-specific sites or maintain a separate biology rule set
   - this keeps destination-first Gibson planning aligned with the same
     annotation and restriction-site evidence already used elsewhere in GENtle
+- Gibson specialist execution/reopen behavior must also remain shared-contract
+  driven:
+  - mutating apply goes through one engine operation
+    (`ApplyGibsonAssemblyPlan`)
+  - the operation log stores the canonical plan JSON used for that apply
+  - GUI lineage click-to-reopen behavior reloads the saved plan from the
+    operation record instead of keeping a frontend-only shadow state
+  - output sequence nodes (primers + assembled product) remain ordinary engine
+    sequences linked by lineage edges, not a GUI-only side channel
 
 Concrete patch plan: routine-application assistant and alternative-awareness
 

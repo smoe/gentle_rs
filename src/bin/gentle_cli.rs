@@ -464,7 +464,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n\n  \
-  gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n\n  \
+  gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] gibson apply PLAN_JSON_OR_@FILE\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
@@ -3789,6 +3790,23 @@ mod tests {
             }) => {
                 assert_eq!(request_json, "@plan.json");
                 assert_eq!(output_path.as_deref(), Some("preview.json"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_gibson_apply() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "gibson".to_string(),
+            "apply".to_string(),
+            "@plan.json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::GibsonApply { request_json }) => {
+                assert_eq!(request_json, "@plan.json");
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

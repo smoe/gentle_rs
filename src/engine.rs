@@ -4049,6 +4049,9 @@ pub enum Operation {
         protocol: ProtocolCartoonKind,
         path: String,
     },
+    ApplyGibsonAssemblyPlan {
+        plan_json: String,
+    },
     CreateArrangementSerial {
         container_ids: Vec<ContainerId>,
         arrangement_id: Option<String>,
@@ -6015,6 +6018,7 @@ impl GentleEngine {
                 "ValidateProtocolCartoonTemplate".to_string(),
                 "RenderProtocolCartoonTemplateWithBindingsSvg".to_string(),
                 "ExportProtocolCartoonTemplateJson".to_string(),
+                "ApplyGibsonAssemblyPlan".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),

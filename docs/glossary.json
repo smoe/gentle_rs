@@ -1,5 +1,5 @@
 {
-   "command_count": 234,
+   "command_count": 235,
    "commands": [
       {
          "aliases": [
@@ -327,6 +327,20 @@
          "path": "gibson preview",
          "summary": "Preview one destination-first Gibson plan and emit overlaps, primers, validation findings, and cartoon bindings.",
          "usage": "gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ApplyGibsonAssemblyPlan"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gibson apply",
+         "summary": "Apply one destination-first Gibson plan and create primer/product sequence outputs.",
+         "usage": "gibson apply PLAN_JSON_OR_@FILE"
       },
       {
          "aliases": [],

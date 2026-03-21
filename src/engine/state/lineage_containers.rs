@@ -262,6 +262,9 @@ impl GentleEngine {
             Operation::MergeContainersById { .. } => Some("Merged container".to_string()),
             Operation::Ligation { .. } => Some("Ligation products".to_string()),
             Operation::LigationContainer { .. } => Some("Ligation products".to_string()),
+            Operation::ApplyGibsonAssemblyPlan { .. } => {
+                Some("Gibson cloning outputs".to_string())
+            }
             Operation::Pcr { .. }
             | Operation::PcrAdvanced { .. }
             | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),

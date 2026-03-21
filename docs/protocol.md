@@ -346,6 +346,7 @@ Purpose:
 Current shared entry points:
 
 - `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+- `gibson apply PLAN_JSON_OR_@FILE`
 - GUI specialist window: `Patterns -> Gibson...`
 
 Top-level structure:
@@ -388,6 +389,15 @@ Current v1 scope and limits:
   - fallback to the simple 2/4 estimate for ambiguous or very short sequences
 - generic PCR/qPCR request editing is intentionally out of scope for this
   specialist flow
+- mutating execution now exists as engine operation
+  `ApplyGibsonAssemblyPlan`:
+  - consumes the same plan JSON
+  - creates deterministic sequence outputs for:
+    - left insert primer
+    - right insert primer
+    - assembled product
+  - records one operation-log row so GUI lineage/CLI state replay can reopen
+    the specialist from the saved plan without silently re-running it
 
 Normalization/derivation phases:
 

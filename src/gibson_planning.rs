@@ -7,6 +7,7 @@
 //! and protocol-cartoon rendering from one shared derivation path.
 
 use crate::{
+    dna_sequence::DNAsequence,
     engine::{EngineError, ErrorCode, GentleEngine},
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
@@ -302,6 +303,21 @@ pub struct GibsonRoutineHandoffPreview {
     pub reason: Option<String>,
     #[serde(default)]
     pub bindings: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GibsonExecutionOutput {
+    pub kind: String,
+    pub base_seq_id: String,
+    pub display_name: String,
+    pub dna: DNAsequence,
+}
+
+#[derive(Debug, Clone)]
+pub struct GibsonAssemblyExecutionPlan {
+    pub preview: GibsonAssemblyPreview,
+    pub parent_seq_ids: Vec<String>,
+    pub outputs: Vec<GibsonExecutionOutput>,
 }
 
 #[derive(Debug, Clone)]
@@ -1066,6 +1082,147 @@ pub fn preview_gibson_assembly_plan(
     preview.routine_handoff = build_routine_handoff(&preview, representative_overlap_bp);
 
     finalize_preview(preview)
+}
+
+pub fn derive_gibson_execution_plan(
+    engine: &GentleEngine,
+    plan: &GibsonAssemblyPlan,
+) -> Result<GibsonAssemblyExecutionPlan, EngineError> {
+    let preview = preview_gibson_assembly_plan(engine, plan)?;
+    if !preview.can_execute {
+        let detail = if preview.errors.is_empty() {
+            "preview marked plan as non-executable".to_string()
+        } else {
+            preview.errors.join(" | ")
+        };
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Gibson plan cannot be applied: {detail}"),
+        });
+    }
+
+    let destination = engine
+        .state()
+        .sequences
+        .get(&preview.destination.seq_id)
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Destination sequence '{}' not found during Gibson apply",
+                preview.destination.seq_id
+            ),
+        })?
+        .clone();
+    let insert = engine
+        .state()
+        .sequences
+        .get(&preview.insert.seq_id)
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Insert sequence '{}' not found during Gibson apply",
+                preview.insert.seq_id
+            ),
+        })?
+        .clone();
+
+    if preview.primer_suggestions.len() != 2 {
+        return Err(EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Executable Gibson preview should yield exactly 2 primer suggestions, found {}",
+                preview.primer_suggestions.len()
+            ),
+        });
+    }
+
+    let oriented_insert_seq = if preview.insert.orientation.eq_ignore_ascii_case("reverse") {
+        GentleEngine::reverse_complement(&insert.get_forward_string())
+    } else {
+        insert.get_forward_string().to_ascii_uppercase()
+    };
+    let destination_seq = destination.get_forward_string().to_ascii_uppercase();
+    let assembled_product_seq = match preview.destination.opening_mode.as_str() {
+        "existing_termini" => format!("{destination_seq}{oriented_insert_seq}"),
+        "defined_site" => {
+            let start = preview.destination.opening_start_0based.ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message:
+                    "Executable Gibson defined-site preview did not retain start_0based".to_string(),
+            })?;
+            let end =
+                preview
+                    .destination
+                    .opening_end_0based_exclusive
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::Internal,
+                        message: "Executable Gibson defined-site preview did not retain end_0based_exclusive".to_string(),
+                    })?;
+            format!("{}{}{}", &destination_seq[..start], oriented_insert_seq, &destination_seq[end..])
+        }
+        other => {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!("Unsupported Gibson opening mode '{other}' for apply"),
+            });
+        }
+    };
+
+    let mut outputs: Vec<GibsonExecutionOutput> = vec![];
+    for primer in &preview.primer_suggestions {
+        let mut dna = DNAsequence::from_sequence(&primer.full_sequence).map_err(|err| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
+                primer.primer_id
+            ),
+        })?;
+        dna.set_name(match primer.side.as_str() {
+            "left_insert_primer" => format!("Gibson left insert primer for '{}'", preview.insert.seq_id),
+            "right_insert_primer" => {
+                format!("Gibson right insert primer for '{}'", preview.insert.seq_id)
+            }
+            _ => format!("Gibson primer for '{}'", preview.insert.seq_id),
+        });
+        outputs.push(GibsonExecutionOutput {
+            kind: primer.side.clone(),
+            base_seq_id: primer.primer_id.clone(),
+            display_name: primer.primer_id.clone(),
+            dna,
+        });
+    }
+
+    let product_base_id = if plan.product.output_id_hint.trim().is_empty() {
+        format!("{}_with_{}", preview.destination.seq_id, preview.insert.seq_id)
+    } else {
+        plan.product.output_id_hint.trim().to_string()
+    };
+    let mut product =
+        DNAsequence::from_sequence(&assembled_product_seq).map_err(|err| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not materialize Gibson assembled product sequence: {err}"),
+        })?;
+    product.set_circular(plan.product.topology.trim().eq_ignore_ascii_case("circular"));
+    product.set_name(format!(
+        "Gibson assembled product: {} + {}",
+        preview.destination.seq_id, preview.insert.seq_id
+    ));
+    outputs.push(GibsonExecutionOutput {
+        kind: "assembled_product".to_string(),
+        base_seq_id: product_base_id.clone(),
+        display_name: product_base_id,
+        dna: product,
+    });
+
+    let parent_seq_ids = vec![
+        plan.destination.seq_id.trim().to_string(),
+        preview.insert.seq_id.clone(),
+    ];
+    Ok(GibsonAssemblyExecutionPlan {
+        preview,
+        parent_seq_ids,
+        outputs,
+    })
 }
 
 fn empty_protocol_cartoon_bindings() -> ProtocolCartoonTemplateBindings {
@@ -2064,6 +2221,66 @@ mod tests {
                 .iter()
                 .any(|row| row.contains("Could not derive a Gibson priming segment"))
         );
+    }
+
+    #[test]
+    fn derive_execution_plan_creates_primers_and_assembled_product() {
+        let engine = test_engine_with_sequences();
+        let plan = single_insert_plan();
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("execution plan output");
+        assert_eq!(execution.outputs.len(), 3);
+        assert_eq!(execution.parent_seq_ids.len(), 2);
+        assert_eq!(execution.outputs[0].kind, "left_insert_primer");
+        assert_eq!(execution.outputs[1].kind, "right_insert_primer");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        assert!(product.dna.is_circular());
+        assert_eq!(
+            product.dna.len(),
+            execution.preview.destination.length_bp
+                - execution.preview.destination.removed_span_bp.unwrap_or(0)
+                + execution.preview.insert.length_bp
+        );
+    }
+
+    #[test]
+    fn derive_execution_plan_existing_termini_concatenates_destination_and_insert() {
+        let mut engine = GentleEngine::new();
+        let mut destination =
+            DNAsequence::from_sequence("AAAACCCC").expect("destination sequence");
+        destination.set_name("linear_destination".to_string());
+        destination.set_circular(false);
+        let insert = DNAsequence::from_sequence("GGGG").expect("insert sequence");
+        engine
+            .state_mut()
+            .sequences
+            .insert("linear_destination".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("insert_x_amplicon".to_string(), insert);
+
+        let mut plan = single_insert_plan();
+        plan.destination.seq_id = "linear_destination".to_string();
+        plan.destination.topology_before_opening = "linear".to_string();
+        plan.destination.opening.mode = "existing_termini".to_string();
+        plan.destination.opening.start_0based = None;
+        plan.destination.opening.end_0based_exclusive = None;
+        plan.product.topology = "linear".to_string();
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("existing termini execution");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        assert_eq!(product.dna.get_forward_string(), "AAAACCCCGGGG");
+        assert!(!product.dna.is_circular());
     }
 
     #[test]

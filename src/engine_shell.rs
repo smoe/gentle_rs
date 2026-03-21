@@ -594,6 +594,9 @@ pub enum ShellCommand {
         request_json: String,
         output_path: Option<String>,
     },
+    GibsonApply {
+        request_json: String,
+    },
     RenderPoolGelSvg {
         inputs: Vec<String>,
         output: String,
@@ -4361,6 +4364,8 @@ impl ShellCommand {
                     .map(|path| format!(" and export preview JSON to '{path}'"))
                     .unwrap_or_default()
             ),
+            Self::GibsonApply { .. } => "apply Gibson assembly plan and create output sequences"
+                .to_string(),
             Self::RenderPoolGelSvg {
                 inputs,
                 output,
@@ -9315,7 +9320,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "gibson" => {
             if tokens.len() < 2 {
-                return Err("gibson requires a subcommand: preview".to_string());
+                return Err(
+                    "gibson requires a subcommand: preview, apply"
+                        .to_string(),
+                );
             }
             match tokens[1].as_str() {
                 "preview" => {
@@ -9364,8 +9372,24 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output_path,
                     })
                 }
+                "apply" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "gibson apply requires PLAN_JSON_OR_@FILE".to_string(),
+                        );
+                    }
+                    let request_json = tokens[2].trim();
+                    if request_json.is_empty() {
+                        return Err(
+                            "gibson apply requires non-empty PLAN_JSON_OR_@FILE".to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::GibsonApply {
+                        request_json: tokens[2].clone(),
+                    })
+                }
                 other => Err(format!(
-                    "Unknown gibson subcommand '{other}' (expected preview)"
+                    "Unknown gibson subcommand '{other}' (expected preview, apply)"
                 )),
             }
         }
@@ -11185,6 +11209,18 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: false,
                 output,
+            }
+        }
+        ShellCommand::GibsonApply { request_json } => {
+            let parsed = parse_json_payload(request_json)?;
+            let _: GibsonAssemblyPlan = serde_json::from_str(&parsed)
+                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
+            let op_result = engine
+                .apply(Operation::ApplyGibsonAssemblyPlan { plan_json: parsed })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
             }
         }
         ShellCommand::RenderPoolGelSvg {
