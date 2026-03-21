@@ -2680,7 +2680,8 @@ fn run() -> Result<(), String> {
 mod tests {
     use super::*;
     use gentle::test_support::{
-        write_demo_jaspar_pfm, write_demo_pool_json, write_demo_rebase_withrefm,
+        demo_jaspar_pfm_text, demo_rebase_withrefm_text, write_demo_jaspar_pfm,
+        write_demo_pool_json, write_demo_rebase_withrefm,
     };
     use std::fs;
     use std::sync::Mutex;
@@ -2765,13 +2766,7 @@ mod tests {
 
     #[test]
     fn test_parse_rebase_withrefm_minimal() {
-        let text = r#"
-<1>EcoRI
-<2>EcoRI
-<3>GAATTC (1/5)
-<7>N
-//
-"#;
+        let text = demo_rebase_withrefm_text();
         let items = parse_rebase_withrefm(text, true);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].name, "EcoRI");
@@ -2781,13 +2776,7 @@ mod tests {
 
     #[test]
     fn test_parse_jaspar_motifs_consensus() {
-        let text = r#"
->MA0001.1 TEST
-A [ 10 0 0 0 ]
-C [ 0 10 0 0 ]
-G [ 0 0 10 0 ]
-T [ 0 0 0 10 ]
-"#;
+        let text = demo_jaspar_pfm_text();
         let motifs = parse_jaspar_motifs(text).unwrap();
         assert_eq!(motifs.len(), 1);
         assert_eq!(motifs[0].id, "MA0001.1");

@@ -65,17 +65,27 @@ pub fn decision_trace_fixture_state() -> ProjectState {
     state
 }
 
+/// Returns a minimal deterministic REBASE `.withrefm` text fixture.
+pub fn demo_rebase_withrefm_text() -> &'static str {
+    DEMO_REBASE_WITHREFM
+}
+
+/// Returns a minimal deterministic JASPAR PFM text fixture.
+pub fn demo_jaspar_pfm_text() -> &'static str {
+    DEMO_JASPAR_PFM
+}
+
 /// Writes a minimal deterministic REBASE `.withrefm` fixture and returns its path.
 pub fn write_demo_rebase_withrefm(dir: &Path) -> PathBuf {
     let path = dir.join("rebase.withrefm");
-    fs::write(&path, DEMO_REBASE_WITHREFM).expect("write rebase input");
+    fs::write(&path, demo_rebase_withrefm_text()).expect("write rebase input");
     path
 }
 
 /// Writes a minimal deterministic JASPAR PFM fixture and returns its path.
 pub fn write_demo_jaspar_pfm(dir: &Path) -> PathBuf {
     let path = dir.join("motifs.pfm");
-    fs::write(&path, DEMO_JASPAR_PFM).expect("write jaspar input");
+    fs::write(&path, demo_jaspar_pfm_text()).expect("write jaspar input");
     path
 }
 
