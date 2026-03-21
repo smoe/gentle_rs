@@ -1,0 +1,26 @@
+{
+  "run_id": "readme_tp53_isoform_architecture",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "docs/figures/tp53_ensembl116_panel_source.gb",
+        "as_id": "grch38_tp53_readme"
+      }
+    },
+    {
+      "ImportIsoformPanel": {
+        "seq_id": "grch38_tp53_readme",
+        "panel_path": "assets/panels/tp53_isoforms_v1.json",
+        "panel_id": "tp53_isoforms_v1",
+        "strict": true
+      }
+    },
+    {
+      "RenderIsoformArchitectureSvg": {
+        "seq_id": "grch38_tp53_readme",
+        "panel_id": "tp53_isoforms_v1",
+        "path": "docs/figures/tp53_isoform_architecture.svg"
+      }
+    }
+  ]
+}
