@@ -101,8 +101,10 @@ Purpose:
 
 Status:
 
-- draft schema and documentation artifact only
-- not yet accepted by a direct engine operation in this release
+- restricted single-insert destination-first subset is now consumed by the
+  shared Gibson preview path (`gibson preview ...` and the `Patterns ->
+  Gibson...` specialist window)
+- multi-fragment plans remain draft design resources in this release
 
 Canonical examples:
 
@@ -151,6 +153,8 @@ Current draft value vocabulary:
   - `linear`
   - `circular`
 - `destination.opening.mode`
+  - `existing_termini`
+    - use the current termini of an already-linear destination sequence
   - `defined_site`
     - a user-selected opening site/window on an existing destination molecule
   - reserved future values:
@@ -329,6 +333,52 @@ Planning implication:
 - these factors should usually surface as `derived_design` advisories or future
   execution/setup guidance, not as hard failures in the core Gibson junction
   model
+
+### `gentle.gibson_assembly_preview.v1`
+
+Purpose:
+
+- provide one deterministic, non-mutating preview response for the restricted
+  single-insert Gibson specialist flow,
+- keep GUI, shared shell, and direct CLI on the same overlap/primer/cartoon
+  derivation path.
+
+Current shared entry points:
+
+- `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+- GUI specialist window: `Patterns -> Gibson...`
+
+Top-level structure:
+
+- `schema`, `plan_id`, `title`, `summary`
+- `can_execute`
+- `destination`
+  - resolved opening mode/span and actual topology
+- `insert`
+  - resolved fragment id, template seq id, orientation, length
+- `resolved_junctions[]`
+  - overlap bp, overlap Tm, resolved overlap sequence, source note
+- `primer_suggestions[]`
+  - full primer sequence plus explicit `overlap_5prime` and
+    `priming_3prime` segments
+- `warnings[]`, `errors[]`, `notes[]`
+- `cartoon`
+  - built-in protocol id plus template bindings for the shared
+    protocol-cartoon renderer
+- `routine_handoff`
+  - best-effort Routine Assistant handoff metadata for existing execution paths
+
+Current v1 scope and limits:
+
+- exactly one insert fragment
+- destination-first order:
+  `destination_left -> insert -> destination_right`
+- terminal overlaps are derived from destination context
+- user influence over PCR design stays high-level and Gibson-specific:
+  overlap bp range, minimum overlap Tm, priming-segment Tm window, and
+  priming-segment length window
+- generic PCR/qPCR request editing is intentionally out of scope for this
+  specialist flow
 
 Normalization/derivation phases:
 

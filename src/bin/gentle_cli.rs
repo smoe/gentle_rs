@@ -464,6 +464,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n\n  \
+  gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
@@ -596,6 +597,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "ui",
     "routines",
     "planning",
+    "gibson",
     "panels",
     "macros",
     "resources",
@@ -3766,6 +3768,29 @@ mod tests {
             }) => {
                 assert_eq!(left_routine_id, "golden_gate.type_iis_single_insert");
                 assert_eq!(right_routine_id, "gibson.two_fragment_overlap_preview");
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_gibson_preview() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "gibson".to_string(),
+            "preview".to_string(),
+            "@plan.json".to_string(),
+            "--output".to_string(),
+            "preview.json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::GibsonPreview {
+                request_json,
+                output_path,
+            }) => {
+                assert_eq!(request_json, "@plan.json");
+                assert_eq!(output_path.as_deref(), Some("preview.json"));
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

@@ -22927,6 +22927,10 @@ impl MainAreaDna {
         self.seq_id.as_deref()
     }
 
+    pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
+        self.current_selection_range_0based()
+    }
+
     fn lineage_node_id_for_seq_id(&self, seq_id: &str) -> Option<String> {
         let engine = self.engine.as_ref()?;
         let guard = engine.read().ok()?;

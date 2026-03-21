@@ -25,8 +25,11 @@ syntax.
   - `docs/examples/plans/gibson_destination_first_single_insert.json`
   - `docs/examples/plans/gibson_destination_first_multi_insert.json`
   - schema: `gentle.gibson_assembly_plan.v1`
-- These files are documentation resources for protocol/data-model design and
-  are not yet executed by workflow-example tests.
+- The single-insert Gibson plan shape is now accepted by the shared
+  `gibson preview ...` path when referenced sequence ids exist in the active
+  project state.
+- Multi-fragment Gibson examples remain design resources and are not yet
+  executed by workflow-example tests.
 - Folder note:
   - `docs/examples/plans/README.md`
 

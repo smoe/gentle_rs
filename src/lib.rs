@@ -34,6 +34,8 @@ pub mod feature_expert;
 pub mod feature_location;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Gibson assembly planning contracts and deterministic preview derivation.
+pub mod gibson_planning;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
 /// Embedded icon/resource helpers for GUI rendering.

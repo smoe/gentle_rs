@@ -381,6 +381,22 @@ fn parse_protocol_cartoon_render_with_bindings() {
 }
 
 #[test]
+fn parse_gibson_preview() {
+    let cmd = parse_shell_line("gibson preview @plan.json --output preview.json")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::GibsonPreview {
+            request_json,
+            output_path,
+        } => {
+            assert_eq!(request_json, "@plan.json");
+            assert_eq!(output_path.as_deref(), Some("preview.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_info() {
     let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
     match cmd {
@@ -560,6 +576,143 @@ fn execute_protocol_cartoon_template_export() {
     assert_eq!(
         template.get("id").and_then(|v| v.as_str()),
         Some("gibson.two_fragment")
+    );
+}
+
+#[test]
+fn execute_gibson_preview() {
+    let mut state = ProjectState::default();
+    let mut destination = DNAsequence::from_sequence(
+        "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
+    )
+    .expect("destination sequence");
+    destination.set_circular(true);
+    state
+        .sequences
+        .insert("destination_vector".to_string(), destination);
+    state.sequences.insert(
+        "insert_x_amplicon".to_string(),
+        DNAsequence::from_sequence(
+            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
+        )
+        .expect("insert sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempdir().expect("temp dir");
+    let plan_path = tmp.path().join("gibson.plan.json");
+    fs::write(
+        &plan_path,
+        r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "preview_test",
+  "title": "Preview test",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 24,
+      "minimum_overlap_tm_celsius": 48.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#,
+    )
+    .expect("write plan json");
+    let output_path = tmp.path().join("gibson.preview.json");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GibsonPreview {
+            request_json: format!("@{}", plan_path.display()),
+            output_path: Some(output_path.display().to_string()),
+        },
+    )
+    .expect("execute gibson preview");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.gibson_assembly_preview.v1")
+    );
+    assert_eq!(
+        out.output
+            .get("can_execute")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        out.output
+            .get("primer_suggestions")
+            .and_then(|value| value.as_array())
+            .map(Vec::len),
+        Some(2)
+    );
+    let written: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(output_path).expect("read gibson preview output"),
+    )
+    .expect("parse written preview json");
+    assert_eq!(
+        written.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.gibson_assembly_preview.v1")
     );
 }
 

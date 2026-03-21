@@ -244,6 +244,10 @@ impl WindowDna {
         self.main_area.sequence_id().map(|v| v.to_string())
     }
 
+    pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
+        self.main_area.selection_range_0based()
+    }
+
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         self.main_area.collect_open_auxiliary_window_entries()
     }

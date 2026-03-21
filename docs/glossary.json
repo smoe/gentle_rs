@@ -1,5 +1,5 @@
 {
-   "command_count": 233,
+   "command_count": 234,
    "commands": [
       {
          "aliases": [
@@ -315,6 +315,18 @@
          "path": "protocol-cartoon template-export",
          "summary": "Export canonical built-in protocol template JSON for editing.",
          "usage": "protocol-cartoon template-export PROTOCOL_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gibson preview",
+         "summary": "Preview one destination-first Gibson plan and emit overlaps, primers, validation findings, and cartoon bindings.",
+         "usage": "gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]"
       },
       {
          "aliases": [],

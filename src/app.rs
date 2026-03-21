@@ -47,6 +47,12 @@ use crate::{
         parse_shell_line,
     },
     enzymes,
+    gibson_planning::{
+        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonPlanAssemblyMember,
+        GibsonPlanDesignTargets, GibsonPlanDestination, GibsonPlanEndStrategy, GibsonPlanFragment,
+        GibsonPlanJunction, GibsonPlanOpening, GibsonPlanOverlapPartition, GibsonPlanProduct,
+        GibsonPlanUniquenessChecks, GibsonPlanValidationPolicy,
+    },
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
@@ -55,6 +61,10 @@ use crate::{
         PreparedGenomeInspection,
     },
     icons::APP_ICON,
+    protocol_cartoon::{
+        ProtocolCartoonKind, protocol_cartoon_template_for_kind,
+        render_protocol_cartoon_spec_svg, resolve_protocol_cartoon_template_with_bindings,
+    },
     resource_sync,
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
@@ -653,9 +663,27 @@ pub struct GENtleApp {
     genome_blast_selected_result: usize,
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
+    show_gibson_dialog: bool,
     show_planning_dialog: bool,
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
+    gibson_destination_seq_id: String,
+    gibson_opening_mode: GibsonUiOpeningMode,
+    gibson_opening_start_0based: String,
+    gibson_opening_end_0based_exclusive: String,
+    gibson_insert_seq_id: String,
+    gibson_insert_orientation: GibsonUiInsertOrientation,
+    gibson_overlap_bp_min: String,
+    gibson_overlap_bp_max: String,
+    gibson_minimum_overlap_tm_celsius: String,
+    gibson_priming_tm_min_celsius: String,
+    gibson_priming_tm_max_celsius: String,
+    gibson_priming_length_min_bp: String,
+    gibson_priming_length_max_bp: String,
+    gibson_output_id_hint: String,
+    gibson_status: String,
+    gibson_preview_output: Option<GibsonAssemblyPreview>,
+    gibson_preview_svg_uri: String,
     genome_track_seq_id: String,
     genome_track_source_selection: GenomeTrackSourceSelection,
     genome_track_path: String,
@@ -1573,6 +1601,50 @@ impl RoutineAssistantStage {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GibsonUiOpeningMode {
+    ExistingTermini,
+    DefinedSite,
+}
+
+impl GibsonUiOpeningMode {
+    fn as_plan_mode(self) -> &'static str {
+        match self {
+            Self::ExistingTermini => "existing_termini",
+            Self::DefinedSite => "defined_site",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::ExistingTermini => "Use existing termini",
+            Self::DefinedSite => "Defined opening",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GibsonUiInsertOrientation {
+    Forward,
+    Reverse,
+}
+
+impl GibsonUiInsertOrientation {
+    fn as_plan_orientation(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::Reverse => "reverse",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Forward => "Forward",
+            Self::Reverse => "Reverse",
+        }
+    }
+}
+
 #[derive(Clone)]
 struct OpenWindowEntry {
     native_menu_key: u64,
@@ -1601,6 +1673,7 @@ enum CommandPaletteAction {
     OpenRetrieveGenome,
     OpenBlastGenome,
     OpenGenomeTracks,
+    OpenGibson,
     OpenPlanning,
     OpenRoutineAssistant,
     OpenAgentAssistant,
@@ -1832,9 +1905,27 @@ impl Default for GENtleApp {
             genome_blast_import_track_name: "blast_hits".to_string(),
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
+            show_gibson_dialog: false,
             show_planning_dialog: false,
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
+            gibson_destination_seq_id: String::new(),
+            gibson_opening_mode: GibsonUiOpeningMode::DefinedSite,
+            gibson_opening_start_0based: String::new(),
+            gibson_opening_end_0based_exclusive: String::new(),
+            gibson_insert_seq_id: String::new(),
+            gibson_insert_orientation: GibsonUiInsertOrientation::Forward,
+            gibson_overlap_bp_min: "20".to_string(),
+            gibson_overlap_bp_max: "40".to_string(),
+            gibson_minimum_overlap_tm_celsius: "60.0".to_string(),
+            gibson_priming_tm_min_celsius: "58.0".to_string(),
+            gibson_priming_tm_max_celsius: "68.0".to_string(),
+            gibson_priming_length_min_bp: "18".to_string(),
+            gibson_priming_length_max_bp: "35".to_string(),
+            gibson_output_id_hint: String::new(),
+            gibson_status: String::new(),
+            gibson_preview_output: None,
+            gibson_preview_svg_uri: String::new(),
             genome_track_seq_id: String::new(),
             genome_track_source_selection: GenomeTrackSourceSelection::Auto,
             genome_track_path: String::new(),
@@ -1954,6 +2045,10 @@ impl GENtleApp {
 
     fn bed_track_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle BED Tracks Viewport")
+    }
+
+    fn gibson_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Gibson Viewport")
     }
 
     fn planning_viewport_id() -> ViewportId {
@@ -4290,6 +4385,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenomeTracks,
             },
             CommandPaletteEntry {
+                title: "Gibson".to_string(),
+                detail: "Plan one destination-first Gibson assembly with cartoon preview.".to_string(),
+                keywords: "gibson cloning overlaps primers cartoon".to_string(),
+                action: CommandPaletteAction::OpenGibson,
+            },
+            CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
@@ -4394,6 +4495,7 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
             CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
+            CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
@@ -4644,6 +4746,8 @@ Error: `{err}`"
             "BLAST Genome focus acquisition"
         } else if viewport_id == Self::bed_track_viewport_id() {
             "Track Import focus acquisition"
+        } else if viewport_id == Self::gibson_viewport_id() {
+            "Gibson focus acquisition"
         } else if viewport_id == Self::planning_viewport_id() {
             "Planning focus acquisition"
         } else if viewport_id == Self::routine_assistant_viewport_id() {
@@ -5208,10 +5312,19 @@ Error: `{err}`"
         self.genome_blast_selected_result = 0;
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
+        self.show_gibson_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.show_agent_assistant_dialog = false;
         self.show_uniprot_dialog = false;
         self.show_genbank_dialog = false;
+        self.gibson_destination_seq_id.clear();
+        self.gibson_opening_start_0based.clear();
+        self.gibson_opening_end_0based_exclusive.clear();
+        self.gibson_insert_seq_id.clear();
+        self.gibson_output_id_hint.clear();
+        self.gibson_status.clear();
+        self.gibson_preview_output = None;
+        self.gibson_preview_svg_uri.clear();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -5831,6 +5944,60 @@ Error: `{err}`"
     fn open_genome_bed_track_dialog(&mut self) {
         self.load_bed_track_subscriptions_from_state();
         self.show_genome_bed_track_dialog = true;
+    }
+
+    fn active_dna_window_context(&self) -> Option<(String, Option<(usize, usize)>)> {
+        let active_key = self.active_window_menu_key?;
+        let viewport_id = *self.native_window_key_to_viewport.get(&active_key)?;
+        let window = self.windows.get(&viewport_id)?;
+        let guard = window.read().ok()?;
+        Some((guard.sequence_id()?, guard.selection_range_0based()))
+    }
+
+    fn prefill_gibson_from_active_context(&mut self) {
+        let active_context = self.active_dna_window_context();
+        if self.gibson_destination_seq_id.trim().is_empty() {
+            if let Some((seq_id, _)) = active_context.as_ref() {
+                self.gibson_destination_seq_id = seq_id.clone();
+            } else if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
+                self.gibson_destination_seq_id = seq_id.clone();
+            }
+        }
+        if self.gibson_insert_seq_id.trim().is_empty() {
+            self.gibson_insert_seq_id = self
+                .project_sequence_ids_for_blast()
+                .into_iter()
+                .find(|seq_id| seq_id != &self.gibson_destination_seq_id)
+                .unwrap_or_default();
+        }
+        if let Some((active_seq_id, Some((start, end)))) = active_context {
+            if active_seq_id == self.gibson_destination_seq_id
+                && self.gibson_opening_start_0based.trim().is_empty()
+                && self.gibson_opening_end_0based_exclusive.trim().is_empty()
+            {
+                self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+                self.gibson_opening_start_0based = start.to_string();
+                self.gibson_opening_end_0based_exclusive = end.to_string();
+            }
+        }
+        if self.gibson_output_id_hint.trim().is_empty()
+            && !self.gibson_destination_seq_id.trim().is_empty()
+            && !self.gibson_insert_seq_id.trim().is_empty()
+        {
+            self.gibson_output_id_hint = format!(
+                "{}_with_{}",
+                self.gibson_destination_seq_id, self.gibson_insert_seq_id
+            );
+        }
+    }
+
+    fn open_gibson_dialog(&mut self) {
+        if self.show_gibson_dialog {
+            self.queue_focus_viewport(Self::gibson_viewport_id());
+            return;
+        }
+        self.prefill_gibson_from_active_context();
+        self.show_gibson_dialog = true;
     }
 
     fn open_planning_dialog(&mut self) {
@@ -12695,6 +12862,899 @@ Error: `{err}`"
         });
     }
 
+    fn build_gibson_plan_from_ui(&self) -> std::result::Result<GibsonAssemblyPlan, String> {
+        fn parse_usize_field(label: &str, raw: &str) -> std::result::Result<usize, String> {
+            raw.trim()
+                .parse::<usize>()
+                .map_err(|e| format!("Could not parse {label} '{raw}': {e}"))
+        }
+
+        fn parse_f64_field(label: &str, raw: &str) -> std::result::Result<f64, String> {
+            raw.trim()
+                .parse::<f64>()
+                .map_err(|e| format!("Could not parse {label} '{raw}': {e}"))
+        }
+
+        let destination_seq_id = self.gibson_destination_seq_id.trim();
+        if destination_seq_id.is_empty() {
+            return Err("Choose a destination sequence for Gibson planning".to_string());
+        }
+        let insert_seq_id = self.gibson_insert_seq_id.trim();
+        if insert_seq_id.is_empty() {
+            return Err("Choose one insert sequence for Gibson planning".to_string());
+        }
+        if destination_seq_id == insert_seq_id {
+            return Err(
+                "Destination and insert sequence ids must differ for Gibson specialist v1"
+                    .to_string(),
+            );
+        }
+
+        let destination_topology = {
+            let engine = self.engine.read().expect("Engine lock poisoned");
+            let destination = engine
+                .state()
+                .sequences
+                .get(destination_seq_id)
+                .ok_or_else(|| {
+                    format!("Destination sequence '{destination_seq_id}' does not exist in state")
+                })?;
+            if destination.is_circular() {
+                "circular".to_string()
+            } else {
+                "linear".to_string()
+            }
+        };
+
+        let (opening_start, opening_end) = match self.gibson_opening_mode {
+            GibsonUiOpeningMode::ExistingTermini => (None, None),
+            GibsonUiOpeningMode::DefinedSite => (
+                Some(parse_usize_field(
+                    "opening start_0based",
+                    &self.gibson_opening_start_0based,
+                )?),
+                Some(parse_usize_field(
+                    "opening end_0based_exclusive",
+                    &self.gibson_opening_end_0based_exclusive,
+                )?),
+            ),
+        };
+
+        let overlap_bp_min = parse_usize_field("overlap_bp_min", &self.gibson_overlap_bp_min)?;
+        let overlap_bp_max = parse_usize_field("overlap_bp_max", &self.gibson_overlap_bp_max)?;
+        let priming_length_min_bp =
+            parse_usize_field("priming_segment_min_length_bp", &self.gibson_priming_length_min_bp)?;
+        let priming_length_max_bp =
+            parse_usize_field("priming_segment_max_length_bp", &self.gibson_priming_length_max_bp)?;
+        if overlap_bp_min > overlap_bp_max {
+            return Err(format!(
+                "overlap bp minimum {} exceeds maximum {}",
+                overlap_bp_min, overlap_bp_max
+            ));
+        }
+        if priming_length_min_bp > priming_length_max_bp {
+            return Err(format!(
+                "priming length minimum {} exceeds maximum {}",
+                priming_length_min_bp, priming_length_max_bp
+            ));
+        }
+        let minimum_overlap_tm_celsius = parse_f64_field(
+            "minimum_overlap_tm_celsius",
+            &self.gibson_minimum_overlap_tm_celsius,
+        )?;
+        let priming_tm_min_celsius =
+            parse_f64_field("priming_segment_tm_min_celsius", &self.gibson_priming_tm_min_celsius)?;
+        let priming_tm_max_celsius =
+            parse_f64_field("priming_segment_tm_max_celsius", &self.gibson_priming_tm_max_celsius)?;
+        if priming_tm_min_celsius > priming_tm_max_celsius {
+            return Err(format!(
+                "priming Tm minimum {:.1} exceeds maximum {:.1}",
+                priming_tm_min_celsius, priming_tm_max_celsius
+            ));
+        }
+        let output_id_hint = if self.gibson_output_id_hint.trim().is_empty() {
+            format!("{destination_seq_id}_with_{insert_seq_id}")
+        } else {
+            self.gibson_output_id_hint.trim().to_string()
+        };
+
+        Ok(GibsonAssemblyPlan {
+            schema: "gentle.gibson_assembly_plan.v1".to_string(),
+            id: format!("gibson_plan_{destination_seq_id}_{insert_seq_id}"),
+            title: format!("Gibson assembly plan: {destination_seq_id} + {insert_seq_id}"),
+            summary: "Destination-first single-insert Gibson preview from specialist UI"
+                .to_string(),
+            destination: GibsonPlanDestination {
+                seq_id: destination_seq_id.to_string(),
+                topology_before_opening: destination_topology.clone(),
+                opening: GibsonPlanOpening {
+                    mode: self.gibson_opening_mode.as_plan_mode().to_string(),
+                    label: match self.gibson_opening_mode {
+                        GibsonUiOpeningMode::ExistingTermini => "existing termini".to_string(),
+                        GibsonUiOpeningMode::DefinedSite => "selected opening".to_string(),
+                    },
+                    start_0based: opening_start,
+                    end_0based_exclusive: opening_end,
+                    left_end_id: "dest_left".to_string(),
+                    right_end_id: "dest_right".to_string(),
+                    uniqueness_requirement: "must_be_unambiguous".to_string(),
+                },
+            },
+            product: GibsonPlanProduct {
+                topology: destination_topology,
+                output_id_hint,
+            },
+            fragments: vec![GibsonPlanFragment {
+                id: "insert_1".to_string(),
+                seq_id: insert_seq_id.to_string(),
+                role: "insert".to_string(),
+                orientation: self.gibson_insert_orientation.as_plan_orientation().to_string(),
+                left_end_strategy: Some(GibsonPlanEndStrategy {
+                    mode: "primer_added_overlap".to_string(),
+                    target_junction_id: "junction_left".to_string(),
+                }),
+                right_end_strategy: Some(GibsonPlanEndStrategy {
+                    mode: "primer_added_overlap".to_string(),
+                    target_junction_id: "junction_right".to_string(),
+                }),
+                source_span_1based: None,
+            }],
+            assembly_order: vec![
+                GibsonPlanAssemblyMember {
+                    kind: "destination_end".to_string(),
+                    id: "dest_left".to_string(),
+                },
+                GibsonPlanAssemblyMember {
+                    kind: "fragment".to_string(),
+                    id: "insert_1".to_string(),
+                },
+                GibsonPlanAssemblyMember {
+                    kind: "destination_end".to_string(),
+                    id: "dest_right".to_string(),
+                },
+            ],
+            junctions: vec![
+                GibsonPlanJunction {
+                    id: "junction_left".to_string(),
+                    left_member: GibsonPlanAssemblyMember {
+                        kind: "destination_end".to_string(),
+                        id: "dest_left".to_string(),
+                    },
+                    right_member: GibsonPlanAssemblyMember {
+                        kind: "fragment".to_string(),
+                        id: "insert_1".to_string(),
+                    },
+                    required_overlap_bp: None,
+                    overlap_partition: Some(GibsonPlanOverlapPartition {
+                        left_member_bp: 0,
+                        right_member_bp: 0,
+                    }),
+                    overlap_source: "derive_from_destination_left_flank".to_string(),
+                    distinct_from: vec!["junction_right".to_string()],
+                },
+                GibsonPlanJunction {
+                    id: "junction_right".to_string(),
+                    left_member: GibsonPlanAssemblyMember {
+                        kind: "fragment".to_string(),
+                        id: "insert_1".to_string(),
+                    },
+                    right_member: GibsonPlanAssemblyMember {
+                        kind: "destination_end".to_string(),
+                        id: "dest_right".to_string(),
+                    },
+                    required_overlap_bp: None,
+                    overlap_partition: Some(GibsonPlanOverlapPartition {
+                        left_member_bp: 0,
+                        right_member_bp: 0,
+                    }),
+                    overlap_source: "derive_from_destination_right_flank".to_string(),
+                    distinct_from: vec!["junction_left".to_string()],
+                },
+            ],
+            validation_policy: GibsonPlanValidationPolicy {
+                require_unambiguous_destination_opening: true,
+                require_distinct_terminal_junctions: true,
+                adjacency_overlap_mismatch: "error".to_string(),
+                design_targets: GibsonPlanDesignTargets {
+                    overlap_bp_min,
+                    overlap_bp_max,
+                    minimum_overlap_tm_celsius,
+                    priming_segment_tm_min_celsius: priming_tm_min_celsius,
+                    priming_segment_tm_max_celsius: priming_tm_max_celsius,
+                    priming_segment_min_length_bp: priming_length_min_bp,
+                    priming_segment_max_length_bp: priming_length_max_bp,
+                    max_anneal_hits: 1,
+                },
+                uniqueness_checks: GibsonPlanUniquenessChecks {
+                    destination_context: "warn".to_string(),
+                    participating_fragments: "warn".to_string(),
+                    reference_contexts: vec![],
+                },
+            },
+            derived_design: None,
+        })
+    }
+
+    fn render_gibson_preview_svg(
+        &mut self,
+        preview: &GibsonAssemblyPreview,
+    ) -> std::result::Result<(), String> {
+        let protocol = ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(
+            || {
+                format!(
+                    "Unknown protocol cartoon id '{}' in Gibson preview",
+                    preview.cartoon.protocol_id
+                )
+            },
+        )?;
+        let template = protocol_cartoon_template_for_kind(&protocol);
+        let spec =
+            resolve_protocol_cartoon_template_with_bindings(&template, &preview.cartoon.bindings)?;
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        let path = env::temp_dir().join(format!(
+            "gentle_gibson_preview_{}.svg",
+            now_unix_ms_u64()
+        ));
+        fs::write(&path, svg).map_err(|e| {
+            format!(
+                "Could not write temporary Gibson preview SVG '{}': {e}",
+                path.display()
+            )
+        })?;
+        self.gibson_preview_svg_uri = path.display().to_string();
+        Ok(())
+    }
+
+    fn run_gibson_preview(&mut self) {
+        let plan = match self.build_gibson_plan_from_ui() {
+            Ok(plan) => plan,
+            Err(err) => {
+                self.gibson_status = format!("Gibson plan error: {err}");
+                self.gibson_preview_output = None;
+                self.gibson_preview_svg_uri.clear();
+                return;
+            }
+        };
+        let request_json = match serde_json::to_string_pretty(&plan) {
+            Ok(text) => text,
+            Err(err) => {
+                self.gibson_status = format!("Could not serialize Gibson plan JSON: {err}");
+                self.gibson_preview_output = None;
+                self.gibson_preview_svg_uri.clear();
+                return;
+            }
+        };
+        let command = ShellCommand::GibsonPreview {
+            request_json,
+            output_path: None,
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => match serde_json::from_value::<GibsonAssemblyPreview>(output) {
+                Ok(preview) => {
+                    self.gibson_status = if preview.can_execute {
+                        format!(
+                            "Gibson preview ready: {} junction(s), {} primer suggestion(s)",
+                            preview.resolved_junctions.len(),
+                            preview.primer_suggestions.len()
+                        )
+                    } else {
+                        format!(
+                            "Gibson preview produced {} blocking error(s)",
+                            preview.errors.len()
+                        )
+                    };
+                    self.gibson_preview_output = Some(preview.clone());
+                    if let Err(err) = self.render_gibson_preview_svg(&preview) {
+                        let base_status = self.gibson_status.clone();
+                        self.gibson_status = format!(
+                            "{} | preview SVG render note: {err}",
+                            base_status
+                        );
+                    }
+                }
+                Err(err) => {
+                    self.gibson_status =
+                        format!("Could not parse Gibson preview response JSON: {err}");
+                    self.gibson_preview_output = None;
+                    self.gibson_preview_svg_uri.clear();
+                }
+            },
+            Err(err) => {
+                self.gibson_status = format!("Gibson preview failed: {err}");
+                self.gibson_preview_output = None;
+                self.gibson_preview_svg_uri.clear();
+            }
+        }
+    }
+
+    fn export_gibson_plan_json(&mut self) {
+        let plan = match self.build_gibson_plan_from_ui() {
+            Ok(plan) => plan,
+            Err(err) => {
+                self.gibson_status = format!("Gibson export blocked: {err}");
+                return;
+            }
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("gibson.plan.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            self.gibson_status = "Gibson plan export canceled".to_string();
+            return;
+        };
+        let mut text = match serde_json::to_string_pretty(&plan) {
+            Ok(text) => text,
+            Err(err) => {
+                self.gibson_status = format!("Could not serialize Gibson plan JSON: {err}");
+                return;
+            }
+        };
+        text.push('\n');
+        match fs::write(&path, text) {
+            Ok(()) => {
+                self.gibson_status = format!("Exported Gibson plan JSON to '{}'", path.display())
+            }
+            Err(err) => {
+                self.gibson_status = format!(
+                    "Could not export Gibson plan JSON '{}': {err}",
+                    path.display()
+                )
+            }
+        }
+    }
+
+    fn export_gibson_preview_json(&mut self) {
+        let Some(preview) = self.gibson_preview_output.as_ref() else {
+            self.gibson_status = "Run Gibson preview before exporting preview JSON".to_string();
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("gibson.preview.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            self.gibson_status = "Gibson preview export canceled".to_string();
+            return;
+        };
+        let mut text = match serde_json::to_string_pretty(preview) {
+            Ok(text) => text,
+            Err(err) => {
+                self.gibson_status = format!("Could not serialize Gibson preview JSON: {err}");
+                return;
+            }
+        };
+        text.push('\n');
+        match fs::write(&path, text) {
+            Ok(()) => {
+                self.gibson_status =
+                    format!("Exported Gibson preview JSON to '{}'", path.display())
+            }
+            Err(err) => {
+                self.gibson_status = format!(
+                    "Could not export Gibson preview JSON '{}': {err}",
+                    path.display()
+                )
+            }
+        }
+    }
+
+    fn export_gibson_primer_summary(&mut self) {
+        let Some(preview) = self.gibson_preview_output.as_ref() else {
+            self.gibson_status = "Run Gibson preview before exporting primer summary".to_string();
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("gibson.primers.txt")
+            .add_filter("Text", &["txt"])
+            .save_file()
+        else {
+            self.gibson_status = "Gibson primer export canceled".to_string();
+            return;
+        };
+        let mut text = String::new();
+        for primer in &preview.primer_suggestions {
+            text.push_str(&format!("{}\n", primer.primer_id));
+            text.push_str(&format!("  full: {}\n", primer.full_sequence));
+            text.push_str(&format!(
+                "  5' overlap: {} ({} bp, {:.1} C)\n",
+                primer.overlap_5prime.sequence,
+                primer.overlap_5prime.length_bp,
+                primer.overlap_5prime.tm_celsius
+            ));
+            text.push_str(&format!(
+                "  3' priming: {} ({} bp, {:.1} C, hits={})\n\n",
+                primer.priming_3prime.sequence,
+                primer.priming_3prime.length_bp,
+                primer.priming_3prime.tm_celsius,
+                primer.priming_3prime.anneal_hits
+            ));
+        }
+        match fs::write(&path, text) {
+            Ok(()) => {
+                self.gibson_status = format!("Exported Gibson primer summary to '{}'", path.display())
+            }
+            Err(err) => {
+                self.gibson_status = format!(
+                    "Could not export Gibson primer summary '{}': {err}",
+                    path.display()
+                )
+            }
+        }
+    }
+
+    fn export_gibson_cartoon_svg(&mut self) {
+        let Some(preview) = self.gibson_preview_output.as_ref() else {
+            self.gibson_status = "Run Gibson preview before exporting cartoon SVG".to_string();
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("gibson.preview.svg")
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            self.gibson_status = "Gibson cartoon export canceled".to_string();
+            return;
+        };
+        let protocol = match ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id) {
+            Some(protocol) => protocol,
+            None => {
+                self.gibson_status = format!(
+                    "Unknown protocol cartoon id '{}' in Gibson preview",
+                    preview.cartoon.protocol_id
+                );
+                return;
+            }
+        };
+        let template = protocol_cartoon_template_for_kind(&protocol);
+        let spec = match resolve_protocol_cartoon_template_with_bindings(
+            &template,
+            &preview.cartoon.bindings,
+        ) {
+            Ok(spec) => spec,
+            Err(err) => {
+                self.gibson_status = format!("Could not resolve Gibson cartoon bindings: {err}");
+                return;
+            }
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.gibson_status = format!("Exported Gibson cartoon SVG to '{}'", path.display())
+            }
+            Err(err) => {
+                self.gibson_status = format!(
+                    "Could not export Gibson cartoon SVG '{}': {err}",
+                    path.display()
+                )
+            }
+        }
+    }
+
+    fn handoff_gibson_preview_to_routine_assistant(&mut self) {
+        let Some(preview) = self.gibson_preview_output.clone() else {
+            self.gibson_status = "Run Gibson preview before opening Routine Assistant handoff"
+                .to_string();
+            return;
+        };
+        self.open_routine_assistant_dialog();
+        self.refresh_routine_assistant_candidates();
+        self.routine_assistant_goal = "Gibson assembly".to_string();
+        self.routine_assistant_query = "gibson".to_string();
+        self.routine_assistant_selected_routine_id = preview.routine_handoff.routine_id.clone();
+        self.routine_assistant_compare_routine_id.clear();
+        self.routine_assistant_bindings = preview.routine_handoff.bindings.clone();
+        self.routine_assistant_explain_output = None;
+        self.routine_assistant_compare_output = None;
+        self.routine_assistant_preflight_output = None;
+        self.routine_assistant_execute_output = None;
+        if preview.routine_handoff.supported {
+            self.routine_assistant_stage = RoutineAssistantStage::Parameters;
+            self.routine_assistant_status = format!(
+                "Gibson preview handed off to '{}' with {} bound input(s)",
+                preview.routine_handoff.routine_id,
+                preview.routine_handoff.bindings.len()
+            );
+        } else {
+            self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
+            self.routine_assistant_status = preview
+                .routine_handoff
+                .reason
+                .unwrap_or_else(|| "Gibson preview is currently preview-only for this opening mode"
+                    .to_string());
+        }
+    }
+
+    fn render_gibson_contents(&mut self, ui: &mut Ui) {
+        self.render_specialist_window_nav(ui);
+        ui.label(
+            "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
+        );
+        ui.small(
+            "This specialist stays Gibson-specific on purpose: overlap/Tm targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
+        );
+
+        let sequence_ids = self.project_sequence_ids_for_blast();
+        let destination_topology = {
+            let destination_id = self.gibson_destination_seq_id.trim().to_string();
+            self.engine
+                .read()
+                .ok()
+                .and_then(|engine| engine.state().sequences.get(&destination_id).cloned())
+                .map(|dna| {
+                    format!(
+                        "{} | {} bp",
+                        if dna.is_circular() { "circular" } else { "linear" },
+                        dna.len()
+                    )
+                })
+                .unwrap_or_else(|| "not found".to_string())
+        };
+
+        ui.separator();
+        ui.heading("Destination");
+        ui.horizontal(|ui| {
+            ui.label("sequence");
+            egui::ComboBox::from_id_salt("gibson_destination_seq_id")
+                .selected_text(if self.gibson_destination_seq_id.trim().is_empty() {
+                    "(choose destination)"
+                } else {
+                    self.gibson_destination_seq_id.as_str()
+                })
+                .show_ui(ui, |ui| {
+                    for seq_id in &sequence_ids {
+                        ui.selectable_value(
+                            &mut self.gibson_destination_seq_id,
+                            seq_id.clone(),
+                            seq_id,
+                        );
+                    }
+                });
+            ui.text_edit_singleline(&mut self.gibson_destination_seq_id);
+            if ui
+                .button("Use Active Sequence")
+                .on_hover_text("Fill destination from the currently focused DNA window")
+                .clicked()
+            {
+                if let Some((seq_id, _)) = self.active_dna_window_context() {
+                    self.gibson_destination_seq_id = seq_id;
+                } else {
+                    self.gibson_status =
+                        "No active DNA window found for Gibson destination prefill".to_string();
+                }
+            }
+        });
+        ui.small(format!("topology: {destination_topology}"));
+        ui.horizontal(|ui| {
+            ui.label("opening");
+            egui::ComboBox::from_id_salt("gibson_opening_mode")
+                .selected_text(self.gibson_opening_mode.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.gibson_opening_mode,
+                        GibsonUiOpeningMode::DefinedSite,
+                        GibsonUiOpeningMode::DefinedSite.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.gibson_opening_mode,
+                        GibsonUiOpeningMode::ExistingTermini,
+                        GibsonUiOpeningMode::ExistingTermini.label(),
+                    );
+                });
+            if ui
+                .button("Use Active Selection")
+                .on_hover_text(
+                    "Fill opening start/end from the current selection in the focused DNA window",
+                )
+                .clicked()
+            {
+                if let Some((seq_id, Some((start, end)))) = self.active_dna_window_context() {
+                    self.gibson_destination_seq_id = seq_id;
+                    self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+                    self.gibson_opening_start_0based = start.to_string();
+                    self.gibson_opening_end_0based_exclusive = end.to_string();
+                } else {
+                    self.gibson_status = "No active DNA selection found for Gibson opening prefill"
+                        .to_string();
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("start_0based");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_opening_start_0based)
+                    .desired_width(100.0),
+            );
+            ui.label("end_0based_exclusive");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_opening_end_0based_exclusive)
+                    .desired_width(120.0),
+            );
+        });
+
+        ui.separator();
+        ui.heading("Insert");
+        ui.horizontal(|ui| {
+            ui.label("sequence");
+            egui::ComboBox::from_id_salt("gibson_insert_seq_id")
+                .selected_text(if self.gibson_insert_seq_id.trim().is_empty() {
+                    "(choose insert)"
+                } else {
+                    self.gibson_insert_seq_id.as_str()
+                })
+                .show_ui(ui, |ui| {
+                    for seq_id in &sequence_ids {
+                        if seq_id == &self.gibson_destination_seq_id {
+                            continue;
+                        }
+                        ui.selectable_value(&mut self.gibson_insert_seq_id, seq_id.clone(), seq_id);
+                    }
+                });
+            ui.text_edit_singleline(&mut self.gibson_insert_seq_id);
+            ui.label("orientation");
+            egui::ComboBox::from_id_salt("gibson_insert_orientation")
+                .selected_text(self.gibson_insert_orientation.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.gibson_insert_orientation,
+                        GibsonUiInsertOrientation::Forward,
+                        GibsonUiInsertOrientation::Forward.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.gibson_insert_orientation,
+                        GibsonUiInsertOrientation::Reverse,
+                        GibsonUiInsertOrientation::Reverse.label(),
+                    );
+                });
+        });
+
+        ui.separator();
+        ui.heading("Design Targets");
+        ui.horizontal(|ui| {
+            ui.label("overlap min/max bp");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
+            );
+            ui.label("minimum overlap Tm C");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
+                    .desired_width(80.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("priming Tm window C");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_priming_tm_min_celsius)
+                    .desired_width(80.0),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_priming_tm_max_celsius)
+                    .desired_width(80.0),
+            );
+            ui.label("priming length bp");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_priming_length_min_bp)
+                    .desired_width(60.0),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_priming_length_max_bp)
+                    .desired_width(60.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("output id hint");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.gibson_output_id_hint)
+                    .desired_width(f32::INFINITY),
+            );
+        });
+
+        ui.separator();
+        ui.heading("Review");
+        ui.horizontal(|ui| {
+            if ui
+                .button("Preview Gibson Plan")
+                .on_hover_text(
+                    "Resolve overlaps, derive Gibson primer suggestions, validate, and refresh the cartoon preview",
+                )
+                .clicked()
+            {
+                self.run_gibson_preview();
+            }
+            if ui
+                .button("Clear Preview")
+                .on_hover_text("Clear the current Gibson preview payload")
+                .clicked()
+            {
+                self.gibson_preview_output = None;
+                self.gibson_preview_svg_uri.clear();
+                self.gibson_status = "Cleared Gibson preview output".to_string();
+            }
+        });
+
+        if let Some(preview) = self.gibson_preview_output.clone() {
+            ui.small(format!(
+                "preview schema: {} | can_execute={}",
+                preview.schema, preview.can_execute
+            ));
+            if !preview.errors.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("blocking errors: {}", preview.errors.len()),
+                );
+                for row in &preview.errors {
+                    ui.small(format!("- {row}"));
+                }
+            }
+            if !preview.warnings.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(170, 120, 20),
+                    format!("warnings: {}", preview.warnings.len()),
+                );
+                for row in &preview.warnings {
+                    ui.small(format!("- {row}"));
+                }
+            }
+            if !preview.notes.is_empty() {
+                ui.small("notes");
+                for row in &preview.notes {
+                    ui.small(format!("- {row}"));
+                }
+            }
+
+            ui.separator();
+            ui.label("Resolved junctions");
+            egui::Grid::new("gibson_preview_junctions")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("junction");
+                    ui.strong("members");
+                    ui.strong("overlap");
+                    ui.strong("Tm C");
+                    ui.end_row();
+                    for junction in &preview.resolved_junctions {
+                        ui.monospace(&junction.junction_id);
+                        ui.label(format!(
+                            "{} -> {}",
+                            junction.left_member_id, junction.right_member_id
+                        ));
+                        ui.monospace(format!(
+                            "{} bp | {}",
+                            junction.overlap_bp, junction.overlap_sequence
+                        ));
+                        ui.label(format!("{:.1}", junction.overlap_tm_celsius));
+                        ui.end_row();
+                    }
+                });
+
+            ui.separator();
+            ui.label("Primer suggestions");
+            egui::Grid::new("gibson_preview_primers")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("primer");
+                    ui.strong("full sequence");
+                    ui.strong("5' overlap");
+                    ui.strong("3' priming");
+                    ui.end_row();
+                    for primer in &preview.primer_suggestions {
+                        ui.monospace(&primer.primer_id);
+                        ui.monospace(&primer.full_sequence);
+                        ui.small(format!(
+                            "{} ({} bp, {:.1} C)",
+                            primer.overlap_5prime.sequence,
+                            primer.overlap_5prime.length_bp,
+                            primer.overlap_5prime.tm_celsius
+                        ));
+                        ui.small(format!(
+                            "{} ({} bp, {:.1} C, hits={})",
+                            primer.priming_3prime.sequence,
+                            primer.priming_3prime.length_bp,
+                            primer.priming_3prime.tm_celsius,
+                            primer.priming_3prime.anneal_hits
+                        ));
+                        ui.end_row();
+                    }
+                });
+
+            ui.separator();
+            ui.label("Cartoon preview");
+            if !self.gibson_preview_svg_uri.trim().is_empty() {
+                ui.add(
+                    egui::Image::from_uri(self.gibson_preview_svg_uri.clone())
+                        .max_width(ui.available_width())
+                        .max_height(360.0)
+                        .shrink_to_fit(),
+                );
+            } else {
+                ui.small("No in-window SVG preview is currently loaded.");
+            }
+        } else {
+            ui.small("No Gibson preview yet. Use 'Preview Gibson Plan' to resolve junctions, primers, and cartoon bindings.");
+        }
+
+        ui.separator();
+        ui.heading("Outputs");
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Export Plan JSON...")
+                .on_hover_text("Export the canonical Gibson plan JSON currently implied by this window")
+                .clicked()
+            {
+                self.export_gibson_plan_json();
+            }
+            if ui
+                .button("Export Preview JSON...")
+                .on_hover_text("Export the resolved Gibson preview payload")
+                .clicked()
+            {
+                self.export_gibson_preview_json();
+            }
+            if ui
+                .button("Export Primer Summary...")
+                .on_hover_text("Export a text summary of the current Gibson primer suggestions")
+                .clicked()
+            {
+                self.export_gibson_primer_summary();
+            }
+            if ui
+                .button("Export Cartoon SVG...")
+                .on_hover_text("Export the currently resolved Gibson cartoon as SVG")
+                .clicked()
+            {
+                self.export_gibson_cartoon_svg();
+            }
+            if ui
+                .button("Open in Routine Assistant")
+                .on_hover_text("Hand the current Gibson preview into the existing routine workflow when possible")
+                .clicked()
+            {
+                self.handoff_gibson_preview_to_routine_assistant();
+            }
+        });
+
+        if !self.gibson_status.trim().is_empty() {
+            ui.separator();
+            ui.monospace(self.gibson_status.clone());
+        }
+    }
+
+    fn render_gibson_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_gibson_dialog {
+            return;
+        }
+        let mut open = self.show_gibson_dialog;
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Gibson")
+            .with_inner_size([1040.0, 820.0])
+            .with_min_inner_size([760.0, 560.0]);
+        ctx.show_viewport_immediate(Self::gibson_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::gibson_viewport_id());
+            if class == egui::ViewportClass::Embedded {
+                egui::Window::new("Gibson")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(1040.0, 820.0))
+                    .show(ctx, |ui| self.render_gibson_contents(ui));
+            } else {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.render_gibson_contents(ui);
+                });
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_gibson_dialog = open;
+    }
+
     fn render_planning_contents(&mut self, ui: &mut Ui) {
         self.render_specialist_window_nav(ui);
         ui.label(
@@ -16142,7 +17202,16 @@ Error: `{err}`"
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
+        self.show_gibson_dialog = false;
         self.show_routine_assistant_dialog = false;
+        self.gibson_destination_seq_id.clear();
+        self.gibson_opening_start_0based.clear();
+        self.gibson_opening_end_0based_exclusive.clear();
+        self.gibson_insert_seq_id.clear();
+        self.gibson_output_id_hint.clear();
+        self.gibson_status.clear();
+        self.gibson_preview_output = None;
+        self.gibson_preview_svg_uri.clear();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -16473,6 +17542,15 @@ Error: `{err}`"
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
             });
         }
+        if self.show_gibson_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::gibson_viewport_id()),
+                viewport_id: Self::gibson_viewport_id(),
+                title: "Gibson".to_string(),
+                detail: "Destination-first Gibson planning with primer and cartoon preview"
+                    .to_string(),
+            });
+        }
         if self.show_planning_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::planning_viewport_id()),
@@ -16579,6 +17657,8 @@ Error: `{err}`"
             self.show_reference_genome_blast_dialog = true;
         } else if viewport_id == Self::bed_track_viewport_id() {
             self.show_genome_bed_track_dialog = true;
+        } else if viewport_id == Self::gibson_viewport_id() {
+            self.show_gibson_dialog = true;
         } else if viewport_id == Self::planning_viewport_id() {
             self.show_planning_dialog = true;
         } else if viewport_id == Self::routine_assistant_viewport_id() {
@@ -17059,6 +18139,16 @@ Error: `{err}`"
                 }
 
                 ui.separator();
+                if ui
+                    .button("Gibson...")
+                    .on_hover_text(
+                        "Open destination-first Gibson specialist window with overlap, primer, and cartoon preview",
+                    )
+                    .clicked()
+                {
+                    self.open_gibson_dialog();
+                    ui.close();
+                }
                 if ui
                     .button("Routine Assistant...")
                     .on_hover_text(
@@ -25884,6 +26974,7 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
+            self.render_gibson_dialog(ctx);
             self.render_planning_dialog(ctx);
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
@@ -27638,6 +28729,48 @@ mod tests {
     }
 
     #[test]
+    fn open_gibson_dialog_focuses_existing_window_without_resetting_state() {
+        let mut app = GENtleApp::default();
+        app.open_gibson_dialog();
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_status = "editing".to_string();
+
+        app.open_gibson_dialog();
+
+        assert!(app.show_gibson_dialog);
+        assert_eq!(app.gibson_destination_seq_id, "destination_vector");
+        assert_eq!(app.gibson_status, "editing");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::gibson_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_gibson_dialog_prefills_active_sequence() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "active_seq".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("active sequence"),
+        );
+        let viewport_id = egui::ViewportId::from_hash_of("gibson_prefill_seq");
+        let native_key = GENtleApp::native_menu_key_for_viewport(viewport_id);
+        app.windows.insert(
+            viewport_id,
+            Arc::new(RwLock::new(Window::new_dna_lazy(
+                "active_seq".to_string(),
+                app.engine.clone(),
+            ))),
+        );
+        app.native_window_key_to_viewport.insert(native_key, viewport_id);
+        app.active_window_menu_key = Some(native_key);
+
+        app.open_gibson_dialog();
+
+        assert_eq!(app.gibson_destination_seq_id, "active_seq");
+    }
+
+    #[test]
     fn open_reference_genome_retrieve_dialog_focuses_existing_window_without_resetting_state() {
         let mut app = GENtleApp::default();
         app.open_reference_genome_retrieve_dialog();
@@ -27820,6 +28953,13 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_gibson_entry() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(entries.iter().any(|entry| entry.title == "Gibson"));
+    }
+
+    #[test]
     fn execute_command_palette_action_opens_routine_assistant_dialog() {
         let mut app = GENtleApp::default();
         app.routine_assistant_candidates
@@ -27843,6 +28983,18 @@ mod tests {
         );
 
         assert!(app.show_planning_dialog);
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_gibson_dialog() {
+        let mut app = GENtleApp::default();
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenGibson,
+        );
+
+        assert!(app.show_gibson_dialog);
     }
 
     #[test]

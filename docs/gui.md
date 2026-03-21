@@ -562,6 +562,35 @@ Patterns menu:
       and auto-rebinds that routine input
   - export stage uses shared process artifact route:
     - `export-run-bundle OUTPUT.run_bundle.json`
+- `Patterns -> Gibson...`
+  - opens a dedicated destination-first Gibson specialist window for one
+    insert into one destination.
+  - sections:
+    1. `Destination`
+       - choose destination sequence
+       - choose `existing termini` or `defined opening`
+       - active DNA window pre-fills the destination by default when possible
+       - optionally fill opening coordinates from the active DNA selection
+    2. `Insert`
+       - choose one insert sequence and orientation
+    3. `Design Targets`
+       - Gibson-specific overlap bp range
+       - minimum overlap Tm
+       - priming-segment Tm window
+       - priming-segment length window
+    4. `Review`
+       - resolves terminal overlaps
+       - derives insert primer suggestions as `5' overlap + 3' priming`
+       - shows blocking errors, warnings, and the factual Gibson cartoon
+    5. `Outputs`
+       - export plan JSON
+       - export preview JSON
+       - export primer summary
+       - export cartoon SVG
+       - hand off to Routine Assistant when current execution paths can accept it
+  - uses the same shared preview command as CLI/shell:
+    - `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - deliberately does not embed the generic PCR/qPCR specialist UI
 - `Patterns -> Planning...`
   - opens a dedicated standalone `Planning` window for the planning meta-layer.
   - supports editing and applying:

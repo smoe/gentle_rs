@@ -9,6 +9,8 @@
     "opening": {
       "mode": "defined_site",
       "label": "vector insertion window",
+      "start_0based": 120,
+      "end_0based_exclusive": 126,
       "left_end_id": "dest_left",
       "right_end_id": "dest_right",
       "uniqueness_requirement": "must_be_unambiguous"
@@ -97,7 +99,12 @@
     "design_targets": {
       "overlap_bp_min": 20,
       "overlap_bp_max": 40,
-      "minimum_overlap_tm_celsius": 60.0
+      "minimum_overlap_tm_celsius": 60.0,
+      "priming_segment_tm_min_celsius": 58.0,
+      "priming_segment_tm_max_celsius": 68.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 35,
+      "max_anneal_hits": 1
     },
     "uniqueness_checks": {
       "destination_context": "warn",

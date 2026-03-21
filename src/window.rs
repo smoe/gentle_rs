@@ -54,6 +54,12 @@ impl Window {
         }
     }
 
+    pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::Dna(window) => window.selection_range_0based(),
+        }
+    }
+
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         match self {
             Self::Dna(window) => window.collect_open_auxiliary_window_entries(),

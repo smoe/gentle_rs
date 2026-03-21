@@ -1,12 +1,22 @@
-# Gibson Planning Draft Examples
+# Gibson Planning Examples
 
-This folder currently contains draft, non-executable examples for
+This folder contains canonical example payloads for
 `gentle.gibson_assembly_plan.v1`.
 
 Current examples:
 
 - `gibson_destination_first_single_insert.json`
 - `gibson_destination_first_multi_insert.json`
+
+Current status:
+
+- `gibson_destination_first_single_insert.json`
+  - matches the engine-consumed single-insert Gibson preview model
+  - becomes executable once the referenced `seq_id` values exist in the active
+    project state
+- `gibson_destination_first_multi_insert.json`
+  - remains a draft design-resource example for the future multi-fragment
+    expansion
 
 Purpose:
 
@@ -16,6 +26,4 @@ Purpose:
 - document one-sided versus split overlap selection at each junction
 - capture advisory setup guidance separately from hard assembly-junction logic
 - model Gibson primers explicitly as 5' overlap plus 3' gene-specific segments
-- provide canonical payloads for future routine/cartoon/primer-design work
-
-These are design resources, not engine-consumed schema fixtures yet.
+- provide canonical payloads for routine/cartoon/primer-design work

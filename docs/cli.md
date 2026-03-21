@@ -781,6 +781,7 @@ cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples
 cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/protocol_cartoon/demo_template.json
 cargo run --bin gentle_cli -- protocol-cartoon render-with-bindings docs/examples/protocol_cartoon/demo_template.json docs/examples/protocol_cartoon/demo_bindings.json demo.bound.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-export gibson.two_fragment gibson.template.json
+cargo run --bin gentle_cli -- gibson preview @docs/examples/plans/gibson_destination_first_single_insert.json --output gibson.preview.json
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
@@ -1232,6 +1233,18 @@ Rendering export commands:
   - Protocol-cartoon commands intentionally use one canonical namespace with no
     extra alias routes, which keeps scripted and AI-facing command selection
     unambiguous.
+- `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - Calls the shared non-mutating Gibson preview derivation path.
+  - Accepts the single-insert destination-first subset of
+    `gentle.gibson_assembly_plan.v1`.
+  - The plan payload is resolved against the current project state, so the
+    referenced `seq_id` values must already exist in memory or in the loaded
+    state file.
+  - Returns one `gentle.gibson_assembly_preview.v1` payload with:
+    - resolved opening/junction overlaps
+    - Gibson primer suggestions (`5' overlap + 3' priming`)
+    - validation/advisory findings
+    - protocol-cartoon bindings for the factual Gibson strip
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.

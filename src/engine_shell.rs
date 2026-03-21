@@ -48,6 +48,7 @@ use crate::{
     },
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
+    gibson_planning::{GibsonAssemblyPlan, GIBSON_ASSEMBLY_PREVIEW_SCHEMA},
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord,
@@ -588,6 +589,10 @@ pub enum ShellCommand {
     ExportProtocolCartoonTemplateJson {
         protocol: ProtocolCartoonKind,
         output: String,
+    },
+    GibsonPreview {
+        request_json: String,
+        output_path: Option<String>,
     },
     RenderPoolGelSvg {
         inputs: Vec<String>,
@@ -4346,6 +4351,16 @@ impl ShellCommand {
                 "export protocol cartoon template '{}' to '{}'",
                 protocol.id(),
                 output
+            ),
+            Self::GibsonPreview {
+                request_json: _,
+                output_path,
+            } => format!(
+                "preview Gibson assembly plan{}",
+                output_path
+                    .as_deref()
+                    .map(|path| format!(" and export preview JSON to '{path}'"))
+                    .unwrap_or_default()
             ),
             Self::RenderPoolGelSvg {
                 inputs,
@@ -9300,6 +9315,65 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "gibson" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "gibson requires a subcommand: preview"
+                        .to_string(),
+                );
+            }
+            match tokens[1].as_str() {
+                "preview" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "gibson preview requires PLAN_JSON_OR_@FILE [--output OUTPUT.json]"
+                                .to_string(),
+                        );
+                    }
+                    let request_json = tokens[2].trim();
+                    if request_json.is_empty() {
+                        return Err(
+                            "gibson preview requires non-empty PLAN_JSON_OR_@FILE".to_string(),
+                        );
+                    }
+                    let mut output_path: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err(
+                                        "gibson preview --output requires OUTPUT.json".to_string(),
+                                    );
+                                }
+                                let output = tokens[idx].trim();
+                                if output.is_empty() {
+                                    return Err(
+                                        "gibson preview --output requires non-empty OUTPUT.json"
+                                            .to_string(),
+                                    );
+                                }
+                                output_path = Some(tokens[idx].clone());
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown gibson preview option '{other}' (expected --output OUTPUT.json)"
+                                ));
+                            }
+                        }
+                        idx += 1;
+                    }
+                    Ok(ShellCommand::GibsonPreview {
+                        request_json: tokens[2].clone(),
+                        output_path,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown gibson subcommand '{other}' (expected preview)"
+                )),
+            }
+        }
         "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
@@ -11088,6 +11162,34 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::GibsonPreview {
+            request_json,
+            output_path,
+        } => {
+            let parsed = parse_json_payload(request_json)?;
+            let plan: GibsonAssemblyPlan = serde_json::from_str(&parsed)
+                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
+            let preview = engine
+                .preview_gibson_assembly_plan(&plan)
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output_path {
+                let mut text = serde_json::to_string_pretty(&preview)
+                    .map_err(|e| format!("Could not serialize Gibson preview JSON: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write Gibson preview JSON '{path}': {e}"))?;
+            }
+            let output = serde_json::to_value(&preview)
+                .map_err(|e| format!("Could not serialize Gibson preview result: {e}"))?;
+            debug_assert_eq!(
+                output.get("schema").and_then(|value| value.as_str()),
+                Some(GIBSON_ASSEMBLY_PREVIEW_SCHEMA)
+            );
+            ShellRunResult {
+                state_changed: false,
+                output,
             }
         }
         ShellCommand::RenderPoolGelSvg {

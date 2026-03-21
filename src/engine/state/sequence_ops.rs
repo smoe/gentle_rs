@@ -1310,7 +1310,7 @@ impl GentleEngine {
         Ok(bundle)
     }
 
-    pub(super) fn reverse_complement(seq: &str) -> String {
+    pub(crate) fn reverse_complement(seq: &str) -> String {
         seq.as_bytes()
             .iter()
             .rev()
@@ -1806,7 +1806,7 @@ impl GentleEngine {
             .collect()
     }
 
-    pub(super) fn sequence_gc_fraction(sequence: &[u8]) -> Option<f64> {
+    pub(crate) fn sequence_gc_fraction(sequence: &[u8]) -> Option<f64> {
         let mut canonical = 0usize;
         let mut gc = 0usize;
         for b in sequence {
@@ -2116,7 +2116,7 @@ impl GentleEngine {
         (start..=end).find(|idx| &haystack[*idx..*idx + needle.len()] == needle)
     }
 
-    pub(super) fn find_all_subsequences(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
+    pub(crate) fn find_all_subsequences(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
         let mut ret = vec![];
         if needle.is_empty() || haystack.len() < needle.len() {
             return ret;
@@ -2132,7 +2132,7 @@ impl GentleEngine {
         ret
     }
 
-    pub(super) fn estimate_primer_tm_c(primer: &[u8]) -> f64 {
+    pub(crate) fn estimate_primer_tm_c(primer: &[u8]) -> f64 {
         let mut at = 0usize;
         let mut gc = 0usize;
         for base in primer {

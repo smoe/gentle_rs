@@ -52,6 +52,19 @@ order. Durable architecture constraints and decisions remain in
     - command palette action: `Planning`
     - in-window profile/objective editing + pull/push suggestion registration
       + explicit accept/reject resolution
+- Gibson specialist baseline is now available:
+  - standalone `Gibson` window in `Patterns -> Gibson...`
+  - command palette action: `Gibson`
+  - shared non-mutating preview path:
+    `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+  - current scope:
+    - single-insert, destination-first Gibson plan preview
+    - resolved terminal overlaps
+    - Gibson-specific primer suggestions (`5' overlap + 3' priming`)
+    - validation/advisory findings
+    - protocol-cartoon preview/export
+    - Routine Assistant handoff when the destination already uses existing
+      linear termini
 - CLI state loading now treats empty/whitespace `--state` files as
   uninitialized and starts from `ProjectState::default()` instead of failing
   parse.
@@ -1518,21 +1531,26 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
 - Gibson Assembly:
   - baseline shipped: two-fragment overlap planning preview + Gibson-specific
     preflight overlap diagnostics.
-  - next: one-insert, multi-insert, circularize-fragment workflows.
-  - destination-first planning model drafted as
-    `gentle.gibson_assembly_plan.v1` with canonical single-insert and
-    multi-insert examples under `docs/examples/plans/`.
-  - draft enum vocabulary and input-vs-derived field boundary are now
-    documented in `docs/protocol.md` for that planning model.
-  - draft model now documents low-bp-first source ordering guidance and
-    primer-added designed bridge overlaps for internal multi-fragment
-    junctions.
-  - draft model now captures one-sided versus split overlap selection at each
-    junction.
-  - draft model now also separates assembly-setup advisories
-    (cleanup/stoichiometry/host-risk) from hard junction validation.
-  - draft model now represents Gibson primer suggestions explicitly as 5'
-    overlap segments plus 3' gene-specific priming segments.
+  - destination-first planning model is now preview-consumed for the restricted
+    single-insert v1 specialist flow:
+    - schema: `gentle.gibson_assembly_plan.v1`
+    - preview response: `gentle.gibson_assembly_preview.v1`
+    - shared shell/direct surface:
+      `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+    - GUI specialist:
+      `Patterns -> Gibson...`
+  - current single-insert v1 now covers:
+    - destination opening resolution (`existing_termini` or `defined_site`)
+    - terminal overlap derivation
+    - Gibson-specific primer suggestions
+      (`5' overlap + 3' gene-specific priming segment`)
+    - blocking/advisory validation
+    - protocol-cartoon preview/export from the same resolved plan
+  - next:
+    - multi-fragment Gibson planning, preview, and cartoon generation
+    - richer user influence over Gibson PCR/primer design while still keeping
+      the specialist high-level and Gibson-specific
+    - circularize-fragment workflows and richer Routine Assistant handoff
   - extend the protocol-cartoon baseline from `gibson.two_fragment` to
     multi-fragment Gibson assembly, including circular assembled products and
     canonical template/binding support for the generated explanatory strip.
