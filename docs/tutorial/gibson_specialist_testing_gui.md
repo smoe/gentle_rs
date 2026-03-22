@@ -148,8 +148,12 @@ Notes:
 - if the destination already carries MCS/unique-cutter knowledge, the specialist
   should now start with unique cutters named by the MCS and only reveal other
   unique cutters when you ask for them explicitly
+- the `Feature` column should show where the cutter sits, for example the MCS
+  location and/or an overlapping gene label
 - equal `left cut edge` / `right cut edge` means a cleavage point rather
   than a removed span
+- for sticky cutters, different left/right cut edges correspond to the two
+  primer-relevant termini on the destination arms
 - `941..941` is a stable coordinate-only fallback for the `SmaI` cutpoint on
   the bundled pGEX tutorial destination when you do not want to rely on the
   suggestion table.
@@ -302,6 +306,7 @@ Mark the tutorial successful if all of these are true:
 - [ ] preview returns `2` resolved junctions
 - [ ] preview returns `2` primer suggestions
 - [ ] factual Gibson cartoon is visible
+- [ ] `Cancel` closes the specialist without applying anything
 - [ ] Gibson apply creates primer/product sequence nodes
 - [ ] clicking the Gibson operation reopens the specialist
 - [ ] plan, preview, primer summary, and cartoon export all succeed

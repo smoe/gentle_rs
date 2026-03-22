@@ -13880,6 +13880,16 @@ Error: `{err}`"
         suggestion.rebase_cut_summary.clone()
     }
 
+    fn gibson_destination_suggestion_feature_label(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> String {
+        if suggestion.feature_context.trim().is_empty() {
+            "-".to_string()
+        } else {
+            suggestion.feature_context.clone()
+        }
+    }
+
     fn displayed_gibson_destination_opening_suggestions(
         suggestions: &[GibsonDestinationOpeningSuggestion],
         show_all_unique_cutters: bool,
@@ -13940,7 +13950,12 @@ Error: `{err}`"
         };
     }
 
-    fn render_gibson_contents(&mut self, ui: &mut Ui) {
+    fn cancel_gibson_dialog(&mut self) {
+        self.show_gibson_dialog = false;
+    }
+
+    fn render_gibson_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut cancel_clicked = false;
         self.render_specialist_window_nav(ui);
         ui.label(
             "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
@@ -14060,7 +14075,7 @@ Error: `{err}`"
             );
         });
         ui.small(
-            "Equal left/right edges mean one blunt cutpoint. A non-empty gap means a removed opening window between the two destination arms.",
+            "Equal left/right edges mean one blunt cutpoint. Different left/right edges mean the two primer-relevant termini of a sticky cut; Gibson chew-back removes the opposing 3' ends.",
         );
         match &destination_opening_suggestions {
             Ok(suggestions) if !suggestions.is_empty() => {
@@ -14072,12 +14087,16 @@ Error: `{err}`"
                 ui.small(
                     "Suggested openings are unique restriction cutters. Enzymes named by the selected MCS annotation are shown first; other unique cutters can be revealed on demand.",
                 );
+                let table_height = ((displayed_suggestions.len() + 1) as f32
+                    * ui.spacing().interact_size.y)
+                    + 10.0;
                 egui::ScrollArea::horizontal()
                     .id_salt("gibson_destination_opening_suggestions_scroll")
                     .auto_shrink([false, false])
+                    .max_height(table_height)
                     .show(ui, |ui| {
                         egui::Grid::new("gibson_destination_opening_suggestions")
-                            .num_columns(4)
+                            .num_columns(5)
                             .spacing([12.0, 6.0])
                             .striped(true)
                             .show(ui, |ui| {
@@ -14086,6 +14105,9 @@ Error: `{err}`"
                                 );
                                 ui.strong("Ends").on_hover_text(
                                     "Blunt / 5' / 3' rows come from actual restriction-cutter geometry.",
+                                );
+                                ui.strong("Feature").on_hover_text(
+                                    "Gene name when available, otherwise another overlapping feature label. MCS-linked cutters also show the MCS location here.",
                                 );
                                 ui.strong("Cut").on_hover_text(
                                     "Compact REBASE view: motif plus cut offsets. For example, `CCCGGG | 3|3` means SmaI cuts blunt after motif base 3 on both strands.",
@@ -14101,6 +14123,12 @@ Error: `{err}`"
                                         .on_hover_text(suggestion_help.clone());
                                     ui.label(
                                         Self::gibson_destination_suggestion_geometry_label(
+                                            suggestion,
+                                        ),
+                                    )
+                                    .on_hover_text(suggestion_help.clone());
+                                    ui.label(
+                                        Self::gibson_destination_suggestion_feature_label(
                                             suggestion,
                                         ),
                                     )
@@ -14501,6 +14529,13 @@ Error: `{err}`"
             {
                 self.handoff_gibson_preview_to_routine_assistant();
             }
+            if ui
+                .button("Cancel")
+                .on_hover_text("Close the Gibson specialist without applying anything")
+                .clicked()
+            {
+                cancel_clicked = true;
+            }
         });
 
         if !self.gibson_status.trim().is_empty() {
@@ -14526,17 +14561,24 @@ Error: `{err}`"
                     "Use a named cutter such as `SmaI` when you want one concrete restriction site and its end geometry.",
                 );
                 ui.small(
+                    "The left/right cut edges are the primer-design anchors. For sticky cutters, inspect both 5' arm ends independently rather than treating them as one generic region.",
+                );
+                ui.small(
                     "Use `Show other unique cutters` when you want to look beyond the MCS and search the rest of the destination for single-cutters.",
+                );
+                ui.small(
+                    "The Feature column shows the overlapping gene when available, otherwise another overlapping feature; MCS-linked cutters also show the MCS location.",
                 );
                 ui.small(
                     "The Cut column shows the REBASE recognition motif and the stored cut offsets used for that suggestion.",
                 );
                 ui.small(
-                    "Equal left/right cut edges mean a blunt cutpoint. A non-empty interval means the cleavage window between recessed termini.",
+                    "Equal left/right cut edges mean a blunt cutpoint. Different left/right edges mean the two primer-relevant termini of a sticky cut.",
                 );
                 ui.small(tm_help.as_str());
                 ui.small(active_context_summary);
             });
+        cancel_clicked
     }
 
     fn render_gibson_dialog(&mut self, ctx: &egui::Context) {
@@ -14544,6 +14586,7 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_gibson_dialog;
+        let mut cancel_clicked = false;
         let builder = egui::ViewportBuilder::default()
             .with_title("Gibson")
             .with_inner_size([1040.0, 820.0])
@@ -14559,23 +14602,30 @@ Error: `{err}`"
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
-                            .show(ui, |ui| self.render_gibson_contents(ui));
+                            .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
                     });
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
-                        .show(ui, |ui| self.render_gibson_contents(ui));
+                        .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
                 });
                 if Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
             }
         });
+        if cancel_clicked {
+            open = false;
+        }
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
-        self.show_gibson_dialog = open;
+        if !open {
+            self.cancel_gibson_dialog();
+        } else {
+            self.show_gibson_dialog = true;
+        }
     }
 
     fn render_planning_contents(&mut self, ui: &mut Ui) {
@@ -29737,6 +29787,24 @@ mod tests {
     }
 
     #[test]
+    fn cancel_gibson_dialog_closes_window_without_resetting_draft() {
+        let mut app = GENtleApp::default();
+        app.show_gibson_dialog = true;
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_insert_seq_id = "insert_x".to_string();
+        app.gibson_opening_start_0based = "941".to_string();
+        app.gibson_opening_end_0based_exclusive = "941".to_string();
+
+        app.cancel_gibson_dialog();
+
+        assert!(!app.show_gibson_dialog);
+        assert_eq!(app.gibson_destination_seq_id, "destination_vector");
+        assert_eq!(app.gibson_insert_seq_id, "insert_x");
+        assert_eq!(app.gibson_opening_start_0based, "941");
+        assert_eq!(app.gibson_opening_end_0based_exclusive, "941");
+    }
+
+    #[test]
     fn open_gibson_dialog_prefills_active_sequence() {
         let mut app = GENtleApp::default();
         app.engine.write().unwrap().state_mut().sequences.insert(
@@ -29776,6 +29844,7 @@ mod tests {
             kind: "unique_restriction_site".to_string(),
             label: "SmaI".to_string(),
             summary: "MCS-linked unique cutter".to_string(),
+            feature_context: "MCS 934..949 | bla".to_string(),
             start_0based: 941,
             end_0based_exclusive: 941,
             enzyme_name: Some("SmaI".to_string()),
@@ -29794,6 +29863,10 @@ mod tests {
             GENtleApp::gibson_destination_suggestion_display_label(&suggestion),
             "SmaI (MCS)"
         );
+        assert_eq!(
+            GENtleApp::gibson_destination_suggestion_feature_label(&suggestion),
+            "MCS 934..949 | bla"
+        );
     }
 
     #[test]
@@ -29802,6 +29875,7 @@ mod tests {
             kind: "unique_restriction_site".to_string(),
             label: "SmaI".to_string(),
             summary: "Blunt cutpoint".to_string(),
+            feature_context: "MCS 934..949 | bla".to_string(),
             start_0based: 941,
             end_0based_exclusive: 941,
             enzyme_name: Some("SmaI".to_string()),
@@ -29826,6 +29900,7 @@ mod tests {
             kind: "unique_restriction_site".to_string(),
             label: "SmaI".to_string(),
             summary: "MCS-linked".to_string(),
+            feature_context: "MCS 934..949 | bla".to_string(),
             start_0based: 941,
             end_0based_exclusive: 941,
             enzyme_name: Some("SmaI".to_string()),
@@ -29840,6 +29915,7 @@ mod tests {
         let other_row = GibsonDestinationOpeningSuggestion {
             in_mcs_context: false,
             label: "PstI".to_string(),
+            feature_context: "lacIq".to_string(),
             enzyme_name: Some("PstI".to_string()),
             recognition_sequence: "CTGCAG".to_string(),
             recognition_start_0based: Some(120),
