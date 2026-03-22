@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -194,6 +194,20 @@ Discoverability rule:
 - Configuration dialogs with staged edits must keep primary commit actions
   (`Cancel`/`Apply`) persistently visible (not scroll-hidden) and expose an
   explicit unapplied-changes indicator.
+
+Operation graph-inspectability rule:
+
+- Every successful mutating operation must be inspectable in the main lineage
+  graph view.
+- For sequence-producing operations, inspectability means:
+  - created sequence lineage nodes exist
+  - parent/child lineage edges are emitted with the operation id
+  - related containers/arrangements are attached when operation semantics are
+    container-like
+- For non-sequence operations (for example analysis/report/export), adapters
+  must project dedicated graph-visible artifact nodes linked by operation id.
+- Frontends must not keep operation outcomes only in status text; graph
+  projection is a definition-of-done requirement.
 
 ## 2. Core architecture rule
 
@@ -1028,6 +1042,10 @@ inspection/export paths:
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
     and `locked_positions[]` (offset/base locks, IUPAC-aware).
+  - `DesignPrimerPairs` materializes graph-visible outputs:
+    - one derived sequence per forward/reverse primer in each accepted pair
+    - one container per primer pair (forward + reverse members)
+    - lineage edges from template sequence to each created primer sequence
 - Persisted metadata:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - `qpcr_design_reports` (`gentle.qpcr_design_reports.v1`)

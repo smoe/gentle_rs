@@ -1445,6 +1445,24 @@ mod tests {
     }
 
     #[test]
+    fn queue_current_primer_roi_fields_adds_region_spec() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui.roi_start_0based = "25".to_string();
+        area.primer_design_ui.roi_end_0based = "125".to_string();
+
+        area.queue_current_primer_roi_fields_for_pcr();
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 1);
+        let queued = &area.pcr_queued_regions_ui[0];
+        assert_eq!(queued.template, "seq1");
+        assert_eq!(queued.source_label, "primer ROI form");
+        assert_eq!(queued.start_0based, 25);
+        assert_eq!(queued.end_0based_exclusive, 125);
+        assert!(area.op_status.contains("queue stores region specs"));
+    }
+
+    #[test]
     fn queue_selected_features_adds_multiple_regions() {
         let mut dna = DNAsequence::from_sequence(&"A".repeat(500)).expect("sequence");
         dna.features_mut().push(Feature {
@@ -1479,6 +1497,38 @@ mod tests {
         assert_eq!(area.pcr_queued_regions_ui[1].end_0based_exclusive, 260);
         assert_eq!(area.primer_design_ui.roi_start_0based, "180");
         assert_eq!(area.primer_design_ui.roi_end_0based, "260");
+    }
+
+    #[test]
+    fn primer_design_async_worker_completes_and_applies_operation() {
+        let mut area = make_primer_batch_area();
+        let op = Operation::SetParameter {
+            name: "max_fragments_per_container".to_string(),
+            value: json!(12345),
+        };
+        area.start_primer_design_operation(op, "Primer-pair design");
+        assert!(area.primer_design_task.is_some());
+
+        let ctx = eframe::egui::Context::default();
+        for _ in 0..300 {
+            area.poll_primer_design_task(&ctx);
+            if area.primer_design_task.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            area.primer_design_task.is_none(),
+            "primer task should finish"
+        );
+        let engine = area.engine.as_ref().expect("engine");
+        let max_fragments = engine
+            .read()
+            .expect("engine lock")
+            .state()
+            .parameters
+            .max_fragments_per_container;
+        assert_eq!(max_fragments, 12345);
     }
 
     fn make_primer_batch_area() -> MainAreaDna {
@@ -3530,6 +3580,20 @@ struct RnaReadTask {
 }
 
 #[derive(Clone, Debug)]
+enum PrimerDesignTaskMessage {
+    Done(Result<OpResult, EngineError>),
+}
+
+#[derive(Clone, Debug)]
+struct PrimerDesignTask {
+    started: Instant,
+    operation_label: String,
+    template_id: Option<String>,
+    report_id_hint: Option<String>,
+    receiver: Arc<Mutex<Receiver<PrimerDesignTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
 /// Stateful controller for one main DNA/sequence window.
 ///
 /// This type is intentionally large because it stores nearly all mutable UI
@@ -3680,6 +3744,7 @@ pub struct MainAreaDna {
     tfbs_clear_existing: bool,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
+    primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
     rna_read_progress: Option<RnaReadInterpretProgress>,
     rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
@@ -4015,6 +4080,7 @@ impl MainAreaDna {
             tfbs_clear_existing: true,
             tfbs_task: None,
             tfbs_progress: None,
+            primer_design_task: None,
             rna_read_task: None,
             rna_read_progress: None,
             rna_seed_catalog_preview: vec![],
@@ -4273,7 +4339,7 @@ impl MainAreaDna {
     fn active_sequence_genome_anchor_status(&self) -> Option<(String, bool)> {
         let seq_id = self.seq_id.as_deref()?;
         let engine = self.engine.as_ref()?;
-        let guard = engine.read().ok()?;
+        let guard = engine.try_read().ok()?;
         match guard.describe_sequence_genome_anchor(seq_id) {
             Ok(anchor) => Some((format!("Genome anchor: {anchor}"), true)),
             Err(_) => Some((
@@ -4287,7 +4353,7 @@ impl MainAreaDna {
     fn active_sequence_anchor_summary(&self) -> Option<SequenceGenomeAnchorSummary> {
         let seq_id = self.seq_id.as_deref()?;
         let engine = self.engine.as_ref()?;
-        let guard = engine.read().ok()?;
+        let guard = engine.try_read().ok()?;
         guard.sequence_genome_anchor_summary(seq_id).ok()
     }
 
@@ -4900,6 +4966,7 @@ impl MainAreaDna {
     pub fn render(&mut self, ctx: &egui::Context) {
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
+        self.poll_primer_design_task(ctx);
         self.poll_rna_read_task(ctx);
         self.sync_from_engine_display();
         let backdrop_kind = if self.opened_from_pool_context {
@@ -8496,6 +8563,52 @@ impl MainAreaDna {
         }
     }
 
+    fn queue_current_primer_roi_fields_for_pcr(&mut self) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let start = match Self::parse_required_usize_text(
+            &self.primer_design_ui.roi_start_0based,
+            "roi_start_0based",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        let end_exclusive = match Self::parse_required_usize_text(
+            &self.primer_design_ui.roi_end_0based,
+            "roi_end_0based",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        match self.queue_pcr_region(&template, start, end_exclusive, "primer ROI form") {
+            Ok(true) => {
+                self.show_engine_ops = true;
+                self.op_status = format!(
+                    "Queued PCR region spec from form: {start}..{end_exclusive} (0-based, end-exclusive); queue stores region specs, not running Primer3 jobs"
+                );
+                self.save_engine_ops_state();
+            }
+            Ok(false) => {
+                self.op_status = format!(
+                    "PCR region spec already queued for template '{}': {}..{}",
+                    template, start, end_exclusive
+                );
+            }
+            Err(message) => {
+                self.op_status = format!("Could not queue PCR region spec: {message}");
+            }
+        }
+    }
+
     fn queue_selected_features_for_pcr(&mut self) {
         let template = self.seq_id.clone().unwrap_or_default();
         if template.trim().is_empty() {
@@ -8577,6 +8690,21 @@ impl MainAreaDna {
         self.pcr_batch_results_ui.clear();
         self.op_status = "Cleared PCR batch results".to_string();
         self.save_engine_ops_state();
+    }
+
+    fn latest_primer_report_id_for_template(&self, template: &str) -> Option<String> {
+        let template = template.trim();
+        if template.is_empty() {
+            return None;
+        }
+        let engine = self.engine.as_ref()?;
+        let guard = engine.try_read().ok()?;
+        guard
+            .list_primer_design_reports()
+            .into_iter()
+            .filter(|row| row.template == template)
+            .max_by_key(|row| (row.generated_at_unix_ms, row.report_id.clone()))
+            .map(|row| row.report_id)
     }
 
     fn open_sequence_by_id(&mut self, seq_id: &str) -> Result<(), String> {
@@ -9957,7 +10085,7 @@ impl MainAreaDna {
         let Some(engine) = self.engine.as_ref() else {
             return vec![];
         };
-        let Ok(guard) = engine.read() else {
+        let Ok(guard) = engine.try_read() else {
             return vec![];
         };
         guard
@@ -9974,7 +10102,7 @@ impl MainAreaDna {
         let Some(engine) = self.engine.as_ref() else {
             return vec![];
         };
-        let Ok(guard) = engine.read() else {
+        let Ok(guard) = engine.try_read() else {
             return vec![];
         };
         guard
@@ -9988,7 +10116,7 @@ impl MainAreaDna {
         let Some(engine) = self.engine.as_ref() else {
             return vec![];
         };
-        let Ok(guard) = engine.read() else {
+        let Ok(guard) = engine.try_read() else {
             return vec![];
         };
         let mut ids: Vec<String> = guard.state().sequences.keys().cloned().collect();
@@ -10003,7 +10131,7 @@ impl MainAreaDna {
         let Some(engine) = self.engine.as_ref() else {
             return None;
         };
-        let Ok(guard) = engine.read() else {
+        let Ok(guard) = engine.try_read() else {
             return None;
         };
         guard
@@ -17882,6 +18010,132 @@ impl MainAreaDna {
         self.op_error_popup = Some(e.message);
     }
 
+    fn start_primer_design_operation(&mut self, op: Operation, operation_label: &str) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        if self.primer_design_task.is_some() {
+            self.op_status = "Primer design is already running".to_string();
+            return;
+        }
+        let (template_id, report_id_hint) = match &op {
+            Operation::DesignPrimerPairs {
+                template,
+                report_id,
+                ..
+            } => (Some(template.clone()), report_id.clone()),
+            _ => (None, None),
+        };
+        let started = Instant::now();
+        let (tx, rx) = mpsc::channel::<PrimerDesignTaskMessage>();
+        self.op_status = if let Some(report_id) = report_id_hint
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            format!("{operation_label} started (report_id='{report_id}')...")
+        } else {
+            format!("{operation_label} started...")
+        };
+        self.primer_design_task = Some(PrimerDesignTask {
+            started,
+            operation_label: operation_label.to_string(),
+            template_id,
+            report_id_hint,
+            receiver: Arc::new(Mutex::new(rx)),
+        });
+        std::thread::spawn(move || {
+            let outcome = match engine.write() {
+                Ok(mut guard) => guard.apply(op),
+                Err(_) => Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Engine lock poisoned while running primer design".to_string(),
+                }),
+            };
+            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+        });
+    }
+
+    fn poll_primer_design_task(&mut self, ctx: &egui::Context) {
+        if self.primer_design_task.is_none() {
+            return;
+        }
+        let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut task_still_running = false;
+        if let Some(task) = &self.primer_design_task {
+            match task.receiver.lock() {
+                Ok(rx) => match rx.try_recv() {
+                    Ok(PrimerDesignTaskMessage::Done(res)) => {
+                        done = Some(res);
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        done = Some(Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "Primer-design worker disconnected unexpectedly".to_string(),
+                        }));
+                    }
+                    Err(TryRecvError::Empty) => {
+                        self.op_status = format!(
+                            "{} running... {:.1}s elapsed",
+                            task.operation_label,
+                            task.started.elapsed().as_secs_f32()
+                        );
+                        task_still_running = true;
+                    }
+                },
+                Err(_) => {
+                    done = Some(Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "Primer-design channel lock poisoned".to_string(),
+                    }));
+                }
+            }
+        }
+
+        if done.is_none() && task_still_running {
+            ctx.request_repaint_after(Duration::from_millis(160));
+            return;
+        }
+
+        if let Some(done) = done {
+            let (started, template_id, report_id_hint) = self
+                .primer_design_task
+                .as_ref()
+                .map(|task| {
+                    (
+                        task.started,
+                        task.template_id.clone(),
+                        task.report_id_hint.clone(),
+                    )
+                })
+                .unwrap_or_else(|| (Instant::now(), None, None));
+            self.primer_design_task = None;
+            match done {
+                Ok(result) => {
+                    self.handle_operation_success(result, started);
+                    let resolved_report_id = report_id_hint
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToOwned::to_owned)
+                        .or_else(|| {
+                            template_id.as_deref().and_then(|template| {
+                                self.latest_primer_report_id_for_template(template)
+                            })
+                        });
+                    if let Some(report_id) = resolved_report_id {
+                        self.primer_design_ui.report_id = report_id.clone();
+                        self.show_primer_design_report(&report_id);
+                    } else if template_id.is_some() {
+                        self.list_primer_design_reports();
+                    }
+                }
+                Err(err) => self.handle_operation_error(err, started),
+            }
+        }
+    }
+
     fn start_tfbs_annotation(&mut self, op: Operation) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -20313,41 +20567,61 @@ impl MainAreaDna {
         label: &str,
         side: &mut PrimerSideConstraintUiState,
     ) {
+        const MOTIF_HELP: &str = "Comma-separated motifs using IUPAC DNA codes (A,C,G,T,R,Y,S,W,K,M,B,D,H,V,N), for example `ATG,GGNCC,TTTRAA`.";
         ui.group(|ui| {
             ui.label(label);
             egui::Grid::new(format!("{id_prefix}_grid_basic"))
                 .num_columns(8)
                 .show(ui, |ui| {
-                    ui.label("len min");
+                    ui.label("len min")
+                        .on_hover_text("Minimum annealing length in bp for this primer side.");
                     ui.add(egui::TextEdit::singleline(&mut side.min_length).desired_width(56.0));
-                    ui.label("len max");
+                    ui.label("len max")
+                        .on_hover_text("Maximum annealing length in bp for this primer side.");
                     ui.add(egui::TextEdit::singleline(&mut side.max_length).desired_width(56.0));
-                    ui.label("max anneal hits");
+                    ui.label("max anneal hits").on_hover_text(
+                        "Maximum allowed genomic/template annealing-hit count for the annealing segment.",
+                    );
                     ui.add(
                         egui::TextEdit::singleline(&mut side.max_anneal_hits).desired_width(70.0),
                     );
                     ui.end_row();
 
-                    ui.label("location");
-                    ui.add(egui::TextEdit::singleline(&mut side.location_0based).desired_width(76.0));
-                    ui.label("start");
-                    ui.add(egui::TextEdit::singleline(&mut side.start_0based).desired_width(76.0));
-                    ui.label("end");
-                    ui.add(egui::TextEdit::singleline(&mut side.end_0based).desired_width(76.0));
+                    ui.label("location").on_hover_text(
+                        "Optional exact annealing anchor (0-based) for this primer side.",
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut side.location_0based).desired_width(76.0))
+                        .on_hover_text("Exact 0-based annealing position when a fixed anchor is required.");
+                    ui.label("start").on_hover_text(
+                        "Optional minimum annealing start position (0-based).",
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut side.start_0based).desired_width(76.0))
+                        .on_hover_text("Lower bound for annealing start (0-based).");
+                    ui.label("end").on_hover_text(
+                        "Optional maximum annealing end position (0-based, end-exclusive).",
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut side.end_0based).desired_width(76.0))
+                        .on_hover_text("Upper bound for annealing end (0-based, end-exclusive).");
                     ui.end_row();
 
-                    ui.label("Tm min");
+                    ui.label("Tm min")
+                        .on_hover_text("Minimum annealing melting temperature (°C).");
                     ui.add(egui::TextEdit::singleline(&mut side.min_tm_c).desired_width(64.0));
-                    ui.label("Tm max");
+                    ui.label("Tm max")
+                        .on_hover_text("Maximum annealing melting temperature (°C).");
                     ui.add(egui::TextEdit::singleline(&mut side.max_tm_c).desired_width(64.0));
-                    ui.label("GC min");
+                    ui.label("GC min")
+                        .on_hover_text("Minimum GC fraction for annealing segment (0.0..1.0).");
                     ui.add(egui::TextEdit::singleline(&mut side.min_gc_fraction).desired_width(64.0));
-                    ui.label("GC max");
+                    ui.label("GC max")
+                        .on_hover_text("Maximum GC fraction for annealing segment (0.0..1.0).");
                     ui.add(egui::TextEdit::singleline(&mut side.max_gc_fraction).desired_width(64.0));
                     ui.end_row();
             });
             ui.horizontal(|ui| {
-                ui.label("5' tail (non-annealing)");
+                ui.label("5' tail (non-annealing)").on_hover_text(
+                    "Optional 5' tail sequence added to the oligo but excluded from annealing constraints.",
+                );
                 ui.add(
                     egui::TextEdit::singleline(&mut side.non_annealing_5prime_tail)
                         .desired_width(180.0)
@@ -20358,25 +20632,38 @@ impl MainAreaDna {
                 );
             });
             ui.horizontal(|ui| {
-                ui.label("fixed 5'");
-                ui.add(egui::TextEdit::singleline(&mut side.fixed_5prime).desired_width(120.0));
-                ui.label("fixed 3'");
-                ui.add(egui::TextEdit::singleline(&mut side.fixed_3prime).desired_width(120.0));
+                ui.label("fixed 5'")
+                    .on_hover_text("Prefix motif that must appear at primer 5' end (IUPAC supported).");
+                ui.add(egui::TextEdit::singleline(&mut side.fixed_5prime).desired_width(120.0))
+                    .on_hover_text(MOTIF_HELP);
+                ui.label("fixed 3'")
+                    .on_hover_text("Suffix motif that must appear at primer 3' end (IUPAC supported).");
+                ui.add(egui::TextEdit::singleline(&mut side.fixed_3prime).desired_width(120.0))
+                    .on_hover_text(MOTIF_HELP);
             });
             ui.horizontal(|ui| {
-                ui.label("required motifs");
-                ui.add(egui::TextEdit::singleline(&mut side.required_motifs).desired_width(260.0));
+                ui.label("required motifs")
+                    .on_hover_text("Motifs that must be present in the annealing segment.");
+                ui.add(egui::TextEdit::singleline(&mut side.required_motifs).desired_width(260.0))
+                    .on_hover_text(MOTIF_HELP);
             });
             ui.horizontal(|ui| {
-                ui.label("forbidden motifs");
-                ui.add(egui::TextEdit::singleline(&mut side.forbidden_motifs).desired_width(260.0));
+                ui.label("forbidden motifs")
+                    .on_hover_text("Motifs that must not be present in the annealing segment.");
+                ui.add(egui::TextEdit::singleline(&mut side.forbidden_motifs).desired_width(260.0))
+                    .on_hover_text(MOTIF_HELP);
             });
             ui.horizontal(|ui| {
-                ui.label("locked positions");
+                ui.label("locked positions").on_hover_text(
+                    "Comma-separated `offset:base` constraints inside annealing segment.",
+                );
                 ui.add(
                     egui::TextEdit::singleline(&mut side.locked_positions)
                         .desired_width(300.0)
                         .hint_text("offset:base,offset:base"),
+                )
+                .on_hover_text(
+                    "Format: `offset:base` (0-based offsets; IUPAC base token allowed), for example `0:A,3:R`.",
                 );
             });
             ui.small(
@@ -20390,37 +20677,50 @@ impl MainAreaDna {
         id_prefix: &str,
         pair: &mut PrimerPairConstraintUiState,
     ) {
+        const AMPLICON_MOTIF_HELP: &str = "Comma-separated motifs using IUPAC DNA codes (for example `ATG,GGNCC,TTTRAA`) evaluated on the amplicon sequence.";
         ui.group(|ui| {
             ui.label("Pair constraints");
-            ui.checkbox(&mut pair.require_roi_flanking, "require ROI flanking");
+            ui.checkbox(&mut pair.require_roi_flanking, "require ROI flanking")
+                .on_hover_text(
+                    "Require forward/reverse primers to flank the ROI, so the amplicon spans across the selected ROI boundaries.",
+                );
             egui::Grid::new(format!("{id_prefix}_grid"))
                 .num_columns(4)
                 .show(ui, |ui| {
-                    ui.label("fixed amplicon start");
+                    ui.label("fixed amplicon start")
+                        .on_hover_text("Optional fixed amplicon start coordinate (0-based).");
                     ui.add(
                         egui::TextEdit::singleline(&mut pair.fixed_amplicon_start_0based)
                             .desired_width(96.0),
+                    )
+                    .on_hover_text("Fix the amplicon start to this 0-based coordinate.");
+                    ui.label("fixed amplicon end (exclusive)").on_hover_text(
+                        "Optional fixed amplicon end coordinate (0-based, end-exclusive).",
                     );
-                    ui.label("fixed amplicon end (exclusive)");
                     ui.add(
                         egui::TextEdit::singleline(&mut pair.fixed_amplicon_end_0based_exclusive)
                             .desired_width(96.0),
-                    );
+                    )
+                    .on_hover_text("Fix the amplicon end to this 0-based end-exclusive coordinate.");
                     ui.end_row();
                 });
             ui.horizontal(|ui| {
-                ui.label("required amplicon motifs");
+                ui.label("required amplicon motifs")
+                    .on_hover_text("Motifs that must appear in the amplicon sequence.");
                 ui.add(
                     egui::TextEdit::singleline(&mut pair.required_amplicon_motifs)
                         .desired_width(300.0),
-                );
+                )
+                .on_hover_text(AMPLICON_MOTIF_HELP);
             });
             ui.horizontal(|ui| {
-                ui.label("forbidden amplicon motifs");
+                ui.label("forbidden amplicon motifs")
+                    .on_hover_text("Motifs that must not appear in the amplicon sequence.");
                 ui.add(
                     egui::TextEdit::singleline(&mut pair.forbidden_amplicon_motifs)
                         .desired_width(300.0),
-                );
+                )
+                .on_hover_text(AMPLICON_MOTIF_HELP);
             });
         });
     }
@@ -20431,6 +20731,7 @@ impl MainAreaDna {
             ui.small("No active sequence selected.");
             return;
         }
+        let primer_task_running = self.primer_design_task.is_some();
         ui.small(format!(
             "Template: {} (reports are persisted in project metadata)",
             template
@@ -20507,43 +20808,66 @@ impl MainAreaDna {
                     .num_columns(4)
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("ROI start");
+                        ui.label("ROI start").on_hover_text(
+                            "PCR region-of-interest start coordinate (0-based). Supports large genomic coordinates.",
+                        );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
-                                .desired_width(92.0),
+                                .desired_width(128.0),
+                        )
+                        .on_hover_text(
+                            "0-based ROI start. This is what is queued as region metadata, not a live Primer3 process.",
                         );
-                        ui.label("ROI end");
+                        ui.label("ROI end").on_hover_text(
+                            "PCR region-of-interest end coordinate (0-based, end-exclusive).",
+                        );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
-                                .desired_width(92.0),
+                                .desired_width(128.0),
+                        )
+                        .on_hover_text(
+                            "0-based end-exclusive ROI end. Together with ROI start this defines one queued region spec.",
                         );
                         ui.end_row();
-                        ui.label("min amplicon");
+                        ui.label("min amplicon")
+                            .on_hover_text("Minimum amplicon length in bp.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.min_amplicon_bp)
                                 .desired_width(92.0),
-                        );
-                        ui.label("max amplicon");
+                        )
+                        .on_hover_text("Lower amplicon length bound.");
+                        ui.label("max amplicon")
+                            .on_hover_text("Maximum amplicon length in bp.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_amplicon_bp)
                                 .desired_width(92.0),
-                        );
+                        )
+                        .on_hover_text("Upper amplicon length bound.");
                         ui.end_row();
-                        ui.label("max Tm delta");
+                        ui.label("max Tm delta")
+                            .on_hover_text("Maximum allowed Tm difference (°C) between primer sides.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
                                 .desired_width(92.0),
-                        );
-                        ui.label("max pairs");
+                        )
+                        .on_hover_text("Optional Tm-difference constraint for primer-pair ranking.");
+                        ui.label("max pairs")
+                            .on_hover_text("Maximum number of accepted primer pairs to return.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_pairs)
                                 .desired_width(92.0),
-                        );
+                        )
+                        .on_hover_text("Upper limit for returned primer-pair candidates.");
                         ui.end_row();
-                        ui.label("report_id");
+                        ui.label("report_id").on_hover_text(
+                            "Persisted report identifier. Batch mode derives deterministic suffixes (`_r01`, `_r02`, ...).",
+                        );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.report_id)
                                 .desired_width(240.0),
+                        )
+                        .on_hover_text(
+                            "Optional report id stem. Empty value auto-derives from template and ROI.",
                         );
                         ui.end_row();
                     });
@@ -20552,13 +20876,19 @@ impl MainAreaDna {
                     let copy_toggle = ui.checkbox(
                         &mut self.pcr_batch_create_extract_copies,
                         "Also create extracted region copies",
+                    )
+                    .on_hover_text(
+                        "Create one extracted sequence artifact per queued ROI before/alongside primer design.",
                     );
                     if copy_toggle.changed() {
                         self.save_engine_ops_state();
                     }
+                    ui.small(
+                        "Queue entries are genomic/template ROI specs (`template + start + end`), not Primer3 jobs.",
+                    );
                     if self.pcr_queued_regions_ui.is_empty() {
                         ui.small(
-                            "Queue regions from DNA-window `PCR ROI` actions, then run batch primer design.",
+                            "Queue regions from DNA-window `PCR ROI` actions or `Queue current ROI spec`, then run batch primer design.",
                         );
                     } else {
                         let mut use_roi_idx: Option<usize> = None;
@@ -20613,8 +20943,17 @@ impl MainAreaDna {
                         }
                     }
                     ui.horizontal(|ui| {
+                        if ui
+                            .button("Queue current ROI spec")
+                            .on_hover_text(
+                                "Queue the ROI start/end fields above as one PCR region spec for batch processing",
+                            )
+                            .clicked()
+                        {
+                            self.queue_current_primer_roi_fields_for_pcr();
+                        }
                         let run_batch_response = ui.add_enabled(
-                            !self.pcr_queued_regions_ui.is_empty(),
+                            !self.pcr_queued_regions_ui.is_empty() && !primer_task_running,
                             egui::Button::new("Design Primer Pairs for queued regions"),
                         );
                         let run_batch_response = run_batch_response.on_hover_text(
@@ -20757,13 +21096,18 @@ impl MainAreaDna {
                     "Reverse side",
                     &mut self.primer_design_ui.reverse,
                 );
+                let design_button = if primer_task_running {
+                    "Design Primer Pairs (running...)"
+                } else {
+                    "Design Primer Pairs"
+                };
                 if ui
-                    .button("Design Primer Pairs")
+                    .add_enabled(!primer_task_running, egui::Button::new(design_button))
                     .on_hover_text("Run DesignPrimerPairs with current GUI constraints")
                     .clicked()
                 {
                     match self.build_design_primer_pairs_operation(&template) {
-                        Ok(op) => self.apply_operation_with_feedback(op),
+                        Ok(op) => self.start_primer_design_operation(op, "Primer-pair design"),
                         Err(err) => self.op_status = err,
                     }
                 }

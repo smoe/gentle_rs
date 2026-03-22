@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::{
-    gibson_planning::{derive_gibson_execution_plan, GibsonAssemblyPlan},
+    gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     uniprot::UniprotNucleotideXref,
 };
 
@@ -4548,6 +4548,85 @@ impl GentleEngine {
                     report.template,
                     report.pair_count
                 ));
+                if !report.pairs.is_empty() {
+                    parent_seq_ids.push(template.clone());
+                    let report_token = Self::normalize_id_token(&report.report_id);
+                    let mut pair_container_ids: Vec<String> =
+                        Vec::with_capacity(report.pairs.len());
+                    for (pair_index, pair) in report.pairs.iter().enumerate() {
+                        let pair_rank = if pair.rank == 0 {
+                            pair_index + 1
+                        } else {
+                            pair.rank
+                        };
+                        let pair_token = format!("r{pair_rank:02}");
+                        let base = format!("{report_token}_{pair_token}");
+                        let forward_seq_id = self.unique_seq_id(&format!("{base}_fwd"));
+                        let reverse_seq_id = self.unique_seq_id(&format!("{base}_rev"));
+
+                        let mut forward_primer = DNAsequence::from_sequence(&pair.forward.sequence)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not materialize forward primer sequence for report '{}' pair {}: {e}",
+                                    report.report_id, pair_rank
+                                ),
+                            })?;
+                        forward_primer.set_circular(false);
+                        forward_primer.set_name(forward_seq_id.clone());
+                        Self::prepare_sequence(&mut forward_primer);
+                        self.state
+                            .sequences
+                            .insert(forward_seq_id.clone(), forward_primer);
+                        self.add_lineage_node(
+                            &forward_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(forward_seq_id.clone());
+
+                        let mut reverse_primer = DNAsequence::from_sequence(&pair.reverse.sequence)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not materialize reverse primer sequence for report '{}' pair {}: {e}",
+                                    report.report_id, pair_rank
+                                ),
+                            })?;
+                        reverse_primer.set_circular(false);
+                        reverse_primer.set_name(reverse_seq_id.clone());
+                        Self::prepare_sequence(&mut reverse_primer);
+                        self.state
+                            .sequences
+                            .insert(reverse_seq_id.clone(), reverse_primer);
+                        self.add_lineage_node(
+                            &reverse_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(reverse_seq_id.clone());
+
+                        let pair_members = vec![forward_seq_id.clone(), reverse_seq_id.clone()];
+                        if let Some(container_id) = self.add_container(
+                            &pair_members,
+                            ContainerKind::Pool,
+                            Some(format!("Primer pair {} {}", report.report_id, pair_token)),
+                            Some(&result.op_id),
+                        ) {
+                            pair_container_ids.push(container_id.clone());
+                            result.messages.push(format!(
+                                "Created primer-pair container '{}' for {} ({}, {})",
+                                container_id, pair_token, forward_seq_id, reverse_seq_id
+                            ));
+                        }
+                    }
+                    result.messages.push(format!(
+                        "Materialized {} primer sequence(s) and {} primer-pair container(s) for report '{}'",
+                        report.pairs.len().saturating_mul(2),
+                        pair_container_ids.len(),
+                        report.report_id
+                    ));
+                }
                 if let Some(top_pair) = report.pairs.first() {
                     let advisories = Self::primer_pair_heuristic_advisories(top_pair);
                     if !advisories.is_empty() {

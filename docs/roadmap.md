@@ -395,11 +395,20 @@ order. Durable architecture constraints and decisions remain in
     - add selected feature(s) to PCR queue (one region per feature)
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
+    - explicit `Queue current ROI spec` action in-panel, clarifying that queue
+      rows are ROI specifications (`template + start + end`) rather than
+      immediate Primer3 jobs
     - batch run action `Design Primer Pairs for queued regions`
     - deterministic batch report suffixing (`{base}_rNN`)
     - optional per-region `ExtractRegion` copy artifacts
     - batch-results table with per-region status and quick actions:
       `Show` / `Export` / `Open` (copy-first fallback to template)
+  - GUI primer/qPCR forms now include field-level hover help for ROI,
+    side/pair constraints, and motif-format expectations (IUPAC + comma-separated
+    examples), including `require ROI flanking`
+  - single-run GUI `Design Primer Pairs` execution now runs asynchronously in a
+    background worker to keep the sequence window responsive while Primer3 is
+    running
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
@@ -409,6 +418,15 @@ order. Durable architecture constraints and decisions remain in
     (`requested`, `used`, optional fallback reason + Primer3 executable/version)
   - `auto` mode now falls back deterministically to internal scoring when
     Primer3 is unavailable
+  - `DesignPrimerPairs` is now lineage/graph-inspectable as a mutating
+    operation:
+    - each accepted pair materializes two derived primer sequences
+      (`..._fwd` / `..._rev`)
+    - one dedicated container is created per primer pair (forward + reverse)
+    - lineage edges are emitted from the template to each created primer
+      sequence with the operation id
+    - generic aggregate container auto-creation is skipped for this operation
+      so `seq_to_latest_container` stays pair-scoped
   - pair-ranking/scoring now includes explicit primer-quality heuristics:
     - preferred length window (`20..30 bp`)
     - 3' GC-clamp preference

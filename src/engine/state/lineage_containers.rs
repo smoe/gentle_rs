@@ -244,6 +244,12 @@ impl GentleEngine {
         if result.created_seq_ids.is_empty() {
             return;
         }
+        // DesignPrimerPairs materializes one explicit container per primer pair
+        // inside the operation handler; skip generic aggregate container creation
+        // so seq_to_latest_container keeps pointing to the pair-scoped container.
+        if matches!(op, Operation::DesignPrimerPairs { .. }) {
+            return;
+        }
         let kind = if matches!(op, Operation::SelectCandidate { .. }) {
             ContainerKind::Selection
         } else if result.created_seq_ids.len() > 1 {
@@ -262,9 +268,7 @@ impl GentleEngine {
             Operation::MergeContainersById { .. } => Some("Merged container".to_string()),
             Operation::Ligation { .. } => Some("Ligation products".to_string()),
             Operation::LigationContainer { .. } => Some("Ligation products".to_string()),
-            Operation::ApplyGibsonAssemblyPlan { .. } => {
-                Some("Gibson cloning outputs".to_string())
-            }
+            Operation::ApplyGibsonAssemblyPlan { .. } => Some("Gibson cloning outputs".to_string()),
             Operation::Pcr { .. }
             | Operation::PcrAdvanced { .. }
             | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),

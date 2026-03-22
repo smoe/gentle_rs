@@ -684,29 +684,29 @@ fn test_workflow_digest_merge_ligation_is_deterministic() {
 fn test_design_primer_pairs_persists_report() {
     let mut state = ProjectState::default();
     state.sequences.insert(
-            "tpl".to_string(),
-            seq(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-            ),
-        );
+        "tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
     let result = engine
         .apply(Operation::DesignPrimerPairs {
             template: "tpl".to_string(),
-            roi_start_0based: 30,
-            roi_end_0based: 70,
+            roi_start_0based: 40,
+            roi_end_0based: 80,
             forward: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
                 location_0based: Some(5),
                 start_0based: None,
                 end_0based: None,
-                min_tm_c: 40.0,
-                max_tm_c: 90.0,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: None,
                 fixed_5prime: None,
                 fixed_3prime: None,
@@ -717,14 +717,14 @@ fn test_design_primer_pairs_persists_report() {
             reverse: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
-                location_0based: Some(60),
+                location_0based: Some(90),
                 start_0based: None,
                 end_0based: None,
-                min_tm_c: 40.0,
-                max_tm_c: 90.0,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: None,
                 fixed_5prime: None,
                 fixed_3prime: None,
@@ -734,8 +734,8 @@ fn test_design_primer_pairs_persists_report() {
             },
             pair_constraints: PrimerDesignPairConstraint::default(),
             min_amplicon_bp: 40,
-            max_amplicon_bp: 130,
-            max_tm_delta_c: Some(50.0),
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
             max_pairs: Some(10),
             report_id: Some("tp73_roi".to_string()),
         })
@@ -752,6 +752,76 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(report.report_id, "tp73_roi");
     assert_eq!(report.template, "tpl");
     assert!(!report.pairs.is_empty());
+    assert_eq!(
+        result.created_seq_ids.len(),
+        report.pair_count.saturating_mul(2)
+    );
+    assert!(
+        result
+            .created_seq_ids
+            .iter()
+            .all(|seq_id| engine.state().sequences.contains_key(seq_id))
+    );
+    let lineage = &engine.state().lineage;
+    let template_node = lineage
+        .seq_to_node
+        .get("tpl")
+        .expect("template lineage node should exist")
+        .clone();
+    for seq_id in &result.created_seq_ids {
+        let node_id = lineage
+            .seq_to_node
+            .get(seq_id)
+            .expect("primer lineage node should exist")
+            .clone();
+        let node = lineage
+            .nodes
+            .get(&node_id)
+            .expect("primer lineage node payload should exist");
+        assert_eq!(node.created_by_op.as_deref(), Some(result.op_id.as_str()));
+        assert!(
+            lineage.edges.iter().any(|edge| {
+                edge.from_node_id == template_node
+                    && edge.to_node_id == node_id
+                    && edge.op_id == result.op_id
+            }),
+            "missing lineage edge tpl -> {seq_id} for op {}",
+            result.op_id
+        );
+        let container_id = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get(seq_id)
+            .expect("primer sequence should have a latest container");
+        let container = engine
+            .state()
+            .container_state
+            .containers
+            .get(container_id)
+            .expect("primer container should exist");
+        assert_eq!(
+            container.created_by_op.as_deref(),
+            Some(result.op_id.as_str())
+        );
+        assert!(matches!(container.kind, ContainerKind::Pool));
+        assert_eq!(container.members.len(), 2);
+        assert!(
+            container
+                .name
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("Primer pair tp73_roi r")
+        );
+    }
+    let created_containers = engine
+        .state()
+        .container_state
+        .containers
+        .values()
+        .filter(|container| container.created_by_op.as_deref() == Some(result.op_id.as_str()))
+        .count();
+    assert_eq!(created_containers, report.pair_count);
     assert_eq!(report.backend.requested, "internal");
     assert_eq!(report.backend.used, "internal");
     let listed = engine.list_primer_design_reports();
@@ -762,11 +832,11 @@ fn test_design_primer_pairs_persists_report() {
 fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
     let mut state = ProjectState::default();
     state.sequences.insert(
-            "tpl".to_string(),
-            seq(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-            ),
-        );
+        "tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Auto;
     engine.state_mut().parameters.primer3_executable =
@@ -774,19 +844,19 @@ fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
     let result = engine
         .apply(Operation::DesignPrimerPairs {
             template: "tpl".to_string(),
-            roi_start_0based: 30,
-            roi_end_0based: 70,
+            roi_start_0based: 40,
+            roi_end_0based: 80,
             forward: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
                 location_0based: Some(5),
                 start_0based: None,
                 end_0based: None,
-                min_tm_c: 40.0,
-                max_tm_c: 90.0,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: None,
                 fixed_5prime: None,
                 fixed_3prime: None,
@@ -797,14 +867,14 @@ fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
             reverse: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
-                location_0based: Some(60),
+                location_0based: Some(90),
                 start_0based: None,
                 end_0based: None,
-                min_tm_c: 40.0,
-                max_tm_c: 90.0,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: None,
                 fixed_5prime: None,
                 fixed_3prime: None,
@@ -814,8 +884,8 @@ fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
             },
             pair_constraints: PrimerDesignPairConstraint::default(),
             min_amplicon_bp: 40,
-            max_amplicon_bp: 130,
-            max_tm_delta_c: Some(50.0),
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
             max_pairs: Some(10),
             report_id: Some("tp73_roi_auto".to_string()),
         })
