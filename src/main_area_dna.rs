@@ -1590,6 +1590,51 @@ mod tests {
         assert!(reports.is_empty());
     }
 
+    #[test]
+    fn execute_primer_batch_reports_progress_for_each_region() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_progress".to_string();
+        area.pcr_queued_regions_ui = vec![
+            super::PcrQueuedRegionUiState {
+                template: "missing_template_a".to_string(),
+                source_label: "missing_a".to_string(),
+                start_0based: 20,
+                end_0based_exclusive: 90,
+            },
+            super::PcrQueuedRegionUiState {
+                template: "missing_template_b".to_string(),
+                source_label: "missing_b".to_string(),
+                start_0based: 30,
+                end_0based_exclusive: 100,
+            },
+        ];
+        let prepared = area
+            .prepare_primer_pair_design_batch_inputs()
+            .expect("prepared batch");
+        let engine = area.engine.as_ref().expect("engine");
+        let mut progress_rows: Vec<(usize, usize, String)> = vec![];
+        {
+            let mut guard = engine.write().expect("engine lock");
+            let _outcome = MainAreaDna::execute_primer_pair_design_batch(
+                &mut guard,
+                &prepared.queued_regions,
+                &prepared.spec,
+                &prepared.report_base,
+                prepared.create_copies,
+                |progress| {
+                    progress_rows.push((
+                        progress.region_index_1based,
+                        progress.region_count,
+                        progress.template,
+                    ));
+                },
+            );
+        }
+        assert_eq!(progress_rows.len(), 2);
+        assert_eq!(progress_rows[0], (1, 2, "missing_template_a".to_string()));
+        assert_eq!(progress_rows[1], (2, 2, "missing_template_b".to_string()));
+    }
+
     fn make_primer_batch_area() -> MainAreaDna {
         let mut state = ProjectState::default();
         state.parameters.primer_design_backend = PrimerDesignBackend::Internal;
@@ -3652,6 +3697,16 @@ struct PrimerDesignBatchOutcome {
 }
 
 #[derive(Clone, Debug)]
+struct PrimerDesignBatchProgress {
+    region_index_1based: usize,
+    region_count: usize,
+    template: String,
+    source_label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+}
+
+#[derive(Clone, Debug)]
 enum PrimerDesignTaskCompletion {
     Single(OpResult),
     Batch(PrimerDesignBatchOutcome),
@@ -3659,6 +3714,7 @@ enum PrimerDesignTaskCompletion {
 
 #[derive(Clone, Debug)]
 enum PrimerDesignTaskMessage {
+    BatchProgress(PrimerDesignBatchProgress),
     Done(Result<PrimerDesignTaskCompletion, EngineError>),
 }
 
@@ -3668,6 +3724,7 @@ struct PrimerDesignTask {
     operation_label: String,
     template_id: Option<String>,
     report_id_hint: Option<String>,
+    batch_progress: Option<PrimerDesignBatchProgress>,
     receiver: Arc<Mutex<Receiver<PrimerDesignTaskMessage>>>,
 }
 
@@ -18121,6 +18178,7 @@ impl MainAreaDna {
             operation_label: operation_label.to_string(),
             template_id,
             report_id_hint,
+            batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
         std::thread::spawn(move || {
@@ -18160,9 +18218,11 @@ impl MainAreaDna {
             operation_label: "PCR primer batch".to_string(),
             template_id: None,
             report_id_hint: None,
+            batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
         std::thread::spawn(move || {
+            let tx_progress = tx.clone();
             let outcome = match engine.write() {
                 Ok(mut guard) => Ok(PrimerDesignTaskCompletion::Batch(
                     Self::execute_primer_pair_design_batch(
@@ -18171,6 +18231,10 @@ impl MainAreaDna {
                         &prepared.spec,
                         &prepared.report_base,
                         prepared.create_copies,
+                        move |progress| {
+                            let _ =
+                                tx_progress.send(PrimerDesignTaskMessage::BatchProgress(progress));
+                        },
                     ),
                 )),
                 Err(_) => Err(EngineError {
@@ -18189,25 +18253,48 @@ impl MainAreaDna {
         }
         let mut done: Option<Result<PrimerDesignTaskCompletion, EngineError>> = None;
         let mut task_still_running = false;
-        if let Some(task) = &self.primer_design_task {
+        if let Some(task) = self.primer_design_task.as_mut() {
             match task.receiver.lock() {
-                Ok(rx) => match rx.try_recv() {
-                    Ok(PrimerDesignTaskMessage::Done(res)) => {
-                        done = Some(res);
-                    }
-                    Err(TryRecvError::Disconnected) => {
-                        done = Some(Err(EngineError {
-                            code: ErrorCode::Internal,
-                            message: "Primer-design worker disconnected unexpectedly".to_string(),
-                        }));
-                    }
-                    Err(TryRecvError::Empty) => {
-                        self.op_status = format!(
-                            "{} running... {:.1}s elapsed",
-                            task.operation_label,
-                            task.started.elapsed().as_secs_f32()
-                        );
-                        task_still_running = true;
+                Ok(rx) => loop {
+                    match rx.try_recv() {
+                        Ok(PrimerDesignTaskMessage::BatchProgress(progress)) => {
+                            task.batch_progress = Some(progress);
+                        }
+                        Ok(PrimerDesignTaskMessage::Done(res)) => {
+                            done = Some(res);
+                            break;
+                        }
+                        Err(TryRecvError::Disconnected) => {
+                            done = Some(Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message: "Primer-design worker disconnected unexpectedly"
+                                    .to_string(),
+                            }));
+                            break;
+                        }
+                        Err(TryRecvError::Empty) => {
+                            let elapsed = task.started.elapsed().as_secs_f32();
+                            if let Some(progress) = &task.batch_progress {
+                                self.op_status = format!(
+                                    "{} running: region {}/{} ({}:{}..{} {})... {:.1}s elapsed",
+                                    task.operation_label,
+                                    progress.region_index_1based,
+                                    progress.region_count,
+                                    progress.template,
+                                    progress.start_0based,
+                                    progress.end_0based_exclusive,
+                                    progress.source_label,
+                                    elapsed
+                                );
+                            } else {
+                                self.op_status = format!(
+                                    "{} running... {:.1}s elapsed",
+                                    task.operation_label, elapsed
+                                );
+                            }
+                            task_still_running = true;
+                            break;
+                        }
                     }
                 },
                 Err(_) => {
@@ -20116,6 +20203,7 @@ impl MainAreaDna {
         spec: &PrimerDesignBatchSpec,
         report_base: &str,
         create_copies: bool,
+        mut on_progress: impl FnMut(PrimerDesignBatchProgress),
     ) -> PrimerDesignBatchOutcome {
         let mut batch_rows: Vec<PcrBatchResultRowUiState> =
             Vec::with_capacity(queued_regions.len());
@@ -20126,6 +20214,14 @@ impl MainAreaDna {
         let mut created_seq_ids: Vec<String> = vec![];
 
         for (index, region) in queued_regions.iter().enumerate() {
+            on_progress(PrimerDesignBatchProgress {
+                region_index_1based: index + 1,
+                region_count: queued_regions.len(),
+                template: region.template.clone(),
+                source_label: region.source_label.clone(),
+                start_0based: region.start_0based,
+                end_0based_exclusive: region.end_0based_exclusive,
+            });
             let report_id = format!("{report_base}_r{:02}", index + 1);
             let region_label = format!(
                 "r{:02} {} [{}..{} {}]",
@@ -20295,6 +20391,7 @@ impl MainAreaDna {
             &prepared.spec,
             &prepared.report_base,
             prepared.create_copies,
+            |_| {},
         );
         drop(guard);
         self.apply_primer_pair_design_batch_outcome(outcome, started.elapsed().as_millis());
