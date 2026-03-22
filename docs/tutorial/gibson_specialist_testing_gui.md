@@ -64,11 +64,23 @@ Use only local committed inputs:
 - synthetic insert:
   [`docs/tutorial/inputs/gibson_insert_demo.fa`](./inputs/gibson_insert_demo.fa)
 
+Optional synthetic sanity-check pair for primer/overlap reasoning:
+
+- circular destination:
+  [`docs/tutorial/inputs/gibson_synthetic_c100_a_g100_vector.gb`](./inputs/gibson_synthetic_c100_a_g100_vector.gb)
+- linear insert:
+  [`docs/tutorial/inputs/gibson_synthetic_poly_a_insert.fa`](./inputs/gibson_synthetic_poly_a_insert.fa)
+- companion note:
+  [`docs/tutorial/inputs/README.md`](./inputs/README.md)
+
 Why these inputs:
 
 - `pGEX-3X.gb` gives you a known circular destination sequence.
 - `gibson_insert_demo.fa` is a small synthetic linear insert built only for
   functional testing of the specialist UI and preview/export flow.
+- the synthetic `C^100 A G^100` + poly-A pair gives you a deliberately simple
+  sequence context for reasoning about overlap derivation and insert-primer
+  structure without richer plasmid annotations getting in the way
 
 ## Step 1: Load the Two Input Sequences
 
