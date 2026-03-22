@@ -76,7 +76,11 @@ cargo run --quiet --bin gentle_cli -- \
 Offline TP73 cDNA-vs-genomic showcase: the `NM_001126241.3` transcript is
 derived locally from `test_files/tp73.ncbi.gb`, aligned against the same TP73
 genomic locus with the shared dotplot engine route, and then rasterized to PNG
-for README display while preserving the basepair axis labels.
+for README display while preserving the basepair axis labels. The same graphic
+is available interactively in the GUI through a DNA window's `Dotplot map`
+mode and standalone `Dotplot` workspace, where it can be used for coordinate
+navigation back into the sequence context as a contribution to cloning-oriented
+analysis and design.
 
 The TP73 dotplot figure was generated with:
 
