@@ -5068,7 +5068,7 @@ impl MainAreaDna {
     fn latest_container_for_active_seq(&self) -> Option<String> {
         let seq_id = self.seq_id.as_ref()?;
         let engine = self.engine.as_ref()?;
-        engine.read().ok().and_then(|guard| {
+        engine.try_read().ok().and_then(|guard| {
             guard
                 .state()
                 .container_state
@@ -21091,7 +21091,7 @@ impl MainAreaDna {
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
-                                .desired_width(128.0),
+                                .desired_width(168.0),
                         )
                         .on_hover_text(
                             "0-based ROI start. This is what is queued as region metadata, not a live Primer3 process.",
@@ -21101,7 +21101,7 @@ impl MainAreaDna {
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
-                                .desired_width(128.0),
+                                .desired_width(168.0),
                         )
                         .on_hover_text(
                             "0-based end-exclusive ROI end. Together with ROI start this defines one queued region spec.",
@@ -21122,13 +21122,13 @@ impl MainAreaDna {
                         )
                         .on_hover_text("Upper amplicon length bound.");
                         ui.end_row();
-                        ui.label("max Tₘ delta")
-                            .on_hover_text("Maximum allowed Tₘ difference (°C) between primer sides.");
+                        ui.label("max T_m delta")
+                            .on_hover_text("Maximum allowed T_m difference (°C) between primer sides.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
                                 .desired_width(92.0),
                         )
-                        .on_hover_text("Optional Tₘ-difference constraint for primer-pair ranking.");
+                        .on_hover_text("Optional T_m-difference constraint for primer-pair ranking.");
                         ui.label("max pairs")
                             .on_hover_text("Maximum number of accepted primer pairs to return.");
                         ui.add(
@@ -21426,12 +21426,12 @@ impl MainAreaDna {
                     ui.label("ROI start");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_start_0based)
-                            .desired_width(80.0),
+                            .desired_width(120.0),
                     );
                     ui.label("ROI end");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_end_0based)
-                            .desired_width(80.0),
+                            .desired_width(120.0),
                     );
                     ui.label("min amplicon");
                     ui.add(
@@ -21489,13 +21489,18 @@ impl MainAreaDna {
                     "Probe side",
                     &mut self.qpcr_design_ui.probe,
                 );
+                let qpcr_button = if primer_task_running {
+                    "Design qPCR Assays (running...)"
+                } else {
+                    "Design qPCR Assays"
+                };
                 if ui
-                    .button("Design qPCR Assays")
+                    .add_enabled(!primer_task_running, egui::Button::new(qpcr_button))
                     .on_hover_text("Run DesignQpcrAssays with current GUI constraints")
                     .clicked()
                 {
                     match self.build_design_qpcr_operation(&template) {
-                        Ok(op) => self.apply_operation_with_feedback(op),
+                        Ok(op) => self.start_primer_design_operation(op, "qPCR design"),
                         Err(err) => self.op_status = err,
                     }
                 }

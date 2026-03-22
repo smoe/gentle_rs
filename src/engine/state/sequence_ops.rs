@@ -3045,8 +3045,18 @@ impl GentleEngine {
         );
         let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
         let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
-        for fwd in &forward_candidates {
+        let pair_evaluation_limit = max_pairs
+            .saturating_mul(1_000)
+            .clamp(max_pairs, PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS);
+        let mut pair_evaluations = 0usize;
+        let mut pair_evaluation_limited = false;
+        'pair_search: for fwd in &forward_candidates {
             for rev in &reverse_candidates {
+                if pair_evaluations >= pair_evaluation_limit {
+                    pair_evaluation_limited = true;
+                    break 'pair_search;
+                }
+                pair_evaluations = pair_evaluations.saturating_add(1);
                 let Some(pair) = Self::build_primer_design_pair_record(
                     PrimerDesignPrimerRecord {
                         sequence: fwd.sequence.clone(),
@@ -3098,6 +3108,13 @@ impl GentleEngine {
                 }
                 pairs.push(pair);
             }
+        }
+        if pair_evaluation_limited {
+            let total_candidate_combinations = forward_candidates
+                .len()
+                .saturating_mul(reverse_candidates.len());
+            rejection_summary.pair_evaluation_limit_skipped =
+                total_candidate_combinations.saturating_sub(pair_evaluations);
         }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
         (pairs, rejection_summary)

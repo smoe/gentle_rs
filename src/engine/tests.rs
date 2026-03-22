@@ -906,6 +906,134 @@ fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
 }
 
 #[test]
+fn test_design_primer_pairs_internal_reports_pair_evaluation_budget_truncation() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tpl".to_string(), seq(&"ACGT".repeat(180)));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 22,
+        location_0based: None,
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+    let result = engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 220,
+            roi_end_0based: 320,
+            forward: side.clone(),
+            reverse: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 80,
+            max_amplicon_bp: 360,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(5),
+            report_id: Some("budget_capped_pairs".to_string()),
+        })
+        .expect("internal primer-pair design should complete");
+
+    let report = engine
+        .get_primer_design_report("budget_capped_pairs")
+        .expect("report by id");
+    assert_eq!(report.backend.used, "internal");
+    assert!(report.rejection_summary.pair_evaluation_limit_skipped > 0);
+    assert!(report.pair_count <= 5);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|line| line.contains("evaluation limit")),
+        "expected warning about internal pair-evaluation limit, got {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn test_design_qpcr_assays_internal_reports_pair_evaluation_budget_truncation() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tpl".to_string(), seq(&"ACGT".repeat(180)));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 22,
+        location_0based: None,
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+    let probe = PrimerDesignSideConstraint {
+        location_0based: Some(260),
+        ..side.clone()
+    };
+    let result = engine
+        .apply(Operation::DesignQpcrAssays {
+            template: "tpl".to_string(),
+            roi_start_0based: 220,
+            roi_end_0based: 320,
+            forward: side.clone(),
+            reverse: side,
+            probe,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 80,
+            max_amplicon_bp: 360,
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
+            max_assays: Some(5),
+            report_id: Some("budget_capped_qpcr".to_string()),
+        })
+        .expect("internal qPCR design should complete");
+
+    let report = engine
+        .get_qpcr_design_report("budget_capped_qpcr")
+        .expect("qPCR report by id");
+    assert_eq!(report.backend.used, "internal");
+    assert!(
+        report
+            .rejection_summary
+            .primer_pair
+            .pair_evaluation_limit_skipped
+            > 0
+    );
+    assert!(report.assay_count <= 5);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|line| line.contains("evaluation limit")),
+        "expected warning about internal pair-evaluation limit, got {:?}",
+        result.warnings
+    );
+}
+
+#[test]
 fn test_design_primer_pairs_primer3_backend_requires_executable() {
     let mut state = ProjectState::default();
     state.sequences.insert(

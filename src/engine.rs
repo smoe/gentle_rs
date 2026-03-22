@@ -200,6 +200,7 @@ const PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP: usize = 4;
 const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
+const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 
 // Private decomposition slices of the engine implementation. Shared public
 // contracts stay in this file; heavy helpers and operation families live in the
@@ -1508,6 +1509,7 @@ pub struct PrimerDesignRejectionSummary {
     pub amplicon_or_roi_failure: usize,
     pub primer_constraint_failure: usize,
     pub pair_constraint_failure: usize,
+    pub pair_evaluation_limit_skipped: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

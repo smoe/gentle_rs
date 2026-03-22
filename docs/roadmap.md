@@ -416,6 +416,11 @@ order. Durable architecture constraints and decisions remain in
   - queued GUI batch `Design Primer Pairs for queued regions` now runs through
     the same asynchronous background worker path (no UI-thread blocking while
     Primer3 executes across queued regions)
+  - internal primer-pair candidate cross-product evaluation now uses a
+    deterministic bounded budget (scaled from requested `max_pairs` with a hard
+    cap) so pathological ROI/constraint combinations cannot appear
+    non-terminating; skipped combinations are surfaced in rejection summaries
+    and operation warnings (PCR + qPCR paths)
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`

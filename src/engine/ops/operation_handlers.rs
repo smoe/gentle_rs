@@ -4535,6 +4535,12 @@ impl GentleEngine {
                     rejection_summary,
                     backend,
                 };
+                if report.rejection_summary.pair_evaluation_limit_skipped > 0 {
+                    result.warnings.push(format!(
+                        "Internal primer-pair search reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
+                        report.rejection_summary.pair_evaluation_limit_skipped
+                    ));
+                }
                 let mut store = self.read_primer_design_store();
                 let replaced = store
                     .reports
@@ -4942,6 +4948,20 @@ impl GentleEngine {
                     rejection_summary,
                     backend,
                 };
+                if report
+                    .rejection_summary
+                    .primer_pair
+                    .pair_evaluation_limit_skipped
+                    > 0
+                {
+                    result.warnings.push(format!(
+                        "Internal primer-pair candidate generation for qPCR reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
+                        report
+                            .rejection_summary
+                            .primer_pair
+                            .pair_evaluation_limit_skipped
+                    ));
+                }
                 let mut store = self.read_primer_design_store();
                 let replaced = store
                     .qpcr_reports
