@@ -303,8 +303,10 @@ Mark the tutorial successful if all of these are true:
 - [ ] `Tm Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
 - [ ] defined-site opening `941..941` is accepted
+- [ ] `Opening sketch` shows the exact cut sequence plus the destination after opening
 - [ ] preview returns `2` resolved junctions
 - [ ] preview returns `2` primer suggestions
+- [ ] `Opening sketch` updates to show the two resolved 5' destination ends with overlap sequences
 - [ ] factual Gibson cartoon is visible
 - [ ] `Cancel` closes the specialist without applying anything
 - [ ] Gibson apply creates primer/product sequence nodes

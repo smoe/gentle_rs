@@ -587,6 +587,12 @@ Patterns menu:
          - equal left/right cut edges mean a blunt cutpoint
          - different left/right cut edges mean the two primer-relevant termini
            of a sticky cut
+       - `Opening sketch` renders the destination sequence at the exact cut or
+         opening and then shows the destination after it has been opened into
+         separate left/right arms
+       - once preview is available, the same sketch also shows the two resolved
+         destination 5' ends with their current Gibson overlap sizes and
+         sequences
        - tooltips and quick help explain the difference between MCS-linked
          cutters and other unique cutters outside the annotated MCS
     2. `Insert`
@@ -608,7 +614,10 @@ Patterns menu:
        - resolves terminal overlaps
        - derives insert primer suggestions as `5' overlap + 3' priming`
        - shows blocking errors, warnings, and the factual Gibson cartoon
-       - findings and status text are copyable directly from the window
+       - visible findings use styled `Tₘ` rendering; the copyable findings box
+         keeps plain `Tm` text for reliable copying
+       - findings, resolved junctions, primer suggestions, and status text are
+         copyable directly from the window
        - preview notes repeat the shared Tm-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`

@@ -13492,7 +13492,7 @@ Error: `{err}`"
                 path.display()
             )
         })?;
-        self.gibson_preview_svg_uri = path.display().to_string();
+        self.gibson_preview_svg_uri = format!("file://{}", path.display());
         Ok(())
     }
 
@@ -13822,6 +13822,52 @@ Error: `{err}`"
         ui.label(job)
     }
 
+    fn gibson_rich_text_job(
+        ui: &Ui,
+        raw: &str,
+        text_style: egui::TextStyle,
+        color: egui::Color32,
+    ) -> egui::text::LayoutJob {
+        let text = Self::humanize_gibson_ui_text(raw);
+        let font_id = text_style.resolve(ui.style());
+        let base_format = egui::TextFormat {
+            font_id: font_id.clone(),
+            color,
+            valign: egui::Align::Center,
+            ..Default::default()
+        };
+        let subscript_format = egui::TextFormat {
+            font_id: egui::FontId::new(font_id.size * 0.72, font_id.family.clone()),
+            color,
+            valign: egui::Align::BOTTOM,
+            ..Default::default()
+        };
+        let mut job = egui::text::LayoutJob::default();
+        let mut remaining = text.as_str();
+        while let Some(idx) = remaining.find("Tm") {
+            let (before, after_before) = remaining.split_at(idx);
+            if !before.is_empty() {
+                job.append(before, 0.0, base_format.clone());
+            }
+            job.append("T", 0.0, base_format.clone());
+            job.append("m", 0.0, subscript_format.clone());
+            remaining = &after_before[2..];
+        }
+        if !remaining.is_empty() {
+            job.append(remaining, 0.0, base_format);
+        }
+        job
+    }
+
+    fn gibson_rich_text_label(
+        ui: &mut Ui,
+        raw: &str,
+        text_style: egui::TextStyle,
+        color: egui::Color32,
+    ) -> egui::Response {
+        ui.label(Self::gibson_rich_text_job(ui, raw, text_style, color))
+    }
+
     fn gibson_active_context_summary(&self) -> String {
         match self.active_dna_window_context() {
             Some((seq_id, Some((start, end)))) => {
@@ -13890,6 +13936,227 @@ Error: `{err}`"
         }
     }
 
+    fn compact_gibson_sequence(sequence: &str, edge_bp: usize) -> String {
+        if sequence.len() <= edge_bp.saturating_mul(2).saturating_add(3) {
+            sequence.to_string()
+        } else {
+            format!(
+                "{}...{}",
+                &sequence[..edge_bp],
+                &sequence[sequence.len().saturating_sub(edge_bp)..]
+            )
+        }
+    }
+
+    fn current_gibson_destination_sequence_record(&self) -> Option<DNAsequence> {
+        let destination_id = self.gibson_destination_seq_id.trim().to_string();
+        if destination_id.is_empty() {
+            return None;
+        }
+        self.engine
+            .read()
+            .ok()
+            .and_then(|engine| engine.state().sequences.get(&destination_id).cloned())
+    }
+
+    fn current_gibson_opening_edges(&self) -> Option<(usize, usize)> {
+        let start = self.gibson_opening_start_0based.trim().parse::<usize>().ok()?;
+        let end = self
+            .gibson_opening_end_0based_exclusive
+            .trim()
+            .parse::<usize>()
+            .ok()?;
+        Some((start, end))
+    }
+
+    fn current_gibson_opening_suggestion_for_edges<'a>(
+        suggestions: &'a [GibsonDestinationOpeningSuggestion],
+        start: usize,
+        end: usize,
+    ) -> Option<&'a GibsonDestinationOpeningSuggestion> {
+        suggestions
+            .iter()
+            .find(|row| row.start_0based == start && row.end_0based_exclusive == end)
+    }
+
+    fn gibson_linear_suffix(sequence: &str, end_exclusive: usize, len: usize) -> Option<String> {
+        if end_exclusive > sequence.len() {
+            return None;
+        }
+        let start = end_exclusive.saturating_sub(len);
+        sequence.get(start..end_exclusive).map(str::to_string)
+    }
+
+    fn gibson_linear_prefix(sequence: &str, start: usize, len: usize) -> Option<String> {
+        if start > sequence.len() {
+            return None;
+        }
+        let end = (start + len).min(sequence.len());
+        sequence.get(start..end).map(str::to_string)
+    }
+
+    fn gibson_circular_slice(sequence: &str, start: usize, len: usize) -> Option<String> {
+        if sequence.is_empty() || len == 0 || start > sequence.len() {
+            return None;
+        }
+        let total = sequence.len();
+        let start = start % total;
+        let mut out = String::with_capacity(len);
+        for idx in 0..len {
+            let pos = (start + idx) % total;
+            out.push(*sequence.as_bytes().get(pos)? as char);
+        }
+        Some(out)
+    }
+
+    fn gibson_suffix_before_edge(
+        sequence: &str,
+        edge: usize,
+        len: usize,
+        circular: bool,
+    ) -> Option<String> {
+        if len == 0 {
+            return Some(String::new());
+        }
+        if circular {
+            if sequence.is_empty() || edge > sequence.len() {
+                return None;
+            }
+            let total = sequence.len();
+            let start = (edge + total - (len % total)) % total;
+            Self::gibson_circular_slice(sequence, start, len)
+        } else {
+            Self::gibson_linear_suffix(sequence, edge, len)
+        }
+    }
+
+    fn gibson_prefix_after_edge(
+        sequence: &str,
+        edge: usize,
+        len: usize,
+        circular: bool,
+    ) -> Option<String> {
+        if len == 0 {
+            return Some(String::new());
+        }
+        if circular {
+            Self::gibson_circular_slice(sequence, edge, len)
+        } else {
+            Self::gibson_linear_prefix(sequence, edge, len)
+        }
+    }
+
+    fn gibson_between_edges(
+        sequence: &str,
+        start: usize,
+        end: usize,
+        circular: bool,
+    ) -> Option<String> {
+        if start > sequence.len() || end > sequence.len() {
+            return None;
+        }
+        if start == end {
+            return Some(String::new());
+        }
+        if circular && start > end {
+            let mut out = String::new();
+            out.push_str(sequence.get(start..sequence.len())?);
+            out.push_str(sequence.get(0..end)?);
+            return Some(out);
+        }
+        sequence.get(start..end).map(str::to_string)
+    }
+
+    fn gibson_opening_detail_text(
+        &self,
+        suggestions: &[GibsonDestinationOpeningSuggestion],
+    ) -> Option<String> {
+        let destination = self.current_gibson_destination_sequence_record()?;
+        let sequence = destination.get_forward_string().to_ascii_uppercase();
+        let (start, end) = self.current_gibson_opening_edges()?;
+        if start > sequence.len() || end > sequence.len() {
+            return None;
+        }
+        let matched =
+            Self::current_gibson_opening_suggestion_for_edges(suggestions, start, end);
+        let mut lines = vec![];
+        if let Some(suggestion) = matched {
+            lines.push(format!(
+                "{}: {}",
+                Self::gibson_destination_suggestion_display_label(suggestion),
+                suggestion.rebase_cut_summary
+            ));
+        }
+        let context_bp = 12;
+        let left = Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let middle = Self::gibson_between_edges(&sequence, start, end, destination.is_circular())?;
+        let right = Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
+        let left_ellipsis = if destination.is_circular() || start > context_bp {
+            "..."
+        } else {
+            ""
+        };
+        let right_ellipsis = if destination.is_circular() || end + context_bp < sequence.len() {
+            "..."
+        } else {
+            ""
+        };
+        if middle.is_empty() {
+            lines.push(format!(
+                "destination cut: {left_ellipsis}{left}|{right}{right_ellipsis}"
+            ));
+        } else {
+            lines.push(format!(
+                "destination opening: {left_ellipsis}{left}|{middle}|{right}{right_ellipsis}"
+            ));
+        }
+        Some(lines.join("\n"))
+    }
+
+    fn gibson_opened_destination_arm_text(&self) -> Option<String> {
+        let destination = self.current_gibson_destination_sequence_record()?;
+        let sequence = destination.get_forward_string().to_ascii_uppercase();
+        let (start, end) = self.current_gibson_opening_edges()?;
+        let context_bp = 12;
+        let left_context =
+            Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let right_context =
+            Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
+        Some(format!(
+            "left arm  : ...{}|\nright arm : |{}...",
+            left_context, right_context
+        ))
+    }
+
+    fn gibson_resolved_destination_arm_text(&self, preview: &GibsonAssemblyPreview) -> Option<String> {
+        let destination = self.current_gibson_destination_sequence_record()?;
+        let sequence = destination.get_forward_string().to_ascii_uppercase();
+        let start = preview.destination.opening_start_0based?;
+        let end = preview.destination.opening_end_0based_exclusive?;
+        let left_junction = preview
+            .resolved_junctions
+            .iter()
+            .find(|junction| junction.left_member_id == preview.destination.left_end_id)?;
+        let right_junction = preview
+            .resolved_junctions
+            .iter()
+            .find(|junction| junction.right_member_id == preview.destination.right_end_id)?;
+        let context_bp = 8;
+        let left_context =
+            Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let right_context =
+            Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
+        Some(format!(
+            "left 5' arm ({} bp overlap): ...{}[{}]|\nright 5' arm ({} bp overlap): |[{}]{}...",
+            left_junction.overlap_bp,
+            left_context,
+            Self::compact_gibson_sequence(&left_junction.overlap_sequence, 8),
+            right_junction.overlap_bp,
+            Self::compact_gibson_sequence(&right_junction.overlap_sequence, 8),
+            right_context
+        ))
+    }
+
     fn displayed_gibson_destination_opening_suggestions(
         suggestions: &[GibsonDestinationOpeningSuggestion],
         show_all_unique_cutters: bool,
@@ -13928,6 +14195,91 @@ Error: `{err}`"
             }
         }
         lines.join("\n")
+    }
+
+    fn gibson_preview_junctions_text(preview: &GibsonAssemblyPreview) -> String {
+        preview
+            .resolved_junctions
+            .iter()
+            .map(|junction| {
+                format!(
+                    "{}\n  members: {} -> {}\n  overlap: {} bp | {}\n  Tm: {:.1} °C\n  source: {}",
+                    junction.junction_id,
+                    junction.left_member_id,
+                    junction.right_member_id,
+                    junction.overlap_bp,
+                    junction.overlap_sequence,
+                    junction.overlap_tm_celsius,
+                    junction.overlap_source
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    fn gibson_preview_primers_text(preview: &GibsonAssemblyPreview) -> String {
+        preview
+            .primer_suggestions
+            .iter()
+            .map(|primer| {
+                format!(
+                    "{}\n  full: {}\n  5' overlap: {} ({} bp, {:.1} °C)\n  3' priming: {} ({} bp, {:.1} °C, hits={})",
+                    primer.primer_id,
+                    primer.full_sequence,
+                    primer.overlap_5prime.sequence,
+                    primer.overlap_5prime.length_bp,
+                    primer.overlap_5prime.tm_celsius,
+                    primer.priming_3prime.sequence,
+                    primer.priming_3prime.length_bp,
+                    primer.priming_3prime.tm_celsius,
+                    primer.priming_3prime.anneal_hits
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    fn render_gibson_preview_findings_rich(ui: &mut Ui, preview: &GibsonAssemblyPreview) {
+        let error_color = egui::Color32::from_rgb(190, 70, 70);
+        let warning_color = egui::Color32::from_rgb(170, 120, 20);
+        let note_color = ui.visuals().text_color();
+        if !preview.errors.is_empty() {
+            Self::gibson_rich_text_label(
+                ui,
+                &format!("blocking errors: {}", preview.errors.len()),
+                egui::TextStyle::Small,
+                error_color,
+            );
+            for row in &preview.errors {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(error_color, "-");
+                    Self::gibson_rich_text_label(ui, row, egui::TextStyle::Small, error_color);
+                });
+            }
+        }
+        if !preview.warnings.is_empty() {
+            Self::gibson_rich_text_label(
+                ui,
+                &format!("warnings: {}", preview.warnings.len()),
+                egui::TextStyle::Small,
+                warning_color,
+            );
+            for row in &preview.warnings {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(warning_color, "-");
+                    Self::gibson_rich_text_label(ui, row, egui::TextStyle::Small, warning_color);
+                });
+            }
+        }
+        if !preview.notes.is_empty() {
+            Self::gibson_rich_text_label(ui, "notes:", egui::TextStyle::Small, note_color);
+            for row in &preview.notes {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(note_color, "-");
+                    Self::gibson_rich_text_label(ui, row, egui::TextStyle::Small, note_color);
+                });
+            }
+        }
     }
 
     fn apply_gibson_destination_opening_suggestion(
@@ -14189,6 +14541,45 @@ Error: `{err}`"
         if let Some(suggestion) = selected_opening_suggestion.as_ref() {
             self.apply_gibson_destination_opening_suggestion(suggestion);
         }
+        if let Some(mut opening_detail_text) =
+            self.gibson_opening_detail_text(destination_opening_suggestions.as_ref().ok().map_or(&[], |rows| rows))
+        {
+            ui.small("Opening sketch");
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.small("Exact destination sequence at the chosen cut/opening:");
+                let opening_rows = opening_detail_text.lines().count().clamp(2, 4);
+                ui.add(
+                    egui::TextEdit::multiline(&mut opening_detail_text)
+                        .desired_rows(opening_rows)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+                if let Some(mut opened_arm_text) = self.gibson_opened_destination_arm_text() {
+                    ui.small("Destination after opening:");
+                    let opened_rows = opened_arm_text.lines().count().clamp(2, 4);
+                    ui.add(
+                        egui::TextEdit::multiline(&mut opened_arm_text)
+                            .desired_rows(opened_rows)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                }
+                if let Some(preview) = self.gibson_preview_output.as_ref() {
+                    if let Some(mut resolved_arm_text) =
+                        self.gibson_resolved_destination_arm_text(preview)
+                    {
+                        ui.small("Resolved 5' destination ends after choosing the Gibson overlap:");
+                        let resolved_rows = resolved_arm_text.lines().count().clamp(2, 4);
+                        ui.add(
+                            egui::TextEdit::multiline(&mut resolved_arm_text)
+                                .desired_rows(resolved_rows)
+                                .desired_width(f32::INFINITY)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                    }
+                }
+            });
+        }
 
         ui.separator();
         ui.heading("Insert");
@@ -14326,6 +14717,10 @@ Error: `{err}`"
                 || !preview.warnings.is_empty()
                 || !preview.notes.is_empty()
             {
+                ui.small("Preview findings");
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    Self::render_gibson_preview_findings_rich(ui, &preview);
+                });
                 let mut findings_text = Self::gibson_preview_findings_text(&preview);
                 let findings_rows = findings_text.lines().count().clamp(4, 10);
                 ui.small("Preview findings (copyable)");
@@ -14363,6 +14758,17 @@ Error: `{err}`"
                         ui.end_row();
                     }
                 });
+            let mut junctions_text = Self::gibson_preview_junctions_text(&preview);
+            if !junctions_text.trim().is_empty() {
+                let junction_rows = junctions_text.lines().count().clamp(4, 10);
+                ui.small("Resolved junctions (copyable)");
+                ui.add(
+                    egui::TextEdit::multiline(&mut junctions_text)
+                        .desired_rows(junction_rows)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+            }
 
             ui.separator();
             ui.label("Primer suggestions");
@@ -14395,6 +14801,17 @@ Error: `{err}`"
                         ui.end_row();
                     }
                 });
+            let mut primers_text = Self::gibson_preview_primers_text(&preview);
+            if !primers_text.trim().is_empty() {
+                let primer_rows = primers_text.lines().count().clamp(4, 12);
+                ui.small("Primer suggestions (copyable)");
+                ui.add(
+                    egui::TextEdit::multiline(&mut primers_text)
+                        .desired_rows(primer_rows)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+            }
 
             ui.separator();
             ui.label("Cartoon preview");
@@ -28090,7 +28507,10 @@ mod tests {
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             SequenceOrigin,
         },
-        gibson_planning::GibsonDestinationOpeningSuggestion,
+        gibson_planning::{
+            GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion, GibsonPrimerSegment,
+            GibsonPrimerSuggestion, GibsonResolvedJunctionPreview,
+        },
         uniprot::UniprotEntrySummary,
         window::Window,
     };
@@ -29836,6 +30256,100 @@ mod tests {
             GENtleApp::humanize_gibson_ui_text(raw),
             "minimum overlap Tm 60.0 °C"
         );
+    }
+
+    #[test]
+    fn gibson_opening_detail_text_marks_cut_in_sequence() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            DNAsequence::from_sequence("AAACCCGGGTTT").expect("destination sequence"),
+        );
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_opening_start_0based = "6".to_string();
+        app.gibson_opening_end_0based_exclusive = "6".to_string();
+
+        let detail = app.gibson_opening_detail_text(&[]).expect("opening detail");
+
+        assert!(detail.contains("destination cut: AAACCC|GGGTTT"));
+    }
+
+    #[test]
+    fn gibson_opened_destination_arm_text_shows_both_arms() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            DNAsequence::from_sequence("AAACCCGGGTTT").expect("destination sequence"),
+        );
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_opening_start_0based = "6".to_string();
+        app.gibson_opening_end_0based_exclusive = "6".to_string();
+
+        let opened = app
+            .gibson_opened_destination_arm_text()
+            .expect("opened arm detail");
+
+        assert!(opened.contains("left arm  : ...AAACCC|"));
+        assert!(opened.contains("right arm : |GGGTTT..."));
+    }
+
+    #[test]
+    fn gibson_preview_junctions_text_is_copyable_plaintext() {
+        let preview = GibsonAssemblyPreview {
+            resolved_junctions: vec![GibsonResolvedJunctionPreview {
+                junction_id: "junction_left".to_string(),
+                left_member_id: "dest_left".to_string(),
+                right_member_id: "insert_1".to_string(),
+                overlap_bp: 20,
+                overlap_tm_celsius: 61.5,
+                overlap_sequence: "AAATCGGATCTGATCGAAGG".to_string(),
+                overlap_source: "derive_from_destination_left_flank".to_string(),
+                distinct_from: vec![],
+            }],
+            ..Default::default()
+        };
+
+        let text = GENtleApp::gibson_preview_junctions_text(&preview);
+
+        assert!(text.contains("junction_left"));
+        assert!(text.contains("overlap: 20 bp | AAATCGGATCTGATCGAAGG"));
+        assert!(text.contains("Tm: 61.5 °C"));
+    }
+
+    #[test]
+    fn gibson_preview_primers_text_is_copyable_plaintext() {
+        let preview = GibsonAssemblyPreview {
+            primer_suggestions: vec![GibsonPrimerSuggestion {
+                primer_id: "insert_1_left_insert_primer".to_string(),
+                side: "left_insert_primer".to_string(),
+                fragment_id: "insert_1".to_string(),
+                template_seq_id: "insert_demo".to_string(),
+                full_sequence: "AAATCGGATCTGATCGAAGGATGGCTACCGTTAAGCTG".to_string(),
+                overlap_5prime: GibsonPrimerSegment {
+                    sequence: "AAATCGGATCTGATCGAAGG".to_string(),
+                    length_bp: 20,
+                    tm_celsius: 61.5,
+                    gc_fraction: 0.5,
+                    anneal_hits: 1,
+                    note: String::new(),
+                },
+                priming_3prime: GibsonPrimerSegment {
+                    sequence: "ATGGCTACCGTTAAGCTG".to_string(),
+                    length_bp: 18,
+                    tm_celsius: 59.2,
+                    gc_fraction: 0.5,
+                    anneal_hits: 1,
+                    note: String::new(),
+                },
+            }],
+            ..Default::default()
+        };
+
+        let text = GENtleApp::gibson_preview_primers_text(&preview);
+
+        assert!(text.contains("insert_1_left_insert_primer"));
+        assert!(text.contains("5' overlap: AAATCGGATCTGATCGAAGG (20 bp, 61.5 °C)"));
+        assert!(text.contains("3' priming: ATGGCTACCGTTAAGCTG (18 bp, 59.2 °C, hits=1)"));
     }
 
     #[test]
