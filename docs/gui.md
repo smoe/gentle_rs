@@ -2059,6 +2059,9 @@ Metadata key format:
 Use the top application menu:
 
 - `File -> Open Sequence...`
+  - the file picker supports selecting multiple sequence files at once
+  - selected files are imported sequentially through the normal per-file import path
+  - each successfully imported file opens its own sequence window
 - `File -> UniProt Mapping...`
 - `File -> Open Project...`
 - `File -> Open Recent Project...`

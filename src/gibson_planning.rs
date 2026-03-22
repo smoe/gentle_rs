@@ -409,7 +409,8 @@ pub fn suggest_gibson_destination_openings(
             if !seen_enzymes.insert(enzyme_name.clone()) {
                 continue;
             }
-            if let Some(suggestion) = restriction_site_suggestion(dna, site, true, &mcs_hints, seq_len)
+            if let Some(suggestion) =
+                restriction_site_suggestion(dna, site, true, &mcs_hints, seq_len)
             {
                 suggestions.push(suggestion);
             }
@@ -808,11 +809,13 @@ fn feature_overlaps_recognition_span(
     if feature_ranges.is_empty() {
         return false;
     }
-    site_segments.into_iter().any(|(segment_start, segment_end)| {
-        feature_ranges.iter().any(|(feature_start, feature_end)| {
-            segment_start < *feature_end && segment_end > *feature_start
+    site_segments
+        .into_iter()
+        .any(|(segment_start, segment_end)| {
+            feature_ranges.iter().any(|(feature_start, feature_end)| {
+                segment_start < *feature_end && segment_end > *feature_start
+            })
         })
-    })
 }
 
 pub fn preview_gibson_assembly_plan(
@@ -3466,9 +3469,8 @@ mod tests {
     #[test]
     fn preview_prefers_shortest_acceptable_overlap_when_length_is_derived() {
         let mut engine = GentleEngine::new();
-        let destination =
-            DNAsequence::from_sequence("GGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTT")
-                .expect("destination sequence");
+        let destination = DNAsequence::from_sequence("GGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTT")
+            .expect("destination sequence");
         let insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
             .expect("insert sequence");
         engine

@@ -4536,7 +4536,7 @@ Error: `{err}`"
             },
             CommandPaletteEntry {
                 title: "Open Sequence".to_string(),
-                detail: "Import a sequence file into project".to_string(),
+                detail: "Import one or more sequence files into project".to_string(),
                 keywords: "sequence import load".to_string(),
                 action: CommandPaletteAction::OpenSequence,
             },
@@ -4885,6 +4885,39 @@ Error: `{err}`"
         Ok(dna)
     }
 
+    fn format_open_sequence_import_status(
+        imported_seq_ids: &[String],
+        failures: &[String],
+    ) -> String {
+        match (imported_seq_ids.len(), failures.len()) {
+            (0, 0) => "Open sequence canceled".to_string(),
+            (1, 0) => format!("Open sequence: loaded '{}'", imported_seq_ids[0]),
+            (loaded, 0) => format!(
+                "Open sequence: loaded {loaded} sequences ({})",
+                imported_seq_ids.join(", ")
+            ),
+            (0, 1) => failures[0].clone(),
+            (0, failed) => {
+                let first = failures.first().cloned().unwrap_or_default();
+                format!("Open sequence failed for {failed} files; first error: {first}")
+            }
+            (loaded, 1) => format!(
+                "Open sequence: loaded {loaded} sequence{} ({}); 1 import failed: {}",
+                if loaded == 1 { "" } else { "s" },
+                imported_seq_ids.join(", "),
+                failures[0]
+            ),
+            (loaded, failed) => {
+                let first = failures.first().cloned().unwrap_or_default();
+                format!(
+                    "Open sequence: loaded {loaded} sequence{} ({}); {failed} imports failed (first error: {first})",
+                    if loaded == 1 { "" } else { "s" },
+                    imported_seq_ids.join(", ")
+                )
+            }
+        }
+    }
+
     fn new_dna_window(&mut self, seq_id: String, dna: DNAsequence) {
         self.new_windows
             .push(Window::new_dna(dna, seq_id, self.engine.clone()));
@@ -5225,7 +5258,10 @@ Error: `{err}`"
         Err(anyhow!("Could not load file '{path}'"))
     }
 
-    fn open_new_window_from_file(&mut self, path: &str) {
+    fn import_sequence_file_into_project(
+        &mut self,
+        path: &str,
+    ) -> std::result::Result<Vec<String>, String> {
         let op = Operation::LoadFile {
             path: path.to_string(),
             as_id: None,
@@ -5236,33 +5272,71 @@ Error: `{err}`"
         };
         match load_result {
             Ok(result) => {
-                if let Some(seq_id) = result.created_seq_ids.first() {
-                    let seq_id = seq_id.to_string();
-                    let dna = self
-                        .engine
-                        .read()
-                        .unwrap()
-                        .state()
-                        .sequences
-                        .get(&seq_id)
-                        .cloned();
-                    if let Some(dna) = dna {
-                        self.new_dna_window(seq_id.clone(), dna);
-                        self.app_status = format!("Open sequence: loaded '{}'", seq_id);
-                        return;
-                    }
+                let loaded_sequences = {
+                    let engine = self.engine.read().unwrap();
+                    result
+                        .created_seq_ids
+                        .iter()
+                        .filter_map(|seq_id| {
+                            engine
+                                .state()
+                                .sequences
+                                .get(seq_id)
+                                .cloned()
+                                .map(|dna| (seq_id.clone(), dna))
+                        })
+                        .collect::<Vec<_>>()
+                };
+                if loaded_sequences.is_empty() {
+                    return Err(Self::format_op_result_status(
+                        "Open sequence: operation finished but no sequence window was created",
+                        &result.created_seq_ids,
+                        &result.warnings,
+                        &result.messages,
+                    ));
                 }
-                self.app_status = Self::format_op_result_status(
-                    "Open sequence: operation finished but no sequence window was created",
-                    &result.created_seq_ids,
-                    &result.warnings,
-                    &result.messages,
-                );
+                let imported_seq_ids = loaded_sequences
+                    .iter()
+                    .map(|(seq_id, _)| seq_id.clone())
+                    .collect::<Vec<_>>();
+                for (seq_id, dna) in loaded_sequences {
+                    self.new_dna_window(seq_id, dna);
+                }
+                Ok(imported_seq_ids)
             }
-            Err(err) => {
-                self.app_status = format!("Open sequence failed: {}", err.message);
+            Err(err) => Err(format!("Open sequence failed: {}", err.message)),
+        }
+    }
+
+    fn open_new_window_from_file(&mut self, path: &str) {
+        self.app_status = match self.import_sequence_file_into_project(path) {
+            Ok(imported_seq_ids) => {
+                Self::format_open_sequence_import_status(&imported_seq_ids, &[])
+            }
+            Err(err) => err,
+        };
+    }
+
+    fn open_new_windows_from_files(&mut self, paths: &[PathBuf]) {
+        if paths.is_empty() {
+            self.app_status = "Open sequence canceled".to_string();
+            return;
+        }
+        if paths.len() == 1 {
+            let path_text = paths[0].display().to_string();
+            self.open_new_window_from_file(&path_text);
+            return;
+        }
+        let mut imported_seq_ids: Vec<String> = vec![];
+        let mut failures: Vec<String> = vec![];
+        for path in paths {
+            let path_text = path.display().to_string();
+            match self.import_sequence_file_into_project(&path_text) {
+                Ok(mut seq_ids) => imported_seq_ids.append(&mut seq_ids),
+                Err(err) => failures.push(err),
             }
         }
+        self.app_status = Self::format_open_sequence_import_status(&imported_seq_ids, &failures);
     }
 
     fn save_project_to_file(&self, path: &str) -> Result<()> {
@@ -5815,7 +5889,7 @@ Error: `{err}`"
     }
 
     fn prompt_open_sequence(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
+        if let Some(paths) = rfd::FileDialog::new()
             .add_filter(
                 "Supported sequence files",
                 &[
@@ -5827,10 +5901,9 @@ Error: `{err}`"
             .add_filter("EMBL", &["embl", "emb"])
             .add_filter("FASTA", &["fa", "fasta", "fna", "fas"])
             .add_filter("NCBI GenBank XML (GBSet/GBSeq)", &["xml"])
-            .pick_file()
+            .pick_files()
         {
-            let path = path.display().to_string();
-            self.open_new_window_from_file(&path);
+            self.open_new_windows_from_files(&paths);
         }
     }
 
@@ -13966,7 +14039,11 @@ Error: `{err}`"
     }
 
     fn current_gibson_opening_edges(&self) -> Option<(usize, usize)> {
-        let start = self.gibson_opening_start_0based.trim().parse::<usize>().ok()?;
+        let start = self
+            .gibson_opening_start_0based
+            .trim()
+            .parse::<usize>()
+            .ok()?;
         let end = self
             .gibson_opening_end_0based_exclusive
             .trim()
@@ -14083,8 +14160,7 @@ Error: `{err}`"
         if start > sequence.len() || end > sequence.len() {
             return None;
         }
-        let matched =
-            Self::current_gibson_opening_suggestion_for_edges(suggestions, start, end);
+        let matched = Self::current_gibson_opening_suggestion_for_edges(suggestions, start, end);
         let mut lines = vec![];
         if let Some(suggestion) = matched {
             lines.push(format!(
@@ -14094,9 +14170,15 @@ Error: `{err}`"
             ));
         }
         let context_bp = 12;
-        let left = Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let left = Self::gibson_suffix_before_edge(
+            &sequence,
+            start,
+            context_bp,
+            destination.is_circular(),
+        )?;
         let middle = Self::gibson_between_edges(&sequence, start, end, destination.is_circular())?;
-        let right = Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
+        let right =
+            Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
         let left_ellipsis = if destination.is_circular() || start > context_bp {
             "..."
         } else {
@@ -14124,8 +14206,12 @@ Error: `{err}`"
         let sequence = destination.get_forward_string().to_ascii_uppercase();
         let (start, end) = self.current_gibson_opening_edges()?;
         let context_bp = 12;
-        let left_context =
-            Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let left_context = Self::gibson_suffix_before_edge(
+            &sequence,
+            start,
+            context_bp,
+            destination.is_circular(),
+        )?;
         let right_context =
             Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
         Some(format!(
@@ -14134,7 +14220,10 @@ Error: `{err}`"
         ))
     }
 
-    fn gibson_resolved_destination_arm_text(&self, preview: &GibsonAssemblyPreview) -> Option<String> {
+    fn gibson_resolved_destination_arm_text(
+        &self,
+        preview: &GibsonAssemblyPreview,
+    ) -> Option<String> {
         let destination = self.current_gibson_destination_sequence_record()?;
         let sequence = destination.get_forward_string().to_ascii_uppercase();
         let start = preview.destination.opening_start_0based?;
@@ -14148,8 +14237,12 @@ Error: `{err}`"
             .iter()
             .find(|junction| junction.right_member_id == preview.destination.right_end_id)?;
         let context_bp = 8;
-        let left_context =
-            Self::gibson_suffix_before_edge(&sequence, start, context_bp, destination.is_circular())?;
+        let left_context = Self::gibson_suffix_before_edge(
+            &sequence,
+            start,
+            context_bp,
+            destination.is_circular(),
+        )?;
         let right_context =
             Self::gibson_prefix_after_edge(&sequence, end, context_bp, destination.is_circular())?;
         Some(format!(
@@ -14575,9 +14668,12 @@ Error: `{err}`"
         if let Some(suggestion) = selected_opening_suggestion.as_ref() {
             self.apply_gibson_destination_opening_suggestion(suggestion);
         }
-        if let Some(mut opening_detail_text) =
-            self.gibson_opening_detail_text(destination_opening_suggestions.as_ref().ok().map_or(&[], |rows| rows))
-        {
+        if let Some(mut opening_detail_text) = self.gibson_opening_detail_text(
+            destination_opening_suggestions
+                .as_ref()
+                .ok()
+                .map_or(&[], |rows| rows),
+        ) {
             ui.small("Opening sketch");
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.small("Exact destination sequence at the chosen cut/opening:");
@@ -19198,7 +19294,7 @@ Error: `{err}`"
                 ui.separator();
                 if ui
                     .button("Open Sequence...")
-                    .on_hover_text("Import a sequence file into the current project")
+                    .on_hover_text("Import one or more sequence files into the current project")
                     .clicked()
                 {
                     self.prompt_open_sequence();
@@ -28541,8 +28637,8 @@ mod tests {
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
         PersistedLineageNodeGroup, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter,
-        RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -31423,6 +31519,63 @@ mod tests {
                 .contains("Gibson Specialist Testing Tutorial")
         );
         assert!(app.help_tutorial_markdown.contains("Patterns -> Gibson..."));
+    }
+
+    #[test]
+    fn open_new_windows_from_files_imports_selected_files_consecutively() {
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let first_path = temp.path().join("first.fa");
+        let second_path = temp.path().join("second.gb");
+        fs::copy("test_files/pGEX_3X.fa", &first_path).expect("copy FASTA fixture");
+        fs::copy("test_files/tp73.ncbi.gb", &second_path).expect("copy GenBank fixture");
+
+        app.open_new_windows_from_files(&[first_path, second_path]);
+
+        let queued_seq_ids = app
+            .new_windows
+            .iter()
+            .map(|window| window.sequence_id().expect("sequence window"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            queued_seq_ids,
+            vec!["first".to_string(), "second".to_string()]
+        );
+        let engine = app.engine.read().unwrap();
+        assert!(engine.state().sequences.contains_key("first"));
+        assert!(engine.state().sequences.contains_key("second"));
+        assert_eq!(engine.operation_log().len(), 2);
+        assert!(
+            app.app_status.contains("loaded 2 sequences"),
+            "status was: {}",
+            app.app_status
+        );
+    }
+
+    #[test]
+    fn open_new_windows_from_files_keeps_successes_when_later_import_fails() {
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let first_path = temp.path().join("first.fa");
+        let missing_path = temp.path().join("missing.gb");
+        fs::copy("test_files/pGEX_3X.fa", &first_path).expect("copy FASTA fixture");
+
+        app.open_new_windows_from_files(&[first_path, missing_path]);
+
+        let queued_seq_ids = app
+            .new_windows
+            .iter()
+            .map(|window| window.sequence_id().expect("sequence window"))
+            .collect::<Vec<_>>();
+        assert_eq!(queued_seq_ids, vec!["first".to_string()]);
+        let engine = app.engine.read().unwrap();
+        assert!(engine.state().sequences.contains_key("first"));
+        assert_eq!(engine.operation_log().len(), 1);
+        assert!(
+            app.app_status.contains("1 import failed"),
+            "status was: {}",
+            app.app_status
+        );
     }
 
     #[test]

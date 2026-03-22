@@ -640,6 +640,9 @@ order. Durable architecture constraints and decisions remain in
 - File menu now also includes `Fetch GenBank Accession...` specialist dialog
   backed by shared engine operation `FetchGenBankAccession` (accession + optional
   `as_id`, with imported sequence window auto-open).
+- `File -> Open Sequence...` now supports multi-file selection and imports the
+  chosen files sequentially through the same per-file `LoadFile` path, opening
+  one sequence window per successful import.
 - Linear sequence windows now include a dedicated primary `Splicing map` mode
   (read-only) for selected `mRNA`/`exon` features.
   - Primary map splicing lanes reuse the same `SplicingExpertView` payload and
