@@ -13936,6 +13936,12 @@ Error: `{err}`"
         }
     }
 
+    fn open_gibson_show_all_unique_cutters(&mut self) {
+        self.gibson_show_all_unique_cutters = true;
+        self.gibson_status =
+            "Searching all known unique cleavage sites on the current destination".to_string();
+    }
+
     fn compact_gibson_sequence(sequence: &str, edge_bp: usize) -> String {
         if sequence.len() <= edge_bp.saturating_mul(2).saturating_add(3) {
             sequence.to_string()
@@ -14505,13 +14511,13 @@ Error: `{err}`"
                     });
                 if hidden_unique_cutters > 0 && !self.gibson_show_all_unique_cutters {
                     if ui
-                        .button(format!("Show other unique cutters ({hidden_unique_cutters})"))
+                        .button(format!("Search other unique cleavage sites ({hidden_unique_cutters})"))
                         .on_hover_text(
                             "Reveal unique cutters that are not named by the current MCS annotation.",
                         )
                         .clicked()
                     {
-                        self.gibson_show_all_unique_cutters = true;
+                        self.open_gibson_show_all_unique_cutters();
                     }
                 } else if self.gibson_show_all_unique_cutters
                     && suggestions.iter().any(|row| row.in_mcs_context)
@@ -14532,6 +14538,16 @@ Error: `{err}`"
                     ui.small(
                         "No unique-cutter suggestions were found for the current destination. You can still enter cut/opening edges directly or use the active selection.",
                     );
+                    if ui
+                        .button("Search unique cleavage sites")
+                        .on_hover_text(
+                            "Re-scan all known restriction enzymes for unique cleavage sites on the current destination.",
+                        )
+                        .clicked()
+                    {
+                        self.open_gibson_show_all_unique_cutters();
+                        self.gibson_status = "No unique cleavage sites were found on the current destination after scanning all known restriction enzymes.".to_string();
+                    }
                 }
             }
             Err(err) => {
@@ -30222,6 +30238,16 @@ mod tests {
         assert_eq!(app.gibson_insert_seq_id, "insert_x");
         assert_eq!(app.gibson_opening_start_0based, "941");
         assert_eq!(app.gibson_opening_end_0based_exclusive, "941");
+    }
+
+    #[test]
+    fn open_gibson_show_all_unique_cutters_enables_global_scan_mode() {
+        let mut app = GENtleApp::default();
+
+        app.open_gibson_show_all_unique_cutters();
+
+        assert!(app.gibson_show_all_unique_cutters);
+        assert!(app.gibson_status.contains("unique cleavage sites"));
     }
 
     #[test]

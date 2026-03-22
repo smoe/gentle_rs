@@ -577,6 +577,9 @@ Patterns menu:
          and marks them as `(MCS)`
        - `Show other unique cutters` reveals single-cutters elsewhere on the
          destination when you want to search beyond the MCS
+       - when no MCS is present or no suggestions are found, `Search unique
+         cleavage sites` explicitly re-scans all known restriction enzymes and
+         reports when none are unique on the current destination
        - `Feature` column shows the overlapping gene when available, otherwise
          another overlapping feature label; MCS-linked rows also show the MCS
          location there
