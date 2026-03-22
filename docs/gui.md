@@ -602,6 +602,8 @@ Patterns menu:
        - choose one insert sequence and orientation
     3. `Design Targets`
        - Gibson-specific overlap bp range
+       - when overlap length is derived rather than fixed, GENtle prefers the
+         shortest acceptable overlap inside that range
        - minimum overlap Tm
        - priming-segment Tm window
        - priming-segment length window
@@ -616,6 +618,8 @@ Patterns menu:
     4. `Review`
        - resolves terminal overlaps
        - derives insert primer suggestions as `5' overlap + 3' priming`
+       - `Opening sketch` extends into an insert-primer construction view so
+         the actual overlap segment and insert-priming segment are both shown
        - shows blocking errors, warnings, and the factual Gibson cartoon
        - visible findings use styled `Tₘ` rendering; the copyable findings box
          keeps plain `Tm` text for reliable copying

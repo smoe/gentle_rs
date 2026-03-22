@@ -13310,7 +13310,7 @@ Error: `{err}`"
                     priming_segment_tm_max_celsius: priming_tm_max_celsius,
                     priming_segment_min_length_bp: priming_length_min_bp,
                     priming_segment_max_length_bp: priming_length_max_bp,
-                    max_anneal_hits: 1,
+                    max_anneal_hits: 4,
                 },
                 uniqueness_checks: GibsonPlanUniquenessChecks {
                     destination_context: "warn".to_string(),
@@ -14163,6 +14163,24 @@ Error: `{err}`"
         ))
     }
 
+    fn gibson_primer_construction_text(preview: &GibsonAssemblyPreview) -> Option<String> {
+        let left_primer = preview
+            .primer_suggestions
+            .iter()
+            .find(|primer| primer.side == "left_insert_primer")?;
+        let right_primer = preview
+            .primer_suggestions
+            .iter()
+            .find(|primer| primer.side == "right_insert_primer")?;
+        Some(format!(
+            "left primer  : [{}][{}]\nright primer : [{}][{}]",
+            Self::compact_gibson_sequence(&left_primer.overlap_5prime.sequence, 8),
+            Self::compact_gibson_sequence(&left_primer.priming_3prime.sequence, 8),
+            Self::compact_gibson_sequence(&right_primer.overlap_5prime.sequence, 8),
+            Self::compact_gibson_sequence(&right_primer.priming_3prime.sequence, 8),
+        ))
+    }
+
     fn displayed_gibson_destination_opening_suggestions(
         suggestions: &[GibsonDestinationOpeningSuggestion],
         show_all_unique_cutters: bool,
@@ -14589,6 +14607,18 @@ Error: `{err}`"
                         ui.add(
                             egui::TextEdit::multiline(&mut resolved_arm_text)
                                 .desired_rows(resolved_rows)
+                                .desired_width(f32::INFINITY)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                    }
+                    if let Some(mut primer_construction_text) =
+                        Self::gibson_primer_construction_text(preview)
+                    {
+                        ui.small("Insert primer construction:");
+                        let primer_rows = primer_construction_text.lines().count().clamp(2, 4);
+                        ui.add(
+                            egui::TextEdit::multiline(&mut primer_construction_text)
+                                .desired_rows(primer_rows)
                                 .desired_width(f32::INFINITY)
                                 .font(egui::TextStyle::Monospace),
                         );
@@ -28505,13 +28535,14 @@ mod tests {
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
-        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
-        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        GenomeTrackImportTaskMessage, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
+        HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY,
+        LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind, LineageNodeKind, LineageRow,
+        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
+        PersistedLineageNodeGroup, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter,
+        RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -30273,6 +30304,35 @@ mod tests {
         app.open_gibson_dialog();
 
         assert_eq!(app.gibson_destination_seq_id, "active_seq");
+    }
+
+    #[test]
+    fn build_gibson_plan_from_ui_uses_relaxed_default_max_anneal_hits() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("destination sequence"),
+        );
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "insert_x".to_string(),
+            DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGA").expect("insert sequence"),
+        );
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_insert_seq_id = "insert_x".to_string();
+        app.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+        app.gibson_opening_start_0based = "4".to_string();
+        app.gibson_opening_end_0based_exclusive = "4".to_string();
+        app.gibson_overlap_bp_min = "20".to_string();
+        app.gibson_overlap_bp_max = "40".to_string();
+        app.gibson_minimum_overlap_tm_celsius = "60.0".to_string();
+        app.gibson_priming_tm_min_celsius = "58.0".to_string();
+        app.gibson_priming_tm_max_celsius = "68.0".to_string();
+        app.gibson_priming_length_min_bp = "18".to_string();
+        app.gibson_priming_length_max_bp = "35".to_string();
+
+        let plan = app.build_gibson_plan_from_ui().expect("build Gibson plan");
+
+        assert_eq!(plan.validation_policy.design_targets.max_anneal_hits, 4);
     }
 
     #[test]

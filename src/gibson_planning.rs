@@ -1047,73 +1047,71 @@ pub fn preview_gibson_assembly_plan(
             distinct_from: right_junction.distinct_from.clone(),
         });
 
-    if preview.errors.is_empty() {
-        let left_priming = choose_insert_priming_segment(
-            &insert_template_forward,
-            &oriented_insert_seq,
-            TerminalSide::Left,
-            &plan.validation_policy.design_targets,
-            &mut preview,
-        );
-        let right_priming = choose_insert_priming_segment(
-            &insert_template_forward,
-            &oriented_insert_seq,
-            TerminalSide::Right,
-            &plan.validation_policy.design_targets,
-            &mut preview,
-        );
-        if let (Some(left_priming), Some(right_priming)) = (left_priming, right_priming) {
-            let left_full = format!("{}{}", left_overlap.2, left_priming.sequence);
-            let right_overlap_primer = GentleEngine::reverse_complement(&right_overlap.2);
-            let right_full = format!("{}{}", right_overlap_primer, right_priming.sequence);
-            preview.primer_suggestions.push(GibsonPrimerSuggestion {
-                primer_id: format!("{}_left_insert_primer", preview.insert.fragment_id),
-                side: "left_insert_primer".to_string(),
-                fragment_id: preview.insert.fragment_id.clone(),
-                template_seq_id: preview.insert.seq_id.clone(),
-                full_sequence: left_full,
-                overlap_5prime: GibsonPrimerSegment {
-                    sequence: left_overlap.2.clone(),
-                    length_bp: left_overlap.1,
-                    tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
-                    gc_fraction: GentleEngine::sequence_gc_fraction(left_overlap.2.as_bytes())
-                        .unwrap_or(0.0),
-                    anneal_hits: count_hits_both_strands(
-                        &destination.get_forward_string().to_ascii_uppercase(),
-                        &left_overlap.2,
-                    ),
-                    note: "5' non-priming overlap segment derived from the left destination flank"
-                        .to_string(),
-                },
-                priming_3prime: GibsonPrimerSegment {
-                    note: "3' gene-specific priming segment chosen from the insert terminus to satisfy the Gibson PCR target window".to_string(),
-                    ..left_priming
-                },
-            });
-            preview.primer_suggestions.push(GibsonPrimerSuggestion {
-                primer_id: format!("{}_right_insert_primer", preview.insert.fragment_id),
-                side: "right_insert_primer".to_string(),
-                fragment_id: preview.insert.fragment_id.clone(),
-                template_seq_id: preview.insert.seq_id.clone(),
-                full_sequence: right_full,
-                overlap_5prime: GibsonPrimerSegment {
-                    sequence: right_overlap_primer,
-                    length_bp: right_overlap.1,
-                    tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
-                    gc_fraction: GentleEngine::sequence_gc_fraction(right_overlap.2.as_bytes())
-                        .unwrap_or(0.0),
-                    anneal_hits: count_hits_both_strands(
-                        &destination.get_forward_string().to_ascii_uppercase(),
-                        &right_overlap.2,
-                    ),
-                    note: "5' non-priming overlap segment derived from the right destination flank and reverse-complemented for the right insert primer".to_string(),
-                },
-                priming_3prime: GibsonPrimerSegment {
-                    note: "3' gene-specific priming segment chosen from the opposite insert terminus to satisfy the Gibson PCR target window".to_string(),
-                    ..right_priming
-                },
-            });
-        }
+    let left_priming = choose_insert_priming_segment(
+        &insert_template_forward,
+        &oriented_insert_seq,
+        TerminalSide::Left,
+        &plan.validation_policy.design_targets,
+        &mut preview,
+    );
+    let right_priming = choose_insert_priming_segment(
+        &insert_template_forward,
+        &oriented_insert_seq,
+        TerminalSide::Right,
+        &plan.validation_policy.design_targets,
+        &mut preview,
+    );
+    if let (Some(left_priming), Some(right_priming)) = (left_priming, right_priming) {
+        let left_full = format!("{}{}", left_overlap.2, left_priming.sequence);
+        let right_overlap_primer = GentleEngine::reverse_complement(&right_overlap.2);
+        let right_full = format!("{}{}", right_overlap_primer, right_priming.sequence);
+        preview.primer_suggestions.push(GibsonPrimerSuggestion {
+            primer_id: format!("{}_left_insert_primer", preview.insert.fragment_id),
+            side: "left_insert_primer".to_string(),
+            fragment_id: preview.insert.fragment_id.clone(),
+            template_seq_id: preview.insert.seq_id.clone(),
+            full_sequence: left_full,
+            overlap_5prime: GibsonPrimerSegment {
+                sequence: left_overlap.2.clone(),
+                length_bp: left_overlap.1,
+                tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
+                gc_fraction: GentleEngine::sequence_gc_fraction(left_overlap.2.as_bytes())
+                    .unwrap_or(0.0),
+                anneal_hits: count_hits_both_strands(
+                    &destination.get_forward_string().to_ascii_uppercase(),
+                    &left_overlap.2,
+                ),
+                note: "5' non-priming overlap segment derived from the left destination flank"
+                    .to_string(),
+            },
+            priming_3prime: GibsonPrimerSegment {
+                note: "3' gene-specific priming segment chosen from the insert terminus to satisfy the Gibson PCR target window".to_string(),
+                ..left_priming
+            },
+        });
+        preview.primer_suggestions.push(GibsonPrimerSuggestion {
+            primer_id: format!("{}_right_insert_primer", preview.insert.fragment_id),
+            side: "right_insert_primer".to_string(),
+            fragment_id: preview.insert.fragment_id.clone(),
+            template_seq_id: preview.insert.seq_id.clone(),
+            full_sequence: right_full,
+            overlap_5prime: GibsonPrimerSegment {
+                sequence: right_overlap_primer,
+                length_bp: right_overlap.1,
+                tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
+                gc_fraction: GentleEngine::sequence_gc_fraction(right_overlap.2.as_bytes())
+                    .unwrap_or(0.0),
+                anneal_hits: count_hits_both_strands(
+                    &destination.get_forward_string().to_ascii_uppercase(),
+                    &right_overlap.2,
+                ),
+                note: "5' non-priming overlap segment derived from the right destination flank and reverse-complemented for the right insert primer".to_string(),
+            },
+            priming_3prime: GibsonPrimerSegment {
+                note: "3' gene-specific priming segment chosen from the opposite insert terminus to satisfy the Gibson PCR target window".to_string(),
+                ..right_priming
+            },
+        });
     }
 
     apply_uniqueness_advisories(
@@ -2085,8 +2083,6 @@ fn choose_overlap_len_for_side(
     side: TerminalSide,
     targets: &GibsonPlanDesignTargets,
 ) -> Option<usize> {
-    let mut best: Option<usize> = None;
-    let target_mid = (targets.overlap_bp_min + targets.overlap_bp_max) / 2;
     for len in targets.overlap_bp_min..=targets.overlap_bp_max {
         let Some(sequence) = overlap_sequence_for_side(destination_seq, opening, side, len) else {
             continue;
@@ -2095,19 +2091,9 @@ fn choose_overlap_len_for_side(
         if tm < targets.minimum_overlap_tm_celsius {
             continue;
         }
-        match best {
-            None => best = Some(len),
-            Some(previous) => {
-                let better = len.abs_diff(target_mid) < previous.abs_diff(target_mid)
-                    || (len.abs_diff(target_mid) == previous.abs_diff(target_mid)
-                        && len < previous);
-                if better {
-                    best = Some(len);
-                }
-            }
-        }
+        return Some(len);
     }
-    best
+    None
 }
 
 fn overlap_sequence_for_side(
@@ -3475,5 +3461,50 @@ mod tests {
             preview.routine_handoff.routine_id,
             "gibson.two_fragment_overlap_preview"
         );
+    }
+
+    #[test]
+    fn preview_prefers_shortest_acceptable_overlap_when_length_is_derived() {
+        let mut engine = GentleEngine::new();
+        let destination =
+            DNAsequence::from_sequence("GGGGGGGGGGGGGGGGGGGGTTTTTTTTTTTTTTTTTTTT")
+                .expect("destination sequence");
+        let insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+            .expect("insert sequence");
+        engine
+            .state_mut()
+            .sequences
+            .insert("destination_vector".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("insert_x_amplicon".to_string(), insert);
+
+        let mut plan = single_insert_plan();
+        plan.destination.topology_before_opening = "linear".to_string();
+        plan.destination.opening.mode = "existing_termini".to_string();
+        plan.destination.opening.start_0based = None;
+        plan.destination.opening.end_0based_exclusive = None;
+        plan.validation_policy.require_distinct_terminal_junctions = false;
+        plan.junctions[0].required_overlap_bp = None;
+        plan.junctions[0].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 0,
+            right_member_bp: 0,
+        });
+        plan.junctions[1].required_overlap_bp = None;
+        plan.junctions[1].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 0,
+            right_member_bp: 0,
+        });
+        plan.validation_policy.design_targets.overlap_bp_min = 4;
+        plan.validation_policy.design_targets.overlap_bp_max = 8;
+        plan.validation_policy
+            .design_targets
+            .minimum_overlap_tm_celsius = -100.0;
+
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview");
+
+        assert_eq!(preview.resolved_junctions[0].overlap_bp, 4);
+        assert_eq!(preview.resolved_junctions[1].overlap_bp, 4);
     }
 }
