@@ -621,6 +621,9 @@ Patterns menu:
        - `Opening sketch` extends into an insert-primer construction view so
          the actual overlap segment and insert-priming segment are both shown
        - shows blocking errors, warnings, and the factual Gibson cartoon
+       - priming-segment failures now explain the best available insert-end
+         candidate explicitly, including when the insert terminus is simply too
+         short / too low-`Tm` for the requested Gibson primer window
        - visible findings use styled `Tₘ` rendering; the copyable findings box
          keeps plain `Tm` text for reliable copying
        - findings, resolved junctions, primer suggestions, and status text are
@@ -630,9 +633,9 @@ Patterns menu:
     5. `Outputs`
        - shows the exact primer/product nodes the current apply step will
          create
-       - `Apply Gibson Cloning` runs one shared engine operation and creates
-         new sequence nodes for the two insert primers and the assembled
-         product
+       - `Apply Gibson Cloning` only enables after preview reports no blocking
+         errors, then runs one shared engine operation and creates new sequence
+         nodes for the two insert primers and the assembled product
        - `Cancel` closes the specialist without applying anything and keeps the
          current draft available when the window is reopened
        - the assembled product carries transferred destination/insert features

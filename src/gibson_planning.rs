@@ -2189,6 +2189,11 @@ fn choose_insert_priming_segment(
     let target_mid =
         (targets.priming_segment_tm_min_celsius + targets.priming_segment_tm_max_celsius) / 2.0;
     let mut best: Option<GibsonPrimerCandidate> = None;
+    let mut best_below_tm_window: Option<GibsonPrimerCandidate> = None;
+    let mut best_above_tm_window: Option<GibsonPrimerCandidate> = None;
+    let mut best_ambiguous_candidate: Option<GibsonPrimerCandidate> = None;
+    let mut observed_max_len = 0usize;
+    let mut saw_no_hit_candidate = false;
     for len in targets.priming_segment_min_length_bp..=targets.priming_segment_max_length_bp {
         let sequence = match side {
             TerminalSide::Left => oriented_insert_seq.get(0..len).map(str::to_string),
@@ -2202,19 +2207,59 @@ fn choose_insert_priming_segment(
         let tm = GentleEngine::estimate_primer_tm_c(sequence.as_bytes());
         let gc_fraction = GentleEngine::sequence_gc_fraction(sequence.as_bytes()).unwrap_or(0.0);
         let anneal_hits = count_hits_both_strands(insert_template_forward, &sequence);
-        if tm < targets.priming_segment_tm_min_celsius
-            || tm > targets.priming_segment_tm_max_celsius
-            || anneal_hits == 0
-            || anneal_hits > targets.max_anneal_hits
-        {
-            continue;
-        }
+        observed_max_len = observed_max_len.max(sequence.len());
         let candidate = GibsonPrimerCandidate {
             sequence,
             tm_celsius: tm,
             gc_fraction,
             anneal_hits,
         };
+        if candidate.anneal_hits == 0 {
+            saw_no_hit_candidate = true;
+            continue;
+        }
+        if candidate.anneal_hits > targets.max_anneal_hits {
+            let replace_ambiguous = match &best_ambiguous_candidate {
+                None => true,
+                Some(previous) => {
+                    candidate.anneal_hits < previous.anneal_hits
+                        || (candidate.anneal_hits == previous.anneal_hits
+                            && candidate.sequence.len() < previous.sequence.len())
+                }
+            };
+            if replace_ambiguous {
+                best_ambiguous_candidate = Some(candidate);
+            }
+            continue;
+        }
+        if candidate.tm_celsius < targets.priming_segment_tm_min_celsius {
+            let replace_low = match &best_below_tm_window {
+                None => true,
+                Some(previous) => {
+                    candidate.tm_celsius > previous.tm_celsius
+                        || ((candidate.tm_celsius - previous.tm_celsius).abs() < f64::EPSILON
+                            && candidate.sequence.len() > previous.sequence.len())
+                }
+            };
+            if replace_low {
+                best_below_tm_window = Some(candidate);
+            }
+            continue;
+        }
+        if candidate.tm_celsius > targets.priming_segment_tm_max_celsius {
+            let replace_high = match &best_above_tm_window {
+                None => true,
+                Some(previous) => {
+                    candidate.tm_celsius < previous.tm_celsius
+                        || ((candidate.tm_celsius - previous.tm_celsius).abs() < f64::EPSILON
+                            && candidate.sequence.len() < previous.sequence.len())
+                }
+            };
+            if replace_high {
+                best_above_tm_window = Some(candidate);
+            }
+            continue;
+        }
         let replace = match &best {
             None => true,
             Some(previous) => {
@@ -2234,17 +2279,60 @@ fn choose_insert_priming_segment(
     }
 
     let Some(best) = best else {
-        preview.errors.push(format!(
-            "Could not derive a Gibson priming segment within {}..{} bp and {:.1}..{:.1} C for the {} insert end",
-            targets.priming_segment_min_length_bp,
-            targets.priming_segment_max_length_bp,
-            targets.priming_segment_tm_min_celsius,
-            targets.priming_segment_tm_max_celsius,
-            match side {
-                TerminalSide::Left => "left",
-                TerminalSide::Right => "right",
-            }
-        ));
+        let side_label = match side {
+            TerminalSide::Left => "left",
+            TerminalSide::Right => "right",
+        };
+        let length_window = format!(
+            "{}..{} bp",
+            targets.priming_segment_min_length_bp, targets.priming_segment_max_length_bp
+        );
+        let tm_window = format!(
+            "{:.1}..{:.1} °C",
+            targets.priming_segment_tm_min_celsius, targets.priming_segment_tm_max_celsius
+        );
+        let message = if let Some(candidate) = best_below_tm_window {
+            let availability_note = if observed_max_len < targets.priming_segment_max_length_bp {
+                format!(
+                    "Only {} bp of gene-specific sequence are available at that insert terminus within the requested {length_window}.",
+                    observed_max_len
+                )
+            } else {
+                format!(
+                    "Even the strongest candidate in the requested {length_window} stays below the minimum target."
+                )
+            };
+            format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: the best available 3' gene-specific priming segment reaches only {:.1} °C at {} bp, below the requested minimum {:.1} °C (target window {tm_window}). {availability_note}",
+                candidate.tm_celsius,
+                candidate.sequence.len(),
+                targets.priming_segment_tm_min_celsius,
+            )
+        } else if let Some(candidate) = best_above_tm_window {
+            format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: the coolest admissible 3' gene-specific priming segment is already {:.1} °C at {} bp, above the requested maximum {:.1} °C (target window {tm_window}, length window {length_window}).",
+                candidate.tm_celsius,
+                candidate.sequence.len(),
+                targets.priming_segment_tm_max_celsius,
+            )
+        } else if let Some(candidate) = best_ambiguous_candidate {
+            format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: candidate 3' priming segments in the requested {length_window} anneal too ambiguously to the insert template (best candidate: {} bp, {:.1} °C, hits={} > max {}).",
+                candidate.sequence.len(),
+                candidate.tm_celsius,
+                candidate.anneal_hits,
+                targets.max_anneal_hits,
+            )
+        } else if saw_no_hit_candidate {
+            format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: no candidate 3' gene-specific segment in the requested {length_window} anneals to the insert template while meeting the Gibson primer constraints (target window {tm_window})."
+            )
+        } else {
+            format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end within {length_window} and {tm_window}."
+            )
+        };
+        preview.errors.push(message);
         return None;
     };
     Some(GibsonPrimerSegment {
@@ -2840,6 +2928,50 @@ mod tests {
                 .iter()
                 .any(|row| row.contains("Could not derive a Gibson priming segment"))
         );
+    }
+
+    #[test]
+    fn preview_reports_short_insert_end_explicitly_when_priming_tm_is_too_low() {
+        let mut engine = GentleEngine::new();
+        let mut destination =
+            DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+                .expect("destination sequence");
+        destination.set_name("destination_vector".to_string());
+        destination.set_circular(true);
+        let mut insert = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAA").expect("insert");
+        insert.set_name("short_poly_a_insert".to_string());
+        insert.set_circular(false);
+        engine
+            .state_mut()
+            .sequences
+            .insert("destination_vector".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("short_poly_a_insert".to_string(), insert);
+        engine.state_mut().display = ProjectState::default().display;
+
+        let mut plan = single_insert_plan();
+        plan.fragments[0].seq_id = "short_poly_a_insert".to_string();
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_min_celsius = 58.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_max_celsius = 68.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_min_length_bp = 18;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_max_length_bp = 35;
+
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
+        assert!(!preview.can_execute);
+        let joined = preview.errors.join("\n");
+        assert!(joined.contains("best available 3' gene-specific priming segment"));
+        assert!(joined.contains("Only 23 bp of gene-specific sequence are available"));
+        assert!(joined.contains("41.6 °C"));
     }
 
     #[test]

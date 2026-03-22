@@ -13496,6 +13496,22 @@ Error: `{err}`"
     }
 
     fn run_gibson_apply(&mut self) {
+        match self.gibson_preview_output.as_ref() {
+            Some(preview) if !preview.can_execute => {
+                self.gibson_status = format!(
+                    "Gibson apply blocked: preview still has {} blocking error(s). Resolve them first and rerun preview.",
+                    preview.errors.len()
+                );
+                return;
+            }
+            None => {
+                self.gibson_status =
+                    "Run Gibson preview first so apply uses one reviewed, executable design."
+                        .to_string();
+                return;
+            }
+            Some(_) => {}
+        }
         let plan = match self.build_gibson_plan_from_ui() {
             Ok(plan) => plan,
             Err(err) => {
@@ -15044,10 +15060,22 @@ Error: `{err}`"
             );
         }
         ui.horizontal_wrapped(|ui| {
+            let apply_enabled = self
+                .gibson_preview_output
+                .as_ref()
+                .map(|preview| preview.can_execute)
+                .unwrap_or(false);
             if ui
-                .button("Apply Gibson Cloning")
+                .add_enabled(
+                    apply_enabled,
+                    egui::Button::new("Apply Gibson Cloning"),
+                )
                 .on_hover_text(
-                    "Create new sequence nodes for the Gibson primers and assembled product through one shared engine operation",
+                    if apply_enabled {
+                        "Create new sequence nodes for the Gibson primers and assembled product through one shared engine operation"
+                    } else {
+                        "Apply becomes available after Preview Gibson Plan reports no blocking errors."
+                    },
                 )
                 .clicked()
             {
@@ -19906,6 +19934,7 @@ Error: `{err}`"
             let mut op_created_count: HashMap<String, usize> = HashMap::new();
             let mut op_created_ids: HashMap<String, Vec<String>> = HashMap::new();
             let mut op_label_by_id: HashMap<String, String> = HashMap::new();
+            let mut individually_rendered_multi_output_ops: HashSet<String> = HashSet::new();
             let mut op_retrieval_by_id: HashMap<String, LineageRetrievalDescriptor> =
                 HashMap::new();
             let mut dotplot_op_by_id: HashMap<String, (String, String, Option<String>)> =
@@ -19939,6 +19968,7 @@ Error: `{err}`"
                 op_label_by_id.insert(rec.result.op_id.clone(), Self::summarize_operation(&rec.op));
                 if matches!(rec.op, Operation::ApplyGibsonAssemblyPlan { .. }) {
                     reopenable_gibson_op_ids.insert(rec.result.op_id.clone());
+                    individually_rendered_multi_output_ops.insert(rec.result.op_id.clone());
                 }
                 if let Some(descriptor) = Self::lineage_retrieval_descriptor_from_operation(&rec.op)
                 {
@@ -20146,18 +20176,28 @@ Error: `{err}`"
                         .get(&node.seq_id)
                         .and_then(|dna| dna.name().clone())
                         .unwrap_or_else(|| node.seq_id.clone());
-                    let pool_size = node
+                    let created_by_multi_output_op = node
                         .created_by_op
                         .as_ref()
-                        .and_then(|op| op_created_count.get(op))
-                        .cloned()
-                        .unwrap_or(1);
-                    let pool_members = node
-                        .created_by_op
-                        .as_ref()
-                        .and_then(|op| op_created_ids.get(op))
-                        .cloned()
-                        .unwrap_or_else(|| vec![node.seq_id.clone()]);
+                        .is_some_and(|op| individually_rendered_multi_output_ops.contains(op));
+                    let pool_size = if created_by_multi_output_op {
+                        1
+                    } else {
+                        node.created_by_op
+                            .as_ref()
+                            .and_then(|op| op_created_count.get(op))
+                            .cloned()
+                            .unwrap_or(1)
+                    };
+                    let pool_members = if created_by_multi_output_op {
+                        vec![node.seq_id.clone()]
+                    } else {
+                        node.created_by_op
+                            .as_ref()
+                            .and_then(|op| op_created_ids.get(op))
+                            .cloned()
+                            .unwrap_or_else(|| vec![node.seq_id.clone()])
+                    };
                     let genome_anchor_summary = anchor_by_seq.get(&node.seq_id).cloned();
                     let genome_anchor_display = genome_anchor_summary
                         .as_ref()
@@ -30762,6 +30802,131 @@ mod tests {
         assert!(summary.contains("destination=dest"));
         assert!(summary.contains("insert=insert"));
         assert!(summary.contains("output=assembled"));
+    }
+
+    #[test]
+    fn refresh_lineage_cache_renders_gibson_outputs_as_individual_sequences() {
+        let mut app = GENtleApp::default();
+        let plan_json = r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "lineage_test",
+  "title": "Lineage test",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "lineage_out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 24,
+      "minimum_overlap_tm_celsius": 48.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#;
+        let op_id = {
+            let mut engine = app.engine.write().unwrap();
+            let mut destination =
+                DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+                    .expect("destination sequence");
+            destination.set_name("destination_vector".to_string());
+            destination.set_circular(true);
+            let mut insert =
+                DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+                    .expect("insert sequence");
+            insert.set_name("insert_x_amplicon".to_string());
+            insert.set_circular(false);
+            engine
+                .state_mut()
+                .sequences
+                .insert("destination_vector".to_string(), destination);
+            engine
+                .state_mut()
+                .sequences
+                .insert("insert_x_amplicon".to_string(), insert);
+            engine.state_mut().display = ProjectState::default().display;
+            engine
+                .apply(Operation::ApplyGibsonAssemblyPlan {
+                    plan_json: plan_json.to_string(),
+                })
+                .expect("apply Gibson operation")
+                .op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        for seq_id in [
+            "insert_x_left_insert_primer",
+            "insert_x_right_insert_primer",
+            "lineage_out",
+        ] {
+            let row = app
+                .lineage_rows
+                .iter()
+                .find(|row| row.seq_id == seq_id)
+                .unwrap_or_else(|| panic!("missing lineage row for {seq_id}"));
+            assert_eq!(row.created_by_op, op_id);
+            assert_eq!(row.pool_size, 1);
+            assert_eq!(row.pool_members, vec![seq_id.to_string()]);
+        }
     }
 
     #[test]
