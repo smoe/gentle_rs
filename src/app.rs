@@ -685,6 +685,7 @@ pub struct GENtleApp {
     gibson_priming_length_min_bp: String,
     gibson_priming_length_max_bp: String,
     gibson_output_id_hint: String,
+    gibson_show_all_unique_cutters: bool,
     gibson_status: String,
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
@@ -1623,7 +1624,7 @@ impl GibsonUiOpeningMode {
     fn label(self) -> &'static str {
         match self {
             Self::ExistingTermini => "Use existing termini",
-            Self::DefinedSite => "Defined opening",
+            Self::DefinedSite => "Defined cut/opening",
         }
     }
 
@@ -1944,6 +1945,7 @@ impl Default for GENtleApp {
             gibson_priming_length_min_bp: "18".to_string(),
             gibson_priming_length_max_bp: "35".to_string(),
             gibson_output_id_hint: String::new(),
+            gibson_show_all_unique_cutters: false,
             gibson_status: String::new(),
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
@@ -5531,6 +5533,7 @@ Error: `{err}`"
         self.gibson_opening_end_0based_exclusive.clear();
         self.gibson_insert_seq_id.clear();
         self.gibson_output_id_hint.clear();
+        self.gibson_show_all_unique_cutters = false;
         self.gibson_status.clear();
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
@@ -13143,11 +13146,11 @@ Error: `{err}`"
             GibsonUiOpeningMode::ExistingTermini => (None, None),
             GibsonUiOpeningMode::DefinedSite => (
                 Some(parse_usize_field(
-                    "opening start_0based",
+                    "left cut edge (0-based)",
                     &self.gibson_opening_start_0based,
                 )?),
                 Some(parse_usize_field(
-                    "opening end_0based_exclusive",
+                    "right cut edge (0-based)",
                     &self.gibson_opening_end_0based_exclusive,
                 )?),
             ),
@@ -13773,7 +13776,7 @@ Error: `{err}`"
             "3prime_overhang" => {
                 format!("3' overhang ({} bp)", suggestion.overhang_bp.unwrap_or(0))
             }
-            "feature_span" => "feature span".to_string(),
+            "feature_span" => "region".to_string(),
             _ => suggestion.end_geometry.clone(),
         }
     }
@@ -13841,56 +13844,57 @@ Error: `{err}`"
     fn gibson_use_active_selection_tooltip(&self) -> String {
         match self.active_dna_window_context() {
             Some((seq_id, Some((start, end)))) => format!(
-                "Fill the opening start/end from the current selection in the focused DNA window.\nCurrent active selection: {seq_id} {start}..{end} (0-based)"
+                "Fill the Gibson cut/opening edges from the current selection in the focused DNA window.\nCurrent active selection: {seq_id} {start}..{end} (0-based)"
             ),
             Some((seq_id, None)) => format!(
-                "Fill the opening start/end from the current selection in the focused DNA window.\nCurrent active DNA window: {seq_id} (no active selection)"
+                "Fill the Gibson cut/opening edges from the current selection in the focused DNA window.\nCurrent active DNA window: {seq_id} (no active selection)"
             ),
-            None => "Fill the opening start/end from the current selection in the focused DNA window.\nNo active DNA window is currently available.".to_string(),
-        }
-    }
-
-    fn gibson_destination_suggestion_source_label(
-        suggestion: &GibsonDestinationOpeningSuggestion,
-    ) -> &'static str {
-        if suggestion.kind == "mcs_feature" {
-            "MCS feature"
-        } else if suggestion.in_mcs_context {
-            "MCS / unique cutter"
-        } else {
-            "unique cutter"
+            None => "Fill the Gibson cut/opening edges from the current selection in the focused DNA window.\nNo active DNA window is currently available.".to_string(),
         }
     }
 
     fn gibson_destination_suggestion_help_text(
         suggestion: &GibsonDestinationOpeningSuggestion,
     ) -> String {
-        let why = if suggestion.kind == "mcs_feature" {
-            "Choose the full MCS feature when you want the annotated cloning region as a whole and do not want to commit to one cutter yet."
+        let why = if suggestion.in_mcs_context {
+            "This unique cutter is named in the selected MCS annotation, so it is shown first."
         } else {
-            "Choose a specific cutter when you want the opening tied to one known restriction site, its REBASE recognition motif, and its actual cleavage geometry."
+            "This unique cutter is available on the destination, but it is not part of the selected MCS annotation."
         };
         format!("{}\n{}", suggestion.summary, why)
     }
 
-    fn gibson_destination_suggestion_rebase_label(
+    fn gibson_destination_suggestion_display_label(
         suggestion: &GibsonDestinationOpeningSuggestion,
     ) -> String {
-        if suggestion.kind == "mcs_feature" {
-            suggestion.rebase_cut_summary.clone()
-        } else if suggestion.start_0based == suggestion.end_0based_exclusive {
-            format!(
-                "{} | cutpoint {}",
-                suggestion.rebase_cut_summary, suggestion.start_0based
-            )
+        if suggestion.in_mcs_context {
+            format!("{} (MCS)", suggestion.label)
         } else {
-            format!(
-                "{} | window {}..{}",
-                suggestion.rebase_cut_summary,
-                suggestion.start_0based,
-                suggestion.end_0based_exclusive
-            )
+            suggestion.label.clone()
         }
+    }
+
+    fn gibson_destination_suggestion_cut_label(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> String {
+        suggestion.rebase_cut_summary.clone()
+    }
+
+    fn displayed_gibson_destination_opening_suggestions(
+        suggestions: &[GibsonDestinationOpeningSuggestion],
+        show_all_unique_cutters: bool,
+    ) -> (Vec<GibsonDestinationOpeningSuggestion>, usize) {
+        let has_mcs_linked = suggestions.iter().any(|row| row.in_mcs_context);
+        if show_all_unique_cutters || !has_mcs_linked {
+            return (suggestions.to_vec(), 0);
+        }
+        let visible = suggestions
+            .iter()
+            .filter(|row| row.in_mcs_context)
+            .cloned()
+            .collect::<Vec<_>>();
+        let hidden_count = suggestions.len().saturating_sub(visible.len());
+        (visible, hidden_count)
     }
 
     fn gibson_preview_findings_text(preview: &GibsonAssemblyPreview) -> String {
@@ -13923,10 +13927,17 @@ Error: `{err}`"
         self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
         self.gibson_opening_start_0based = suggestion.start_0based.to_string();
         self.gibson_opening_end_0based_exclusive = suggestion.end_0based_exclusive.to_string();
-        self.gibson_status = format!(
-            "Applied Gibson opening suggestion: {} -> {}..{}",
-            suggestion.label, suggestion.start_0based, suggestion.end_0based_exclusive
-        );
+        self.gibson_status = if suggestion.start_0based == suggestion.end_0based_exclusive {
+            format!(
+                "Applied Gibson opening suggestion: {} -> blunt cutpoint at edge {}",
+                suggestion.label, suggestion.start_0based
+            )
+        } else {
+            format!(
+                "Applied Gibson opening suggestion: {} -> cut/opening edges {}..{}",
+                suggestion.label, suggestion.start_0based, suggestion.end_0based_exclusive
+            )
+        };
     }
 
     fn render_gibson_contents(&mut self, ui: &mut Ui) {
@@ -14033,78 +14044,113 @@ Error: `{err}`"
             }
         });
         ui.horizontal(|ui| {
-            ui.label("start_0based");
+            ui.label("left cut edge").on_hover_text(
+                "0-based edge coordinate between bases on the left side of the Gibson opening.",
+            );
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_opening_start_0based)
                     .desired_width(100.0),
             );
-            ui.label("end_0based_exclusive");
+            ui.label("right cut edge").on_hover_text(
+                "0-based edge coordinate between bases on the right side of the Gibson opening.",
+            );
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_opening_end_0based_exclusive)
                     .desired_width(120.0),
             );
         });
         ui.small(
-            "Equal start/end means a cleavage point. A non-empty interval means a removed opening window between the two destination arms.",
+            "Equal left/right edges mean one blunt cutpoint. A non-empty gap means a removed opening window between the two destination arms.",
         );
         match &destination_opening_suggestions {
             Ok(suggestions) if !suggestions.is_empty() => {
+                let (displayed_suggestions, hidden_unique_cutters) =
+                    Self::displayed_gibson_destination_opening_suggestions(
+                        suggestions,
+                        self.gibson_show_all_unique_cutters,
+                    );
                 ui.small(
-                    "Suggested openings come from the selected sequence's MCS annotations and unique restriction sites. Choosing one fills the defined opening with the actual cleavage geometry but keeps the coordinates editable.",
+                    "Suggested openings are unique restriction cutters. Enzymes named by the selected MCS annotation are shown first; other unique cutters can be revealed on demand.",
                 );
-                ui.small(
-                    "Choose the MCS feature row when you want the annotated cloning region as a whole. Choose a specific cutter row when you want one known site, its REBASE motif, and its blunt/sticky-end geometry.",
-                );
-                egui::Grid::new("gibson_destination_opening_suggestions")
-                    .num_columns(5)
-                    .spacing([12.0, 6.0])
-                    .striped(true)
+                egui::ScrollArea::horizontal()
+                    .id_salt("gibson_destination_opening_suggestions_scroll")
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.strong("Suggestion").on_hover_text(
-                            "MCS feature rows use the whole annotated cloning region. Specific cutter rows use one unique restriction site.",
-                        );
-                        ui.strong("Ends").on_hover_text(
-                            "Feature span means an annotation-defined window. Blunt / 5' / 3' rows come from actual restriction-cutter geometry.",
-                        );
-                        ui.strong("REBASE").on_hover_text(
-                            "Recognition motif plus cut information derived from the restriction-enzyme catalog. For specific cutters, the filled opening uses the cleavage window rather than the whole recognition span.",
-                        );
-                        ui.strong("Source").on_hover_text(
-                            "MCS feature = annotation span. MCS / unique cutter = annotation-backed site that is also a unique cutter on the selected destination.",
-                        );
-                        ui.label("");
-                        ui.end_row();
-                        for suggestion in suggestions {
-                            let suggestion_help =
-                                Self::gibson_destination_suggestion_help_text(suggestion);
-                            ui.label(suggestion.label.as_str())
-                                .on_hover_text(suggestion_help.clone());
-                            ui.label(
-                                Self::gibson_destination_suggestion_geometry_label(suggestion),
-                            )
-                            .on_hover_text(suggestion_help.clone());
-                            ui.label(Self::gibson_destination_suggestion_rebase_label(suggestion))
-                                .on_hover_text(suggestion_help.clone());
-                            ui.label(Self::gibson_destination_suggestion_source_label(suggestion))
-                                .on_hover_text(suggestion_help.clone());
-                            if ui
-                                .button("Use")
-                                .on_hover_text(format!(
-                                    "{}\nFill the `defined opening` fields from this suggestion.",
-                                    suggestion_help
-                                ))
-                                .clicked()
-                            {
-                                selected_opening_suggestion = Some(suggestion.clone());
-                            }
-                            ui.end_row();
-                        }
+                        egui::Grid::new("gibson_destination_opening_suggestions")
+                            .num_columns(4)
+                            .spacing([12.0, 6.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Suggestion").on_hover_text(
+                                    "Unique restriction cutters on the destination sequence. `(MCS)` marks enzymes named by the selected MCS annotation.",
+                                );
+                                ui.strong("Ends").on_hover_text(
+                                    "Blunt / 5' / 3' rows come from actual restriction-cutter geometry.",
+                                );
+                                ui.strong("Cut").on_hover_text(
+                                    "Compact REBASE view: motif plus cut offsets. For example, `CCCGGG | 3|3` means SmaI cuts blunt after motif base 3 on both strands.",
+                                );
+                                ui.label("");
+                                ui.end_row();
+                                for suggestion in &displayed_suggestions {
+                                    let suggestion_help =
+                                        Self::gibson_destination_suggestion_help_text(suggestion);
+                                    ui.label(Self::gibson_destination_suggestion_display_label(
+                                        suggestion,
+                                    ))
+                                        .on_hover_text(suggestion_help.clone());
+                                    ui.label(
+                                        Self::gibson_destination_suggestion_geometry_label(
+                                            suggestion,
+                                        ),
+                                    )
+                                    .on_hover_text(suggestion_help.clone());
+                                    ui.monospace(Self::gibson_destination_suggestion_cut_label(
+                                        suggestion,
+                                    ))
+                                    .on_hover_text(suggestion_help.clone());
+                                    if ui
+                                        .button("Use")
+                                        .on_hover_text(format!(
+                                            "{}\nFill the visible cut/opening edge fields from this suggestion.",
+                                            suggestion_help
+                                        ))
+                                        .clicked()
+                                    {
+                                        selected_opening_suggestion = Some(suggestion.clone());
+                                    }
+                                    ui.end_row();
+                                }
+                            });
                     });
+                if hidden_unique_cutters > 0 && !self.gibson_show_all_unique_cutters {
+                    if ui
+                        .button(format!("Show other unique cutters ({hidden_unique_cutters})"))
+                        .on_hover_text(
+                            "Reveal unique cutters that are not named by the current MCS annotation.",
+                        )
+                        .clicked()
+                    {
+                        self.gibson_show_all_unique_cutters = true;
+                    }
+                } else if self.gibson_show_all_unique_cutters
+                    && suggestions.iter().any(|row| row.in_mcs_context)
+                {
+                    if ui
+                        .button("Show MCS-linked cutters only")
+                        .on_hover_text(
+                            "Collapse the list back to unique cutters named by the current MCS annotation.",
+                        )
+                        .clicked()
+                    {
+                        self.gibson_show_all_unique_cutters = false;
+                    }
+                }
             }
             Ok(_) => {
                 if !self.gibson_destination_seq_id.trim().is_empty() {
                     ui.small(
-                        "No MCS-linked or unique-cutter suggestions were found for the current destination. You can still enter an opening span directly or use the active selection.",
+                        "No unique-cutter suggestions were found for the current destination. You can still enter cut/opening edges directly or use the active selection.",
                     );
                 }
             }
@@ -14474,16 +14520,19 @@ Error: `{err}`"
             .default_open(true)
             .show(ui, |ui| {
                 ui.small(
-                    "MCS feature suggestion: use this when the annotated cloning region is known, but you do not want to commit to one cutter yet.",
+                    "GENtle starts with unique cutters named by the current MCS annotation because those are usually the most meaningful cloning openings.",
                 );
                 ui.small(
-                    "Specific cutter suggestion: use this when you want one concrete restriction site and its end geometry, for example `SmaI` for blunt ends.",
+                    "Use a named cutter such as `SmaI` when you want one concrete restriction site and its end geometry.",
                 );
                 ui.small(
-                    "The REBASE column shows the recognition motif and the stored cut geometry used for that suggestion.",
+                    "Use `Show other unique cutters` when you want to look beyond the MCS and search the rest of the destination for single-cutters.",
                 );
                 ui.small(
-                    "Equal defined-opening coordinates mean a blunt cutpoint. A non-empty interval means the cleavage window between recessed termini.",
+                    "The Cut column shows the REBASE recognition motif and the stored cut offsets used for that suggestion.",
+                );
+                ui.small(
+                    "Equal left/right cut edges mean a blunt cutpoint. A non-empty interval means the cleavage window between recessed termini.",
                 );
                 ui.small(tm_help.as_str());
                 ui.small(active_context_summary);
@@ -17979,6 +18028,7 @@ Error: `{err}`"
         self.show_gibson_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.gibson_destination_seq_id.clear();
+        self.gibson_show_all_unique_cutters = false;
         self.gibson_opening_start_0based.clear();
         self.gibson_opening_end_0based_exclusive.clear();
         self.gibson_insert_seq_id.clear();
@@ -27990,6 +28040,7 @@ mod tests {
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             SequenceOrigin,
         },
+        gibson_planning::GibsonDestinationOpeningSuggestion,
         uniprot::UniprotEntrySummary,
         window::Window,
     };
@@ -29717,6 +29768,97 @@ mod tests {
             GENtleApp::humanize_gibson_ui_text(raw),
             "minimum overlap Tm 60.0 °C"
         );
+    }
+
+    #[test]
+    fn gibson_destination_suggestion_help_text_marks_mcs_linked_cutter() {
+        let suggestion = GibsonDestinationOpeningSuggestion {
+            kind: "unique_restriction_site".to_string(),
+            label: "SmaI".to_string(),
+            summary: "MCS-linked unique cutter".to_string(),
+            start_0based: 941,
+            end_0based_exclusive: 941,
+            enzyme_name: Some("SmaI".to_string()),
+            recognition_sequence: "CCCGGG".to_string(),
+            recognition_start_0based: Some(938),
+            recognition_end_0based_exclusive: Some(944),
+            rebase_cut_summary: "CCCGGG | 3|3".to_string(),
+            end_geometry: "blunt".to_string(),
+            overhang_bp: None,
+            in_mcs_context: true,
+        };
+
+        let help = GENtleApp::gibson_destination_suggestion_help_text(&suggestion);
+        assert!(help.contains("named in the selected MCS annotation"));
+        assert_eq!(
+            GENtleApp::gibson_destination_suggestion_display_label(&suggestion),
+            "SmaI (MCS)"
+        );
+    }
+
+    #[test]
+    fn gibson_destination_suggestion_cut_label_stays_compact() {
+        let suggestion = GibsonDestinationOpeningSuggestion {
+            kind: "unique_restriction_site".to_string(),
+            label: "SmaI".to_string(),
+            summary: "Blunt cutpoint".to_string(),
+            start_0based: 941,
+            end_0based_exclusive: 941,
+            enzyme_name: Some("SmaI".to_string()),
+            recognition_sequence: "CCCGGG".to_string(),
+            recognition_start_0based: Some(938),
+            recognition_end_0based_exclusive: Some(944),
+            rebase_cut_summary: "CCCGGG | 3|3".to_string(),
+            end_geometry: "blunt".to_string(),
+            overhang_bp: None,
+            in_mcs_context: true,
+        };
+
+        assert_eq!(
+            GENtleApp::gibson_destination_suggestion_cut_label(&suggestion),
+            "CCCGGG | 3|3"
+        );
+    }
+
+    #[test]
+    fn displayed_gibson_destination_opening_suggestions_hide_non_mcs_rows_by_default() {
+        let mcs_row = GibsonDestinationOpeningSuggestion {
+            kind: "unique_restriction_site".to_string(),
+            label: "SmaI".to_string(),
+            summary: "MCS-linked".to_string(),
+            start_0based: 941,
+            end_0based_exclusive: 941,
+            enzyme_name: Some("SmaI".to_string()),
+            recognition_sequence: "CCCGGG".to_string(),
+            recognition_start_0based: Some(938),
+            recognition_end_0based_exclusive: Some(944),
+            rebase_cut_summary: "CCCGGG | 3|3".to_string(),
+            end_geometry: "blunt".to_string(),
+            overhang_bp: None,
+            in_mcs_context: true,
+        };
+        let other_row = GibsonDestinationOpeningSuggestion {
+            in_mcs_context: false,
+            label: "PstI".to_string(),
+            enzyme_name: Some("PstI".to_string()),
+            recognition_sequence: "CTGCAG".to_string(),
+            recognition_start_0based: Some(120),
+            recognition_end_0based_exclusive: Some(126),
+            rebase_cut_summary: "CTGCAG | 5|1".to_string(),
+            end_geometry: "3prime_overhang".to_string(),
+            overhang_bp: Some(4),
+            start_0based: 121,
+            end_0based_exclusive: 125,
+            summary: "Other unique cutter".to_string(),
+            kind: "unique_restriction_site".to_string(),
+        };
+        let suggestions = vec![mcs_row.clone(), other_row];
+
+        let (displayed, hidden_count) =
+            GENtleApp::displayed_gibson_destination_opening_suggestions(&suggestions, false);
+
+        assert_eq!(hidden_count, 1);
+        assert_eq!(displayed, vec![mcs_row]);
     }
 
     #[test]

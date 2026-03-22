@@ -64,8 +64,9 @@ order. Durable architecture constraints and decisions remain in
     - resolved terminal overlaps
     - Gibson-specific primer suggestions (`5' overlap + 3' priming`)
     - validation/advisory findings
-    - destination opening suggestions from MCS annotations and unique
-      restriction cutters, including blunt/sticky-end labels
+    - destination opening suggestions start with unique cutters named by the
+      MCS annotation, with an explicit option to reveal other unique cutters
+      on the destination
     - specific cutter suggestions now show REBASE-derived recognition/cut
       information and fill the actual cleavage window rather than the whole
       recognition span
@@ -1649,8 +1650,9 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       `Patterns -> Gibson...`
   - current single-insert v1 now covers:
     - destination opening resolution (`existing_termini` or `defined_site`)
-    - destination opening suggestions from annotated MCS spans and unique
-      restriction sites
+    - destination opening suggestions from unique restriction cutters, with
+      MCS-linked single-cutters prioritized first and other single-cutters
+      available on demand
     - cutter-derived opening coordinates resolve to cleavage windows/cutpoints
       from shared restriction-enzyme geometry
     - terminal overlap derivation

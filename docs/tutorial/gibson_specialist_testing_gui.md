@@ -113,7 +113,7 @@ What to verify:
   - `Destination`
   - `Insert`
   - `Design Targets`
-  - `Tₘ Model`
+  - `Tm Model`
   - `Review`
   - `Outputs`
 
@@ -128,12 +128,12 @@ GUI:
 
 1. in `Destination`, choose the circular `pGEX` sequence you loaded in Step 1
    or the tutorial-project destination `gibson_destination_pgex`
-2. keep `opening = defined site`
+2. keep `opening = defined cut/opening`
 3. preferred route: in `Suggested openings`, click `Use` on the
-   `SmaI | blunt | ...` row if it is offered from the MCS annotation
+   `SmaI (MCS) | blunt | ...` row if it is offered from the MCS annotation
 4. fallback route if you want a fixed coordinate-only test:
-   - `start_0based = 941`
-   - `end_0based_exclusive = 941`
+   - `left cut edge = 941`
+   - `right cut edge = 941`
 
 Optional prefill check:
 
@@ -146,9 +146,9 @@ Optional prefill check:
 Notes:
 
 - if the destination already carries MCS/unique-cutter knowledge, the specialist
-  should now suggest openings biologically rather than forcing you to start from
-  raw coordinates alone
-- equal `start_0based` / `end_0based_exclusive` means a cleavage point rather
+  should now start with unique cutters named by the MCS and only reveal other
+  unique cutters when you ask for them explicitly
+- equal `left cut edge` / `right cut edge` means a cleavage point rather
   than a removed span
 - `941..941` is a stable coordinate-only fallback for the `SmaI` cutpoint on
   the bundled pGEX tutorial destination when you do not want to rely on the
@@ -296,7 +296,7 @@ Why this is expected:
 Mark the tutorial successful if all of these are true:
 
 - [ ] `Patterns -> Gibson...` opens and shows all five sections
-- [ ] `Tₘ Model` is visible as a dedicated box
+- [ ] `Tm Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
 - [ ] defined-site opening `941..941` is accepted
 - [ ] preview returns `2` resolved junctions

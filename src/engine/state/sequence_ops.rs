@@ -2134,7 +2134,7 @@ impl GentleEngine {
 
     pub(crate) fn primer_tm_model_description() -> String {
         format!(
-            "Displayed Tₘ values use GENtle's shared SantaLucia nearest-neighbor estimate with fixed assumptions: exact complement, {:.0} mM monovalent salt, {:.0} nM total oligo concentration, and no mismatch/dangling-end/Mg correction. Very short or ambiguous sequences fall back to the simple 2/4 estimate.",
+            "Displayed Tm values use GENtle's shared SantaLucia nearest-neighbor estimate with fixed assumptions: exact complement, {:.0} mM monovalent salt, {:.0} nM total oligo concentration, and no mismatch/dangling-end/Mg correction. Very short or ambiguous sequences fall back to the simple 2/4 estimate.",
             Self::primer_tm_monovalent_salt_molar() * 1_000.0,
             Self::primer_tm_total_oligo_concentration_molar() * 1_000_000_000.0
         )
@@ -3749,6 +3749,7 @@ mod tests {
     fn primer_tm_model_description_mentions_shared_assumptions() {
         let description = GentleEngine::primer_tm_model_description();
         assert!(description.contains("SantaLucia"));
+        assert!(description.contains("Displayed Tm values"));
         assert!(description.contains("50"));
         assert!(description.contains("250"));
         assert!(description.contains("fall back"));

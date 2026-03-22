@@ -394,38 +394,11 @@ pub fn suggest_gibson_destination_openings(
         return Ok(vec![]);
     }
 
-    let mut suggestions = vec![];
     let mcs_hints = collect_mcs_feature_hints(dna);
     let unique_sites = unique_forward_sites(dna);
 
-    for hint in &mcs_hints {
-        suggestions.push(GibsonDestinationOpeningSuggestion {
-            kind: "mcs_feature".to_string(),
-            label: format!(
-                "{} ({}..{})",
-                hint.label,
-                hint.start_0based + 1,
-                hint.end_0based_exclusive
-            ),
-            summary: format!(
-                "Use the annotated MCS feature span as the destination opening window; fills defined-site {}..{} (0-based).",
-                hint.start_0based, hint.end_0based_exclusive
-            ),
-            start_0based: hint.start_0based,
-            end_0based_exclusive: hint.end_0based_exclusive,
-            enzyme_name: None,
-            recognition_sequence: String::new(),
-            recognition_start_0based: None,
-            recognition_end_0based_exclusive: None,
-            rebase_cut_summary: "annotated feature span".to_string(),
-            end_geometry: "feature_span".to_string(),
-            overhang_bp: None,
-            in_mcs_context: true,
-        });
-    }
-
     let mut seen_enzymes = HashSet::new();
-    let mut mcs_site_suggestions = vec![];
+    let mut suggestions = vec![];
     for hint in &mcs_hints {
         for enzyme_name in &hint.candidate_enzymes {
             let Some(site) = unique_sites.get(enzyme_name) else {
@@ -435,32 +408,27 @@ pub fn suggest_gibson_destination_openings(
                 continue;
             }
             if let Some(suggestion) = restriction_site_suggestion(site, true, seq_len) {
-                mcs_site_suggestions.push(suggestion);
+                suggestions.push(suggestion);
             }
         }
-    }
-    mcs_site_suggestions.sort_by(|left, right| {
-        geometry_priority(&left.end_geometry)
-            .cmp(&geometry_priority(&right.end_geometry))
-            .then(left.start_0based.cmp(&right.start_0based))
-            .then(left.label.cmp(&right.label))
-    });
-    if !mcs_site_suggestions.is_empty() {
-        suggestions.extend(mcs_site_suggestions);
-        return Ok(suggestions);
     }
 
     let mut fallback_unique_sites = unique_sites
         .values()
+        .filter(|site| !seen_enzymes.contains(site.enzyme.name.as_str()))
         .filter_map(|site| restriction_site_suggestion(site, false, seq_len))
         .collect::<Vec<_>>();
-    fallback_unique_sites.sort_by(|left, right| {
-        geometry_priority(&left.end_geometry)
-            .cmp(&geometry_priority(&right.end_geometry))
+    suggestions.append(&mut fallback_unique_sites);
+    suggestions.sort_by(|left, right| {
+        right
+            .in_mcs_context
+            .cmp(&left.in_mcs_context)
+            .then(
+                geometry_priority(&left.end_geometry).cmp(&geometry_priority(&right.end_geometry)),
+            )
             .then(left.start_0based.cmp(&right.start_0based))
             .then(left.label.cmp(&right.label))
     });
-    suggestions.extend(fallback_unique_sites);
     Ok(suggestions)
 }
 
@@ -499,36 +467,31 @@ fn restriction_site_suggestion(
         "Unique cutter"
     };
     let (left_offset, right_offset) = site.enzyme.recessed_end_offsets();
-    let rebase_cut_summary = if left_offset == right_offset {
-        format!(
-            "{} | blunt cut after motif bp {}",
-            site.enzyme.sequence, left_offset
-        )
-    } else {
-        format!(
-            "{} | recessed ends after motif bp {}/{}",
-            site.enzyme.sequence, left_offset, right_offset
-        )
-    };
+    let rebase_cut_summary = format!(
+        "{} | {}|{}",
+        site.enzyme.sequence, left_offset, right_offset
+    );
     let summary = if start_0based == end_0based_exclusive {
         format!(
-            "{} {} recognizes {}..{} (1-based); REBASE geometry {}. This yields a blunt cutpoint and fills defined-site {}..{} (0-based).",
+            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif yield one blunt cutpoint and fill left/right cut edges {}..{} (0-based).",
             context_label,
             site.enzyme.name,
             recognition_start_0based + 1,
             recognition_end_0based_exclusive,
-            rebase_cut_summary,
+            left_offset,
+            right_offset,
             start_0based,
             end_0based_exclusive
         )
     } else {
         format!(
-            "{} {} recognizes {}..{} (1-based); REBASE geometry {}. This fills defined-site {}..{} (0-based) between the recessed termini.",
+            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif fill left/right cut edges {}..{} (0-based) between the recessed termini.",
             context_label,
             site.enzyme.name,
             recognition_start_0based + 1,
             recognition_end_0based_exclusive,
-            rebase_cut_summary,
+            left_offset,
+            right_offset,
             start_0based,
             end_0based_exclusive
         )
@@ -1848,7 +1811,7 @@ fn resolve_opening(
     let label = if plan.destination.opening.label.trim().is_empty() {
         match mode.as_str() {
             "existing_termini" => "existing linear termini".to_string(),
-            _ => "defined opening span or cutpoint".to_string(),
+            _ => "defined cut/opening span or cutpoint".to_string(),
         }
     } else {
         plan.destination.opening.label.trim().to_string()
@@ -2494,7 +2457,7 @@ fn build_routine_handoff(
             supported: false,
             routine_id: "gibson.two_fragment_overlap_preview".to_string(),
             reason: Some(
-                "Routine Assistant handoff is currently automatic only when the destination is already linear and uses existing termini. Defined opening spans remain preview-only in this v1 specialist.".to_string(),
+                "Routine Assistant handoff is currently automatic only when the destination is already linear and uses existing termini. Defined cut/opening spans remain preview-only in this v1 specialist.".to_string(),
             ),
             bindings: BTreeMap::new(),
         }
@@ -2707,7 +2670,7 @@ mod tests {
             suggest_gibson_destination_openings(&engine, "vector").expect("suggestions");
 
         assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].kind, "mcs_feature");
+        assert!(suggestions.iter().all(|row| row.kind != "mcs_feature"));
         let site_order = suggestions
             .iter()
             .filter_map(|row| row.enzyme_name.as_deref())

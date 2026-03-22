@@ -568,29 +568,33 @@ Patterns menu:
   - sections:
     1. `Destination`
        - choose destination sequence
-       - choose `existing termini` or `defined opening`
+       - choose `existing termini` or `defined cut/opening`
        - active DNA window pre-fills the destination by default when possible
-       - optionally fill opening coordinates from the active DNA selection
+       - optionally fill left/right cut edges from the active DNA selection
        - suggests biologically meaningful openings from MCS annotations and
          unique restriction sites when the destination already exposes them
+       - default view starts with unique cutters named by the MCS annotation
+         and marks them as `(MCS)`
+       - `Show other unique cutters` reveals single-cutters elsewhere on the
+         destination when you want to search beyond the MCS
        - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
          such as `SmaI` can be chosen directly from the specialist
-       - specific cutter suggestions now show REBASE-derived recognition/cut
-         information and fill the actual cleavage window:
-         - equal start/end means a blunt cutpoint
-         - non-empty start..end means the window between recessed termini
-       - tooltips and quick help explain the difference between using the full
-         MCS span and choosing one specific cutter suggestion
+       - specific cutter suggestions show a compact `Cut` summary derived from
+         REBASE and fill the actual cleavage window:
+         - equal left/right cut edges mean a blunt cutpoint
+         - non-empty left..right means the window between recessed termini
+       - tooltips and quick help explain the difference between MCS-linked
+         cutters and other unique cutters outside the annotated MCS
     2. `Insert`
        - choose one insert sequence and orientation
     3. `Design Targets`
        - Gibson-specific overlap bp range
-       - minimum overlap Tₘ
-       - priming-segment Tₘ window
+       - minimum overlap Tm
+       - priming-segment Tm window
        - priming-segment length window
-       - dedicated `Tₘ Model` box repeats the shared assumptions in a visually
+       - dedicated `Tm Model` box repeats the shared assumptions in a visually
          separate section
-       - displayed Tₘ values use the shared nearest-neighbor model used across
+       - displayed Tm values use the shared nearest-neighbor model used across
          GENtle:
          fixed 50 mM monovalent salt, fixed 250 nM total oligo concentration,
          exact-complement duplex assumption, no mismatch/dangling-end/Mg
@@ -601,7 +605,7 @@ Patterns menu:
        - derives insert primer suggestions as `5' overlap + 3' priming`
        - shows blocking errors, warnings, and the factual Gibson cartoon
        - findings and status text are copyable directly from the window
-       - preview notes repeat the shared Tₘ-model assumptions so GUI and CLI
+       - preview notes repeat the shared Tm-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`
        - shows the exact primer/product nodes the current apply step will
