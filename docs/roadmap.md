@@ -1254,6 +1254,23 @@ Track boundaries:
      to reduce cross-gene conserved-domain artifacts.
    - keep this as guidance input only; final primer scoring/reporting remains
      under shared engine primer-design contracts.
+12. Defer focal-region similarity cohort analysis (planned, not implemented):
+   - treat a well-understood focal ROI as a hypothesis anchor for genome-wide
+     comparison.
+   - discover the most similar loci sequence-first using existing
+     BLAST/genome-extraction/alignment primitives.
+   - materialize a ranked cohort of comparable loci as extracted anchored
+     windows.
+   - keep similarity discovery sequence-first in v1 and use a fixed matched
+     window for comparable loci.
+   - prepare downstream evidence tracks, including CUT&RUN, to run against
+     either one ROI or one stored cohort.
+   - inspection should reuse structured reports, TSV export, alignments,
+     dotplots, and projected tracks before any new GUI trigger is added.
+   - keep this engine-owned and adapter-equivalent; do not move similarity
+     logic into routine macros or GUI-only flows.
+   - preserve existing cDNA filtering/mapping behavior unchanged; this deferred
+     track should not trigger premature refactors in the current RNA/cDNA path.
 
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 
@@ -2342,6 +2359,14 @@ Post-baseline follow-ups:
   - shared `routines explain` / `routines compare` payloads
   - GUI staged apply flow with explicit alternative disambiguation
   - optional decision-trace export in process protocol/run-bundle artifacts.
+- Guardrail for future genomic-context routines:
+  - do not assume "one focal locus only" if that would block later
+    cohort-based comparative evidence workflows.
+  - future routine work may consume focal-ROI / matched-locus-cohort /
+    assay-evidence-comparison outputs, but should not invent a parallel
+    similarity/cohort model in macros, catalog metadata, or adapter code.
+  - any new routine touching genomic-context ranking should preserve the path
+    toward focal ROI -> matched-locus cohort -> assay evidence comparison.
 - Start repeated cross-tool cloning UX gaps after routine packs land:
   - primer design/validation workflow contracts
   - nested-PCR primer workflow contract + UI/report parity
@@ -2438,3 +2463,32 @@ Post-baseline follow-ups:
    - `cargo run --bin gentle_cli -- state-summary` (run after `cargo check`
      is green)
 5. Continue with highest-priority item from Section 2.
+
+## 5. Speculative parking lot (not prioritized)
+
+Purpose:
+
+- capture plausible future ideas that are worth remembering,
+- avoid losing them during focused delivery work,
+- keep them clearly separate from committed execution order and current status.
+
+Current parking-lot ideas:
+
+- Cross-platform findings/artifact inspection for agent-driven work:
+  - treat user-facing "findings" (interpretation notes, rationale summaries,
+    evidence callouts, suggested next steps, and explanation artifacts) as
+    engine-owned portable records rather than GUI-only session text.
+  - likely placement if pursued:
+    - compact structured summaries in `ProjectState.metadata`
+    - optional larger sidecar/run-bundle artifacts for rich attachments
+      (for example exports, screenshots, or reproducibility payloads)
+    - lineage links back to the operation/report/sequence context that produced
+      the finding
+  - intended benefit:
+    - the same finding can be inspected from GUI, CLI, MCP, JS/Lua, Python, or
+      a future browser/WebAssembly frontend without adapter-specific re-entry or
+      loss of provenance/explanation context.
+  - note:
+    - this is intentionally a parking-lot idea, not a scheduled roadmap item
+      yet; if adopted, it should preserve the single-engine / machine-readable
+      contract described in `docs/architecture.md`.
