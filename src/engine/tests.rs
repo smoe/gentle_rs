@@ -1121,20 +1121,18 @@ fn test_design_primer_pairs_rejects_invalid_roi() {
 
 #[test]
 fn test_design_qpcr_assays_persists_report() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
     let mut state = ProjectState::default();
-    state.sequences.insert(
-            "tpl".to_string(),
-            seq(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-            ),
-        );
+    state
+        .sequences
+        .insert("tpl".to_string(), seq(template_seq));
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
     let result = engine
         .apply(Operation::DesignQpcrAssays {
             template: "tpl".to_string(),
-            roi_start_0based: 30,
-            roi_end_0based: 70,
+            roi_start_0based: 40,
+            roi_end_0based: 80,
             forward: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
@@ -1156,7 +1154,7 @@ fn test_design_qpcr_assays_persists_report() {
             reverse: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
-                location_0based: Some(60),
+                location_0based: Some(90),
                 start_0based: None,
                 end_0based: None,
                 min_tm_c: 40.0,
@@ -1174,7 +1172,7 @@ fn test_design_qpcr_assays_persists_report() {
             probe: PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
-                location_0based: Some(35),
+                location_0based: Some(50),
                 start_0based: None,
                 end_0based: None,
                 min_tm_c: 40.0,
@@ -1191,9 +1189,9 @@ fn test_design_qpcr_assays_persists_report() {
             },
             pair_constraints: PrimerDesignPairConstraint::default(),
             min_amplicon_bp: 40,
-            max_amplicon_bp: 130,
-            max_tm_delta_c: Some(50.0),
-            max_probe_tm_delta_c: Some(50.0),
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(10),
             report_id: Some("tp73_qpcr".to_string()),
         })

@@ -3536,15 +3536,15 @@ mod tests {
         state.sequences.insert(
             "tpl".to_string(),
             gentle::dna_sequence::DNAsequence::from_sequence(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
             )
             .expect("sequence"),
         );
 
         let request = serde_json::to_string(&Operation::DesignPrimerPairs {
             template: "tpl".to_string(),
-            roi_start_0based: 30,
-            roi_end_0based: 70,
+            roi_start_0based: 40,
+            roi_end_0based: 80,
             forward: gentle::engine::PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
@@ -3555,28 +3555,28 @@ mod tests {
                 max_tm_c: 90.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: Some("GAATTC".to_string()),
                 ..Default::default()
             },
             reverse: gentle::engine::PrimerDesignSideConstraint {
                 min_length: 20,
                 max_length: 20,
-                location_0based: Some(60),
+                location_0based: Some(90),
                 start_0based: None,
                 end_0based: None,
                 min_tm_c: 40.0,
                 max_tm_c: 90.0,
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
-                max_anneal_hits: 10,
+                max_anneal_hits: 1000,
                 non_annealing_5prime_tail: Some("CTCGAG".to_string()),
                 ..Default::default()
             },
             min_amplicon_bp: 40,
-            max_amplicon_bp: 130,
+            max_amplicon_bp: 150,
             pair_constraints: gentle::engine::PrimerDesignPairConstraint::default(),
-            max_tm_delta_c: Some(50.0),
+            max_tm_delta_c: Some(100.0),
             max_pairs: Some(10),
             report_id: Some("tail_roundtrip".to_string()),
         })

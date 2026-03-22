@@ -175,13 +175,28 @@ pub struct BlastExternalBinaryPreflightReport {
 }
 
 pub fn blast_external_binary_preflight_report() -> BlastExternalBinaryPreflightReport {
+    blast_external_binary_preflight_report_with_executables(
+        resolve_tool_executable(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN),
+        resolve_tool_executable(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN),
+    )
+}
+
+fn blast_external_binary_preflight_report_with_executables(
+    blastn_executable: String,
+    makeblastdb_executable: String,
+) -> BlastExternalBinaryPreflightReport {
     BlastExternalBinaryPreflightReport {
         schema: "gentle.blast_external_binary_preflight.v1".to_string(),
-        blastn: probe_external_binary(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, "blastn", &["-version"]),
+        blastn: probe_external_binary(
+            BLASTN_ENV_BIN,
+            "blastn",
+            blastn_executable,
+            &["-version"],
+        ),
         makeblastdb: probe_external_binary(
             MAKEBLASTDB_ENV_BIN,
-            DEFAULT_MAKEBLASTDB_BIN,
             "makeblastdb",
+            makeblastdb_executable,
             &["-version"],
         ),
     }
@@ -3207,11 +3222,10 @@ fn resolve_executable_path(executable: &str) -> Option<String> {
 
 fn probe_external_binary(
     env_var: &str,
-    default_bin: &str,
     tool_name: &str,
+    executable: String,
     version_args: &[&str],
 ) -> ExternalBinaryPreflightProbe {
-    let executable = resolve_tool_executable(env_var, default_bin);
     let mut report = ExternalBinaryPreflightProbe {
         tool: tool_name.to_string(),
         env_var: env_var.to_string(),
@@ -4695,11 +4709,10 @@ mod tests {
 
     #[test]
     fn test_blast_external_binary_preflight_reports_missing_tools() {
-        let _blastn_guard = EnvVarGuard::set(BLASTN_ENV_BIN, "__gentle_missing_blastn__");
-        let _makeblastdb_guard =
-            EnvVarGuard::set(MAKEBLASTDB_ENV_BIN, "__gentle_missing_makeblastdb__");
-
-        let report = blast_external_binary_preflight_report();
+        let report = blast_external_binary_preflight_report_with_executables(
+            "__gentle_missing_blastn__".to_string(),
+            "__gentle_missing_makeblastdb__".to_string(),
+        );
         assert_eq!(report.schema, "gentle.blast_external_binary_preflight.v1");
         assert_eq!(report.blastn.tool, "blastn");
         assert_eq!(report.makeblastdb.tool, "makeblastdb");
@@ -4727,14 +4740,10 @@ mod tests {
             "#!/bin/sh\necho \"makeblastdb: fake 4.5.6\"; exit 0\n",
         );
 
-        let _blastn_guard =
-            EnvVarGuard::set(BLASTN_ENV_BIN, fake_blastn.to_string_lossy().as_ref());
-        let _makeblastdb_guard = EnvVarGuard::set(
-            MAKEBLASTDB_ENV_BIN,
-            fake_makeblastdb.to_string_lossy().as_ref(),
+        let report = blast_external_binary_preflight_report_with_executables(
+            fake_blastn.to_string_lossy().to_string(),
+            fake_makeblastdb.to_string_lossy().to_string(),
         );
-
-        let report = blast_external_binary_preflight_report();
         assert!(report.blastn.found);
         assert!(report.makeblastdb.found);
         assert!(report.blastn.version_probe_ok);
