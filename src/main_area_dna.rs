@@ -441,6 +441,14 @@ struct PrimerDesignBatchSpec {
     max_pairs: Option<usize>,
 }
 
+#[derive(Clone, Debug)]
+struct PreparedPrimerDesignBatchInputs {
+    spec: PrimerDesignBatchSpec,
+    report_base: String,
+    queued_regions: Vec<PcrQueuedRegionUiState>,
+    create_copies: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct RnaReadInterpretOpsUiState {
@@ -1531,12 +1539,64 @@ mod tests {
         assert_eq!(max_fragments, 12345);
     }
 
+    #[test]
+    fn queued_primer_batch_async_worker_completes_and_populates_results() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_async".to_string();
+        area.pcr_queued_regions_ui = vec![
+            super::PcrQueuedRegionUiState {
+                template: "missing_template_a".to_string(),
+                source_label: "missing_a".to_string(),
+                start_0based: 20,
+                end_0based_exclusive: 90,
+            },
+            super::PcrQueuedRegionUiState {
+                template: "missing_template_b".to_string(),
+                source_label: "missing_b".to_string(),
+                start_0based: 30,
+                end_0based_exclusive: 100,
+            },
+        ];
+
+        area.start_queued_primer_pair_design_batch();
+        assert!(area.primer_design_task.is_some());
+
+        let ctx = eframe::egui::Context::default();
+        for _ in 0..1_500 {
+            area.poll_primer_design_task(&ctx);
+            if area.primer_design_task.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert!(
+            area.primer_design_task.is_none(),
+            "queued primer batch task should finish"
+        );
+        assert_eq!(area.pcr_batch_results_ui.len(), 2);
+        assert!(
+            area.op_status
+                .contains("2 queued region(s), 0 succeeded, 2 failed")
+        );
+        let engine = area.engine.as_ref().expect("engine");
+        let reports = engine
+            .read()
+            .expect("engine lock")
+            .list_primer_design_reports()
+            .into_iter()
+            .map(|row| row.report_id)
+            .collect::<Vec<_>>();
+        assert!(reports.is_empty());
+    }
+
     fn make_primer_batch_area() -> MainAreaDna {
         let mut state = ProjectState::default();
+        state.parameters.primer_design_backend = PrimerDesignBackend::Internal;
         state.sequences.insert(
             "tpl".to_string(),
             DNAsequence::from_sequence(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
             )
             .expect("sequence"),
         );
@@ -1550,20 +1610,20 @@ mod tests {
             .cloned()
             .expect("template sequence");
         let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
-        area.primer_design_ui.forward.min_tm_c = "40".to_string();
-        area.primer_design_ui.forward.max_tm_c = "95".to_string();
+        area.primer_design_ui.forward.min_tm_c = "0".to_string();
+        area.primer_design_ui.forward.max_tm_c = "100".to_string();
         area.primer_design_ui.forward.min_gc_fraction = "0.0".to_string();
         area.primer_design_ui.forward.max_gc_fraction = "1.0".to_string();
-        area.primer_design_ui.forward.max_anneal_hits = "100".to_string();
-        area.primer_design_ui.reverse.min_tm_c = "40".to_string();
-        area.primer_design_ui.reverse.max_tm_c = "95".to_string();
+        area.primer_design_ui.forward.max_anneal_hits = "1000".to_string();
+        area.primer_design_ui.reverse.min_tm_c = "0".to_string();
+        area.primer_design_ui.reverse.max_tm_c = "100".to_string();
         area.primer_design_ui.reverse.min_gc_fraction = "0.0".to_string();
         area.primer_design_ui.reverse.max_gc_fraction = "1.0".to_string();
-        area.primer_design_ui.reverse.max_anneal_hits = "100".to_string();
+        area.primer_design_ui.reverse.max_anneal_hits = "1000".to_string();
         area.primer_design_ui.min_amplicon_bp = "40".to_string();
         area.primer_design_ui.max_amplicon_bp = "140".to_string();
-        area.primer_design_ui.max_tm_delta_c = "50.0".to_string();
-        area.primer_design_ui.max_pairs = "10".to_string();
+        area.primer_design_ui.max_tm_delta_c = "100.0".to_string();
+        area.primer_design_ui.max_pairs = "5".to_string();
         area
     }
 
@@ -3580,8 +3640,26 @@ struct RnaReadTask {
 }
 
 #[derive(Clone, Debug)]
+struct PrimerDesignBatchOutcome {
+    queued_region_count: usize,
+    create_copies: bool,
+    batch_rows: Vec<PcrBatchResultRowUiState>,
+    successful_report_ids: Vec<String>,
+    failed_report_rows: Vec<String>,
+    created_copy_ids: Vec<String>,
+    failed_copy_rows: Vec<String>,
+    created_seq_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+enum PrimerDesignTaskCompletion {
+    Single(OpResult),
+    Batch(PrimerDesignBatchOutcome),
+}
+
+#[derive(Clone, Debug)]
 enum PrimerDesignTaskMessage {
-    Done(Result<OpResult, EngineError>),
+    Done(Result<PrimerDesignTaskCompletion, EngineError>),
 }
 
 #[derive(Clone, Debug)]
@@ -18047,10 +18125,58 @@ impl MainAreaDna {
         });
         std::thread::spawn(move || {
             let outcome = match engine.write() {
-                Ok(mut guard) => guard.apply(op),
+                Ok(mut guard) => guard.apply(op).map(PrimerDesignTaskCompletion::Single),
                 Err(_) => Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "Engine lock poisoned while running primer design".to_string(),
+                }),
+            };
+            let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
+        });
+    }
+
+    fn start_queued_primer_pair_design_batch(&mut self) {
+        if self.primer_design_task.is_some() {
+            self.op_status = "Primer design is already running".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let prepared = match self.prepare_primer_pair_design_batch_inputs() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let queued_count = prepared.queued_regions.len();
+        let started = Instant::now();
+        let (tx, rx) = mpsc::channel::<PrimerDesignTaskMessage>();
+        self.op_status = format!("PCR primer batch started for {queued_count} queued region(s)...");
+        self.primer_design_task = Some(PrimerDesignTask {
+            started,
+            operation_label: "PCR primer batch".to_string(),
+            template_id: None,
+            report_id_hint: None,
+            receiver: Arc::new(Mutex::new(rx)),
+        });
+        std::thread::spawn(move || {
+            let outcome = match engine.write() {
+                Ok(mut guard) => Ok(PrimerDesignTaskCompletion::Batch(
+                    Self::execute_primer_pair_design_batch(
+                        &mut guard,
+                        &prepared.queued_regions,
+                        &prepared.spec,
+                        &prepared.report_base,
+                        prepared.create_copies,
+                    ),
+                )),
+                Err(_) => Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Engine lock poisoned while running queued PCR primer design"
+                        .to_string(),
                 }),
             };
             let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
@@ -18061,7 +18187,7 @@ impl MainAreaDna {
         if self.primer_design_task.is_none() {
             return;
         }
-        let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut done: Option<Result<PrimerDesignTaskCompletion, EngineError>> = None;
         let mut task_still_running = false;
         if let Some(task) = &self.primer_design_task {
             match task.receiver.lock() {
@@ -18112,7 +18238,7 @@ impl MainAreaDna {
                 .unwrap_or_else(|| (Instant::now(), None, None));
             self.primer_design_task = None;
             match done {
-                Ok(result) => {
+                Ok(PrimerDesignTaskCompletion::Single(result)) => {
                     self.handle_operation_success(result, started);
                     let resolved_report_id = report_id_hint
                         .as_deref()
@@ -18130,6 +18256,12 @@ impl MainAreaDna {
                     } else if template_id.is_some() {
                         self.list_primer_design_reports();
                     }
+                }
+                Ok(PrimerDesignTaskCompletion::Batch(outcome)) => {
+                    self.apply_primer_pair_design_batch_outcome(
+                        outcome,
+                        started.elapsed().as_millis(),
+                    );
                 }
                 Err(err) => self.handle_operation_error(err, started),
             }
@@ -19950,22 +20082,13 @@ impl MainAreaDna {
         })
     }
 
-    fn run_queued_primer_pair_design_batch(&mut self) {
+    fn prepare_primer_pair_design_batch_inputs(
+        &self,
+    ) -> Result<PreparedPrimerDesignBatchInputs, String> {
         if self.pcr_queued_regions_ui.is_empty() {
-            self.op_status = "PCR region queue is empty; add at least one region first".to_string();
-            return;
+            return Err("PCR region queue is empty; add at least one region first".to_string());
         }
-        let Some(engine) = self.engine.clone() else {
-            self.op_status = "No engine attached".to_string();
-            return;
-        };
-        let spec = match self.build_primer_design_batch_spec() {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return;
-            }
-        };
+        let spec = self.build_primer_design_batch_spec()?;
         let fallback_template = self
             .pcr_queued_regions_ui
             .first()
@@ -19979,10 +20102,21 @@ impl MainAreaDna {
         } else {
             Self::sanitize_id_component(&self.primer_design_ui.report_id, "primer_report_gui")
         };
-        let queued_regions = self.pcr_queued_regions_ui.clone();
-        let create_copies = self.pcr_batch_create_extract_copies;
-        let started = Instant::now();
+        Ok(PreparedPrimerDesignBatchInputs {
+            spec,
+            report_base,
+            queued_regions: self.pcr_queued_regions_ui.clone(),
+            create_copies: self.pcr_batch_create_extract_copies,
+        })
+    }
 
+    fn execute_primer_pair_design_batch(
+        engine: &mut GentleEngine,
+        queued_regions: &[PcrQueuedRegionUiState],
+        spec: &PrimerDesignBatchSpec,
+        report_base: &str,
+        create_copies: bool,
+    ) -> PrimerDesignBatchOutcome {
         let mut batch_rows: Vec<PcrBatchResultRowUiState> =
             Vec::with_capacity(queued_regions.len());
         let mut successful_report_ids: Vec<String> = vec![];
@@ -19990,14 +20124,7 @@ impl MainAreaDna {
         let mut created_copy_ids: Vec<String> = vec![];
         let mut failed_copy_rows: Vec<String> = vec![];
         let mut created_seq_ids: Vec<String> = vec![];
-        let mut guard = match engine.write() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.op_status =
-                    "Engine lock poisoned while running queued PCR primer design".to_string();
-                return;
-            }
-        };
+
         for (index, region) in queued_regions.iter().enumerate() {
             let report_id = format!("{report_base}_r{:02}", index + 1);
             let region_label = format!(
@@ -20023,7 +20150,7 @@ impl MainAreaDna {
             if create_copies {
                 let template_component = Self::sanitize_id_component(&region.template, "template");
                 let copy_output_id = format!("{}_pcr_roi_{}", template_component, index + 1);
-                match guard.apply(Operation::ExtractRegion {
+                match engine.apply(Operation::ExtractRegion {
                     input: region.template.clone(),
                     from: region.start_0based,
                     to: region.end_0based_exclusive,
@@ -20051,7 +20178,7 @@ impl MainAreaDna {
                     }
                 }
             }
-            match guard.apply(Operation::DesignPrimerPairs {
+            match engine.apply(Operation::DesignPrimerPairs {
                 template: region.template.clone(),
                 roi_start_0based: region.start_0based,
                 roi_end_0based: region.end_0based_exclusive,
@@ -20075,48 +20202,102 @@ impl MainAreaDna {
             }
             batch_rows.push(row);
         }
-        drop(guard);
 
-        self.pcr_batch_results_ui = batch_rows;
+        PrimerDesignBatchOutcome {
+            queued_region_count: queued_regions.len(),
+            create_copies,
+            batch_rows,
+            successful_report_ids,
+            failed_report_rows,
+            created_copy_ids,
+            failed_copy_rows,
+            created_seq_ids,
+        }
+    }
+
+    fn apply_primer_pair_design_batch_outcome(
+        &mut self,
+        outcome: PrimerDesignBatchOutcome,
+        elapsed_ms: u128,
+    ) {
+        self.pcr_batch_results_ui = outcome.batch_rows;
         self.save_engine_ops_state();
 
-        if !created_seq_ids.is_empty() {
-            self.last_created_seq_ids = created_seq_ids.clone();
-            self.export_pool_inputs_text = created_seq_ids.join(", ");
+        if !outcome.created_seq_ids.is_empty() {
+            self.last_created_seq_ids = outcome.created_seq_ids.clone();
+            self.export_pool_inputs_text = outcome.created_seq_ids.join(", ");
         }
 
-        let elapsed_ms = started.elapsed().as_millis();
         let mut status_lines = vec![format!(
             "PCR primer batch finished in {} ms: {} queued region(s), {} succeeded, {} failed",
             elapsed_ms,
-            queued_regions.len(),
-            successful_report_ids.len(),
-            failed_report_rows.len()
+            outcome.queued_region_count,
+            outcome.successful_report_ids.len(),
+            outcome.failed_report_rows.len()
         )];
-        if !successful_report_ids.is_empty() {
-            status_lines.push(format!("Report IDs: {}", successful_report_ids.join(", ")));
+        if !outcome.successful_report_ids.is_empty() {
+            status_lines.push(format!(
+                "Report IDs: {}",
+                outcome.successful_report_ids.join(", ")
+            ));
         }
-        if create_copies {
+        if outcome.create_copies {
             status_lines.push(format!(
                 "Extracted region copies: {} succeeded, {} failed",
-                created_copy_ids.len(),
-                failed_copy_rows.len()
+                outcome.created_copy_ids.len(),
+                outcome.failed_copy_rows.len()
             ));
-            if !created_copy_ids.is_empty() {
-                status_lines.push(format!("Copy IDs: {}", created_copy_ids.join(", ")));
+            if !outcome.created_copy_ids.is_empty() {
+                status_lines.push(format!("Copy IDs: {}", outcome.created_copy_ids.join(", ")));
             }
         }
-        if !failed_report_rows.is_empty() {
+        if !outcome.failed_report_rows.is_empty() {
             status_lines.push(format!(
                 "Primer design failures: {}",
-                failed_report_rows.join(" | ")
+                outcome.failed_report_rows.join(" | ")
             ));
         }
-        if !failed_copy_rows.is_empty() {
-            status_lines.push(format!("Copy failures: {}", failed_copy_rows.join(" | ")));
+        if !outcome.failed_copy_rows.is_empty() {
+            status_lines.push(format!(
+                "Copy failures: {}",
+                outcome.failed_copy_rows.join(" | ")
+            ));
         }
         self.op_status = status_lines.join("\n");
         self.op_error_popup = None;
+    }
+
+    #[cfg(test)]
+    fn run_queued_primer_pair_design_batch(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let prepared = match self.prepare_primer_pair_design_batch_inputs() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let started = Instant::now();
+        let mut guard = match engine.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status =
+                    "Engine lock poisoned while running queued PCR primer design".to_string();
+                return;
+            }
+        };
+        let outcome = Self::execute_primer_pair_design_batch(
+            &mut guard,
+            &prepared.queued_regions,
+            &prepared.spec,
+            &prepared.report_base,
+            prepared.create_copies,
+        );
+        drop(guard);
+        self.apply_primer_pair_design_batch_outcome(outcome, started.elapsed().as_millis());
     }
 
     fn build_design_primer_pairs_operation(&self, template: &str) -> Result<Operation, String> {
@@ -20691,7 +20872,7 @@ impl MainAreaDna {
                         .on_hover_text("Optional fixed amplicon start coordinate (0-based).");
                     ui.add(
                         egui::TextEdit::singleline(&mut pair.fixed_amplicon_start_0based)
-                            .desired_width(96.0),
+                            .desired_width(128.0),
                     )
                     .on_hover_text("Fix the amplicon start to this 0-based coordinate.");
                     ui.label("fixed amplicon end (exclusive)").on_hover_text(
@@ -20844,13 +21025,13 @@ impl MainAreaDna {
                         )
                         .on_hover_text("Upper amplicon length bound.");
                         ui.end_row();
-                        ui.label("max Tm delta")
-                            .on_hover_text("Maximum allowed Tm difference (°C) between primer sides.");
+                        ui.label("max Tₘ delta")
+                            .on_hover_text("Maximum allowed Tₘ difference (°C) between primer sides.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
                                 .desired_width(92.0),
                         )
-                        .on_hover_text("Optional Tm-difference constraint for primer-pair ranking.");
+                        .on_hover_text("Optional Tₘ-difference constraint for primer-pair ranking.");
                         ui.label("max pairs")
                             .on_hover_text("Maximum number of accepted primer pairs to return.");
                         ui.add(
@@ -20960,7 +21141,7 @@ impl MainAreaDna {
                             "Run one DesignPrimerPairs operation per queued region using current primer constraints",
                         );
                         if run_batch_response.clicked() {
-                            self.run_queued_primer_pair_design_batch();
+                            self.start_queued_primer_pair_design_batch();
                         }
                         if ui
                             .button("Clear queue")

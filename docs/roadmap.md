@@ -413,6 +413,9 @@ order. Durable architecture constraints and decisions remain in
   - single-run GUI `Design Primer Pairs` execution now runs asynchronously in a
     background worker to keep the sequence window responsive while Primer3 is
     running
+  - queued GUI batch `Design Primer Pairs for queued regions` now runs through
+    the same asynchronous background worker path (no UI-thread blocking while
+    Primer3 executes across queued regions)
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
