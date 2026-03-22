@@ -18,6 +18,7 @@ use crate::{
     },
     restriction_enzyme::RestrictionEnzymeSite,
 };
+use gb_io::seq::{Feature, Location};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -1136,11 +1137,8 @@ pub fn derive_gibson_execution_plan(
         });
     }
 
-    let oriented_insert_seq = if preview.insert.orientation.eq_ignore_ascii_case("reverse") {
-        GentleEngine::reverse_complement(&insert.get_forward_string())
-    } else {
-        insert.get_forward_string().to_ascii_uppercase()
-    };
+    let oriented_insert = build_oriented_insert_for_gibson(&insert, &preview.insert.orientation);
+    let oriented_insert_seq = oriented_insert.get_forward_string().to_ascii_uppercase();
     let destination_seq = destination.get_forward_string().to_ascii_uppercase();
     let assembled_product_seq = match preview.destination.opening_mode.as_str() {
         "existing_termini" => format!("{destination_seq}{oriented_insert_seq}"),
@@ -1197,12 +1195,13 @@ pub fn derive_gibson_execution_plan(
     } else {
         plan.product.output_id_hint.trim().to_string()
     };
-    let mut product =
-        DNAsequence::from_sequence(&assembled_product_seq).map_err(|err| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: format!("Could not materialize Gibson assembled product sequence: {err}"),
-        })?;
-    product.set_circular(plan.product.topology.trim().eq_ignore_ascii_case("circular"));
+    let mut product = build_gibson_assembled_product(
+        &destination,
+        &oriented_insert,
+        &preview,
+        plan,
+        &assembled_product_seq,
+    )?;
     product.set_name(format!(
         "Gibson assembled product: {} + {}",
         preview.destination.seq_id, preview.insert.seq_id
@@ -1223,6 +1222,186 @@ pub fn derive_gibson_execution_plan(
         parent_seq_ids,
         outputs,
     })
+}
+
+fn build_oriented_insert_for_gibson(insert: &DNAsequence, orientation: &str) -> DNAsequence {
+    if orientation.eq_ignore_ascii_case("reverse") {
+        let mut oriented = DNAsequence::from_genbank_seq(insert.clone_seq_record().revcomp());
+        oriented.set_circular(false);
+        oriented
+    } else {
+        let mut oriented = insert.clone();
+        oriented.set_circular(false);
+        oriented
+    }
+}
+
+fn build_gibson_assembled_product(
+    destination: &DNAsequence,
+    oriented_insert: &DNAsequence,
+    preview: &GibsonAssemblyPreview,
+    plan: &GibsonAssemblyPlan,
+    assembled_product_seq: &str,
+) -> Result<DNAsequence, EngineError> {
+    let mut product = DNAsequence::from_sequence(assembled_product_seq).map_err(|err| EngineError {
+        code: ErrorCode::InvalidInput,
+        message: format!("Could not materialize Gibson assembled product sequence: {err}"),
+    })?;
+    let mut features = Vec::new();
+    match preview.destination.opening_mode.as_str() {
+        "existing_termini" => {
+            features.extend(clone_shifted_features(destination, 0));
+            features.extend(clone_shifted_features(
+                oriented_insert,
+                destination.len() as i64,
+            ));
+        }
+        "defined_site" => {
+            let start = preview.destination.opening_start_0based.ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message:
+                    "Executable Gibson defined-site preview did not retain start_0based".to_string(),
+            })? as i64;
+            let end = preview
+                .destination
+                .opening_end_0based_exclusive
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Executable Gibson defined-site preview did not retain end_0based_exclusive".to_string(),
+                })? as i64;
+            let delta = oriented_insert.len() as i64 - (end - start);
+            features.extend(
+                destination
+                    .features()
+                    .iter()
+                    .filter_map(|feature| {
+                        transform_destination_feature_for_defined_site(feature, start, end, delta)
+                    }),
+            );
+            features.extend(clone_shifted_features(oriented_insert, start));
+        }
+        other => {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!("Unsupported Gibson opening mode '{other}' for feature transfer"),
+            });
+        }
+    }
+    *product.features_mut() = features;
+    product.set_circular(plan.product.topology.trim().eq_ignore_ascii_case("circular"));
+    Ok(product)
+}
+
+fn clone_shifted_features(source: &DNAsequence, shift: i64) -> Vec<Feature> {
+    let seq = source.clone_seq_record();
+    source
+        .features()
+        .iter()
+        .filter_map(|feature| seq.relocate_feature(feature.clone(), shift).ok())
+        .collect()
+}
+
+fn transform_destination_feature_for_defined_site(
+    feature: &Feature,
+    removed_start: i64,
+    removed_end: i64,
+    delta: i64,
+) -> Option<Feature> {
+    let location = transform_location_for_defined_site(
+        &feature.location,
+        removed_start,
+        removed_end,
+        delta,
+    )?;
+    Some(Feature {
+        location,
+        ..feature.clone()
+    })
+}
+
+fn transform_location_for_defined_site(
+    location: &Location,
+    removed_start: i64,
+    removed_end: i64,
+    delta: i64,
+) -> Option<Location> {
+    match location {
+        Location::Range((start, before), (end, after)) => {
+            if *end <= removed_start {
+                Some(Location::Range((*start, *before), (*end, *after)))
+            } else if *start >= removed_end {
+                Some(Location::Range(
+                    (*start + delta, *before),
+                    (*end + delta, *after),
+                ))
+            } else {
+                None
+            }
+        }
+        Location::Between(left, right) => {
+            let feature_start = (*left).min(*right);
+            let feature_end = (*left).max(*right) + 1;
+            if feature_end <= removed_start {
+                Some(Location::Between(*left, *right))
+            } else if feature_start >= removed_end {
+                Some(Location::Between(*left + delta, *right + delta))
+            } else {
+                None
+            }
+        }
+        Location::Complement(inner) => {
+            transform_location_for_defined_site(inner, removed_start, removed_end, delta)
+                .map(|location| Location::Complement(Box::new(location)))
+        }
+        Location::Join(parts) => transform_location_vec_for_defined_site(
+            parts,
+            removed_start,
+            removed_end,
+            delta,
+        )
+        .map(Location::Join),
+        Location::Order(parts) => transform_location_vec_for_defined_site(
+            parts,
+            removed_start,
+            removed_end,
+            delta,
+        )
+        .map(Location::Order),
+        Location::Bond(parts) => transform_location_vec_for_defined_site(
+            parts,
+            removed_start,
+            removed_end,
+            delta,
+        )
+        .map(Location::Bond),
+        Location::OneOf(parts) => transform_location_vec_for_defined_site(
+            parts,
+            removed_start,
+            removed_end,
+            delta,
+        )
+        .map(Location::OneOf),
+        Location::External(_, _) => None,
+        Location::Gap(_) => Some(location.clone()),
+    }
+}
+
+fn transform_location_vec_for_defined_site(
+    parts: &[Location],
+    removed_start: i64,
+    removed_end: i64,
+    delta: i64,
+) -> Option<Vec<Location>> {
+    let mut out = Vec::with_capacity(parts.len());
+    for part in parts {
+        out.push(transform_location_for_defined_site(
+            part,
+            removed_start,
+            removed_end,
+            delta,
+        )?);
+    }
+    Some(out)
 }
 
 fn empty_protocol_cartoon_bindings() -> ProtocolCartoonTemplateBindings {
@@ -2002,6 +2181,7 @@ mod tests {
     use super::*;
     use crate::{
         dna_sequence::DNAsequence, engine::ProjectState, enzymes::active_restriction_enzymes,
+        feature_location::{feature_is_reverse, feature_ranges_sorted_i64},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
 
@@ -2116,6 +2296,20 @@ mod tests {
 }"#,
         )
         .expect("plan json")
+    }
+
+    fn feature_by_label<'a>(dna: &'a DNAsequence, label: &str) -> &'a Feature {
+        dna.features()
+            .iter()
+            .find(|feature| {
+                feature_first_nonempty_qualifier(
+                    feature,
+                    &["label", "standard_name", "name", "gene", "note"],
+                )
+                .as_deref()
+                    == Some(label)
+            })
+            .unwrap_or_else(|| panic!("feature '{label}' should exist"))
     }
 
     #[test]
@@ -2250,11 +2444,16 @@ mod tests {
     #[test]
     fn derive_execution_plan_existing_termini_concatenates_destination_and_insert() {
         let mut engine = GentleEngine::new();
-        let mut destination =
-            DNAsequence::from_sequence("AAAACCCC").expect("destination sequence");
+        let mut destination = DNAsequence::from_sequence(
+            "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
+        )
+        .expect("destination sequence");
         destination.set_name("linear_destination".to_string());
         destination.set_circular(false);
-        let insert = DNAsequence::from_sequence("GGGG").expect("insert sequence");
+        let insert = DNAsequence::from_sequence(
+            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
+        )
+        .expect("insert sequence");
         engine
             .state_mut()
             .sequences
@@ -2271,6 +2470,20 @@ mod tests {
         plan.destination.opening.start_0based = None;
         plan.destination.opening.end_0based_exclusive = None;
         plan.product.topology = "linear".to_string();
+        plan.junctions[0].required_overlap_bp = Some(4);
+        plan.junctions[0].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 4,
+            right_member_bp: 0,
+        });
+        plan.junctions[1].required_overlap_bp = Some(4);
+        plan.junctions[1].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 0,
+            right_member_bp: 4,
+        });
+        plan.validation_policy.design_targets.overlap_bp_min = 4;
+        plan.validation_policy.design_targets.overlap_bp_max = 4;
+        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = -100.0;
+        plan.validation_policy.require_distinct_terminal_junctions = false;
 
         let execution =
             derive_gibson_execution_plan(&engine, &plan).expect("existing termini execution");
@@ -2279,8 +2492,250 @@ mod tests {
             .iter()
             .find(|row| row.kind == "assembled_product")
             .expect("assembled product output");
-        assert_eq!(product.dna.get_forward_string(), "AAAACCCCGGGG");
+        assert_eq!(
+            product.dna.get_forward_string(),
+            "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA"
+        );
         assert!(!product.dna.is_circular());
+    }
+
+    #[test]
+    fn derive_execution_plan_defined_site_transfers_features_and_drops_consumed_annotations() {
+        let mut engine = test_engine_with_sequences();
+        {
+            let destination = engine
+                .state_mut()
+                .sequences
+                .get_mut("destination_vector")
+                .expect("destination sequence");
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(2, 8),
+                qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(26, 32),
+                qualifiers: vec![("label".into(), Some("RIGHT".to_string()))],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::Join(vec![
+                    Location::simple_range(40, 48),
+                    Location::simple_range(0, 2),
+                ]),
+                qualifiers: vec![("label".into(), Some("WRAP".to_string()))],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("misc_feature"),
+                location: Location::simple_range(10, 20),
+                qualifiers: vec![
+                    (
+                        "label".into(),
+                        Some("Multiple Cloning Site (MCS)".to_string()),
+                    ),
+                    ("note".into(), Some("contains SmaI".to_string())),
+                ],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(6, 24),
+                qualifiers: vec![("label".into(), Some("SPAN".to_string()))],
+            });
+        }
+        {
+            let insert = engine
+                .state_mut()
+                .sequences
+                .get_mut("insert_x_amplicon")
+                .expect("insert sequence");
+            insert.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(4, 10),
+                qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
+            });
+        }
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &single_insert_plan()).expect("execution plan");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+
+        assert!(product.dna.features().iter().all(|feature| {
+            feature_first_nonempty_qualifier(
+                feature,
+                &["label", "standard_name", "name", "gene", "note"],
+            )
+            .as_deref()
+                != Some("Multiple Cloning Site (MCS)")
+        }));
+        assert!(product.dna.features().iter().all(|feature| {
+            feature_first_nonempty_qualifier(
+                feature,
+                &["label", "standard_name", "name", "gene", "note"],
+            )
+            .as_deref()
+                != Some("SPAN")
+        }));
+        assert_eq!(
+            feature_by_label(&product.dna, "LEFT")
+                .location
+                .find_bounds()
+                .expect("LEFT bounds"),
+            (2, 8)
+        );
+        assert_eq!(
+            feature_by_label(&product.dna, "RIGHT")
+                .location
+                .find_bounds()
+                .expect("RIGHT bounds"),
+            (68, 74)
+        );
+        assert_eq!(
+            feature_by_label(&product.dna, "INSERT")
+                .location
+                .find_bounds()
+                .expect("INSERT bounds"),
+            (16, 22)
+        );
+        assert_eq!(
+            feature_ranges_sorted_i64(feature_by_label(&product.dna, "WRAP")),
+            vec![(0, 2), (82, 90)]
+        );
+    }
+
+    #[test]
+    fn derive_execution_plan_existing_termini_transfers_destination_and_insert_features() {
+        let mut engine = test_engine_with_sequences();
+        {
+            let destination = engine
+                .state_mut()
+                .sequences
+                .get_mut("destination_vector")
+                .expect("destination sequence");
+            destination.set_circular(false);
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(5, 11),
+                qualifiers: vec![("label".into(), Some("DEST_LINEAR".to_string()))],
+            });
+        }
+        {
+            let insert = engine
+                .state_mut()
+                .sequences
+                .get_mut("insert_x_amplicon")
+                .expect("insert sequence");
+            insert.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(3, 9),
+                qualifiers: vec![("label".into(), Some("INSERT_LINEAR".to_string()))],
+            });
+        }
+
+        let mut plan = single_insert_plan();
+        plan.destination.topology_before_opening = "linear".to_string();
+        plan.destination.opening.mode = "existing_termini".to_string();
+        plan.destination.opening.start_0based = None;
+        plan.destination.opening.end_0based_exclusive = None;
+        plan.product.topology = "linear".to_string();
+        plan.junctions[0].required_overlap_bp = Some(8);
+        plan.junctions[0].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 8,
+            right_member_bp: 0,
+        });
+        plan.junctions[1].required_overlap_bp = Some(8);
+        plan.junctions[1].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 0,
+            right_member_bp: 8,
+        });
+        plan.validation_policy.design_targets.overlap_bp_min = 8;
+        plan.validation_policy.design_targets.overlap_bp_max = 8;
+        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = 0.0;
+        plan.validation_policy.require_distinct_terminal_junctions = false;
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("existing termini execution");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        assert_eq!(
+            feature_by_label(&product.dna, "DEST_LINEAR")
+                .location
+                .find_bounds()
+                .expect("destination feature bounds"),
+            (5, 11)
+        );
+        assert_eq!(
+            feature_by_label(&product.dna, "INSERT_LINEAR")
+                .location
+                .find_bounds()
+                .expect("insert feature bounds"),
+            (51, 57)
+        );
+    }
+
+    #[test]
+    fn derive_execution_plan_reverse_insert_transfers_features_in_reverse_orientation() {
+        let mut engine = test_engine_with_sequences();
+        {
+            let destination = engine
+                .state_mut()
+                .sequences
+                .get_mut("destination_vector")
+                .expect("destination sequence");
+            destination.set_circular(false);
+        }
+        {
+            let insert = engine
+                .state_mut()
+                .sequences
+                .get_mut("insert_x_amplicon")
+                .expect("insert sequence");
+            insert.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(4, 10),
+                qualifiers: vec![("label".into(), Some("INSERT_REVERSE".to_string()))],
+            });
+        }
+
+        let mut plan = single_insert_plan();
+        plan.destination.topology_before_opening = "linear".to_string();
+        plan.destination.opening.mode = "existing_termini".to_string();
+        plan.destination.opening.start_0based = None;
+        plan.destination.opening.end_0based_exclusive = None;
+        plan.product.topology = "linear".to_string();
+        plan.fragments[0].orientation = "reverse".to_string();
+        plan.junctions[0].required_overlap_bp = Some(8);
+        plan.junctions[0].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 8,
+            right_member_bp: 0,
+        });
+        plan.junctions[1].required_overlap_bp = Some(8);
+        plan.junctions[1].overlap_partition = Some(GibsonPlanOverlapPartition {
+            left_member_bp: 0,
+            right_member_bp: 8,
+        });
+        plan.validation_policy.design_targets.overlap_bp_min = 8;
+        plan.validation_policy.design_targets.overlap_bp_max = 8;
+        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = 0.0;
+        plan.validation_policy.require_distinct_terminal_junctions = false;
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("reverse execution");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        let feature = feature_by_label(&product.dna, "INSERT_REVERSE");
+        assert_eq!(feature.location.find_bounds().expect("reverse bounds"), (86, 92));
+        assert!(feature_is_reverse(feature));
     }
 
     #[test]

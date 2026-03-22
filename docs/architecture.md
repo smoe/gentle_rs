@@ -803,10 +803,16 @@ Command surface:
     operation record instead of keeping a frontend-only shadow state
   - output sequence nodes (primers + assembled product) remain ordinary engine
     sequences linked by lineage edges, not a GUI-only side channel
-  - future feature transfer onto the assembled product must be explicit about
-    opening-consumed annotations (for example an MCS used as the insertion
-    site), so adapter-facing output never blindly preserves now-invalid vector
-    annotations
+  - assembled-product feature transfer must remain explicit about
+    opening-consumed annotations:
+    - destination and insert features are transferred deterministically onto
+      the assembled product through the shared engine path
+    - destination features intersecting the consumed opening are dropped
+      conservatively instead of being copied forward as truncated-but-possibly
+      invalid annotations
+    - this is especially important for MCS annotations or other vector-local
+      insertion-site markers, which are usually no longer valid once that
+      opening has been consumed
 
 Concrete patch plan: routine-application assistant and alternative-awareness
 

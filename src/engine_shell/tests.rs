@@ -599,14 +599,37 @@ fn execute_gibson_preview() {
         DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
             .expect("destination sequence");
     destination.set_circular(true);
+    destination.features_mut().push(Feature {
+        kind: FeatureKind::from("gene"),
+        location: Location::simple_range(2, 8),
+        qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
+    });
+    destination.features_mut().push(Feature {
+        kind: FeatureKind::from("misc_feature"),
+        location: Location::simple_range(10, 20),
+        qualifiers: vec![
+            (
+                "label".into(),
+                Some("Multiple Cloning Site (MCS)".to_string()),
+            ),
+            ("note".into(), Some("contains SmaI".to_string())),
+        ],
+    });
     state
         .sequences
         .insert("destination_vector".to_string(), destination);
-    state.sequences.insert(
-        "insert_x_amplicon".to_string(),
-        DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
-            .expect("insert sequence"),
-    );
+    let mut insert = DNAsequence::from_sequence(
+            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
+        )
+        .expect("insert sequence");
+    insert.features_mut().push(Feature {
+        kind: FeatureKind::from("gene"),
+        location: Location::simple_range(4, 10),
+        qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
+    });
+    state
+        .sequences
+        .insert("insert_x_amplicon".to_string(), insert);
     let mut engine = GentleEngine::from_state(state);
     let tmp = tempdir().expect("temp dir");
     let plan_path = tmp.path().join("gibson.plan.json");
@@ -733,16 +756,37 @@ fn execute_gibson_apply_creates_output_sequences() {
     )
     .expect("destination sequence");
     destination.set_circular(true);
+    destination.features_mut().push(Feature {
+        kind: FeatureKind::from("gene"),
+        location: Location::simple_range(2, 8),
+        qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
+    });
+    destination.features_mut().push(Feature {
+        kind: FeatureKind::from("misc_feature"),
+        location: Location::simple_range(10, 20),
+        qualifiers: vec![
+            (
+                "label".into(),
+                Some("Multiple Cloning Site (MCS)".to_string()),
+            ),
+            ("note".into(), Some("contains SmaI".to_string())),
+        ],
+    });
     state
         .sequences
         .insert("destination_vector".to_string(), destination);
-    state.sequences.insert(
-        "insert_x_amplicon".to_string(),
-        DNAsequence::from_sequence(
+    let mut insert = DNAsequence::from_sequence(
             "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
         )
-        .expect("insert sequence"),
-    );
+        .expect("insert sequence");
+    insert.features_mut().push(Feature {
+        kind: FeatureKind::from("gene"),
+        location: Location::simple_range(4, 10),
+        qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
+    });
+    state
+        .sequences
+        .insert("insert_x_amplicon".to_string(), insert);
     let mut engine = GentleEngine::from_state(state);
     let plan = r#"{
   "schema": "gentle.gibson_assembly_plan.v1",
@@ -832,6 +876,46 @@ fn execute_gibson_apply_creates_output_sequences() {
         .expect("created ids array");
     assert_eq!(created.len(), 3);
     assert!(engine.state().sequences.contains_key("out"));
+    let product = engine
+        .state()
+        .sequences
+        .get("out")
+        .expect("assembled product output");
+    let labels = product
+        .features()
+        .iter()
+        .filter_map(|feature| {
+            feature
+                .qualifier_values("label".into())
+                .next()
+                .map(str::to_string)
+        })
+        .collect::<Vec<_>>();
+    let feature_debug = product
+        .features()
+        .iter()
+        .map(|feature| {
+            format!(
+                "{} {:?}",
+                feature.kind,
+                feature
+                    .qualifier_values("label".into())
+                    .next()
+                    .map(str::to_string)
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        labels.iter().any(|label| label == "LEFT"),
+        "product labels: {labels:?}; features: {feature_debug:?}"
+    );
+    assert!(
+        labels.iter().any(|label| label == "INSERT"),
+        "product labels: {labels:?}; features: {feature_debug:?}"
+    );
+    assert!(!labels
+        .iter()
+        .any(|label| label == "Multiple Cloning Site (MCS)"));
     assert!(
         engine
             .operation_log()

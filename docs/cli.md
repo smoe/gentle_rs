@@ -1253,6 +1253,9 @@ Rendering export commands:
     - left insert primer
     - right insert primer
     - assembled product
+  - Transfers destination and insert features onto the assembled product
+    deterministically; destination annotations intersecting the consumed
+    opening are dropped conservatively rather than copied forward blindly.
   - Returns the standard mutating `OpResult`, including created sequence IDs,
     warnings, messages, and the operation ID used for provenance/reopen flows.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`

@@ -622,6 +622,10 @@ impl DNAsequence {
         &mut self.seq.features
     }
 
+    pub(crate) fn clone_seq_record(&self) -> Seq {
+        self.seq.clone()
+    }
+
     pub fn name(&self) -> &Option<String> {
         &self.seq.name
     }

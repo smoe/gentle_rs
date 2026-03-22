@@ -396,9 +396,12 @@ Current v1 scope and limits:
     - left insert primer
     - right insert primer
     - assembled product
-  - feature transfer onto the assembled product is still follow-on work; this
-    is especially important for opening-consumed annotations such as an MCS,
-    which should usually be removed or rewritten rather than copied blindly
+  - transfers destination and insert features onto the assembled product
+    deterministically through the shared engine path
+  - destination features intersecting the consumed opening are dropped
+    conservatively instead of being copied forward as truncated annotations;
+    this is especially important for opening-consumed annotations such as an
+    MCS, which should usually be removed or rewritten rather than preserved
   - records one operation-log row so GUI lineage/CLI state replay can reopen
     the specialist from the saved plan without silently re-running it
 
