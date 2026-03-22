@@ -577,12 +577,16 @@ Patterns menu:
          and marks them as `(MCS)`
        - `Show other unique cutters` reveals single-cutters elsewhere on the
          destination when you want to search beyond the MCS
+       - `Feature` column shows the overlapping gene when available, otherwise
+         another overlapping feature label; MCS-linked rows also show the MCS
+         location there
        - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
          such as `SmaI` can be chosen directly from the specialist
        - specific cutter suggestions show a compact `Cut` summary derived from
          REBASE and fill the actual cleavage window:
          - equal left/right cut edges mean a blunt cutpoint
-         - non-empty left..right means the window between recessed termini
+         - different left/right cut edges mean the two primer-relevant termini
+           of a sticky cut
        - tooltips and quick help explain the difference between MCS-linked
          cutters and other unique cutters outside the annotated MCS
     2. `Insert`
@@ -613,6 +617,8 @@ Patterns menu:
        - `Apply Gibson Cloning` runs one shared engine operation and creates
          new sequence nodes for the two insert primers and the assembled
          product
+       - `Cancel` closes the specialist without applying anything and keeps the
+         current draft available when the window is reopened
        - the assembled product carries transferred destination/insert features
        - partially consumed destination annotations are trimmed or projected
          when a truthful product-side rewrite is available

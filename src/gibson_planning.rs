@@ -184,6 +184,8 @@ pub struct GibsonDestinationOpeningSuggestion {
     pub kind: String,
     pub label: String,
     pub summary: String,
+    #[serde(default)]
+    pub feature_context: String,
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub enzyme_name: Option<String>,
@@ -407,7 +409,8 @@ pub fn suggest_gibson_destination_openings(
             if !seen_enzymes.insert(enzyme_name.clone()) {
                 continue;
             }
-            if let Some(suggestion) = restriction_site_suggestion(site, true, seq_len) {
+            if let Some(suggestion) = restriction_site_suggestion(dna, site, true, &mcs_hints, seq_len)
+            {
                 suggestions.push(suggestion);
             }
         }
@@ -416,7 +419,7 @@ pub fn suggest_gibson_destination_openings(
     let mut fallback_unique_sites = unique_sites
         .values()
         .filter(|site| !seen_enzymes.contains(site.enzyme.name.as_str()))
-        .filter_map(|site| restriction_site_suggestion(site, false, seq_len))
+        .filter_map(|site| restriction_site_suggestion(dna, site, false, &mcs_hints, seq_len))
         .collect::<Vec<_>>();
     suggestions.append(&mut fallback_unique_sites);
     suggestions.sort_by(|left, right| {
@@ -453,8 +456,10 @@ fn unique_forward_sites<'a>(
 }
 
 fn restriction_site_suggestion(
+    dna: &crate::dna_sequence::DNAsequence,
     site: &RestrictionEnzymeSite,
     in_mcs_context: bool,
+    mcs_hints: &[GibsonMcsFeatureHint],
     seq_len: usize,
 ) -> Option<GibsonDestinationOpeningSuggestion> {
     let (recognition_start_0based, recognition_end_0based_exclusive) =
@@ -471,9 +476,10 @@ fn restriction_site_suggestion(
         "{} | {}|{}",
         site.enzyme.sequence, left_offset, right_offset
     );
+    let feature_context = suggestion_feature_context(dna, site, in_mcs_context, mcs_hints, seq_len);
     let summary = if start_0based == end_0based_exclusive {
         format!(
-            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif yield one blunt cutpoint and fill left/right cut edges {}..{} (0-based).",
+            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif yield one blunt cutpoint. The single cut edge {} is the primer-design anchor for both destination arms.",
             context_label,
             site.enzyme.name,
             recognition_start_0based + 1,
@@ -481,11 +487,10 @@ fn restriction_site_suggestion(
             left_offset,
             right_offset,
             start_0based,
-            end_0based_exclusive
         )
     } else {
         format!(
-            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif fill left/right cut edges {}..{} (0-based) between the recessed termini.",
+            "{} {} recognizes {}..{} (1-based); REBASE cut offsets {}|{} relative to the motif define two primer-design anchors at left/right cut edges {}..{}. For sticky cutters, inspect both 5' arm ends independently; Gibson chew-back removes the opposing 3' ends.",
             context_label,
             site.enzyme.name,
             recognition_start_0based + 1,
@@ -500,6 +505,7 @@ fn restriction_site_suggestion(
         kind: "unique_restriction_site".to_string(),
         label: site.enzyme.name.clone(),
         summary,
+        feature_context,
         start_0based,
         end_0based_exclusive,
         enzyme_name: Some(site.enzyme.name.clone()),
@@ -721,6 +727,92 @@ fn feature_first_nonempty_qualifier(
         }
     }
     None
+}
+
+fn suggestion_feature_context(
+    dna: &crate::dna_sequence::DNAsequence,
+    site: &RestrictionEnzymeSite,
+    in_mcs_context: bool,
+    mcs_hints: &[GibsonMcsFeatureHint],
+    seq_len: usize,
+) -> String {
+    let mut parts = vec![];
+    if in_mcs_context {
+        if let Some(hint) = mcs_hints.iter().find(|hint| {
+            hint.candidate_enzymes
+                .iter()
+                .any(|name| name == &site.enzyme.name)
+        }) {
+            parts.push(format!(
+                "MCS {}..{}",
+                hint.start_0based + 1,
+                hint.end_0based_exclusive
+            ));
+        }
+    }
+
+    let mut overlapping_genes = vec![];
+    let mut overlapping_other_features = vec![];
+    for feature in dna.features() {
+        if !feature_overlaps_recognition_span(feature, site, seq_len) {
+            continue;
+        }
+        let kind = feature.kind.to_string();
+        let label = feature_first_nonempty_qualifier(
+            feature,
+            &["gene", "label", "standard_name", "name", "note"],
+        )
+        .unwrap_or_else(|| kind.clone());
+        if text_mentions_mcs(&label) {
+            continue;
+        }
+        if kind.eq_ignore_ascii_case("gene") {
+            overlapping_genes.push(label);
+        } else {
+            overlapping_other_features.push(label);
+        }
+    }
+    overlapping_genes.sort();
+    overlapping_genes.dedup();
+    overlapping_other_features.sort();
+    overlapping_other_features.dedup();
+
+    if let Some(gene) = overlapping_genes.first() {
+        parts.push(gene.clone());
+    } else if let Some(other) = overlapping_other_features.first() {
+        parts.push(other.clone());
+    }
+
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(" | ")
+    }
+}
+
+fn feature_overlaps_recognition_span(
+    feature: &Feature,
+    site: &RestrictionEnzymeSite,
+    seq_len: usize,
+) -> bool {
+    let Some((site_start, site_end)) = site.recognition_bounds_0based(seq_len) else {
+        return false;
+    };
+    let site_segments = if site_end <= seq_len {
+        vec![(site_start, site_end)]
+    } else {
+        vec![(site_start, seq_len), (0, site_end - seq_len)]
+    };
+    let mut feature_ranges = vec![];
+    collect_location_ranges_usize(&feature.location, &mut feature_ranges);
+    if feature_ranges.is_empty() {
+        return false;
+    }
+    site_segments.into_iter().any(|(segment_start, segment_end)| {
+        feature_ranges.iter().any(|(feature_start, feature_end)| {
+            segment_start < *feature_end && segment_end > *feature_start
+        })
+    })
 }
 
 pub fn preview_gibson_assembly_plan(
@@ -2647,6 +2739,11 @@ mod tests {
         let mut dna = restriction_ready_dna("TTTGGATCCAAACCCGGGTTTGAATTCTTT");
         dna.set_circular(true);
         dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(10, 20),
+            qualifiers: vec![("gene".into(), Some("bla".to_string()))],
+        });
+        dna.features_mut().push(Feature {
             kind: FeatureKind::from("misc_feature"),
             location: Location::simple_range(3, 21),
             qualifiers: vec![
@@ -2687,6 +2784,8 @@ mod tests {
         assert_eq!(smai.recognition_start_0based, Some(12));
         assert_eq!(smai.recognition_end_0based_exclusive, Some(18));
         assert!(smai.rebase_cut_summary.contains("CCCGGG"));
+        assert!(smai.feature_context.contains("MCS"));
+        assert!(smai.feature_context.contains("bla"));
     }
 
     #[test]
