@@ -618,9 +618,7 @@ fn execute_gibson_preview() {
     state
         .sequences
         .insert("destination_vector".to_string(), destination);
-    let mut insert = DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
+    let mut insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
         .expect("insert sequence");
     insert.features_mut().push(Feature {
         kind: FeatureKind::from("gene"),
@@ -751,10 +749,9 @@ fn execute_gibson_preview() {
 #[test]
 fn execute_gibson_apply_creates_output_sequences() {
     let mut state = ProjectState::default();
-    let mut destination = DNAsequence::from_sequence(
-        "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
-    )
-    .expect("destination sequence");
+    let mut destination =
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+            .expect("destination sequence");
     destination.set_circular(true);
     destination.features_mut().push(Feature {
         kind: FeatureKind::from("gene"),
@@ -775,9 +772,7 @@ fn execute_gibson_apply_creates_output_sequences() {
     state
         .sequences
         .insert("destination_vector".to_string(), destination);
-    let mut insert = DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
+    let mut insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
         .expect("insert sequence");
     insert.features_mut().push(Feature {
         kind: FeatureKind::from("gene"),
@@ -923,10 +918,7 @@ fn execute_gibson_apply_creates_output_sequences() {
         .features()
         .iter()
         .find(|feature| {
-            feature
-                .qualifier_values("label".into())
-                .next()
-                == Some("Multiple Cloning Site (MCS)")
+            feature.qualifier_values("label".into()).next() == Some("Multiple Cloning Site (MCS)")
         })
         .expect("assembled product MCS feature");
     assert_eq!(

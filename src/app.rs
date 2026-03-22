@@ -119,6 +119,7 @@ const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
+const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 2.0;
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -522,6 +523,7 @@ pub struct GENtleApp {
     help_search_matches: Vec<HelpSearchMatch>,
     help_search_selected: usize,
     help_focus_search_box: bool,
+    help_last_content_width: f32,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -1776,6 +1778,7 @@ impl Default for GENtleApp {
             help_search_matches: vec![],
             help_search_selected: 0,
             help_focus_search_box: false,
+            help_last_content_width: 0.0,
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -2511,6 +2514,135 @@ impl GENtleApp {
             rewritten.replace_range(range, &replacement);
         }
         rewritten
+    }
+
+    fn help_display_markdown(markdown: &str) -> String {
+        Self::rewrite_markdown_inline_code_soft_breaks(markdown)
+    }
+
+    fn rewrite_markdown_inline_code_soft_breaks(markdown: &str) -> String {
+        let mut out = String::with_capacity(markdown.len() + markdown.len() / 16);
+        let mut idx = 0usize;
+        let len = markdown.len();
+        let mut in_fenced_block: Option<(u8, usize)> = None;
+        let mut line_start = true;
+        let bytes = markdown.as_bytes();
+
+        while idx < len {
+            if line_start {
+                let mut look = idx;
+                while look < len && bytes[look] == b' ' {
+                    look += 1;
+                }
+                if look < len && (bytes[look] == b'`' || bytes[look] == b'~') {
+                    let fence_byte = bytes[look];
+                    let mut fence_end = look;
+                    while fence_end < len && bytes[fence_end] == fence_byte {
+                        fence_end += 1;
+                    }
+                    let fence_count = fence_end - look;
+                    if fence_count >= 3 {
+                        match in_fenced_block {
+                            Some((current_byte, current_count))
+                                if current_byte == fence_byte && fence_count >= current_count =>
+                            {
+                                in_fenced_block = None;
+                            }
+                            None => {
+                                in_fenced_block = Some((fence_byte, fence_count));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            if in_fenced_block.is_none() && bytes[idx] == b'`' {
+                let mut tick_end = idx;
+                while tick_end < len && bytes[tick_end] == b'`' {
+                    tick_end += 1;
+                }
+                let tick_count = tick_end - idx;
+                if let Some(close_start) =
+                    Self::find_matching_inline_backtick_run(markdown, tick_end, tick_count)
+                {
+                    out.push_str(&markdown[idx..tick_end]);
+                    out.push_str(&Self::insert_soft_breaks_into_inline_code(
+                        &markdown[tick_end..close_start],
+                    ));
+                    out.push_str(&markdown[close_start..close_start + tick_count]);
+                    idx = close_start + tick_count;
+                    line_start = false;
+                    continue;
+                }
+            }
+
+            let ch = markdown[idx..].chars().next().unwrap();
+            out.push(ch);
+            line_start = ch == '\n';
+            idx += ch.len_utf8();
+        }
+
+        out
+    }
+
+    fn find_matching_inline_backtick_run(
+        markdown: &str,
+        start: usize,
+        tick_count: usize,
+    ) -> Option<usize> {
+        let bytes = markdown.as_bytes();
+        let len = markdown.len();
+        let mut idx = start;
+        while idx < len {
+            if bytes[idx] == b'\n' {
+                return None;
+            }
+            if bytes[idx] == b'`' {
+                let mut end = idx;
+                while end < len && bytes[end] == b'`' {
+                    end += 1;
+                }
+                if end - idx == tick_count {
+                    return Some(idx);
+                }
+                idx = end;
+                continue;
+            }
+            idx += markdown[idx..].chars().next().unwrap().len_utf8();
+        }
+        None
+    }
+
+    fn insert_soft_breaks_into_inline_code(text: &str) -> String {
+        const ZWSP: char = '\u{200B}';
+        let mut out = String::with_capacity(text.len() + text.len() / 8);
+        for ch in text.chars() {
+            out.push(ch);
+            if matches!(
+                ch,
+                ' ' | '/'
+                    | '_'
+                    | '-'
+                    | '.'
+                    | ':'
+                    | ','
+                    | ';'
+                    | '('
+                    | ')'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+                    | '='
+                    | '+'
+                    | '|'
+                    | '>'
+            ) {
+                out.push(ZWSP);
+            }
+        }
+        out
     }
 
     fn rewrite_inline_image_destination(span: &str, absolute_dest: &Path) -> Option<String> {
@@ -13189,7 +13321,8 @@ Error: `{err}`"
 
     fn load_gibson_plan_into_ui(&mut self, plan: &GibsonAssemblyPlan) {
         self.gibson_destination_seq_id = plan.destination.seq_id.trim().to_string();
-        self.gibson_opening_mode = GibsonUiOpeningMode::from_plan_mode(&plan.destination.opening.mode);
+        self.gibson_opening_mode =
+            GibsonUiOpeningMode::from_plan_mode(&plan.destination.opening.mode);
         self.gibson_opening_start_0based = plan
             .destination
             .opening
@@ -13210,10 +13343,22 @@ Error: `{err}`"
             self.gibson_insert_seq_id.clear();
             self.gibson_insert_orientation = GibsonUiInsertOrientation::Forward;
         }
-        self.gibson_overlap_bp_min = plan.validation_policy.design_targets.overlap_bp_min.to_string();
-        self.gibson_overlap_bp_max = plan.validation_policy.design_targets.overlap_bp_max.to_string();
-        self.gibson_minimum_overlap_tm_celsius =
-            format!("{:.1}", plan.validation_policy.design_targets.minimum_overlap_tm_celsius);
+        self.gibson_overlap_bp_min = plan
+            .validation_policy
+            .design_targets
+            .overlap_bp_min
+            .to_string();
+        self.gibson_overlap_bp_max = plan
+            .validation_policy
+            .design_targets
+            .overlap_bp_max
+            .to_string();
+        self.gibson_minimum_overlap_tm_celsius = format!(
+            "{:.1}",
+            plan.validation_policy
+                .design_targets
+                .minimum_overlap_tm_celsius
+        );
         self.gibson_priming_tm_min_celsius = format!(
             "{:.1}",
             plan.validation_policy
@@ -13244,10 +13389,9 @@ Error: `{err}`"
         op_id: &str,
     ) -> std::result::Result<bool, String> {
         let plan_json = {
-            let engine = self
-                .engine
-                .read()
-                .map_err(|_| "Could not read engine state while reopening Gibson plan".to_string())?;
+            let engine = self.engine.read().map_err(|_| {
+                "Could not read engine state while reopening Gibson plan".to_string()
+            })?;
             engine
                 .operation_log()
                 .iter()
@@ -13260,8 +13404,9 @@ Error: `{err}`"
         let Some(plan_json) = plan_json else {
             return Ok(false);
         };
-        let plan: GibsonAssemblyPlan = serde_json::from_str(&plan_json)
-            .map_err(|err| format!("Could not parse stored Gibson plan JSON from '{op_id}': {err}"))?;
+        let plan: GibsonAssemblyPlan = serde_json::from_str(&plan_json).map_err(|err| {
+            format!("Could not parse stored Gibson plan JSON from '{op_id}': {err}")
+        })?;
         self.load_gibson_plan_into_ui(&plan);
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
@@ -14011,14 +14156,16 @@ Error: `{err}`"
         ui.heading("Design Targets");
         ui.horizontal(|ui| {
             ui.label("overlap min/max bp");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0),
-            );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
-            );
-            Self::gibson_tm_label(ui, "minimum overlap ", " (°C)", egui::TextStyle::Body, false)
-                .on_hover_text(&tm_help);
+            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0));
+            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0));
+            Self::gibson_tm_label(
+                ui,
+                "minimum overlap ",
+                " (°C)",
+                egui::TextStyle::Body,
+                false,
+            )
+            .on_hover_text(&tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
                     .desired_width(80.0),
@@ -14195,7 +14342,10 @@ Error: `{err}`"
         ui.heading("Outputs");
         if let Some(preview) = self.gibson_preview_output.as_ref() {
             let planned_product_id = if self.gibson_output_id_hint.trim().is_empty() {
-                format!("{}_with_{}", preview.destination.seq_id, preview.insert.seq_id)
+                format!(
+                    "{}_with_{}",
+                    preview.destination.seq_id, preview.insert.seq_id
+                )
             } else {
                 self.gibson_output_id_hint.trim().to_string()
             };
@@ -14213,7 +14363,13 @@ Error: `{err}`"
                     + preview.insert.length_bp
             };
             let planned_product_topology = match self.build_gibson_plan_from_ui() {
-                Ok(plan) if plan.product.topology.trim().eq_ignore_ascii_case("circular") => {
+                Ok(plan)
+                    if plan
+                        .product
+                        .topology
+                        .trim()
+                        .eq_ignore_ascii_case("circular") =>
+                {
                     "circular"
                 }
                 Ok(_) => "linear",
@@ -26534,6 +26690,33 @@ Error: `{err}`"
         });
     }
 
+    fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {
+        if !current_width.is_finite() || current_width <= 0.0 {
+            return false;
+        }
+        if !previous_width.is_finite() || previous_width <= 0.0 {
+            return true;
+        }
+        (previous_width - current_width).abs() > HELP_MARKDOWN_REFLOW_DELTA_PX
+    }
+
+    fn help_markdown_max_image_width(available_width: f32) -> usize {
+        let safe_width = if available_width.is_finite() {
+            available_width.max(120.0)
+        } else {
+            480.0
+        };
+        (safe_width * 0.75).round().clamp(220.0, 1600.0) as usize
+    }
+
+    fn clamp_help_topic_combo_width(available_width: f32) -> f32 {
+        if available_width.is_finite() {
+            (available_width * 0.55).clamp(180.0, 420.0)
+        } else {
+            280.0
+        }
+    }
+
     fn render_help_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_help_dialog {
             return;
@@ -26598,7 +26781,7 @@ Error: `{err}`"
             }
 
             let mut active_doc_changed = false;
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .selectable_label(self.help_doc == HelpDoc::Gui, "GUI Manual")
                     .clicked()
@@ -26678,40 +26861,6 @@ Error: `{err}`"
                         active_doc_changed = true;
                     }
                 }
-                if self.help_doc == HelpDoc::Tutorial {
-                    if self.help_tutorial_entries.is_empty() {
-                        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
-                        self.set_help_tutorial_selected(self.help_tutorial_selected);
-                    }
-                    ui.separator();
-                    ui.label("Topic:");
-                    let selected_tutorial_title = self
-                        .help_tutorial_entries
-                        .get(self.help_tutorial_selected)
-                        .map(|entry| entry.title.as_str())
-                        .unwrap_or("No tutorial docs found");
-                    let mut selected_tutorial_index = None;
-                    egui::ComboBox::from_id_salt("help_tutorial_topic")
-                        .selected_text(selected_tutorial_title)
-                        .show_ui(ui, |ui| {
-                            for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
-                                if ui
-                                    .selectable_label(
-                                        index == self.help_tutorial_selected,
-                                        entry.title.as_str(),
-                                    )
-                                    .on_hover_text(entry.summary.as_str())
-                                    .clicked()
-                                {
-                                    selected_tutorial_index = Some(index);
-                                }
-                            }
-                        });
-                    if let Some(index) = selected_tutorial_index {
-                        self.set_help_tutorial_selected(index);
-                        active_doc_changed = true;
-                    }
-                }
                 ui.separator();
                 if ui
                     .button("Reload")
@@ -26731,7 +26880,42 @@ Error: `{err}`"
                 }
             });
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                if self.help_doc == HelpDoc::Tutorial {
+                    if self.help_tutorial_entries.is_empty() {
+                        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
+                        self.set_help_tutorial_selected(self.help_tutorial_selected);
+                    }
+                    ui.label("Topic:");
+                    let selected_tutorial_title = self
+                        .help_tutorial_entries
+                        .get(self.help_tutorial_selected)
+                        .map(|entry| entry.title.as_str())
+                        .unwrap_or("No tutorial docs found");
+                    let mut selected_tutorial_index = None;
+                    egui::ComboBox::from_id_salt("help_tutorial_topic")
+                        .width(Self::clamp_help_topic_combo_width(ui.available_width()))
+                        .selected_text(selected_tutorial_title)
+                        .show_ui(ui, |ui| {
+                            for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
+                                if ui
+                                    .selectable_label(
+                                        index == self.help_tutorial_selected,
+                                        entry.title.as_str(),
+                                    )
+                                    .on_hover_text(entry.summary.as_str())
+                                    .clicked()
+                                {
+                                    selected_tutorial_index = Some(index);
+                                }
+                            }
+                        });
+                    if let Some(index) = selected_tutorial_index {
+                        self.set_help_tutorial_selected(index);
+                        active_doc_changed = true;
+                    }
+                    ui.separator();
+                }
                 ui.label("Find:");
                 let search_id = ui.make_persistent_id("gentle_help_search_input");
                 let search_response = ui.add(
@@ -26791,6 +26975,8 @@ Error: `{err}`"
             });
 
             if active_doc_changed {
+                self.help_markdown_cache = CommonMarkCache::default();
+                self.help_last_content_width = 0.0;
                 self.refresh_help_search_matches();
             }
             if let Some(current) = self.help_search_matches.get(self.help_search_selected) {
@@ -26799,14 +26985,21 @@ Error: `{err}`"
 
             ui.separator();
             egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
+                .auto_shrink([true, false])
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    let max_image_width =
-                        (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
+                    let content_width = ui.available_width().max(120.0);
+                    if Self::help_content_width_requires_relayout(
+                        self.help_last_content_width,
+                        content_width,
+                    ) {
+                        self.help_markdown_cache = CommonMarkCache::default();
+                    }
+                    self.help_last_content_width = content_width;
+                    let max_image_width = Self::help_markdown_max_image_width(content_width);
                     let markdown = match self.help_doc {
                         HelpDoc::Gui => self.help_gui_markdown.as_str(),
                         HelpDoc::Cli => self.help_cli_markdown.as_str(),
@@ -26815,9 +27008,18 @@ Error: `{err}`"
                         HelpDoc::Shell => self.help_shell_markdown.as_str(),
                         HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
                     };
-                    CommonMarkViewer::new()
-                        .max_image_width(Some(max_image_width as usize))
-                        .show(ui, &mut self.help_markdown_cache, markdown);
+                    let rendered_markdown = Self::help_display_markdown(markdown);
+                    ui.set_width(content_width);
+                    ui.set_max_width(content_width);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(content_width, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            CommonMarkViewer::new()
+                                .max_image_width(Some(max_image_width))
+                                .show(ui, &mut self.help_markdown_cache, &rendered_markdown);
+                        },
+                    );
                 });
         });
     }
@@ -29523,20 +29725,17 @@ mod tests {
         app.engine.write().unwrap().state_mut().sequences.insert(
             "destination_vector".to_string(),
             {
-                let mut dna = DNAsequence::from_sequence(
-                    "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
-                )
-                .expect("destination sequence");
+                let mut dna =
+                    DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+                        .expect("destination sequence");
                 dna.set_circular(true);
                 dna
             },
         );
         app.engine.write().unwrap().state_mut().sequences.insert(
             "insert_x_amplicon".to_string(),
-            DNAsequence::from_sequence(
-                "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-            )
-            .expect("insert sequence"),
+            DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+                .expect("insert sequence"),
         );
         let plan_json = r#"{
   "schema": "gentle.gibson_assembly_plan.v1",
@@ -29788,6 +29987,53 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::help_viewport_id())
         );
+    }
+
+    #[test]
+    fn help_content_width_requires_relayout_for_meaningful_resize() {
+        assert!(GENtleApp::help_content_width_requires_relayout(0.0, 420.0));
+        assert!(GENtleApp::help_content_width_requires_relayout(
+            860.0, 620.0
+        ));
+        assert!(!GENtleApp::help_content_width_requires_relayout(
+            620.0, 621.0
+        ));
+        assert!(!GENtleApp::help_content_width_requires_relayout(
+            620.0,
+            f32::NAN
+        ));
+    }
+
+    #[test]
+    fn help_topic_combo_width_is_clamped() {
+        assert_eq!(GENtleApp::clamp_help_topic_combo_width(200.0), 180.0);
+        assert_eq!(GENtleApp::clamp_help_topic_combo_width(1_200.0), 420.0);
+        assert_eq!(GENtleApp::clamp_help_topic_combo_width(f32::NAN), 280.0);
+    }
+
+    #[test]
+    fn help_markdown_max_image_width_tracks_available_width() {
+        assert_eq!(GENtleApp::help_markdown_max_image_width(200.0), 220);
+        assert_eq!(GENtleApp::help_markdown_max_image_width(400.0), 300);
+        assert_eq!(GENtleApp::help_markdown_max_image_width(10_000.0), 1600);
+    }
+
+    #[test]
+    fn rewrite_markdown_inline_code_soft_breaks_preserves_fenced_blocks() {
+        let markdown = "inline `File -> Open Tutorial Project...`\n\n```bash\ncargo run --bin gentle_cli -- gibson preview\n```\n";
+        let rewritten = GENtleApp::rewrite_markdown_inline_code_soft_breaks(markdown);
+        assert!(rewritten.contains("File"));
+        assert!(rewritten.contains('\u{200B}'));
+        assert!(rewritten.contains("```bash\ncargo run --bin gentle_cli -- gibson preview\n```"));
+    }
+
+    #[test]
+    fn help_display_markdown_adds_soft_breaks_for_tutorial_style_inline_code() {
+        let markdown = "Use `Patterns -> Gibson...` and `docs/examples/workflows/gibson_specialist_testing_baseline.json`.";
+        let rendered = GENtleApp::help_display_markdown(markdown);
+        assert!(rendered.contains("Patterns"));
+        assert!(rendered.contains("docs/"));
+        assert!(rendered.contains('\u{200B}'));
     }
 
     #[test]

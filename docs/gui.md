@@ -1161,7 +1161,7 @@ The `Help` menu now includes:
 - `Shell Commands`: generated command reference from `docs/glossary.json`
   (usage + task summary per command)
 - `Tutorials`: opens tutorial markdown docs in the same help window
-  (`Topic` selector in the help header)
+  (`Topic` selector starts the second help-header row, ahead of search)
   - curated order now comes from `docs/tutorial/catalog.json` when available
   - falls back to recursive markdown discovery under `docs/tutorial/**` if the
     catalog is unavailable
@@ -1202,6 +1202,9 @@ Markdown image support:
 - `Reload` in the help window reloads markdown + images from disk
 - help viewer supports in-window text search (`Cmd/Ctrl+F` focuses search box)
 - search UI includes match count and `Prev`/`Next` navigation
+- help header controls and markdown body reflow when the help window is resized
+  narrower; tutorial topic selection is width-clamped so long titles do not
+  force the body into a stale wider layout
 
 Help window screenshot:
 

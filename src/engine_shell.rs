@@ -4364,8 +4364,9 @@ impl ShellCommand {
                     .map(|path| format!(" and export preview JSON to '{path}'"))
                     .unwrap_or_default()
             ),
-            Self::GibsonApply { .. } => "apply Gibson assembly plan and create output sequences"
-                .to_string(),
+            Self::GibsonApply { .. } => {
+                "apply Gibson assembly plan and create output sequences".to_string()
+            }
             Self::RenderPoolGelSvg {
                 inputs,
                 output,
@@ -9320,10 +9321,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "gibson" => {
             if tokens.len() < 2 {
-                return Err(
-                    "gibson requires a subcommand: preview, apply"
-                        .to_string(),
-                );
+                return Err("gibson requires a subcommand: preview, apply".to_string());
             }
             match tokens[1].as_str() {
                 "preview" => {
@@ -9374,14 +9372,12 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "apply" => {
                     if tokens.len() != 3 {
-                        return Err(
-                            "gibson apply requires PLAN_JSON_OR_@FILE".to_string(),
-                        );
+                        return Err("gibson apply requires PLAN_JSON_OR_@FILE".to_string());
                     }
                     let request_json = tokens[2].trim();
                     if request_json.is_empty() {
                         return Err(
-                            "gibson apply requires non-empty PLAN_JSON_OR_@FILE".to_string(),
+                            "gibson apply requires non-empty PLAN_JSON_OR_@FILE".to_string()
                         );
                     }
                     Ok(ShellCommand::GibsonApply {

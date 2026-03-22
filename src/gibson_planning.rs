@@ -502,15 +502,12 @@ fn restriction_site_suggestion(
     let rebase_cut_summary = if left_offset == right_offset {
         format!(
             "{} | blunt cut after motif bp {}",
-            site.enzyme.sequence,
-            left_offset
+            site.enzyme.sequence, left_offset
         )
     } else {
         format!(
             "{} | recessed ends after motif bp {}/{}",
-            site.enzyme.sequence,
-            left_offset,
-            right_offset
+            site.enzyme.sequence, left_offset, right_offset
         )
     };
     let summary = if start_0based == end_0based_exclusive {
@@ -1178,20 +1175,29 @@ pub fn derive_gibson_execution_plan(
     let assembled_product_seq = match preview.destination.opening_mode.as_str() {
         "existing_termini" => format!("{destination_seq}{oriented_insert_seq}"),
         "defined_site" => {
-            let start = preview.destination.opening_start_0based.ok_or_else(|| EngineError {
-                code: ErrorCode::Internal,
-                message:
-                    "Executable Gibson defined-site preview did not retain start_0based".to_string(),
-            })?;
-            let end =
-                preview
-                    .destination
-                    .opening_end_0based_exclusive
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::Internal,
-                        message: "Executable Gibson defined-site preview did not retain end_0based_exclusive".to_string(),
-                    })?;
-            format!("{}{}{}", &destination_seq[..start], oriented_insert_seq, &destination_seq[end..])
+            let start = preview
+                .destination
+                .opening_start_0based
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Executable Gibson defined-site preview did not retain start_0based"
+                        .to_string(),
+                })?;
+            let end = preview
+                .destination
+                .opening_end_0based_exclusive
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message:
+                        "Executable Gibson defined-site preview did not retain end_0based_exclusive"
+                            .to_string(),
+                })?;
+            format!(
+                "{}{}{}",
+                &destination_seq[..start],
+                oriented_insert_seq,
+                &destination_seq[end..]
+            )
         }
         other => {
             return Err(EngineError {
@@ -1203,15 +1209,18 @@ pub fn derive_gibson_execution_plan(
 
     let mut outputs: Vec<GibsonExecutionOutput> = vec![];
     for primer in &preview.primer_suggestions {
-        let mut dna = DNAsequence::from_sequence(&primer.full_sequence).map_err(|err| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: format!(
-                "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
-                primer.primer_id
-            ),
-        })?;
+        let mut dna =
+            DNAsequence::from_sequence(&primer.full_sequence).map_err(|err| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
+                    primer.primer_id
+                ),
+            })?;
         dna.set_name(match primer.side.as_str() {
-            "left_insert_primer" => format!("Gibson left insert primer for '{}'", preview.insert.seq_id),
+            "left_insert_primer" => {
+                format!("Gibson left insert primer for '{}'", preview.insert.seq_id)
+            }
             "right_insert_primer" => {
                 format!("Gibson right insert primer for '{}'", preview.insert.seq_id)
             }
@@ -1226,7 +1235,10 @@ pub fn derive_gibson_execution_plan(
     }
 
     let product_base_id = if plan.product.output_id_hint.trim().is_empty() {
-        format!("{}_with_{}", preview.destination.seq_id, preview.insert.seq_id)
+        format!(
+            "{}_with_{}",
+            preview.destination.seq_id, preview.insert.seq_id
+        )
     } else {
         plan.product.output_id_hint.trim().to_string()
     };
@@ -1278,10 +1290,11 @@ fn build_gibson_assembled_product(
     plan: &GibsonAssemblyPlan,
     assembled_product_seq: &str,
 ) -> Result<DNAsequence, EngineError> {
-    let mut product = DNAsequence::from_sequence(assembled_product_seq).map_err(|err| EngineError {
-        code: ErrorCode::InvalidInput,
-        message: format!("Could not materialize Gibson assembled product sequence: {err}"),
-    })?;
+    let mut product =
+        DNAsequence::from_sequence(assembled_product_seq).map_err(|err| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not materialize Gibson assembled product sequence: {err}"),
+        })?;
     let mut features = Vec::new();
     match preview.destination.opening_mode.as_str() {
         "existing_termini" => {
@@ -1292,34 +1305,34 @@ fn build_gibson_assembled_product(
             ));
         }
         "defined_site" => {
-            let start = preview.destination.opening_start_0based.ok_or_else(|| EngineError {
-                code: ErrorCode::Internal,
-                message:
-                    "Executable Gibson defined-site preview did not retain start_0based".to_string(),
-            })? as i64;
+            let start = preview
+                .destination
+                .opening_start_0based
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Executable Gibson defined-site preview did not retain start_0based"
+                        .to_string(),
+                })? as i64;
             let end = preview
                 .destination
                 .opening_end_0based_exclusive
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::Internal,
-                    message: "Executable Gibson defined-site preview did not retain end_0based_exclusive".to_string(),
+                    message:
+                        "Executable Gibson defined-site preview did not retain end_0based_exclusive"
+                            .to_string(),
                 })? as i64;
             let delta = oriented_insert.len() as i64 - (end - start);
-            features.extend(
-                destination
-                    .features()
-                    .iter()
-                    .filter_map(|feature| {
-                        transform_destination_feature_for_defined_site(
-                            feature,
-                            start,
-                            end,
-                            delta,
-                            destination.len() as i64,
-                            oriented_insert.len() as i64,
-                        )
-                    }),
-            );
+            features.extend(destination.features().iter().filter_map(|feature| {
+                transform_destination_feature_for_defined_site(
+                    feature,
+                    start,
+                    end,
+                    delta,
+                    destination.len() as i64,
+                    oriented_insert.len() as i64,
+                )
+            }));
             features.extend(clone_shifted_features(oriented_insert, start));
         }
         other => {
@@ -1330,7 +1343,12 @@ fn build_gibson_assembled_product(
         }
     }
     *product.features_mut() = features;
-    product.set_circular(plan.product.topology.trim().eq_ignore_ascii_case("circular"));
+    product.set_circular(
+        plan.product
+            .topology
+            .trim()
+            .eq_ignore_ascii_case("circular"),
+    );
     refresh_projected_mcs_annotations(&mut product);
     Ok(product)
 }
@@ -1626,10 +1644,7 @@ fn rewrite_mcs_feature_qualifiers(
     }
 }
 
-fn current_mcs_expected_sites(
-    feature: &Feature,
-    lookup: &HashMap<String, String>,
-) -> Vec<String> {
+fn current_mcs_expected_sites(feature: &Feature, lookup: &HashMap<String, String>) -> Vec<String> {
     let mut out = vec![];
     let mut seen = HashSet::new();
     for raw in feature.qualifier_values("mcs_expected_sites".into()) {
@@ -1675,13 +1690,13 @@ fn feature_contains_site_span(
     } else {
         vec![(start, seq_len), (0, end - seq_len)]
     };
-    site_segments.into_iter().all(|(segment_start, segment_end)| {
-        feature_ranges
-            .iter()
-            .any(|(feature_start, feature_end)| {
+    site_segments
+        .into_iter()
+        .all(|(segment_start, segment_end)| {
+            feature_ranges.iter().any(|(feature_start, feature_end)| {
                 segment_start >= *feature_start && segment_end <= *feature_end
             })
-    })
+        })
 }
 
 fn upsert_feature_qualifier(feature: &mut Feature, key: &str, value: Option<String>) {
@@ -2506,7 +2521,9 @@ fn normalized_orientation(raw: &str) -> String {
 mod tests {
     use super::*;
     use crate::{
-        dna_sequence::DNAsequence, engine::ProjectState, enzymes::active_restriction_enzymes,
+        dna_sequence::DNAsequence,
+        engine::ProjectState,
+        enzymes::active_restriction_enzymes,
         feature_location::{feature_is_reverse, feature_ranges_sorted_i64},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
@@ -2801,16 +2818,13 @@ mod tests {
     #[test]
     fn derive_execution_plan_existing_termini_concatenates_destination_and_insert() {
         let mut engine = GentleEngine::new();
-        let mut destination = DNAsequence::from_sequence(
-            "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
-        )
-        .expect("destination sequence");
+        let mut destination =
+            DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+                .expect("destination sequence");
         destination.set_name("linear_destination".to_string());
         destination.set_circular(false);
-        let insert = DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
-        .expect("insert sequence");
+        let insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+            .expect("insert sequence");
         engine
             .state_mut()
             .sequences
@@ -2839,7 +2853,9 @@ mod tests {
         });
         plan.validation_policy.design_targets.overlap_bp_min = 4;
         plan.validation_policy.design_targets.overlap_bp_max = 4;
-        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = -100.0;
+        plan.validation_policy
+            .design_targets
+            .minimum_overlap_tm_celsius = -100.0;
         plan.validation_policy.require_distinct_terminal_junctions = false;
 
         let execution =
@@ -2976,10 +2992,7 @@ mod tests {
             vec![(6, 12), (60, 66)]
         );
         let mcs = feature_by_label(&product.dna, "Multiple Cloning Site (MCS)");
-        assert_eq!(
-            mcs.location.find_bounds().expect("MCS bounds"),
-            (10, 62)
-        );
+        assert_eq!(mcs.location.find_bounds().expect("MCS bounds"), (10, 62));
         assert_eq!(
             feature_qualifier(mcs, "mcs_crosscheck_status").as_deref(),
             Some("validated_against_assembled_product")
@@ -2989,10 +3002,9 @@ mod tests {
     #[test]
     fn derive_execution_plan_revalidates_mcs_sites_against_assembled_product() {
         let mut engine = GentleEngine::new();
-        let mut destination = DNAsequence::from_sequence(
-            "ACGTACGTACGTACGTACGATTCCCGGGAATTAACCGGTTAACCGGTTAA",
-        )
-        .expect("destination");
+        let mut destination =
+            DNAsequence::from_sequence("ACGTACGTACGTACGTACGATTCCCGGGAATTAACCGGTTAACCGGTTAA")
+                .expect("destination");
         destination.set_circular(true);
         destination.features_mut().push(Feature {
             kind: FeatureKind::from("misc_feature"),
@@ -3110,7 +3122,11 @@ mod tests {
             feature_qualifier(mcs, "mcs_expected_sites_original").as_deref(),
             Some("SmaI")
         );
-        assert!(qualifier_csv_contains(mcs, "mcs_gained_unique_sites", "EcoRI"));
+        assert!(qualifier_csv_contains(
+            mcs,
+            "mcs_gained_unique_sites",
+            "EcoRI"
+        ));
         assert!(qualifier_csv_contains(
             mcs,
             "mcs_lost_or_nonunique_sites",
@@ -3168,7 +3184,9 @@ mod tests {
         });
         plan.validation_policy.design_targets.overlap_bp_min = 8;
         plan.validation_policy.design_targets.overlap_bp_max = 8;
-        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = 0.0;
+        plan.validation_policy
+            .design_targets
+            .minimum_overlap_tm_celsius = 0.0;
         plan.validation_policy.require_distinct_terminal_junctions = false;
 
         let execution =
@@ -3237,18 +3255,22 @@ mod tests {
         });
         plan.validation_policy.design_targets.overlap_bp_min = 8;
         plan.validation_policy.design_targets.overlap_bp_max = 8;
-        plan.validation_policy.design_targets.minimum_overlap_tm_celsius = 0.0;
+        plan.validation_policy
+            .design_targets
+            .minimum_overlap_tm_celsius = 0.0;
         plan.validation_policy.require_distinct_terminal_junctions = false;
 
-        let execution =
-            derive_gibson_execution_plan(&engine, &plan).expect("reverse execution");
+        let execution = derive_gibson_execution_plan(&engine, &plan).expect("reverse execution");
         let product = execution
             .outputs
             .iter()
             .find(|row| row.kind == "assembled_product")
             .expect("assembled product output");
         let feature = feature_by_label(&product.dna, "INSERT_REVERSE");
-        assert_eq!(feature.location.find_bounds().expect("reverse bounds"), (86, 92));
+        assert_eq!(
+            feature.location.find_bounds().expect("reverse bounds"),
+            (86, 92)
+        );
         assert!(feature_is_reverse(feature));
     }
 

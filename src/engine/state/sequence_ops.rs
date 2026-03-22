@@ -2191,8 +2191,7 @@ impl GentleEngine {
         }
 
         for pair in primer.windows(2) {
-            let (pair_h, pair_s) =
-                Self::primer_tm_nearest_neighbor_parameters(pair[0], pair[1])?;
+            let (pair_h, pair_s) = Self::primer_tm_nearest_neighbor_parameters(pair[0], pair[1])?;
             delta_h_kcal_per_mol += pair_h;
             delta_s_cal_per_mol_k += pair_s;
         }
