@@ -24,6 +24,12 @@ Before non-trivial edits, read:
 - Do not duplicate business/biology logic in frontend adapters.
 - Prefer extending shared parser/executor paths over adding one-off command paths.
 - Keep behavior deterministic and machine-readable (structured errors/results).
+- Prefer engine-owned portable records for findings, reports, and explanation
+  artifacts so they can be inspected across GUI/CLI/MCP/JS/Lua/Python and future
+  frontends instead of living only in one adapter session.
+- Avoid introducing new core-engine dependencies on GUI/app-native modules when
+  a shared engine/helper boundary would suffice; preserve headless/agent-friendly
+  reuse and keep future browser/WebAssembly ports possible.
 
 Reference: [`docs/architecture.md`](docs/architecture.md)
 
@@ -35,6 +41,11 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   - execution order.
 - If you materially change project status or close/open a gap, update
   `docs/roadmap.md` in the same change.
+- Put durable architecture constraints/invariants in
+  [`docs/architecture.md`](docs/architecture.md), not in ad-hoc code comments or
+  roadmap-only notes.
+- Put speculative but non-committed future ideas in the roadmap parking-lot
+  section, not mixed into priority phases or architecture invariants.
 
 ## Testing Expectations
 
