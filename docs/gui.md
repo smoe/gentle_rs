@@ -575,6 +575,10 @@ Patterns menu:
          unique restriction sites when the destination already exposes them
        - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
          such as `SmaI` can be chosen directly from the specialist
+       - specific cutter suggestions now show REBASE-derived recognition/cut
+         information and fill the actual cleavage window:
+         - equal start/end means a blunt cutpoint
+         - non-empty start..end means the window between recessed termini
        - tooltips and quick help explain the difference between using the full
          MCS span and choosing one specific cutter suggestion
     2. `Insert`

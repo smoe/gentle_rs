@@ -66,6 +66,9 @@ order. Durable architecture constraints and decisions remain in
     - validation/advisory findings
     - destination opening suggestions from MCS annotations and unique
       restriction cutters, including blunt/sticky-end labels
+    - specific cutter suggestions now show REBASE-derived recognition/cut
+      information and fill the actual cleavage window rather than the whole
+      recognition span
     - shared Tₘ-model assumptions surfaced in preview notes and Gibson-window
       help so GUI/CLI users see the same explanation
     - dedicated `Tₘ Model` box in the Gibson window
@@ -1631,6 +1634,8 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - destination opening resolution (`existing_termini` or `defined_site`)
     - destination opening suggestions from annotated MCS spans and unique
       restriction sites
+    - cutter-derived opening coordinates resolve to cleavage windows/cutpoints
+      from shared restriction-enzyme geometry
     - terminal overlap derivation
     - Gibson-specific primer suggestions
       (`5' overlap + 3' gene-specific priming segment`)

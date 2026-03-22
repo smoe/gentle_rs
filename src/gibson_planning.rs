@@ -187,6 +187,12 @@ pub struct GibsonDestinationOpeningSuggestion {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub enzyme_name: Option<String>,
+    #[serde(default)]
+    pub recognition_sequence: String,
+    pub recognition_start_0based: Option<usize>,
+    pub recognition_end_0based_exclusive: Option<usize>,
+    #[serde(default)]
+    pub rebase_cut_summary: String,
     pub end_geometry: String,
     pub overhang_bp: Option<usize>,
     pub in_mcs_context: bool,
@@ -408,6 +414,10 @@ pub fn suggest_gibson_destination_openings(
             start_0based: hint.start_0based,
             end_0based_exclusive: hint.end_0based_exclusive,
             enzyme_name: None,
+            recognition_sequence: String::new(),
+            recognition_start_0based: None,
+            recognition_end_0based_exclusive: None,
+            rebase_cut_summary: "annotated feature span".to_string(),
             end_geometry: "feature_span".to_string(),
             overhang_bp: None,
             in_mcs_context: true,
@@ -479,39 +489,64 @@ fn restriction_site_suggestion(
     in_mcs_context: bool,
     seq_len: usize,
 ) -> Option<GibsonDestinationOpeningSuggestion> {
-    let start_0based = usize::try_from(site.offset).ok()?;
-    let end_0based_exclusive = start_0based.checked_add(site.enzyme.sequence.len())?;
-    if end_0based_exclusive > seq_len {
-        return None;
-    }
-    let (end_geometry, overhang_bp, geometry_label) =
-        restriction_end_geometry_descriptor(site.enzyme.overlap);
+    let (recognition_start_0based, recognition_end_0based_exclusive) =
+        site.recognition_bounds_0based(seq_len)?;
+    let (start_0based, end_0based_exclusive) = site.recessed_opening_window_0based(seq_len)?;
+    let (end_geometry, overhang_bp, _) = restriction_end_geometry_descriptor(site.enzyme.overlap);
     let context_label = if in_mcs_context {
         "MCS-linked unique cutter"
     } else {
         "Unique cutter"
     };
-    Some(GibsonDestinationOpeningSuggestion {
-        kind: "unique_restriction_site".to_string(),
-        label: format!(
-            "{} | {} | {}..{}",
-            site.enzyme.name,
-            geometry_label,
-            start_0based + 1,
-            end_0based_exclusive
-        ),
-        summary: format!(
-            "{} {} using recognition span {}..{} (1-based); fills defined-site {}..{} (0-based).",
+    let (left_offset, right_offset) = site.enzyme.recessed_end_offsets();
+    let rebase_cut_summary = if left_offset == right_offset {
+        format!(
+            "{} | blunt cut after motif bp {}",
+            site.enzyme.sequence,
+            left_offset
+        )
+    } else {
+        format!(
+            "{} | recessed ends after motif bp {}/{}",
+            site.enzyme.sequence,
+            left_offset,
+            right_offset
+        )
+    };
+    let summary = if start_0based == end_0based_exclusive {
+        format!(
+            "{} {} recognizes {}..{} (1-based); REBASE geometry {}. This yields a blunt cutpoint and fills defined-site {}..{} (0-based).",
             context_label,
             site.enzyme.name,
-            start_0based + 1,
-            end_0based_exclusive,
+            recognition_start_0based + 1,
+            recognition_end_0based_exclusive,
+            rebase_cut_summary,
             start_0based,
             end_0based_exclusive
-        ),
+        )
+    } else {
+        format!(
+            "{} {} recognizes {}..{} (1-based); REBASE geometry {}. This fills defined-site {}..{} (0-based) between the recessed termini.",
+            context_label,
+            site.enzyme.name,
+            recognition_start_0based + 1,
+            recognition_end_0based_exclusive,
+            rebase_cut_summary,
+            start_0based,
+            end_0based_exclusive
+        )
+    };
+    Some(GibsonDestinationOpeningSuggestion {
+        kind: "unique_restriction_site".to_string(),
+        label: site.enzyme.name.clone(),
+        summary,
         start_0based,
         end_0based_exclusive,
         enzyme_name: Some(site.enzyme.name.clone()),
+        recognition_sequence: site.enzyme.sequence.clone(),
+        recognition_start_0based: Some(recognition_start_0based),
+        recognition_end_0based_exclusive: Some(recognition_end_0based_exclusive),
+        rebase_cut_summary,
         end_geometry: end_geometry.to_string(),
         overhang_bp,
         in_mcs_context,
@@ -1798,7 +1833,7 @@ fn resolve_opening(
     let label = if plan.destination.opening.label.trim().is_empty() {
         match mode.as_str() {
             "existing_termini" => "existing linear termini".to_string(),
-            _ => "defined opening span".to_string(),
+            _ => "defined opening span or cutpoint".to_string(),
         }
     } else {
         plan.destination.opening.label.trim().to_string()
@@ -1845,9 +1880,9 @@ fn resolve_opening(
                 );
                 return None;
             };
-            if start >= end || end > len {
+            if start > end || end > len {
                 preview.errors.push(format!(
-                    "Destination opening span {}..{} is invalid for sequence length {}",
+                    "Destination opening {}..{} is invalid for sequence length {}",
                     start, end, len
                 ));
                 return None;
@@ -2667,6 +2702,11 @@ mod tests {
             .expect("SmaI suggestion");
         assert_eq!(smai.end_geometry, "blunt");
         assert!(smai.in_mcs_context);
+        assert_eq!(smai.start_0based, 15);
+        assert_eq!(smai.end_0based_exclusive, 15);
+        assert_eq!(smai.recognition_start_0based, Some(12));
+        assert_eq!(smai.recognition_end_0based_exclusive, Some(18));
+        assert!(smai.rebase_cut_summary.contains("CCCGGG"));
     }
 
     #[test]
@@ -2681,8 +2721,21 @@ mod tests {
             preview
                 .errors
                 .iter()
-                .any(|row| row.contains("Destination opening span"))
+                .any(|row| row.contains("Destination opening"))
         );
+    }
+
+    #[test]
+    fn preview_accepts_zero_length_cutpoint_opening() {
+        let engine = test_engine_with_sequences();
+        let mut plan = single_insert_plan();
+        plan.destination.opening.start_0based = Some(12);
+        plan.destination.opening.end_0based_exclusive = Some(12);
+        plan.validation_policy.require_distinct_terminal_junctions = false;
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
+        assert!(preview.errors.is_empty(), "errors: {:?}", preview.errors);
+        assert!(preview.can_execute);
+        assert_eq!(preview.destination.removed_span_bp, Some(0));
     }
 
     #[test]
@@ -3234,8 +3287,8 @@ mod tests {
     "opening": {
       "mode": "defined_site",
       "label": "SmaI",
-      "start_0based": 938,
-      "end_0based_exclusive": 944,
+      "start_0based": 941,
+      "end_0based_exclusive": 941,
       "left_end_id": "dest_left",
       "right_end_id": "dest_right",
       "uniqueness_requirement": "must_be_unambiguous"

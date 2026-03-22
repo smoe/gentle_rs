@@ -354,7 +354,7 @@ Top-level structure:
 - `schema`, `plan_id`, `title`, `summary`
 - `can_execute`
 - `destination`
-  - resolved opening mode/span and actual topology
+  - resolved opening mode/span or cutpoint and actual topology
 - `insert`
   - resolved fragment id, template seq id, orientation, length
 - `resolved_junctions[]`
@@ -419,6 +419,10 @@ Normalization/derivation phases:
 
 1. Resolve the destination opening into explicit `dest_left` / `dest_right`
    terminal context.
+   - for cutter-derived openings, the resolved coordinates represent the actual
+     cleavage window between the recessed termini rather than the whole
+     recognition span
+   - equal start/end is therefore valid and means a blunt cutpoint
 2. Normalize `assembly_order[]` into one adjacency chain.
    - when fragments carry compatible `source_span_1based` hints for one source
      context, default normalization should preserve ascending bp order
