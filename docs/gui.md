@@ -1461,6 +1461,17 @@ in-silico selection outputs.
 The Engine Ops panel includes `Primer and qPCR design reports` for explicit
 `DesignPrimerPairs` and `DesignQpcrAssays` execution on the active sequence.
 
+Layout:
+
+- when `Engine Ops` or `Shell` is open, the lower border of the top control area
+  acts as a draggable vertical divider
+- dragging that divider changes how much height is reserved for Engine Ops/Shell
+  versus the feature/map area below
+- the expanded controls area remains scrollable and the chosen height is
+  persisted per sequence window state
+- `Primer and qPCR design reports` is opened by default so the primer/qPCR forms
+  get the first share of that expanded space
+
 Primer backend/preflight controls:
 
 - dedicated `Primer backend and Primer3 preflight` block above the design forms

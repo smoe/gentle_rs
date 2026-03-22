@@ -633,9 +633,7 @@ pub fn apply_protocol_cartoon_template_bindings(
         let event_id = molecule_binding.event_id.trim();
         let molecule_id = molecule_binding.molecule_id.trim();
         if event_id.is_empty() || molecule_id.is_empty() {
-            return Err(
-                "Molecule binding requires non-empty event_id and molecule_id".to_string(),
-            );
+            return Err("Molecule binding requires non-empty event_id and molecule_id".to_string());
         }
         let event = find_event_mut(&mut bound, event_id).ok_or_else(|| {
             format!(
@@ -1278,7 +1276,6 @@ fn render_linear_molecule(
     if let Some(DnaEndStyle::Continuation) = molecule.right_end.as_ref() {
         render_continuation_marker(svg, right_top.max(right_bottom), y, false);
     }
-
 }
 
 fn push_linear_span(spans: &mut Vec<(f32, f32, String)>, x: f32, width: f32, color: String) {
@@ -1642,8 +1639,7 @@ fn gibson_two_fragment_spec() -> ProtocolCartoonSpec {
         DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP - DISPLAY_CHEW_TAIL_BP;
     const DISPLAY_JOINED_BODY_BP: usize =
         (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP - (DISPLAY_JOINED_TAIL_BP * 2)) / 2;
-    const DISPLAY_SEALED_BODY_BP: usize =
-        (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP) / 2;
+    const DISPLAY_SEALED_BODY_BP: usize = (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP) / 2;
 
     ProtocolCartoonSpec {
         id: "gibson.two_fragment".to_string(),
@@ -2397,7 +2393,11 @@ mod tests {
     fn gibson_overlap_keeps_stable_display_total_across_panels() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonTwoFragment);
         let display_total = |molecule: &DnaMoleculeCartoon| -> usize {
-            molecule.features.iter().map(|feature| feature.length_bp).sum()
+            molecule
+                .features
+                .iter()
+                .map(|feature| feature.length_bp)
+                .sum()
         };
 
         assert_eq!(display_total(&spec.events[0].molecules[0]), 150);

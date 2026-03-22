@@ -47,14 +47,6 @@ use crate::{
         parse_shell_line,
     },
     enzymes,
-    gibson_planning::{
-        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
-        GibsonPlanAssemblyMember,
-        GibsonPlanDesignTargets, GibsonPlanDestination, GibsonPlanEndStrategy, GibsonPlanFragment,
-        GibsonPlanJunction, GibsonPlanOpening, GibsonPlanOverlapPartition, GibsonPlanProduct,
-        GibsonPlanUniquenessChecks, GibsonPlanValidationPolicy,
-        suggest_gibson_destination_openings,
-    },
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
@@ -62,10 +54,17 @@ use crate::{
         MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress,
         PreparedGenomeInspection,
     },
+    gibson_planning::{
+        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
+        GibsonPlanAssemblyMember, GibsonPlanDesignTargets, GibsonPlanDestination,
+        GibsonPlanEndStrategy, GibsonPlanFragment, GibsonPlanJunction, GibsonPlanOpening,
+        GibsonPlanOverlapPartition, GibsonPlanProduct, GibsonPlanUniquenessChecks,
+        GibsonPlanValidationPolicy, suggest_gibson_destination_openings,
+    },
     icons::APP_ICON,
     protocol_cartoon::{
-        ProtocolCartoonKind, protocol_cartoon_template_for_kind,
-        render_protocol_cartoon_spec_svg, resolve_protocol_cartoon_template_with_bindings,
+        ProtocolCartoonKind, protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
+        resolve_protocol_cartoon_template_with_bindings,
     },
     resource_sync,
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
@@ -2877,7 +2876,10 @@ impl GENtleApp {
             PathBuf::from(tutorial_path)
         } else {
             Self::resolve_runtime_doc_path(tutorial_path).ok_or_else(|| {
-                format!("Tutorial guide '{}' could not be resolved at runtime", tutorial_path)
+                format!(
+                    "Tutorial guide '{}' could not be resolved at runtime",
+                    tutorial_path
+                )
             })?
         };
         let markdown = Self::load_help_markdown_from_path(&resolved_path).ok_or_else(|| {
@@ -4444,7 +4446,8 @@ Error: `{err}`"
             },
             CommandPaletteEntry {
                 title: "Gibson".to_string(),
-                detail: "Plan one destination-first Gibson assembly with cartoon preview.".to_string(),
+                detail: "Plan one destination-first Gibson assembly with cartoon preview."
+                    .to_string(),
                 keywords: "gibson cloning overlaps primers cartoon".to_string(),
                 action: CommandPaletteAction::OpenGibson,
             },
@@ -5470,7 +5473,8 @@ Error: `{err}`"
         None
     }
 
-    fn tutorial_catalog_runtime_paths() -> std::result::Result<TutorialCatalogRuntimePaths, String> {
+    fn tutorial_catalog_runtime_paths() -> std::result::Result<TutorialCatalogRuntimePaths, String>
+    {
         let repo_root = Self::detect_tutorial_repo_root().ok_or_else(|| {
             format!(
                 "Could not locate '{}' or '{}' from current runtime paths",
@@ -5641,12 +5645,11 @@ Error: `{err}`"
         } else {
             format!("generated tutorial chapter: {}", entry.chapter_title)
         };
-        if let Err(err) = self.open_help_tutorial_path(
-            &guide_path,
-            &entry.chapter_title,
-            &guide_summary,
-        ) {
-            self.app_status.push_str(&format!(" | guide unavailable: {err}"));
+        if let Err(err) =
+            self.open_help_tutorial_path(&guide_path, &entry.chapter_title, &guide_summary)
+        {
+            self.app_status
+                .push_str(&format!(" | guide unavailable: {err}"));
         }
     }
 
@@ -13004,10 +13007,14 @@ Error: `{err}`"
 
         let overlap_bp_min = parse_usize_field("overlap_bp_min", &self.gibson_overlap_bp_min)?;
         let overlap_bp_max = parse_usize_field("overlap_bp_max", &self.gibson_overlap_bp_max)?;
-        let priming_length_min_bp =
-            parse_usize_field("priming_segment_min_length_bp", &self.gibson_priming_length_min_bp)?;
-        let priming_length_max_bp =
-            parse_usize_field("priming_segment_max_length_bp", &self.gibson_priming_length_max_bp)?;
+        let priming_length_min_bp = parse_usize_field(
+            "priming_segment_min_length_bp",
+            &self.gibson_priming_length_min_bp,
+        )?;
+        let priming_length_max_bp = parse_usize_field(
+            "priming_segment_max_length_bp",
+            &self.gibson_priming_length_max_bp,
+        )?;
         if overlap_bp_min > overlap_bp_max {
             return Err(format!(
                 "overlap bp minimum {} exceeds maximum {}",
@@ -13024,10 +13031,14 @@ Error: `{err}`"
             "minimum_overlap_tm_celsius",
             &self.gibson_minimum_overlap_tm_celsius,
         )?;
-        let priming_tm_min_celsius =
-            parse_f64_field("priming_segment_tm_min_celsius", &self.gibson_priming_tm_min_celsius)?;
-        let priming_tm_max_celsius =
-            parse_f64_field("priming_segment_tm_max_celsius", &self.gibson_priming_tm_max_celsius)?;
+        let priming_tm_min_celsius = parse_f64_field(
+            "priming_segment_tm_min_celsius",
+            &self.gibson_priming_tm_min_celsius,
+        )?;
+        let priming_tm_max_celsius = parse_f64_field(
+            "priming_segment_tm_max_celsius",
+            &self.gibson_priming_tm_max_celsius,
+        )?;
         if priming_tm_min_celsius > priming_tm_max_celsius {
             return Err(format!(
                 "priming Tm minimum {:.1} exceeds maximum {:.1}",
@@ -13070,7 +13081,10 @@ Error: `{err}`"
                 id: "insert_1".to_string(),
                 seq_id: insert_seq_id.to_string(),
                 role: "insert".to_string(),
-                orientation: self.gibson_insert_orientation.as_plan_orientation().to_string(),
+                orientation: self
+                    .gibson_insert_orientation
+                    .as_plan_orientation()
+                    .to_string(),
                 left_end_strategy: Some(GibsonPlanEndStrategy {
                     mode: "primer_added_overlap".to_string(),
                     target_junction_id: "junction_left".to_string(),
@@ -13161,22 +13175,18 @@ Error: `{err}`"
         &mut self,
         preview: &GibsonAssemblyPreview,
     ) -> std::result::Result<(), String> {
-        let protocol = ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(
-            || {
+        let protocol =
+            ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(|| {
                 format!(
                     "Unknown protocol cartoon id '{}' in Gibson preview",
                     preview.cartoon.protocol_id
                 )
-            },
-        )?;
+            })?;
         let template = protocol_cartoon_template_for_kind(&protocol);
         let spec =
             resolve_protocol_cartoon_template_with_bindings(&template, &preview.cartoon.bindings)?;
         let svg = render_protocol_cartoon_spec_svg(&spec);
-        let path = env::temp_dir().join(format!(
-            "gentle_gibson_preview_{}.svg",
-            now_unix_ms_u64()
-        ));
+        let path = env::temp_dir().join(format!("gentle_gibson_preview_{}.svg", now_unix_ms_u64()));
         fs::write(&path, svg).map_err(|e| {
             format!(
                 "Could not write temporary Gibson preview SVG '{}': {e}",
@@ -13228,10 +13238,8 @@ Error: `{err}`"
                     self.gibson_preview_output = Some(preview.clone());
                     if let Err(err) = self.render_gibson_preview_svg(&preview) {
                         let base_status = self.gibson_status.clone();
-                        self.gibson_status = format!(
-                            "{} | preview SVG render note: {err}",
-                            base_status
-                        );
+                        self.gibson_status =
+                            format!("{} | preview SVG render note: {err}", base_status);
                     }
                 }
                 Err(err) => {
@@ -13309,8 +13317,7 @@ Error: `{err}`"
         text.push('\n');
         match fs::write(&path, text) {
             Ok(()) => {
-                self.gibson_status =
-                    format!("Exported Gibson preview JSON to '{}'", path.display())
+                self.gibson_status = format!("Exported Gibson preview JSON to '{}'", path.display())
             }
             Err(err) => {
                 self.gibson_status = format!(
@@ -13354,7 +13361,8 @@ Error: `{err}`"
         }
         match fs::write(&path, text) {
             Ok(()) => {
-                self.gibson_status = format!("Exported Gibson primer summary to '{}'", path.display())
+                self.gibson_status =
+                    format!("Exported Gibson primer summary to '{}'", path.display())
             }
             Err(err) => {
                 self.gibson_status = format!(
@@ -13415,8 +13423,8 @@ Error: `{err}`"
 
     fn handoff_gibson_preview_to_routine_assistant(&mut self) {
         let Some(preview) = self.gibson_preview_output.clone() else {
-            self.gibson_status = "Run Gibson preview before opening Routine Assistant handoff"
-                .to_string();
+            self.gibson_status =
+                "Run Gibson preview before opening Routine Assistant handoff".to_string();
             return;
         };
         self.open_routine_assistant_dialog();
@@ -13439,11 +13447,9 @@ Error: `{err}`"
             );
         } else {
             self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
-            self.routine_assistant_status = preview
-                .routine_handoff
-                .reason
-                .unwrap_or_else(|| "Gibson preview is currently preview-only for this opening mode"
-                    .to_string());
+            self.routine_assistant_status = preview.routine_handoff.reason.unwrap_or_else(|| {
+                "Gibson preview is currently preview-only for this opening mode".to_string()
+            });
         }
     }
 
@@ -13454,12 +13460,10 @@ Error: `{err}`"
         if destination_id.is_empty() {
             return Ok(vec![]);
         }
-        let engine = self
-            .engine
-            .read()
-            .map_err(|_| "Could not read engine state for Gibson opening suggestions".to_string())?;
-        suggest_gibson_destination_openings(&engine, destination_id)
-            .map_err(|err| err.message)
+        let engine = self.engine.read().map_err(|_| {
+            "Could not read engine state for Gibson opening suggestions".to_string()
+        })?;
+        suggest_gibson_destination_openings(&engine, destination_id).map_err(|err| err.message)
     }
 
     fn gibson_destination_suggestion_geometry_label(
@@ -13467,14 +13471,12 @@ Error: `{err}`"
     ) -> String {
         match suggestion.end_geometry.as_str() {
             "blunt" => "blunt".to_string(),
-            "5prime_overhang" => format!(
-                "5' overhang ({} bp)",
-                suggestion.overhang_bp.unwrap_or(0)
-            ),
-            "3prime_overhang" => format!(
-                "3' overhang ({} bp)",
-                suggestion.overhang_bp.unwrap_or(0)
-            ),
+            "5prime_overhang" => {
+                format!("5' overhang ({} bp)", suggestion.overhang_bp.unwrap_or(0))
+            }
+            "3prime_overhang" => {
+                format!("3' overhang ({} bp)", suggestion.overhang_bp.unwrap_or(0))
+            }
             "feature_span" => "feature span".to_string(),
             _ => suggestion.end_geometry.clone(),
         }
@@ -13593,7 +13595,11 @@ Error: `{err}`"
                 .map(|dna| {
                     format!(
                         "{} | {} bp",
-                        if dna.is_circular() { "circular" } else { "linear" },
+                        if dna.is_circular() {
+                            "circular"
+                        } else {
+                            "linear"
+                        },
                         dna.len()
                     )
                 })
@@ -13601,8 +13607,7 @@ Error: `{err}`"
         };
         let destination_opening_suggestions = self.current_gibson_destination_opening_suggestions();
         let mut selected_opening_suggestion: Option<GibsonDestinationOpeningSuggestion> = None;
-        let tm_help =
-            "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4). Long 30 bp overlaps can therefore read quite high; treat them as a first-pass screening heuristic.";
+        let tm_help = "Displayed Tₘ values currently use GENtle's shared deterministic 2/4 estimate (A/T=2, G/C=4). Long 30 bp overlaps can therefore read quite high; treat them as a first-pass screening heuristic.";
 
         ui.separator();
         ui.heading("Destination");
@@ -13666,8 +13671,8 @@ Error: `{err}`"
                     self.gibson_opening_start_0based = start.to_string();
                     self.gibson_opening_end_0based_exclusive = end.to_string();
                 } else {
-                    self.gibson_status = "No active DNA selection found for Gibson opening prefill"
-                        .to_string();
+                    self.gibson_status =
+                        "No active DNA selection found for Gibson opening prefill".to_string();
                 }
             }
         });
@@ -13787,22 +13792,16 @@ Error: `{err}`"
         ui.heading("Design Targets");
         ui.horizontal(|ui| {
             ui.label("overlap min/max bp");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0),
-            );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
-            );
-            ui.label("minimum overlap Tₘ (°C)")
-                .on_hover_text(tm_help);
+            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_min).desired_width(60.0));
+            ui.add(egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0));
+            ui.label("minimum overlap Tₘ (°C)").on_hover_text(tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
                     .desired_width(80.0),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("priming Tₘ window (°C)")
-                .on_hover_text(tm_help);
+            ui.label("priming Tₘ window (°C)").on_hover_text(tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_priming_tm_min_celsius)
                     .desired_width(80.0),
@@ -13869,7 +13868,9 @@ Error: `{err}`"
                     format!("warnings: {}", preview.warnings.len()),
                 );
             }
-            if !preview.errors.is_empty() || !preview.warnings.is_empty() || !preview.notes.is_empty()
+            if !preview.errors.is_empty()
+                || !preview.warnings.is_empty()
+                || !preview.notes.is_empty()
             {
                 let mut findings_text = Self::gibson_preview_findings_text(&preview);
                 let findings_rows = findings_text.lines().count().clamp(4, 10);
@@ -29071,7 +29072,8 @@ mod tests {
                 app.engine.clone(),
             ))),
         );
-        app.native_window_key_to_viewport.insert(native_key, viewport_id);
+        app.native_window_key_to_viewport
+            .insert(native_key, viewport_id);
         app.active_window_menu_key = Some(native_key);
 
         app.open_gibson_dialog();
@@ -29270,10 +29272,11 @@ mod tests {
         assert!(app.show_help_dialog);
         assert_eq!(app.help_tutorial_title, "Dynamic Tutorial");
         assert!(app.help_tutorial_markdown.contains("Walkthrough."));
-        assert!(app
-            .help_tutorial_entries
-            .iter()
-            .any(|entry| entry.path == tutorial_path.to_string_lossy()));
+        assert!(
+            app.help_tutorial_entries
+                .iter()
+                .any(|entry| entry.path == tutorial_path.to_string_lossy())
+        );
     }
 
     #[test]
@@ -29790,12 +29793,11 @@ mod tests {
         assert!(app.app_status.contains("Opened tutorial project"));
         assert!(app.show_help_dialog);
         assert_eq!(app.help_doc, HelpDoc::Tutorial);
-        assert!(app
-            .help_tutorial_title
-            .contains("Gibson Specialist Testing Tutorial"));
-        assert!(app
-            .help_tutorial_markdown
-            .contains("Patterns -> Gibson..."));
+        assert!(
+            app.help_tutorial_title
+                .contains("Gibson Specialist Testing Tutorial")
+        );
+        assert!(app.help_tutorial_markdown.contains("Patterns -> Gibson..."));
     }
 
     #[test]

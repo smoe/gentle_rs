@@ -4071,7 +4071,9 @@ impl GentleEngine {
             .enumerate()
             .filter_map(|(idx, hit)| {
                 if !explicit_record_filter.is_empty() {
-                    explicit_record_filter.contains(&hit.record_index).then_some(idx)
+                    explicit_record_filter
+                        .contains(&hit.record_index)
+                        .then_some(idx)
                 } else {
                     Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
                 }

@@ -2202,10 +2202,8 @@ fn run() -> Result<(), String> {
                 }
                 "template-validate" => {
                     if args.len() != cmd_idx + 3 {
-                        return Err(
-                            "protocol-cartoon template-validate requires: TEMPLATE.json"
-                                .to_string(),
-                        );
+                        return Err("protocol-cartoon template-validate requires: TEMPLATE.json"
+                            .to_string());
                     }
                     let template_path = args[cmd_idx + 2].trim();
                     if template_path.is_empty() {

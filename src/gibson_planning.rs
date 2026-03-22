@@ -7,8 +7,8 @@
 //! and protocol-cartoon rendering from one shared derivation path.
 
 use crate::{
-    enzymes::active_restriction_enzymes,
     engine::{EngineError, ErrorCode, GentleEngine},
+    enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
     protocol_cartoon::{
         DnaEndStyle, OverhangPolarity, ProtocolCartoonKind, ProtocolCartoonTemplateBindings,
@@ -442,7 +442,11 @@ fn unique_forward_sites<'a>(
 ) -> HashMap<String, &'a RestrictionEnzymeSite> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut first_sites: HashMap<String, &RestrictionEnzymeSite> = HashMap::new();
-    for site in dna.restriction_enzyme_sites().iter().filter(|site| site.forward_strand) {
+    for site in dna
+        .restriction_enzyme_sites()
+        .iter()
+        .filter(|site| site.forward_strand)
+    {
         let name = site.enzyme.name.clone();
         *counts.entry(name.clone()).or_insert(0) += 1;
         first_sites.entry(name).or_insert(site);
@@ -640,10 +644,7 @@ fn rebase_name_lookup_by_normalized() -> HashMap<String, String> {
     lookup
 }
 
-fn canonicalize_rebase_enzyme_name(
-    raw: &str,
-    lookup: &HashMap<String, String>,
-) -> Option<String> {
+fn canonicalize_rebase_enzyme_name(raw: &str, lookup: &HashMap<String, String>) -> Option<String> {
     let normalized = normalize_enzyme_match_token(raw);
     lookup.get(&normalized).cloned()
 }
@@ -694,7 +695,10 @@ fn text_mentions_mcs(text: &str) -> bool {
         || lower.contains("(mcs)")
 }
 
-fn feature_first_nonempty_qualifier(feature: &gb_io::seq::Feature, keys: &[&str]) -> Option<String> {
+fn feature_first_nonempty_qualifier(
+    feature: &gb_io::seq::Feature,
+    keys: &[&str],
+) -> Option<String> {
     for key in keys {
         for value in feature.qualifier_values((*key).into()) {
             let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -876,9 +880,9 @@ pub fn preview_gibson_assembly_plan(
         return finalize_preview(preview);
     };
     let Some(right_junction) = right_junction else {
-        preview.errors.push(
-            "Could not resolve a right terminal junction in the Gibson plan".to_string(),
-        );
+        preview
+            .errors
+            .push("Could not resolve a right terminal junction in the Gibson plan".to_string());
         return finalize_preview(preview);
     };
 
@@ -914,26 +918,30 @@ pub fn preview_gibson_assembly_plan(
         }
     }
 
-    preview.resolved_junctions.push(GibsonResolvedJunctionPreview {
-        junction_id: left_junction.id.clone(),
-        left_member_id: left_junction.left_member.id.clone(),
-        right_member_id: left_junction.right_member.id.clone(),
-        overlap_bp: left_overlap.1,
-        overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
-        overlap_sequence: left_overlap.2.clone(),
-        overlap_source: left_junction.overlap_source.clone(),
-        distinct_from: left_junction.distinct_from.clone(),
-    });
-    preview.resolved_junctions.push(GibsonResolvedJunctionPreview {
-        junction_id: right_junction.id.clone(),
-        left_member_id: right_junction.left_member.id.clone(),
-        right_member_id: right_junction.right_member.id.clone(),
-        overlap_bp: right_overlap.1,
-        overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
-        overlap_sequence: right_overlap.2.clone(),
-        overlap_source: right_junction.overlap_source.clone(),
-        distinct_from: right_junction.distinct_from.clone(),
-    });
+    preview
+        .resolved_junctions
+        .push(GibsonResolvedJunctionPreview {
+            junction_id: left_junction.id.clone(),
+            left_member_id: left_junction.left_member.id.clone(),
+            right_member_id: left_junction.right_member.id.clone(),
+            overlap_bp: left_overlap.1,
+            overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
+            overlap_sequence: left_overlap.2.clone(),
+            overlap_source: left_junction.overlap_source.clone(),
+            distinct_from: left_junction.distinct_from.clone(),
+        });
+    preview
+        .resolved_junctions
+        .push(GibsonResolvedJunctionPreview {
+            junction_id: right_junction.id.clone(),
+            left_member_id: right_junction.left_member.id.clone(),
+            right_member_id: right_junction.right_member.id.clone(),
+            overlap_bp: right_overlap.1,
+            overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
+            overlap_sequence: right_overlap.2.clone(),
+            overlap_source: right_junction.overlap_source.clone(),
+            distinct_from: right_junction.distinct_from.clone(),
+        });
 
     if preview.errors.is_empty() {
         let left_priming = choose_insert_priming_segment(
@@ -1012,7 +1020,10 @@ pub fn preview_gibson_assembly_plan(
         &mut preview,
     );
     apply_uniqueness_advisories(
-        &plan.validation_policy.uniqueness_checks.participating_fragments,
+        &plan
+            .validation_policy
+            .uniqueness_checks
+            .participating_fragments,
         "insert priming segment",
         &insert_template_forward,
         &preview
@@ -1065,7 +1076,9 @@ fn empty_protocol_cartoon_bindings() -> ProtocolCartoonTemplateBindings {
     }
 }
 
-fn finalize_preview(mut preview: GibsonAssemblyPreview) -> Result<GibsonAssemblyPreview, EngineError> {
+fn finalize_preview(
+    mut preview: GibsonAssemblyPreview,
+) -> Result<GibsonAssemblyPreview, EngineError> {
     preview.can_execute = preview.errors.is_empty();
     Ok(preview)
 }
@@ -1079,7 +1092,11 @@ fn validate_destination_topology(
     if requested.is_empty() {
         return;
     }
-    let actual = if dna.is_circular() { "circular" } else { "linear" };
+    let actual = if dna.is_circular() {
+        "circular"
+    } else {
+        "linear"
+    };
     if !requested.eq_ignore_ascii_case(actual) {
         preview.errors.push(format!(
             "destination.topology_before_opening='{}' does not match the actual topology '{}' of '{}'",
@@ -1242,14 +1259,14 @@ fn derive_terminal_overlap(
     };
     let required_overlap_bp = junction.required_overlap_bp.unwrap_or(0);
     if required_overlap_bp > 0
-        && partition.left_member_bp.saturating_add(partition.right_member_bp) != required_overlap_bp
+        && partition
+            .left_member_bp
+            .saturating_add(partition.right_member_bp)
+            != required_overlap_bp
     {
         preview.errors.push(format!(
             "Junction '{}' overlap_partition {}+{} does not match required_overlap_bp {}",
-            junction.id,
-            partition.left_member_bp,
-            partition.right_member_bp,
-            required_overlap_bp
+            junction.id, partition.left_member_bp, partition.right_member_bp, required_overlap_bp
         ));
         return None;
     }
@@ -1372,7 +1389,8 @@ fn overlap_sequence_for_side(
             TerminalSide::Left => destination_seq.get(0..len).map(str::to_string),
             TerminalSide::Right => {
                 let total = destination_seq.len();
-                total.checked_sub(len)
+                total
+                    .checked_sub(len)
                     .and_then(|start| destination_seq.get(start..total))
                     .map(str::to_string)
             }
@@ -1444,9 +1462,8 @@ fn choose_insert_priming_segment(
             .push("Insert sequence must be non-empty for Gibson primer derivation".to_string());
         return None;
     }
-    let target_mid = (targets.priming_segment_tm_min_celsius
-        + targets.priming_segment_tm_max_celsius)
-        / 2.0;
+    let target_mid =
+        (targets.priming_segment_tm_min_celsius + targets.priming_segment_tm_max_celsius) / 2.0;
     let mut best: Option<GibsonPrimerCandidate> = None;
     for len in targets.priming_segment_min_length_bp..=targets.priming_segment_max_length_bp {
         let sequence = match side {
@@ -1520,9 +1537,11 @@ fn count_hits_both_strands(template_forward: &str, query: &str) -> usize {
     if query.is_empty() || template_forward.is_empty() {
         return 0;
     }
-    let forward = GentleEngine::find_all_subsequences(template_forward.as_bytes(), query.as_bytes());
+    let forward =
+        GentleEngine::find_all_subsequences(template_forward.as_bytes(), query.as_bytes());
     let reverse_template = GentleEngine::reverse_complement(template_forward);
-    let reverse = GentleEngine::find_all_subsequences(reverse_template.as_bytes(), query.as_bytes());
+    let reverse =
+        GentleEngine::find_all_subsequences(reverse_template.as_bytes(), query.as_bytes());
     forward.len().saturating_add(reverse.len())
 }
 
@@ -1749,8 +1768,14 @@ fn build_routine_handoff(
     preview: &GibsonAssemblyPreview,
     representative_overlap_bp: usize,
 ) -> GibsonRoutineHandoffPreview {
-    if preview.destination.opening_mode.eq_ignore_ascii_case("existing_termini")
-        && preview.destination.actual_topology.eq_ignore_ascii_case("linear")
+    if preview
+        .destination
+        .opening_mode
+        .eq_ignore_ascii_case("existing_termini")
+        && preview
+            .destination
+            .actual_topology
+            .eq_ignore_ascii_case("linear")
     {
         let mut bindings = BTreeMap::new();
         bindings.insert(
@@ -1768,10 +1793,14 @@ fn build_routine_handoff(
                 format!("{}_gibson", preview.destination.seq_id),
             );
         }
-        if !preview.destination.seq_id.trim().is_empty() && !preview.insert.seq_id.trim().is_empty() {
+        if !preview.destination.seq_id.trim().is_empty() && !preview.insert.seq_id.trim().is_empty()
+        {
             bindings.insert(
                 "output_id".to_string(),
-                format!("{}_with_{}", preview.destination.seq_id, preview.insert.seq_id),
+                format!(
+                    "{}_with_{}",
+                    preview.destination.seq_id, preview.insert.seq_id
+                ),
             );
         }
         GibsonRoutineHandoffPreview {
@@ -1811,25 +1840,31 @@ fn normalized_orientation(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{dna_sequence::DNAsequence, engine::ProjectState, enzymes::active_restriction_enzymes};
+    use crate::{
+        dna_sequence::DNAsequence, engine::ProjectState, enzymes::active_restriction_enzymes,
+    };
     use gb_io::seq::{Feature, FeatureKind, Location};
 
     fn test_engine_with_sequences() -> GentleEngine {
         let mut engine = GentleEngine::new();
-        let mut destination = DNAsequence::from_sequence(
-            "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
-        )
-        .expect("destination sequence");
+        let mut destination =
+            DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+                .expect("destination sequence");
         destination.set_name("destination_vector".to_string());
         destination.set_circular(true);
-        let mut insert = DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
-        .expect("insert sequence");
+        let mut insert =
+            DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+                .expect("insert sequence");
         insert.set_name("insert_x_amplicon".to_string());
         insert.set_circular(false);
-        engine.state_mut().sequences.insert("destination_vector".to_string(), destination);
-        engine.state_mut().sequences.insert("insert_x_amplicon".to_string(), insert);
+        engine
+            .state_mut()
+            .sequences
+            .insert("destination_vector".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("insert_x_amplicon".to_string(), insert);
         engine.state_mut().display = ProjectState::default().display;
         engine
     }
@@ -1926,8 +1961,8 @@ mod tests {
     #[test]
     fn preview_single_insert_plan_returns_junctions_and_primers() {
         let engine = test_engine_with_sequences();
-        let preview = preview_gibson_assembly_plan(&engine, &single_insert_plan())
-            .expect("preview output");
+        let preview =
+            preview_gibson_assembly_plan(&engine, &single_insert_plan()).expect("preview output");
         assert!(preview.can_execute);
         assert_eq!(preview.resolved_junctions.len(), 2);
         assert_eq!(preview.primer_suggestions.len(), 2);
@@ -1953,7 +1988,10 @@ mod tests {
             ],
         });
         let mut engine = GentleEngine::new();
-        engine.state_mut().sequences.insert("vector".to_string(), dna);
+        engine
+            .state_mut()
+            .sequences
+            .insert("vector".to_string(), dna);
 
         let suggestions =
             suggest_gibson_destination_openings(&engine, "vector").expect("suggestions");
@@ -1981,10 +2019,12 @@ mod tests {
         plan.destination.opening.end_0based_exclusive = Some(10);
         let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
         assert!(!preview.can_execute);
-        assert!(preview
-            .errors
-            .iter()
-            .any(|row| row.contains("Destination opening span")));
+        assert!(
+            preview
+                .errors
+                .iter()
+                .any(|row| row.contains("Destination opening span"))
+        );
     }
 
     #[test]
@@ -1995,37 +2035,42 @@ mod tests {
         plan.destination.opening.end_0based_exclusive = Some(9);
         let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
         assert!(!preview.can_execute);
-        assert!(preview
-            .errors
-            .iter()
-            .any(|row| row.contains("Terminal overlap regions")));
+        assert!(
+            preview
+                .errors
+                .iter()
+                .any(|row| row.contains("Terminal overlap regions"))
+        );
     }
 
     #[test]
     fn preview_reports_impossible_priming_targets() {
         let engine = test_engine_with_sequences();
         let mut plan = single_insert_plan();
-        plan.validation_policy.design_targets.priming_segment_tm_min_celsius = 200.0;
-        plan.validation_policy.design_targets.priming_segment_tm_max_celsius = 210.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_min_celsius = 200.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_max_celsius = 210.0;
         let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
         assert!(!preview.can_execute);
-        assert!(preview
-            .errors
-            .iter()
-            .any(|row| row.contains("Could not derive a Gibson priming segment")));
+        assert!(
+            preview
+                .errors
+                .iter()
+                .any(|row| row.contains("Could not derive a Gibson priming segment"))
+        );
     }
 
     #[test]
     fn preview_existing_linear_termini_enables_routine_handoff() {
         let mut engine = GentleEngine::new();
-        let destination = DNAsequence::from_sequence(
-            "ATGCGTACGATTCGATGCACTGATCGTACGTAGCTAACGTAGGCTAAC",
-        )
-        .expect("destination sequence");
-        let insert = DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
-        .expect("insert sequence");
+        let destination =
+            DNAsequence::from_sequence("ATGCGTACGATTCGATGCACTGATCGTACGTAGCTAACGTAGGCTAAC")
+                .expect("destination sequence");
+        let insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+            .expect("insert sequence");
         engine
             .state_mut()
             .sequences

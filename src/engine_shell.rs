@@ -48,11 +48,11 @@ use crate::{
     },
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
-    gibson_planning::{GibsonAssemblyPlan, GIBSON_ASSEMBLY_PREVIEW_SCHEMA},
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord,
     },
+    gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_sync,
     shell_docs::{
@@ -4335,10 +4335,9 @@ impl ShellCommand {
                 "render protocol cartoon template '{}' to '{}'",
                 template_path, output
             ),
-            Self::ValidateProtocolCartoonTemplate { template_path } => format!(
-                "validate protocol cartoon template '{}'",
-                template_path
-            ),
+            Self::ValidateProtocolCartoonTemplate { template_path } => {
+                format!("validate protocol cartoon template '{}'", template_path)
+            }
             Self::RenderProtocolCartoonTemplateWithBindingsSvg {
                 template_path,
                 bindings_path,
@@ -9244,8 +9243,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "template-validate" => {
                     if tokens.len() != 3 {
                         return Err(
-                            "protocol-cartoon template-validate requires TEMPLATE.json"
-                                .to_string(),
+                            "protocol-cartoon template-validate requires TEMPLATE.json".to_string()
                         );
                     }
                     let template_path = tokens[2].trim();
@@ -9317,10 +9315,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "gibson" => {
             if tokens.len() < 2 {
-                return Err(
-                    "gibson requires a subcommand: preview"
-                        .to_string(),
-                );
+                return Err("gibson requires a subcommand: preview".to_string());
             }
             match tokens[1].as_str() {
                 "preview" => {
@@ -9333,7 +9328,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let request_json = tokens[2].trim();
                     if request_json.is_empty() {
                         return Err(
-                            "gibson preview requires non-empty PLAN_JSON_OR_@FILE".to_string(),
+                            "gibson preview requires non-empty PLAN_JSON_OR_@FILE".to_string()
                         );
                     }
                     let mut output_path: Option<String> = None;
@@ -9344,7 +9339,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 idx += 1;
                                 if idx >= tokens.len() {
                                     return Err(
-                                        "gibson preview --output requires OUTPUT.json".to_string(),
+                                        "gibson preview --output requires OUTPUT.json".to_string()
                                     );
                                 }
                                 let output = tokens[idx].trim();

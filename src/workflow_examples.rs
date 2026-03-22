@@ -171,10 +171,7 @@ impl TutorialSourceGeneratedChapterSection {
 impl TutorialSourceUnit {
     fn into_catalog_entry(self) -> Option<(usize, TutorialCatalogEntry)> {
         let TutorialSourceUnit {
-            id,
-            title,
-            catalog,
-            ..
+            id, title, catalog, ..
         } = self;
         catalog.map(|catalog| {
             let order = catalog.order;
@@ -599,10 +596,18 @@ fn parse_tutorial_catalog_meta(meta_path: &Path) -> Result<TutorialCatalogMeta, 
 }
 
 fn parse_tutorial_source_unit(path: &Path) -> Result<TutorialSourceUnit, String> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| format!("Could not read tutorial source '{}': {e}", display_path(path)))?;
-    serde_json::from_str::<TutorialSourceUnit>(&raw)
-        .map_err(|e| format!("Could not parse tutorial source '{}': {e}", display_path(path)))
+    let raw = fs::read_to_string(path).map_err(|e| {
+        format!(
+            "Could not read tutorial source '{}': {e}",
+            display_path(path)
+        )
+    })?;
+    serde_json::from_str::<TutorialSourceUnit>(&raw).map_err(|e| {
+        format!(
+            "Could not parse tutorial source '{}': {e}",
+            display_path(path)
+        )
+    })
 }
 
 pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, String> {
@@ -624,7 +629,11 @@ pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, Str
     if catalog.generated_runtime.manifest_path.trim().is_empty()
         || catalog.generated_runtime.manifest_schema.trim().is_empty()
         || catalog.generated_runtime.generated_readme.trim().is_empty()
-        || catalog.generated_runtime.generation_report.trim().is_empty()
+        || catalog
+            .generated_runtime
+            .generation_report
+            .trim()
+            .is_empty()
     {
         return Err(format!(
             "Tutorial catalog '{}' has incomplete generated_runtime fields",
@@ -646,19 +655,34 @@ pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, Str
             ));
         }
         if entry.title.trim().is_empty() {
-            return Err(format!("Tutorial catalog entry '{}' has empty title", entry.id));
+            return Err(format!(
+                "Tutorial catalog entry '{}' has empty title",
+                entry.id
+            ));
         }
         if entry.path.trim().is_empty() {
-            return Err(format!("Tutorial catalog entry '{}' has empty path", entry.id));
+            return Err(format!(
+                "Tutorial catalog entry '{}' has empty path",
+                entry.id
+            ));
         }
         if entry.entry_type.trim().is_empty() {
-            return Err(format!("Tutorial catalog entry '{}' has empty type", entry.id));
+            return Err(format!(
+                "Tutorial catalog entry '{}' has empty type",
+                entry.id
+            ));
         }
         if entry.status.trim().is_empty() {
-            return Err(format!("Tutorial catalog entry '{}' has empty status", entry.id));
+            return Err(format!(
+                "Tutorial catalog entry '{}' has empty status",
+                entry.id
+            ));
         }
         if entry.source.trim().is_empty() {
-            return Err(format!("Tutorial catalog entry '{}' has empty source", entry.id));
+            return Err(format!(
+                "Tutorial catalog entry '{}' has empty source",
+                entry.id
+            ));
         }
         if !seen_ids.insert(entry.id.clone()) {
             return Err(format!(
@@ -815,13 +839,20 @@ pub fn generate_tutorial_catalog_from_sources(
         .filter_map(TutorialSourceUnit::into_catalog_entry)
         .collect::<Vec<_>>();
     let mut ordered_entries = entries;
-    ordered_entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.id.cmp(&right.1.id)));
+    ordered_entries.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.id.cmp(&right.1.id))
+    });
     Ok(TutorialCatalog {
         schema: TUTORIAL_CATALOG_SCHEMA.to_string(),
         description: meta.description,
         entry_page: meta.entry_page,
         generated_runtime: meta.generated_runtime,
-        entries: ordered_entries.into_iter().map(|(_, entry)| entry).collect(),
+        entries: ordered_entries
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect(),
     })
 }
 
@@ -841,7 +872,11 @@ pub fn generate_tutorial_manifest_from_sources(
         .into_iter()
         .filter_map(TutorialSourceUnit::into_manifest_chapter)
         .collect::<Vec<_>>();
-    chapters.sort_by(|left, right| left.order.cmp(&right.order).then_with(|| left.id.cmp(&right.id)));
+    chapters.sort_by(|left, right| {
+        left.order
+            .cmp(&right.order)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     let manifest = TutorialManifest {
         schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
         concepts: meta.concepts,
@@ -2444,8 +2479,8 @@ mod tests {
             &tutorial_source_dir(),
         )
         .expect("generate tutorial catalog from sources");
-        let committed =
-            load_tutorial_catalog(&tutorial_catalog_path()).expect("load committed tutorial catalog");
+        let committed = load_tutorial_catalog(&tutorial_catalog_path())
+            .expect("load committed tutorial catalog");
         let generated_json =
             serde_json::to_string_pretty(&generated).expect("serialize generated tutorial catalog");
         let committed_json =
@@ -2473,12 +2508,12 @@ mod tests {
             &tutorial_source_dir(),
         )
         .expect("generate tutorial manifest from sources");
-        let committed =
-            load_tutorial_manifest(&tutorial_manifest_path()).expect("load committed tutorial manifest");
-        let generated_json =
-            serde_json::to_string_pretty(&generated).expect("serialize generated tutorial manifest");
-        let committed_json =
-            serde_json::to_string_pretty(&committed).expect("serialize committed tutorial manifest");
+        let committed = load_tutorial_manifest(&tutorial_manifest_path())
+            .expect("load committed tutorial manifest");
+        let generated_json = serde_json::to_string_pretty(&generated)
+            .expect("serialize generated tutorial manifest");
+        let committed_json = serde_json::to_string_pretty(&committed)
+            .expect("serialize committed tutorial manifest");
         assert_eq!(
             generated_json, committed_json,
             "committed tutorial manifest should match generated source units"

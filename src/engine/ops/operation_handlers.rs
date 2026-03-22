@@ -1348,16 +1348,17 @@ impl GentleEngine {
                             bindings_path
                         ),
                     })?;
-                let spec = crate::protocol_cartoon::resolve_protocol_cartoon_template_with_bindings(
-                    &template, &bindings,
-                )
-                .map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Invalid protocol cartoon template/bindings ('{}', '{}'): {}",
-                        template_path, bindings_path, e
-                    ),
-                })?;
+                let spec =
+                    crate::protocol_cartoon::resolve_protocol_cartoon_template_with_bindings(
+                        &template, &bindings,
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Invalid protocol cartoon template/bindings ('{}', '{}'): {}",
+                            template_path, bindings_path, e
+                        ),
+                    })?;
                 let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,

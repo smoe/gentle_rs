@@ -553,6 +553,8 @@ struct EngineOpsUiState {
     show_engine_ops: bool,
     #[serde(default)]
     show_shell: bool,
+    #[serde(default = "default_extended_top_panel_height_px")]
+    extended_top_panel_height_px: f32,
     #[serde(default)]
     primary_map_mode: PrimaryMapMode,
     #[serde(default)]
@@ -2625,6 +2627,15 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_extended_top_panel_height() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.extended_top_panel_height_px = 512.0;
+        let state = area.current_engine_ops_state();
+        assert!((state.extended_top_panel_height_px - 512.0).abs() <= f32::EPSILON);
+    }
+
+    #[test]
     fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -2658,6 +2669,38 @@ mod tests {
             .remove("show_all_contextual_transcripts");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert!(!decoded.show_all_contextual_transcripts);
+    }
+
+    #[test]
+    fn extended_top_panel_height_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("extended_top_panel_height_px");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert!(
+            (decoded.extended_top_panel_height_px - super::default_extended_top_panel_height_px())
+                .abs()
+                <= f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn clamp_extended_top_panel_height_respects_bounds() {
+        let max_height = MainAreaDna::max_extended_top_panel_height(900.0, true);
+        assert!(
+            (MainAreaDna::clamp_extended_top_panel_height(0.0, 900.0, true)
+                - super::EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
+                .abs()
+                <= f32::EPSILON
+        );
+        assert!(
+            (MainAreaDna::clamp_extended_top_panel_height(9_999.0, 900.0, true) - max_height).abs()
+                <= f32::EPSILON
+        );
     }
 
     #[test]
@@ -3236,11 +3279,18 @@ fn default_feature_tree_split_fraction() -> f32 {
     FEATURE_TREE_DEFAULT_SPLIT_FRACTION
 }
 
+fn default_extended_top_panel_height_px() -> f32 {
+    EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX
+}
+
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
 const UI_SIZE_MIN_PX: f32 = 1.0;
 const UI_SIZE_MAX_PX: f32 = 4096.0;
 const ENABLE_LINEAR_VERTICAL_PAN: bool = true;
 const ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES: bool = true;
+const EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX: f32 = 420.0;
+const EXTENDED_TOP_PANEL_MIN_HEIGHT_PX: f32 = 180.0;
+const EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX: f32 = 8.0;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
 const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
@@ -3673,6 +3723,7 @@ pub struct MainAreaDna {
     feature_tree_grouping_mode: FeatureTreeGroupingMode,
     feature_tree_filter: String,
     feature_tree_deferred_until_interaction: bool,
+    extended_top_panel_height_px: f32,
     feature_tree_panel_width: f32,
     feature_tree_split_fraction: f32,
     pending_feature_tree_scroll_to: Option<usize>,
@@ -3723,6 +3774,54 @@ impl MainAreaDna {
             fraction.clamp(0.15, 0.85)
         } else {
             FEATURE_TREE_DEFAULT_SPLIT_FRACTION
+        }
+    }
+
+    fn extended_top_panel_visible(&self) -> bool {
+        self.dna_presentation_mode.allows_engine_shell_panels()
+            && (self.show_engine_ops || self.show_shell)
+    }
+
+    fn preferred_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
+        let safe_total = if total_height.is_finite() {
+            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
+        } else {
+            900.0
+        };
+        let fraction = if sequence_panel_visible { 0.48 } else { 0.60 };
+        let floor = if sequence_panel_visible { 400.0 } else { 460.0 };
+        (safe_total * fraction).clamp(floor, safe_total * 0.72)
+    }
+
+    fn max_extended_top_panel_height(total_height: f32, sequence_panel_visible: bool) -> f32 {
+        let safe_total = if total_height.is_finite() {
+            total_height.clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX * 2.0, 6000.0)
+        } else {
+            900.0
+        };
+        let fraction = if sequence_panel_visible { 0.62 } else { 0.82 };
+        (safe_total * fraction).clamp(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX + 120.0, safe_total - 80.0)
+    }
+
+    fn clamp_extended_top_panel_height(
+        height: f32,
+        total_height: f32,
+        sequence_panel_visible: bool,
+    ) -> f32 {
+        let min_height = EXTENDED_TOP_PANEL_MIN_HEIGHT_PX;
+        let max_height = Self::max_extended_top_panel_height(total_height, sequence_panel_visible);
+        if height.is_finite() {
+            height.clamp(min_height, max_height)
+        } else {
+            Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible)
+        }
+    }
+
+    fn clamp_extended_top_panel_scroll_height(available_height: f32) -> f32 {
+        if available_height.is_finite() {
+            available_height.clamp(72.0, 2400.0)
+        } else {
+            520.0
         }
     }
 
@@ -3959,6 +4058,7 @@ impl MainAreaDna {
             feature_tree_grouping_mode: FeatureTreeGroupingMode::Auto,
             feature_tree_filter: String::new(),
             feature_tree_deferred_until_interaction: false,
+            extended_top_panel_height_px: EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX,
             feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
             feature_tree_split_fraction: FEATURE_TREE_DEFAULT_SPLIT_FRACTION,
             pending_feature_tree_scroll_to: None,
@@ -4825,17 +4925,27 @@ impl MainAreaDna {
         }
         let panel_scope = self.seq_id.as_deref().unwrap_or("<no-seq-id>").to_owned();
         let top_panel_id = egui::Id::new(("dna_top_buttons", panel_scope.clone()));
-        egui::TopBottomPanel::top(top_panel_id)
-            .frame(Frame::NONE)
-            .show(ctx, |ui| {
-                paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                self.render_top_panel(ui);
-            });
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
+        let full_height = ctx.content_rect().height().max(240.0);
+        let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
+        let mut top_panel = egui::TopBottomPanel::top(top_panel_id).frame(Frame::NONE);
+        if self.extended_top_panel_visible() {
+            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
+                self.extended_top_panel_height_px,
+                full_height,
+                sequence_panel_visible,
+            );
+            top_panel = top_panel
+                .min_height(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
+                .exact_height(self.extended_top_panel_height_px);
+        }
+        top_panel.show(ctx, |ui| {
+            paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+            self.render_top_panel(ui);
+        });
 
         if self.show_map {
             if self.show_sequence && !auto_hidden_sequence_panel {
-                let full_height = ctx.content_rect().height().max(240.0);
                 let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
                 egui::TopBottomPanel::bottom(bottom_panel_id)
                     .frame(Frame::NONE)
@@ -6225,32 +6335,41 @@ impl MainAreaDna {
             self.render_rna_structure_panel(ui);
         }
 
-        if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels() {
+        if self.extended_top_panel_visible() {
             ui.separator();
-            ui.collapsing("Strict Engine Operations", |ui| {
-                let resize_id = format!(
-                    "engine_ops_resize_{}",
+            let total_height = ui.ctx().content_rect().height().max(240.0);
+            let sequence_panel_visible =
+                self.show_sequence && !self.should_auto_hide_sequence_panel();
+            let remaining_height = ui
+                .available_height()
+                .max(EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX + 1.0);
+            let extended_controls_height = Self::clamp_extended_top_panel_scroll_height(
+                remaining_height - EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX,
+            );
+            egui::ScrollArea::vertical()
+                .id_salt(format!(
+                    "engine_shell_panels_scroll_{}",
                     self.seq_id.as_deref().unwrap_or("_global")
-                );
-                egui::Resize::default()
-                    .id_salt(resize_id)
-                    .default_height(420.0)
-                    .min_height(180.0)
-                    .max_height(ui.available_height().max(220.0))
-                    .resizable(egui::Vec2b::new(false, true))
-                    .show(ui, |ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.label("IDs are comma-separated sequence IDs.");
-                        let template_seq_id = self.seq_id.clone().unwrap_or_default();
-                        egui::CollapsingHeader::new("Core cloning operations")
+                ))
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                .auto_shrink([false, false])
+                .max_height(extended_controls_height)
+                .min_scrolled_height(extended_controls_height)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    if self.show_engine_ops && self.dna_presentation_mode.allows_engine_shell_panels()
+                    {
+                        egui::CollapsingHeader::new("Strict Engine Operations")
                             .default_open(true)
                             .show(ui, |ui| {
+                            ui.label("IDs are comma-separated sequence IDs.");
+                            let template_seq_id = self.seq_id.clone().unwrap_or_default();
+                            egui::CollapsingHeader::new("Core cloning operations")
+                                .default_open(false)
+                                .show(ui, |ui| {
 
                 ui.horizontal(|ui| {
                     ui.label(format!("Digest template {}", template_seq_id));
@@ -6601,7 +6720,7 @@ impl MainAreaDna {
                             });
 
                 egui::CollapsingHeader::new("Primer and qPCR design reports")
-                    .default_open(false)
+                    .default_open(true)
                     .show(ui, |ui| {
                         self.render_primer_design_ops(ui);
                     });
@@ -7627,16 +7746,70 @@ impl MainAreaDna {
                     ui.separator();
                     self.render_pool_gel_preview(ui);
                 }
-
                             });
-                    });
-                self.save_engine_ops_state();
-            });
-        }
+                    }
 
-        if self.show_shell && self.dna_presentation_mode.allows_engine_shell_panels() {
-            ui.separator();
-            self.render_shell_panel(ui);
+                    if self.show_shell && self.dna_presentation_mode.allows_engine_shell_panels() {
+                        if self.show_engine_ops {
+                            ui.separator();
+                        }
+                        self.render_shell_panel(ui);
+                    }
+                });
+            let (split_rect, _) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX),
+                egui::Sense::hover(),
+            );
+            let split_response = ui.interact(
+                split_rect,
+                ui.make_persistent_id(format!(
+                    "extended_top_panel_split_{}",
+                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                )),
+                egui::Sense::click_and_drag(),
+            );
+            let split_color = if split_response.dragged() {
+                egui::Color32::from_rgb(40, 140, 210)
+            } else if split_response.hovered() {
+                egui::Color32::from_rgb(110, 110, 110)
+            } else {
+                egui::Color32::from_gray(90)
+            };
+            if split_response.hovered() || split_response.dragged() {
+                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
+            }
+            let split_y = split_rect.center().y;
+            ui.painter().line_segment(
+                [
+                    egui::pos2(split_rect.left(), split_y),
+                    egui::pos2(split_rect.right(), split_y),
+                ],
+                egui::Stroke::new(1.0, split_color),
+            );
+            if split_response.double_clicked() {
+                self.extended_top_panel_height_px =
+                    Self::preferred_extended_top_panel_height(total_height, sequence_panel_visible);
+                self.save_engine_ops_state();
+            }
+            if split_response.dragged() {
+                let delta = ui.ctx().input(|i| i.pointer.delta().y);
+                if delta.abs() > f32::EPSILON {
+                    self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
+                        self.extended_top_panel_height_px + delta,
+                        total_height,
+                        sequence_panel_visible,
+                    );
+                    ui.ctx().request_repaint();
+                }
+            }
+            if split_response.drag_stopped() {
+                self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
+                    self.extended_top_panel_height_px,
+                    total_height,
+                    sequence_panel_visible,
+                );
+                self.save_engine_ops_state();
+            }
         }
     }
 
@@ -20330,45 +20503,50 @@ impl MainAreaDna {
         egui::CollapsingHeader::new("Design primer pairs")
             .default_open(true)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("ROI start");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
-                            .desired_width(80.0),
-                    );
-                    ui.label("ROI end");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
-                            .desired_width(80.0),
-                    );
-                    ui.label("min amplicon");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.min_amplicon_bp)
-                            .desired_width(80.0),
-                    );
-                    ui.label("max amplicon");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_amplicon_bp)
-                            .desired_width(80.0),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("max Tm delta");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
-                            .desired_width(80.0),
-                    );
-                    ui.label("max pairs");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_pairs)
-                            .desired_width(80.0),
-                    );
-                    ui.label("report_id");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.primer_design_ui.report_id)
-                            .desired_width(180.0),
-                    );
-                });
+                egui::Grid::new("primer_pairs_overview_grid")
+                    .num_columns(4)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("ROI start");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
+                                .desired_width(92.0),
+                        );
+                        ui.label("ROI end");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
+                                .desired_width(92.0),
+                        );
+                        ui.end_row();
+                        ui.label("min amplicon");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.min_amplicon_bp)
+                                .desired_width(92.0),
+                        );
+                        ui.label("max amplicon");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.max_amplicon_bp)
+                                .desired_width(92.0),
+                        );
+                        ui.end_row();
+                        ui.label("max Tm delta");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
+                                .desired_width(92.0),
+                        );
+                        ui.label("max pairs");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.max_pairs)
+                                .desired_width(92.0),
+                        );
+                        ui.end_row();
+                        ui.label("report_id");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.primer_design_ui.report_id)
+                                .desired_width(240.0),
+                        );
+                        ui.end_row();
+                    });
                 ui.group(|ui| {
                     ui.label("PCR region queue (batch source)");
                     let copy_toggle = ui.checkbox(
@@ -22127,6 +22305,7 @@ impl MainAreaDna {
         EngineOpsUiState {
             show_engine_ops: self.show_engine_ops,
             show_shell: self.show_shell,
+            extended_top_panel_height_px: self.extended_top_panel_height_px,
             primary_map_mode: self.primary_map_mode,
             dna_presentation_mode: self.dna_presentation_mode,
             show_all_contextual_transcripts: self.show_all_contextual_transcripts,
@@ -22325,6 +22504,12 @@ impl MainAreaDna {
     fn apply_engine_ops_state(&mut self, s: EngineOpsUiState) {
         self.show_engine_ops = s.show_engine_ops;
         self.show_shell = s.show_shell;
+        self.extended_top_panel_height_px = if s.extended_top_panel_height_px.is_finite() {
+            s.extended_top_panel_height_px
+                .max(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
+        } else {
+            EXTENDED_TOP_PANEL_DEFAULT_HEIGHT_PX
+        };
         self.primary_map_mode = s.primary_map_mode;
         self.dna_presentation_mode = s.dna_presentation_mode;
         self.show_all_contextual_transcripts = s.show_all_contextual_transcripts;

@@ -305,8 +305,8 @@ fn run_svg_png_mode(
         .to_int_size()
         .scale_by(scale)
         .ok_or_else(|| format!("Could not scale SVG size by {scale}"))?;
-    let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
-        .ok_or_else(|| {
+    let mut pixmap =
+        tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).ok_or_else(|| {
             format!(
                 "Could not allocate PNG canvas {}x{}",
                 pixmap_size.width(),

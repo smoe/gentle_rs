@@ -10166,7 +10166,10 @@ fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
             .best_alignment_transcript_id
             .is_empty()
     );
-    assert_eq!(preview_without_mapping.best_alignment_target_start_1based, 0);
+    assert_eq!(
+        preview_without_mapping.best_alignment_target_start_1based,
+        0
+    );
     assert_eq!(preview_without_mapping.best_alignment_target_end_1based, 0);
     assert_eq!(preview_without_mapping.secondary_mapping_count, 0);
 }
@@ -10320,7 +10323,12 @@ fn test_align_rna_read_report_selected_record_indices_overrides_selection() {
         .expect("stored RNA-read report");
     assert_eq!(before_align.read_count_total, 2);
     assert_eq!(before_align.read_count_aligned, 0);
-    assert!(before_align.hits.iter().all(|hit| hit.best_mapping.is_none()));
+    assert!(
+        before_align
+            .hits
+            .iter()
+            .all(|hit| hit.best_mapping.is_none())
+    );
 
     engine
         .apply(Operation::AlignRnaReadReport {

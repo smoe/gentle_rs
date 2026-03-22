@@ -332,7 +332,9 @@ fn parse_protocol_cartoon_render_template_svg() {
 
 #[test]
 fn reject_render_protocol_cartoon_template_svg_alias() {
-    assert!(parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg").is_err());
+    assert!(
+        parse_shell_line("render-protocol-cartoon-template-svg template.json out.svg").is_err()
+    );
 }
 
 #[test]
@@ -382,8 +384,8 @@ fn parse_protocol_cartoon_render_with_bindings() {
 
 #[test]
 fn parse_gibson_preview() {
-    let cmd = parse_shell_line("gibson preview @plan.json --output preview.json")
-        .expect("parse command");
+    let cmd =
+        parse_shell_line("gibson preview @plan.json --output preview.json").expect("parse command");
     match cmd {
         ShellCommand::GibsonPreview {
             request_json,
@@ -582,20 +584,17 @@ fn execute_protocol_cartoon_template_export() {
 #[test]
 fn execute_gibson_preview() {
     let mut state = ProjectState::default();
-    let mut destination = DNAsequence::from_sequence(
-        "AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT",
-    )
-    .expect("destination sequence");
+    let mut destination =
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+            .expect("destination sequence");
     destination.set_circular(true);
     state
         .sequences
         .insert("destination_vector".to_string(), destination);
     state.sequences.insert(
         "insert_x_amplicon".to_string(),
-        DNAsequence::from_sequence(
-            "ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA",
-        )
-        .expect("insert sequence"),
+        DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+            .expect("insert sequence"),
     );
     let mut engine = GentleEngine::from_state(state);
     let tmp = tempdir().expect("temp dir");
@@ -706,10 +705,9 @@ fn execute_gibson_preview() {
             .map(Vec::len),
         Some(2)
     );
-    let written: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(output_path).expect("read gibson preview output"),
-    )
-    .expect("parse written preview json");
+    let written: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(output_path).expect("read gibson preview output"))
+            .expect("parse written preview json");
     assert_eq!(
         written.get("schema").and_then(|value| value.as_str()),
         Some("gentle.gibson_assembly_preview.v1")
