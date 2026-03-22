@@ -869,17 +869,21 @@ Notes:
        remains pending, although the Gibson specialist testing tutorial now
        provides that style of checklist for the new destination-first Gibson
        flow
-   - tutorial authoring is still structurally split:
-     executable chapter metadata now comes from `docs/tutorial/sources/`, while
-     GUI and agent/reference tutorials still keep their narrative content in
-     hand-written markdown
-     - current mitigation is the canonical landing page
-       `docs/tutorial/README.md`
-       plus generated discovery metadata in `docs/tutorial/catalog.json`
-       sourced from `docs/tutorial/sources/`
-     - future improvement should reduce drift between source units and the
-       hand-written narrative bodies, rather than continuing to depend on a
-       single large manifest
+    - tutorial authoring is still structurally split:
+      executable chapter metadata now comes from `docs/tutorial/sources/`, while
+      GUI and agent/reference tutorials still keep their narrative content in
+      hand-written markdown
+      - current mitigation is the canonical landing page
+        `docs/tutorial/README.md`
+        plus generated discovery metadata in `docs/tutorial/catalog.json`
+        sourced from `docs/tutorial/sources/`
+      - before first release, run one tutorial-consistency sweep across manual
+        and generated tutorial pages to verify current GUI menu/control names,
+        GUI/CLI parity wording, and cloning/design tutorial cross-links remain
+        aligned
+      - future improvement should reduce drift between source units and the
+        hand-written narrative bodies, rather than continuing to depend on a
+        single large manifest
    - TP73 cDNA-vs-genomic dotplot tutorial now has an explicit screenshot
      coverage checklist in `docs/tutorial/two_sequence_dotplot_gui.md`; pending
      additions are focused on dotplot-stage captures (`10..11`) to complete the
