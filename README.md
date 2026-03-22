@@ -96,6 +96,18 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+### Guided GUI Testing
+
+![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)
+
+GENtle also ships tutorial-backed GUI testing paths. For example, the Gibson
+specialist has a dedicated walkthrough in
+[`docs/tutorial/gibson_specialist_testing_gui.md`](docs/tutorial/gibson_specialist_testing_gui.md),
+and that guide is available directly through the Help window with associated
+screenshots, so contributors can validate the rendered cloning representation
+against one stable sequence baseline and a reproducible step-by-step test
+script rather than ad hoc clicking.
+
 ## Principles
 
 - One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.
