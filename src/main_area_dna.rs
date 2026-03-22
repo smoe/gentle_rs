@@ -21119,13 +21119,13 @@ impl MainAreaDna {
                         )
                         .on_hover_text("Upper amplicon length bound.");
                         ui.end_row();
-                        ui.label("max T_m delta")
-                            .on_hover_text("Maximum allowed T_m difference (°C) between primer sides.");
+                        ui.label("max ΔTₘ")
+                            .on_hover_text("Maximum allowed ΔTₘ (°C) between primer sides.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
                                 .desired_width(92.0),
                         )
-                        .on_hover_text("Optional T_m-difference constraint for primer-pair ranking.");
+                        .on_hover_text("Optional ΔTₘ constraint for primer-pair ranking.");
                         ui.label("max pairs")
                             .on_hover_text("Maximum number of accepted primer pairs to return.");
                         ui.add(
