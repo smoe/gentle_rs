@@ -804,6 +804,9 @@ Command surface:
     resolution on that sequence
   - end geometry (`blunt`, `5' overhang`, `3' overhang`) must come from the
     shared restriction-enzyme model, not adapter-local heuristics
+  - specific cutter suggestions must use shared REBASE-derived recognition/cut
+    geometry and fill the actual cleavage window between recessed termini, not
+    merely the recognition span text range
   - GUI may present those suggestions in a specialist-friendly way, but it must
     not hard-code vector-specific sites or maintain a separate biology rule set
   - this keeps destination-first Gibson planning aligned with the same

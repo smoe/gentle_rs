@@ -13634,7 +13634,44 @@ Error: `{err}`"
     }
 
     fn humanize_gibson_ui_text(raw: &str) -> String {
-        raw.replace("Tm", "Tₘ").replace(" C", " °C")
+        raw.replace(" C", " °C")
+    }
+
+    fn gibson_tm_label(
+        ui: &mut Ui,
+        prefix: &str,
+        suffix: &str,
+        text_style: egui::TextStyle,
+        strong: bool,
+    ) -> egui::Response {
+        let font_id = text_style.resolve(ui.style());
+        let color = if strong {
+            ui.visuals().strong_text_color()
+        } else {
+            ui.visuals().text_color()
+        };
+        let mut job = egui::text::LayoutJob::default();
+        let base_format = egui::TextFormat {
+            font_id: font_id.clone(),
+            color,
+            valign: egui::Align::Center,
+            ..Default::default()
+        };
+        let subscript_format = egui::TextFormat {
+            font_id: egui::FontId::new(font_id.size * 0.72, font_id.family.clone()),
+            color,
+            valign: egui::Align::BOTTOM,
+            ..Default::default()
+        };
+        if !prefix.is_empty() {
+            job.append(prefix, 0.0, base_format.clone());
+        }
+        job.append("T", 0.0, base_format.clone());
+        job.append("m", 0.0, subscript_format);
+        if !suffix.is_empty() {
+            job.append(suffix, 0.0, base_format);
+        }
+        ui.label(job)
     }
 
     fn gibson_active_context_summary(&self) -> String {
@@ -13686,9 +13723,29 @@ Error: `{err}`"
         let why = if suggestion.kind == "mcs_feature" {
             "Choose the full MCS feature when you want the annotated cloning region as a whole and do not want to commit to one cutter yet."
         } else {
-            "Choose a specific cutter when you want the opening tied to one known restriction site and its end geometry."
+            "Choose a specific cutter when you want the opening tied to one known restriction site, its REBASE recognition motif, and its actual cleavage geometry."
         };
         format!("{}\n{}", suggestion.summary, why)
+    }
+
+    fn gibson_destination_suggestion_rebase_label(
+        suggestion: &GibsonDestinationOpeningSuggestion,
+    ) -> String {
+        if suggestion.kind == "mcs_feature" {
+            suggestion.rebase_cut_summary.clone()
+        } else if suggestion.start_0based == suggestion.end_0based_exclusive {
+            format!(
+                "{} | cutpoint {}",
+                suggestion.rebase_cut_summary, suggestion.start_0based
+            )
+        } else {
+            format!(
+                "{} | window {}..{}",
+                suggestion.rebase_cut_summary,
+                suggestion.start_0based,
+                suggestion.end_0based_exclusive
+            )
+        }
     }
 
     fn gibson_preview_findings_text(preview: &GibsonAssemblyPreview) -> String {
@@ -13721,7 +13778,10 @@ Error: `{err}`"
         self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
         self.gibson_opening_start_0based = suggestion.start_0based.to_string();
         self.gibson_opening_end_0based_exclusive = suggestion.end_0based_exclusive.to_string();
-        self.gibson_status = format!("Applied Gibson opening suggestion: {}", suggestion.label);
+        self.gibson_status = format!(
+            "Applied Gibson opening suggestion: {} -> {}..{}",
+            suggestion.label, suggestion.start_0based, suggestion.end_0based_exclusive
+        );
     }
 
     fn render_gibson_contents(&mut self, ui: &mut Ui) {
@@ -13730,7 +13790,7 @@ Error: `{err}`"
             "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
         );
         ui.small(
-            "This specialist stays Gibson-specific on purpose: overlap/Tₘ targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
+            "This specialist stays Gibson-specific on purpose: overlap/Tm targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
         );
 
         let sequence_ids = self.project_sequence_ids_for_blast();
@@ -13839,16 +13899,19 @@ Error: `{err}`"
                     .desired_width(120.0),
             );
         });
+        ui.small(
+            "Equal start/end means a cleavage point. A non-empty interval means a removed opening window between the two destination arms.",
+        );
         match &destination_opening_suggestions {
             Ok(suggestions) if !suggestions.is_empty() => {
                 ui.small(
-                    "Suggested openings come from the selected sequence's MCS annotations and unique restriction sites. Choosing one fills the defined-site window but keeps the coordinates editable.",
+                    "Suggested openings come from the selected sequence's MCS annotations and unique restriction sites. Choosing one fills the defined opening with the actual cleavage geometry but keeps the coordinates editable.",
                 );
                 ui.small(
-                    "Choose the MCS feature row when you want the annotated cloning region as a whole. Choose a specific cutter row when you want one known site and its blunt/sticky-end geometry.",
+                    "Choose the MCS feature row when you want the annotated cloning region as a whole. Choose a specific cutter row when you want one known site, its REBASE motif, and its blunt/sticky-end geometry.",
                 );
                 egui::Grid::new("gibson_destination_opening_suggestions")
-                    .num_columns(4)
+                    .num_columns(5)
                     .spacing([12.0, 6.0])
                     .striped(true)
                     .show(ui, |ui| {
@@ -13857,6 +13920,9 @@ Error: `{err}`"
                         );
                         ui.strong("Ends").on_hover_text(
                             "Feature span means an annotation-defined window. Blunt / 5' / 3' rows come from actual restriction-cutter geometry.",
+                        );
+                        ui.strong("REBASE").on_hover_text(
+                            "Recognition motif plus cut information derived from the restriction-enzyme catalog. For specific cutters, the filled opening uses the cleavage window rather than the whole recognition span.",
                         );
                         ui.strong("Source").on_hover_text(
                             "MCS feature = annotation span. MCS / unique cutter = annotation-backed site that is also a unique cutter on the selected destination.",
@@ -13872,6 +13938,8 @@ Error: `{err}`"
                                 Self::gibson_destination_suggestion_geometry_label(suggestion),
                             )
                             .on_hover_text(suggestion_help.clone());
+                            ui.label(Self::gibson_destination_suggestion_rebase_label(suggestion))
+                                .on_hover_text(suggestion_help.clone());
                             ui.label(Self::gibson_destination_suggestion_source_label(suggestion))
                                 .on_hover_text(suggestion_help.clone());
                             if ui
@@ -13949,7 +14017,7 @@ Error: `{err}`"
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_overlap_bp_max).desired_width(60.0),
             );
-            ui.label("minimum overlap Tₘ (°C)")
+            Self::gibson_tm_label(ui, "minimum overlap ", " (°C)", egui::TextStyle::Body, false)
                 .on_hover_text(&tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_minimum_overlap_tm_celsius)
@@ -13957,7 +14025,7 @@ Error: `{err}`"
             );
         });
         ui.horizontal(|ui| {
-            ui.label("priming Tₘ window (°C)")
+            Self::gibson_tm_label(ui, "priming ", " window (°C)", egui::TextStyle::Body, false)
                 .on_hover_text(&tm_help);
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_priming_tm_min_celsius)
@@ -13987,9 +14055,9 @@ Error: `{err}`"
         ui.small(tm_help.as_str());
 
         ui.separator();
-        ui.heading("Tₘ Model");
+        Self::gibson_tm_label(ui, "", " Model", egui::TextStyle::Heading, true);
         egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.small("The Gibson specialist and CLI share one deterministic Tₘ model so preview numbers stay consistent across interfaces.");
+            ui.small("The Gibson specialist and CLI share one deterministic Tm model so preview numbers stay consistent across interfaces.");
             ui.small(tm_help.as_str());
         });
 
@@ -14056,7 +14124,8 @@ Error: `{err}`"
                     ui.strong("junction");
                     ui.strong("members");
                     ui.strong("overlap");
-                    ui.strong("Tₘ (°C)").on_hover_text(&tm_help);
+                    Self::gibson_tm_label(ui, "", " (°C)", egui::TextStyle::Button, true)
+                        .on_hover_text(&tm_help);
                     ui.end_row();
                     for junction in &preview.resolved_junctions {
                         ui.monospace(&junction.junction_id);
@@ -14253,6 +14322,12 @@ Error: `{err}`"
                 );
                 ui.small(
                     "Specific cutter suggestion: use this when you want one concrete restriction site and its end geometry, for example `SmaI` for blunt ends.",
+                );
+                ui.small(
+                    "The REBASE column shows the recognition motif and the stored cut geometry used for that suggestion.",
+                );
+                ui.small(
+                    "Equal defined-opening coordinates mean a blunt cutpoint. A non-empty interval means the cleavage window between recessed termini.",
                 );
                 ui.small(tm_help.as_str());
                 ui.small(active_context_summary);
@@ -29438,7 +29513,7 @@ mod tests {
         let raw = "minimum overlap Tm 60.0 C";
         assert_eq!(
             GENtleApp::humanize_gibson_ui_text(raw),
-            "minimum overlap Tₘ 60.0 °C"
+            "minimum overlap Tm 60.0 °C"
         );
     }
 

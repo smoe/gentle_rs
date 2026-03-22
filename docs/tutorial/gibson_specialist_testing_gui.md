@@ -132,8 +132,8 @@ GUI:
 3. preferred route: in `Suggested openings`, click `Use` on the
    `SmaI | blunt | ...` row if it is offered from the MCS annotation
 4. fallback route if you want a fixed coordinate-only test:
-   - `start_0based = 938`
-   - `end_0based_exclusive = 944`
+   - `start_0based = 941`
+   - `end_0based_exclusive = 941`
 
 Optional prefill check:
 
@@ -148,8 +148,10 @@ Notes:
 - if the destination already carries MCS/unique-cutter knowledge, the specialist
   should now suggest openings biologically rather than forcing you to start from
   raw coordinates alone
-- `938..944` is a stable coordinate-only fallback for the `SmaI` site on the
-  bundled pGEX tutorial destination when you do not want to rely on the
+- equal `start_0based` / `end_0based_exclusive` means a cleavage point rather
+  than a removed span
+- `941..941` is a stable coordinate-only fallback for the `SmaI` cutpoint on
+  the bundled pGEX tutorial destination when you do not want to rely on the
   suggestion table.
 - This tutorial checks the mechanics of the specialist, not whether this exact
   insertion site is biologically optimal.
@@ -296,7 +298,7 @@ Mark the tutorial successful if all of these are true:
 - [ ] `Patterns -> Gibson...` opens and shows all five sections
 - [ ] `Tₘ Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
-- [ ] defined-site opening `938..944` is accepted
+- [ ] defined-site opening `941..941` is accepted
 - [ ] preview returns `2` resolved junctions
 - [ ] preview returns `2` primer suggestions
 - [ ] factual Gibson cartoon is visible
