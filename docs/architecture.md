@@ -807,12 +807,18 @@ Command surface:
     opening-consumed annotations:
     - destination and insert features are transferred deterministically onto
       the assembled product through the shared engine path
-    - destination features intersecting the consumed opening are dropped
-      conservatively instead of being copied forward as truncated-but-possibly
-      invalid annotations
-    - this is especially important for MCS annotations or other vector-local
-      insertion-site markers, which are usually no longer valid once that
-      opening has been consumed
+    - destination features intersecting the consumed opening are now rewritten
+      when a truthful projection is available:
+      - one-sided overlaps are trimmed to the surviving span
+      - simple spanning features are projected as multipart remnants across the
+        edited locus
+      - MCS-like features are projected to the edited locus as one continuous
+        annotation so post-assembly restriction-site validation can include
+        insert-derived sequence
+    - only features that still cannot be projected honestly are dropped
+      - this is especially important for MCS annotations or other vector-local
+      insertion-site markers, which must be cross-checked against the
+      assembled product rather than trusted from the pre-cloning vector
 
 Concrete patch plan: routine-application assistant and alternative-awareness
 

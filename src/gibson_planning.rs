@@ -10,7 +10,7 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{EngineError, ErrorCode, GentleEngine},
     enzymes::active_restriction_enzymes,
-    feature_location::collect_location_ranges_usize,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
     protocol_cartoon::{
         DnaEndStyle, OverhangPolarity, ProtocolCartoonKind, ProtocolCartoonTemplateBindings,
         ProtocolCartoonTemplateEventBinding, ProtocolCartoonTemplateFeatureBinding,
@@ -1275,7 +1275,14 @@ fn build_gibson_assembled_product(
                     .features()
                     .iter()
                     .filter_map(|feature| {
-                        transform_destination_feature_for_defined_site(feature, start, end, delta)
+                        transform_destination_feature_for_defined_site(
+                            feature,
+                            start,
+                            end,
+                            delta,
+                            destination.len() as i64,
+                            oriented_insert.len() as i64,
+                        )
                     }),
             );
             features.extend(clone_shifted_features(oriented_insert, start));
@@ -1289,6 +1296,7 @@ fn build_gibson_assembled_product(
     }
     *product.features_mut() = features;
     product.set_circular(plan.product.topology.trim().eq_ignore_ascii_case("circular"));
+    refresh_projected_mcs_annotations(&mut product);
     Ok(product)
 }
 
@@ -1306,102 +1314,385 @@ fn transform_destination_feature_for_defined_site(
     removed_start: i64,
     removed_end: i64,
     delta: i64,
+    source_len: i64,
+    insert_len: i64,
 ) -> Option<Feature> {
-    let location = transform_location_for_defined_site(
-        &feature.location,
-        removed_start,
-        removed_end,
-        delta,
-    )?;
+    let location = if feature_looks_like_mcs(feature) {
+        transform_mcs_feature_location_for_defined_site(
+            feature,
+            removed_start,
+            removed_end,
+            delta,
+            insert_len,
+        )
+    } else {
+        transform_location_for_defined_site(
+            &feature.location,
+            feature_is_reverse(feature),
+            removed_start,
+            removed_end,
+            delta,
+            source_len,
+        )
+    }?;
     Some(Feature {
         location,
         ..feature.clone()
     })
 }
 
-fn transform_location_for_defined_site(
-    location: &Location,
+fn transform_mcs_feature_location_for_defined_site(
+    feature: &Feature,
     removed_start: i64,
     removed_end: i64,
     delta: i64,
+    insert_len: i64,
 ) -> Option<Location> {
+    let mut ranges = vec![];
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    if ranges.is_empty() {
+        return None;
+    }
+    let feature_start = ranges.iter().map(|(start, _)| *start as i64).min()?;
+    let feature_end = ranges.iter().map(|(_, end)| *end as i64).max()?;
+    if feature_end <= removed_start || feature_start >= removed_end {
+        return shift_location_linear(&feature.location, 0);
+    }
+    let insert_end = removed_start + insert_len;
+    let projected_start = if feature_start < removed_start {
+        feature_start
+    } else {
+        removed_start
+    };
+    let projected_end = if feature_end > removed_end {
+        feature_end + delta
+    } else {
+        insert_end
+    };
+    (projected_end > projected_start)
+        .then(|| Location::simple_range(projected_start, projected_end))
+}
+
+fn transform_location_for_defined_site(
+    location: &Location,
+    is_reverse_feature: bool,
+    removed_start: i64,
+    removed_end: i64,
+    delta: i64,
+    source_len: i64,
+) -> Option<Location> {
+    let left = location.truncate(0, removed_start);
+    let right = location
+        .truncate(removed_end, source_len)
+        .and_then(|location| shift_location_linear(&location, delta));
+    match (left, right) {
+        (Some(left), Some(right)) => Some(join_projected_feature_fragments(
+            left,
+            right,
+            is_reverse_feature,
+        )),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+fn shift_location_linear(location: &Location, delta: i64) -> Option<Location> {
     match location {
         Location::Range((start, before), (end, after)) => {
-            if *end <= removed_start {
-                Some(Location::Range((*start, *before), (*end, *after)))
-            } else if *start >= removed_end {
-                Some(Location::Range(
-                    (*start + delta, *before),
-                    (*end + delta, *after),
-                ))
-            } else {
-                None
-            }
+            let shifted_start = start.checked_add(delta)?;
+            let shifted_end = end.checked_add(delta)?;
+            Some(Location::Range(
+                (shifted_start, *before),
+                (shifted_end, *after),
+            ))
         }
-        Location::Between(left, right) => {
-            let feature_start = (*left).min(*right);
-            let feature_end = (*left).max(*right) + 1;
-            if feature_end <= removed_start {
-                Some(Location::Between(*left, *right))
-            } else if feature_start >= removed_end {
-                Some(Location::Between(*left + delta, *right + delta))
-            } else {
-                None
-            }
-        }
-        Location::Complement(inner) => {
-            transform_location_for_defined_site(inner, removed_start, removed_end, delta)
-                .map(|location| Location::Complement(Box::new(location)))
-        }
-        Location::Join(parts) => transform_location_vec_for_defined_site(
-            parts,
-            removed_start,
-            removed_end,
-            delta,
-        )
-        .map(Location::Join),
-        Location::Order(parts) => transform_location_vec_for_defined_site(
-            parts,
-            removed_start,
-            removed_end,
-            delta,
-        )
-        .map(Location::Order),
-        Location::Bond(parts) => transform_location_vec_for_defined_site(
-            parts,
-            removed_start,
-            removed_end,
-            delta,
-        )
-        .map(Location::Bond),
-        Location::OneOf(parts) => transform_location_vec_for_defined_site(
-            parts,
-            removed_start,
-            removed_end,
-            delta,
-        )
-        .map(Location::OneOf),
+        Location::Between(left, right) => Some(Location::Between(
+            left.checked_add(delta)?,
+            right.checked_add(delta)?,
+        )),
+        Location::Complement(inner) => shift_location_linear(inner, delta)
+            .map(|location| Location::Complement(Box::new(location))),
+        Location::Join(parts) => shift_location_vec_linear(parts, delta).map(Location::Join),
+        Location::Order(parts) => shift_location_vec_linear(parts, delta).map(Location::Order),
+        Location::Bond(parts) => shift_location_vec_linear(parts, delta).map(Location::Bond),
+        Location::OneOf(parts) => shift_location_vec_linear(parts, delta).map(Location::OneOf),
         Location::External(_, _) => None,
         Location::Gap(_) => Some(location.clone()),
     }
 }
 
-fn transform_location_vec_for_defined_site(
-    parts: &[Location],
-    removed_start: i64,
-    removed_end: i64,
-    delta: i64,
-) -> Option<Vec<Location>> {
-    let mut out = Vec::with_capacity(parts.len());
+fn shift_location_vec_linear(parts: &[Location], delta: i64) -> Option<Vec<Location>> {
+    let mut shifted = Vec::with_capacity(parts.len());
     for part in parts {
-        out.push(transform_location_for_defined_site(
-            part,
-            removed_start,
-            removed_end,
-            delta,
-        )?);
+        shifted.push(shift_location_linear(part, delta)?);
     }
-    Some(out)
+    Some(shifted)
+}
+
+fn join_projected_feature_fragments(
+    left: Location,
+    right: Location,
+    is_reverse_feature: bool,
+) -> Location {
+    if is_reverse_feature {
+        if let (Some(left_inner), Some(right_inner)) = (
+            unwrap_single_complement(left.clone()),
+            unwrap_single_complement(right.clone()),
+        ) {
+            return Location::Complement(Box::new(Location::Join(vec![right_inner, left_inner])));
+        }
+    }
+    Location::Join(vec![left, right])
+}
+
+fn unwrap_single_complement(location: Location) -> Option<Location> {
+    match location {
+        Location::Complement(inner) => Some(*inner),
+        _ => None,
+    }
+}
+
+fn feature_looks_like_mcs(feature: &Feature) -> bool {
+    feature
+        .qualifier_values("mcs_expected_sites".into())
+        .next()
+        .is_some()
+        || feature
+            .qualifier_values("mcs_preset".into())
+            .next()
+            .is_some()
+        || feature_first_nonempty_qualifier(
+            feature,
+            &["label", "note", "gene", "name", "standard_name"],
+        )
+        .map(|text| text_mentions_mcs(&text))
+        .unwrap_or(false)
+}
+
+fn refresh_projected_mcs_annotations(product: &mut DNAsequence) {
+    let enzymes = active_restriction_enzymes();
+    let all_sites = product.calculate_restriction_enzyme_sites(&enzymes, None);
+    let seq_len = product.len();
+    let mut global_counts: HashMap<String, usize> = HashMap::new();
+    for site in all_sites.iter().filter(|site| site.forward_strand) {
+        *global_counts.entry(site.enzyme.name.clone()).or_insert(0) += 1;
+    }
+    for feature in product.features_mut() {
+        if !feature_looks_like_mcs(feature) {
+            continue;
+        }
+        rewrite_mcs_feature_qualifiers(feature, &all_sites, &global_counts, seq_len);
+    }
+}
+
+fn rewrite_mcs_feature_qualifiers(
+    feature: &mut Feature,
+    all_sites: &[RestrictionEnzymeSite],
+    global_counts: &HashMap<String, usize>,
+    seq_len: usize,
+) {
+    let lookup = rebase_name_lookup_by_normalized();
+    let original_expected = current_mcs_expected_sites(feature, &lookup);
+    let mut region_sites: Vec<String> = vec![];
+    let mut region_unique_sites: Vec<String> = vec![];
+    let mut region_nonunique_sites: Vec<String> = vec![];
+    let mut seen_region = HashSet::new();
+    let mut seen_unique = HashSet::new();
+    let mut seen_nonunique = HashSet::new();
+    for site in all_sites.iter().filter(|site| site.forward_strand) {
+        if !feature_contains_site_span(feature, site, seq_len) {
+            continue;
+        }
+        if seen_region.insert(site.enzyme.name.clone()) {
+            region_sites.push(site.enzyme.name.clone());
+        }
+        if global_counts.get(&site.enzyme.name).copied() == Some(1) {
+            if seen_unique.insert(site.enzyme.name.clone()) {
+                region_unique_sites.push(site.enzyme.name.clone());
+            }
+        } else if seen_nonunique.insert(site.enzyme.name.clone()) {
+            region_nonunique_sites.push(site.enzyme.name.clone());
+        }
+    }
+    region_sites.sort();
+    region_unique_sites.sort();
+    region_nonunique_sites.sort();
+
+    let unique_set = region_unique_sites.iter().cloned().collect::<HashSet<_>>();
+    let original_set = original_expected.iter().cloned().collect::<HashSet<_>>();
+    let mut gained_sites = unique_set
+        .difference(&original_set)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut lost_sites = original_set
+        .difference(&unique_set)
+        .cloned()
+        .collect::<Vec<_>>();
+    gained_sites.sort();
+    lost_sites.sort();
+
+    if !original_expected.is_empty() && original_expected != region_unique_sites {
+        upsert_feature_qualifier(
+            feature,
+            "mcs_expected_sites_original",
+            Some(original_expected.join(",")),
+        );
+    }
+    upsert_feature_qualifier(
+        feature,
+        "mcs_expected_sites",
+        (!region_unique_sites.is_empty()).then(|| region_unique_sites.join(",")),
+    );
+    upsert_feature_qualifier(
+        feature,
+        "mcs_region_sites",
+        (!region_sites.is_empty()).then(|| region_sites.join(",")),
+    );
+    upsert_feature_qualifier(
+        feature,
+        "mcs_nonunique_sites",
+        (!region_nonunique_sites.is_empty()).then(|| region_nonunique_sites.join(",")),
+    );
+    upsert_feature_qualifier(
+        feature,
+        "mcs_gained_unique_sites",
+        (!gained_sites.is_empty()).then(|| gained_sites.join(",")),
+    );
+    upsert_feature_qualifier(
+        feature,
+        "mcs_lost_or_nonunique_sites",
+        (!lost_sites.is_empty()).then(|| lost_sites.join(",")),
+    );
+    upsert_feature_qualifier(
+        feature,
+        "mcs_crosscheck_status",
+        Some("validated_against_assembled_product".to_string()),
+    );
+
+    let mut note = feature
+        .qualifier_values("note".into())
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let summary = build_mcs_crosscheck_note(
+        &region_unique_sites,
+        &region_nonunique_sites,
+        &gained_sites,
+        &lost_sites,
+    );
+    if !summary.is_empty() {
+        if !note.is_empty() {
+            note.push(' ');
+        }
+        note.push_str(&summary);
+        upsert_feature_qualifier(feature, "note", Some(note));
+    }
+}
+
+fn current_mcs_expected_sites(
+    feature: &Feature,
+    lookup: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut out = vec![];
+    let mut seen = HashSet::new();
+    for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+        for token in raw
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Some(name) = canonicalize_rebase_enzyme_name(token, lookup) {
+                if seen.insert(name.clone()) {
+                    out.push(name);
+                }
+            } else {
+                for name in extract_rebase_enzyme_names_from_text(token, lookup) {
+                    if seen.insert(name.clone()) {
+                        out.push(name);
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn feature_contains_site_span(
+    feature: &Feature,
+    site: &RestrictionEnzymeSite,
+    seq_len: usize,
+) -> bool {
+    let start = usize::try_from(site.offset).ok();
+    let Some(start) = start else {
+        return false;
+    };
+    let end = start.saturating_add(site.enzyme.sequence.len());
+    let mut feature_ranges = vec![];
+    collect_location_ranges_usize(&feature.location, &mut feature_ranges);
+    if feature_ranges.is_empty() {
+        return false;
+    }
+    let site_segments = if end <= seq_len {
+        vec![(start, end)]
+    } else {
+        vec![(start, seq_len), (0, end - seq_len)]
+    };
+    site_segments.into_iter().all(|(segment_start, segment_end)| {
+        feature_ranges
+            .iter()
+            .any(|(feature_start, feature_end)| {
+                segment_start >= *feature_start && segment_end <= *feature_end
+            })
+    })
+}
+
+fn upsert_feature_qualifier(feature: &mut Feature, key: &str, value: Option<String>) {
+    let qualifier_key = key.into();
+    feature
+        .qualifiers
+        .retain(|(existing_key, _)| existing_key.as_ref() != key);
+    if let Some(value) = value.filter(|value| !value.trim().is_empty()) {
+        feature.qualifiers.push((qualifier_key, Some(value)));
+    }
+}
+
+fn build_mcs_crosscheck_note(
+    unique_sites: &[String],
+    nonunique_sites: &[String],
+    gained_sites: &[String],
+    lost_sites: &[String],
+) -> String {
+    let mut parts = vec![];
+    if unique_sites.is_empty() {
+        parts.push("Current unique restriction sites in this annotated MCS region on the assembled product: none.".to_string());
+    } else {
+        parts.push(format!(
+            "Current unique restriction sites in this annotated MCS region on the assembled product: {}.",
+            unique_sites.join(", ")
+        ));
+    }
+    if !nonunique_sites.is_empty() {
+        parts.push(format!(
+            "Region sites that are present but not unique in the assembled product: {}.",
+            nonunique_sites.join(", ")
+        ));
+    }
+    if !gained_sites.is_empty() {
+        parts.push(format!(
+            "Newly introduced unique sites in this region: {}.",
+            gained_sites.join(", ")
+        ));
+    }
+    if !lost_sites.is_empty() {
+        parts.push(format!(
+            "Originally expected sites that are no longer unique or no longer present: {}.",
+            lost_sites.join(", ")
+        ));
+    }
+    parts.join(" ")
 }
 
 fn empty_protocol_cartoon_bindings() -> ProtocolCartoonTemplateBindings {
@@ -2312,6 +2603,19 @@ mod tests {
             .unwrap_or_else(|| panic!("feature '{label}' should exist"))
     }
 
+    fn feature_qualifier(feature: &Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key.into())
+            .next()
+            .map(str::to_string)
+    }
+
+    fn qualifier_csv_contains(feature: &Feature, key: &str, expected: &str) -> bool {
+        feature_qualifier(feature, key)
+            .map(|value| value.split(',').any(|token| token.trim() == expected))
+            .unwrap_or(false)
+    }
+
     #[test]
     fn preview_single_insert_plan_returns_junctions_and_primers() {
         let engine = test_engine_with_sequences();
@@ -2500,7 +2804,7 @@ mod tests {
     }
 
     #[test]
-    fn derive_execution_plan_defined_site_transfers_features_and_drops_consumed_annotations() {
+    fn derive_execution_plan_defined_site_rewrites_partially_consumed_features() {
         let mut engine = test_engine_with_sequences();
         {
             let destination = engine
@@ -2520,6 +2824,16 @@ mod tests {
             });
             destination.features_mut().push(Feature {
                 kind: FeatureKind::from("gene"),
+                location: Location::simple_range(8, 14),
+                qualifiers: vec![("label".into(), Some("LEFT_PARTIAL".to_string()))],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
+                location: Location::simple_range(16, 24),
+                qualifiers: vec![("label".into(), Some("RIGHT_PARTIAL".to_string()))],
+            });
+            destination.features_mut().push(Feature {
+                kind: FeatureKind::from("gene"),
                 location: Location::Join(vec![
                     Location::simple_range(40, 48),
                     Location::simple_range(0, 2),
@@ -2534,6 +2848,7 @@ mod tests {
                         "label".into(),
                         Some("Multiple Cloning Site (MCS)".to_string()),
                     ),
+                    ("mcs_expected_sites".into(), Some("SmaI".to_string())),
                     ("note".into(), Some("contains SmaI".to_string())),
                 ],
             });
@@ -2564,22 +2879,6 @@ mod tests {
             .find(|row| row.kind == "assembled_product")
             .expect("assembled product output");
 
-        assert!(product.dna.features().iter().all(|feature| {
-            feature_first_nonempty_qualifier(
-                feature,
-                &["label", "standard_name", "name", "gene", "note"],
-            )
-            .as_deref()
-                != Some("Multiple Cloning Site (MCS)")
-        }));
-        assert!(product.dna.features().iter().all(|feature| {
-            feature_first_nonempty_qualifier(
-                feature,
-                &["label", "standard_name", "name", "gene", "note"],
-            )
-            .as_deref()
-                != Some("SPAN")
-        }));
         assert_eq!(
             feature_by_label(&product.dna, "LEFT")
                 .location
@@ -2602,9 +2901,171 @@ mod tests {
             (16, 22)
         );
         assert_eq!(
+            feature_by_label(&product.dna, "LEFT_PARTIAL")
+                .location
+                .find_bounds()
+                .expect("LEFT_PARTIAL bounds"),
+            (8, 12)
+        );
+        assert_eq!(
+            feature_by_label(&product.dna, "RIGHT_PARTIAL")
+                .location
+                .find_bounds()
+                .expect("RIGHT_PARTIAL bounds"),
+            (60, 66)
+        );
+        assert_eq!(
             feature_ranges_sorted_i64(feature_by_label(&product.dna, "WRAP")),
             vec![(0, 2), (82, 90)]
         );
+        assert_eq!(
+            feature_ranges_sorted_i64(feature_by_label(&product.dna, "SPAN")),
+            vec![(6, 12), (60, 66)]
+        );
+        let mcs = feature_by_label(&product.dna, "Multiple Cloning Site (MCS)");
+        assert_eq!(
+            mcs.location.find_bounds().expect("MCS bounds"),
+            (10, 62)
+        );
+        assert_eq!(
+            feature_qualifier(mcs, "mcs_crosscheck_status").as_deref(),
+            Some("validated_against_assembled_product")
+        );
+    }
+
+    #[test]
+    fn derive_execution_plan_revalidates_mcs_sites_against_assembled_product() {
+        let mut engine = GentleEngine::new();
+        let mut destination = DNAsequence::from_sequence(
+            "ACGTACGTACGTACGTACGATTCCCGGGAATTAACCGGTTAACCGGTTAA",
+        )
+        .expect("destination");
+        destination.set_circular(true);
+        destination.features_mut().push(Feature {
+            kind: FeatureKind::from("misc_feature"),
+            location: Location::simple_range(20, 30),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("Multiple Cloning Site (MCS)".to_string()),
+                ),
+                ("note".into(), Some("contains SmaI".to_string())),
+                ("mcs_expected_sites".into(), Some("SmaI".to_string())),
+            ],
+        });
+        let insert =
+            DNAsequence::from_sequence("ATGCGTACGAATTCGTCAGTACGA").expect("insert sequence");
+        engine
+            .state_mut()
+            .sequences
+            .insert("mcs_destination".to_string(), destination);
+        engine
+            .state_mut()
+            .sequences
+            .insert("mcs_insert".to_string(), insert);
+
+        let plan: GibsonAssemblyPlan = serde_json::from_str(
+            r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "mcs_crosscheck",
+  "title": "MCS cross-check",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "mcs_destination",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "SmaI window",
+      "start_0based": 22,
+      "end_0based_exclusive": 28,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "mcs_out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "mcs_insert",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 20,
+      "overlap_bp_max": 20,
+      "minimum_overlap_tm_celsius": 0.0,
+      "priming_segment_tm_min_celsius": 0.0,
+      "priming_segment_tm_max_celsius": 200.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 24,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#,
+        )
+        .expect("plan");
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("execution plan output");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        let mcs = feature_by_label(&product.dna, "Multiple Cloning Site (MCS)");
+        let expected = feature_qualifier(mcs, "mcs_expected_sites").unwrap_or_default();
+        assert!(expected.contains("EcoRI"), "mcs_expected_sites={expected}");
+        assert_eq!(
+            feature_qualifier(mcs, "mcs_expected_sites_original").as_deref(),
+            Some("SmaI")
+        );
+        assert!(qualifier_csv_contains(mcs, "mcs_gained_unique_sites", "EcoRI"));
+        assert!(qualifier_csv_contains(
+            mcs,
+            "mcs_lost_or_nonunique_sites",
+            "SmaI"
+        ));
+        let note = feature_qualifier(mcs, "note").unwrap_or_default();
+        assert!(note.contains("Newly introduced unique sites in this region:"));
+        assert!(note.contains("EcoRI"));
     }
 
     #[test]

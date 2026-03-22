@@ -74,9 +74,11 @@ order. Durable architecture constraints and decisions remain in
     - deterministic feature transfer onto the assembled Gibson product
     - lineage reopen path: clicking a Gibson operation reopens the specialist
       with the saved plan loaded again
-    - opening-consumed destination annotations are dropped conservatively
-      during product transfer, so used MCS spans are not carried forward as if
-      they were still valid on the assembled product
+    - partially consumed destination annotations are now trimmed/projected when
+      the product-side rewrite is honest enough to preserve them
+    - surviving MCS annotations are cross-checked against actual assembled
+      product restriction sites and uniqueness, including insert-introduced
+      sites
     - protocol-cartoon preview/export
     - Routine Assistant handoff when the destination already uses existing
       linear termini
@@ -1625,8 +1627,8 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - multi-fragment Gibson planning, preview, and cartoon generation
     - richer user influence over Gibson PCR/primer design while still keeping
       the specialist high-level and Gibson-specific
-    - richer feature rewriting/projection for partially consumed destination
-      annotations beyond the current conservative drop-on-intersection rule
+    - richer semantic rescue for interrupted annotations beyond the current
+      trim/join/edited-locus projection rules, especially for CDS/gene models
     - specialist option to introduce one new unique restriction-endonuclease
       cleavage site during Gibson primer/design derivation
     - circularize-fragment workflows and richer Routine Assistant handoff

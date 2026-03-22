@@ -913,9 +913,26 @@ fn execute_gibson_apply_creates_output_sequences() {
         labels.iter().any(|label| label == "INSERT"),
         "product labels: {labels:?}; features: {feature_debug:?}"
     );
-    assert!(!labels
+    assert!(
+        labels
+            .iter()
+            .any(|label| label == "Multiple Cloning Site (MCS)"),
+        "product labels: {labels:?}; features: {feature_debug:?}"
+    );
+    let mcs = product
+        .features()
         .iter()
-        .any(|label| label == "Multiple Cloning Site (MCS)"));
+        .find(|feature| {
+            feature
+                .qualifier_values("label".into())
+                .next()
+                == Some("Multiple Cloning Site (MCS)")
+        })
+        .expect("assembled product MCS feature");
+    assert_eq!(
+        mcs.qualifier_values("mcs_crosscheck_status".into()).next(),
+        Some("validated_against_assembled_product")
+    );
     assert!(
         engine
             .operation_log()

@@ -398,10 +398,20 @@ Current v1 scope and limits:
     - assembled product
   - transfers destination and insert features onto the assembled product
     deterministically through the shared engine path
-  - destination features intersecting the consumed opening are dropped
-    conservatively instead of being copied forward as truncated annotations;
-    this is especially important for opening-consumed annotations such as an
-    MCS, which should usually be removed or rewritten rather than preserved
+  - destination features intersecting the consumed opening are now projected
+    when a truthful rewrite is available:
+    - one-sided overlaps are trimmed to the surviving product span
+    - simple spanning features can survive as multipart remnants
+    - MCS-like annotations are projected to the edited locus and revalidated
+      against actual restriction-enzyme sites on the assembled product
+  - the MCS cross-check is product-aware:
+    - `mcs_expected_sites` is rewritten to the currently unique cutter set for
+      that annotated region on the assembled product
+    - `mcs_expected_sites_original`, `mcs_region_sites`,
+      `mcs_nonunique_sites`, `mcs_gained_unique_sites`, and
+      `mcs_lost_or_nonunique_sites` preserve the cross-check result
+    - insert-derived sequence may introduce new sites, and those new sites are
+      considered during the same validation pass
   - records one operation-log row so GUI lineage/CLI state replay can reopen
     the specialist from the saved plan without silently re-running it
 

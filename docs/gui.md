@@ -605,10 +605,12 @@ Patterns menu:
        - `Apply Gibson Cloning` runs one shared engine operation and creates
          new sequence nodes for the two insert primers and the assembled
          product
-       - the assembled product carries transferred destination/insert features;
-         destination annotations intersecting the consumed opening are dropped
-         conservatively, so used MCS spans are not copied forward as if still
-         valid
+       - the assembled product carries transferred destination/insert features
+       - partially consumed destination annotations are trimmed or projected
+         when a truthful product-side rewrite is available
+       - surviving MCS annotations are revalidated against actual restriction
+         sites on the assembled product, including new sites introduced by the
+         insert
        - export plan JSON
        - export preview JSON
        - export primer summary

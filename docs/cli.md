@@ -1254,8 +1254,11 @@ Rendering export commands:
     - right insert primer
     - assembled product
   - Transfers destination and insert features onto the assembled product
-    deterministically; destination annotations intersecting the consumed
-    opening are dropped conservatively rather than copied forward blindly.
+    deterministically.
+  - Partially consumed destination annotations are trimmed or projected when a
+    truthful product-side rewrite is available.
+  - Surviving MCS annotations are revalidated against actual restriction sites
+    on the assembled product, including new sites introduced by the insert.
   - Returns the standard mutating `OpResult`, including created sequence IDs,
     warnings, messages, and the operation ID used for provenance/reopen flows.
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
