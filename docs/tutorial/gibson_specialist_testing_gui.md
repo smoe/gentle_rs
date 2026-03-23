@@ -277,6 +277,13 @@ cargo run --quiet --bin gentle_cli -- \
   --output "${HOME}/Desktop/gibson_ui_test.preview.from_cli.json"
 ```
 
+The two input files are different on purpose:
+
+- `gibson_ui_test.project.gentle.json` is the project you saved via
+  `Save Project As...`
+- `gibson_ui_test.plan.json` is the Gibson plan you exported earlier via
+  `Export Plan JSON...` in Step 8
+
 Then compare the GUI-exported preview with the CLI-generated preview:
 
 ```bash
