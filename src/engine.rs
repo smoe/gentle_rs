@@ -3015,6 +3015,8 @@ impl RnaReadScoreDensityScale {
 #[serde(default)]
 pub struct RnaReadSeedFilterConfig {
     pub kmer_len: usize,
+    #[serde(default = "default_rna_seed_stride_bp")]
+    pub seed_stride_bp: usize,
     pub short_full_hash_max_bp: usize,
     pub long_window_bp: usize,
     pub long_window_count: usize,
@@ -3041,6 +3043,7 @@ impl Default for RnaReadSeedFilterConfig {
     fn default() -> Self {
         Self {
             kmer_len: 10,
+            seed_stride_bp: 1,
             short_full_hash_max_bp: 420,
             long_window_bp: 140,
             long_window_count: 3,
@@ -3063,6 +3066,10 @@ fn default_true() -> bool {
 
 fn default_poly_t_prefix_min_bp() -> usize {
     18
+}
+
+fn default_rna_seed_stride_bp() -> usize {
+    1
 }
 
 fn default_min_weighted_seed_hit_fraction() -> f64 {
