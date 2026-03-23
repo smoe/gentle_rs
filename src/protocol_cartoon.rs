@@ -988,7 +988,7 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
     }
 
     let panel_w = 308.0_f32;
-    let panel_h = 292.0_f32;
+    let panel_h = 324.0_f32;
     let panel_gap = 24.0_f32;
     let margin_x = 36.0_f32;
     let margin_y = 28.0_f32;
@@ -1133,7 +1133,7 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
 
         let molecule_count = event.molecules.len();
         let molecule_y0 = panel_top + 126.0;
-        let molecule_y1 = panel_top + panel_h - 34.0;
+        let molecule_y1 = panel_top + panel_h - 40.0;
         let molecule_step = if molecule_count <= 1 {
             0.0
         } else {
@@ -1661,11 +1661,11 @@ fn gibson_single_insert_dual_junction_template() -> ProtocolCartoonTemplate {
 }
 
 fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
-    const DEST_BODY_BP: usize = 64;
-    const INSERT_BODY_BP: usize = 72;
+    const DEST_BODY_BP: usize = 54;
+    const INSERT_BODY_BP: usize = 52;
     const LEFT_OVERLAP_BP: usize = 24;
     const RIGHT_OVERLAP_BP: usize = 24;
-    const PENDING_FILL_BP: usize = 10;
+    const PENDING_FILL_BP: usize = 12;
 
     let destination_color = "#f2c94c";
     let insert_color = "#3f80e0";
@@ -1794,7 +1794,7 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
             ProtocolCartoonEvent {
                 id: "chew_back".to_string(),
                 title: "Chew-back".to_string(),
-                caption: "A 5' exonuclease exposes one single-stranded 3' overhang at each destination arm and both ends of the insert.".to_string(),
+                caption: "A 5' exonuclease exposes one single-stranded 3' overhang at each destination arm and both ends of the insert, continuing slightly past each homology region so polymerase still has work to do.".to_string(),
                 action: ProtocolCartoonAction::Custom {
                     label: "5' Exonuclease".to_string(),
                 },
@@ -1816,11 +1816,22 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                                 bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
+                                id: "dest_left_tail_exposed".to_string(),
+                                label: "Left-side gap to be filled".to_string(),
+                                length_bp: PENDING_FILL_BP,
+                                top_length_bp: PENDING_FILL_BP,
+                                bottom_length_bp: 0,
+                                color_hex: destination_color.to_string(),
+                                bottom_color_hex: destination_color.to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
                                 id: "left_overlap_exposed".to_string(),
                                 label: "Left junction homology".to_string(),
                                 length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: LEFT_OVERLAP_BP,
+                                top_length_bp: LEFT_OVERLAP_BP,
+                                bottom_length_bp: 0,
                                 color_hex: left_junction_color.to_string(),
                                 bottom_color_hex: left_junction_color.to_string(),
                                 top_nick_after: false,
@@ -1830,7 +1841,7 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                         left_end: Some(DnaEndStyle::Continuation),
                         right_end: Some(DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
-                            nt: LEFT_OVERLAP_BP,
+                            nt: LEFT_OVERLAP_BP + PENDING_FILL_BP,
                         }),
                     },
                     DnaMoleculeCartoon {
@@ -1842,10 +1853,21 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                                 id: "insert_left_overlap_exposed".to_string(),
                                 label: "Left junction homology".to_string(),
                                 length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: LEFT_OVERLAP_BP,
-                                bottom_length_bp: 0,
+                                top_length_bp: 0,
+                                bottom_length_bp: LEFT_OVERLAP_BP,
                                 color_hex: left_junction_color.to_string(),
                                 bottom_color_hex: left_junction_color.to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
+                                id: "insert_left_tail_exposed".to_string(),
+                                label: "Insert left-side gap".to_string(),
+                                length_bp: PENDING_FILL_BP,
+                                top_length_bp: 0,
+                                bottom_length_bp: PENDING_FILL_BP,
+                                color_hex: insert_color.to_string(),
+                                bottom_color_hex: insert_color.to_string(),
                                 top_nick_after: false,
                                 bottom_nick_after: false,
                             },
@@ -1861,11 +1883,22 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                                 bottom_nick_after: false,
                             },
                             DnaFeatureCartoon {
+                                id: "insert_right_tail_exposed".to_string(),
+                                label: "Insert right-side gap".to_string(),
+                                length_bp: PENDING_FILL_BP,
+                                top_length_bp: PENDING_FILL_BP,
+                                bottom_length_bp: 0,
+                                color_hex: insert_color.to_string(),
+                                bottom_color_hex: insert_color.to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
                                 id: "insert_right_overlap_exposed".to_string(),
                                 label: "Right junction homology".to_string(),
                                 length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: RIGHT_OVERLAP_BP,
+                                top_length_bp: RIGHT_OVERLAP_BP,
+                                bottom_length_bp: 0,
                                 color_hex: right_junction_color.to_string(),
                                 bottom_color_hex: right_junction_color.to_string(),
                                 top_nick_after: false,
@@ -1874,11 +1907,11 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                         ],
                         left_end: Some(DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
-                            nt: LEFT_OVERLAP_BP,
+                            nt: LEFT_OVERLAP_BP + PENDING_FILL_BP,
                         }),
                         right_end: Some(DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
-                            nt: RIGHT_OVERLAP_BP,
+                            nt: RIGHT_OVERLAP_BP + PENDING_FILL_BP,
                         }),
                     },
                     DnaMoleculeCartoon {
@@ -1890,10 +1923,21 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                                 id: "right_overlap_exposed".to_string(),
                                 label: "Right junction homology".to_string(),
                                 length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: RIGHT_OVERLAP_BP,
-                                bottom_length_bp: 0,
+                                top_length_bp: 0,
+                                bottom_length_bp: RIGHT_OVERLAP_BP,
                                 color_hex: right_junction_color.to_string(),
                                 bottom_color_hex: right_junction_color.to_string(),
+                                top_nick_after: false,
+                                bottom_nick_after: false,
+                            },
+                            DnaFeatureCartoon {
+                                id: "dest_right_tail_exposed".to_string(),
+                                label: "Right-side gap to be filled".to_string(),
+                                length_bp: PENDING_FILL_BP,
+                                top_length_bp: 0,
+                                bottom_length_bp: PENDING_FILL_BP,
+                                color_hex: destination_color.to_string(),
+                                bottom_color_hex: destination_color.to_string(),
                                 top_nick_after: false,
                                 bottom_nick_after: false,
                             },
@@ -1911,7 +1955,7 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                         ],
                         left_end: Some(DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
-                            nt: RIGHT_OVERLAP_BP,
+                            nt: RIGHT_OVERLAP_BP + PENDING_FILL_BP,
                         }),
                         right_end: Some(DnaEndStyle::Continuation),
                     },
@@ -1920,7 +1964,7 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
             ProtocolCartoonEvent {
                 id: "anneal".to_string(),
                 title: "Anneal".to_string(),
-                caption: "The insert anneals to the left and right destination arms at both junctions while short single-stranded gaps remain between the paired overlaps.".to_string(),
+                caption: "The insert anneals to the left and right destination arms at both junctions while short single-stranded unique tails remain on both sides of the paired overlaps.".to_string(),
                 action: ProtocolCartoonAction::Anneal,
                 molecules: vec![DnaMoleculeCartoon {
                     id: "annealed_intermediate".to_string(),
@@ -1939,6 +1983,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
+                            id: "dest_left_tail".to_string(),
+                            label: "Left-side gap to be filled".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: 0,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
                             id: "left_overlap".to_string(),
                             label: "Left junction homology".to_string(),
                             length_bp: LEFT_OVERLAP_BP,
@@ -1950,11 +2005,11 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "left_pending_fill".to_string(),
-                            label: "Left gap pending fill-in".to_string(),
+                            id: "insert_left_tail".to_string(),
+                            label: "Insert left-side gap".to_string(),
                             length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: 0,
+                            top_length_bp: 0,
+                            bottom_length_bp: PENDING_FILL_BP,
                             color_hex: insert_color.to_string(),
                             bottom_color_hex: insert_color.to_string(),
                             top_nick_after: false,
@@ -1972,11 +2027,11 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "right_pending_fill".to_string(),
-                            label: "Right gap pending fill-in".to_string(),
+                            id: "insert_right_tail".to_string(),
+                            label: "Insert right-side gap".to_string(),
                             length_bp: PENDING_FILL_BP,
-                            top_length_bp: 0,
-                            bottom_length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: 0,
                             color_hex: insert_color.to_string(),
                             bottom_color_hex: insert_color.to_string(),
                             top_nick_after: false,
@@ -1990,6 +2045,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_length_bp: RIGHT_OVERLAP_BP,
                             color_hex: right_junction_color.to_string(),
                             bottom_color_hex: right_junction_color.to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "dest_right_tail".to_string(),
+                            label: "Right-side gap to be filled".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: 0,
+                            bottom_length_bp: PENDING_FILL_BP,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
                             top_nick_after: false,
                             bottom_nick_after: false,
                         },
@@ -2028,6 +2094,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             color_hex: destination_color.to_string(),
                             bottom_color_hex: destination_color.to_string(),
                             top_nick_after: false,
+                            bottom_nick_after: true,
+                        },
+                        DnaFeatureCartoon {
+                            id: "dest_left_tail".to_string(),
+                            label: "Left repaired gap".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: PENDING_FILL_BP,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
+                            top_nick_after: false,
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
@@ -2042,15 +2119,15 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "left_filled_segment".to_string(),
-                            label: "Left repaired gap".to_string(),
+                            id: "insert_left_tail".to_string(),
+                            label: "Insert left repaired gap".to_string(),
                             length_bp: PENDING_FILL_BP,
                             top_length_bp: PENDING_FILL_BP,
                             bottom_length_bp: PENDING_FILL_BP,
                             color_hex: insert_color.to_string(),
                             bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: true,
+                            top_nick_after: true,
+                            bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
                             id: "insert_body".to_string(),
@@ -2061,17 +2138,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             color_hex: insert_color.to_string(),
                             bottom_color_hex: insert_color.to_string(),
                             top_nick_after: false,
-                            bottom_nick_after: false,
+                            bottom_nick_after: true,
                         },
                         DnaFeatureCartoon {
-                            id: "right_filled_segment".to_string(),
-                            label: "Right repaired gap".to_string(),
+                            id: "insert_right_tail".to_string(),
+                            label: "Insert right repaired gap".to_string(),
                             length_bp: PENDING_FILL_BP,
                             top_length_bp: PENDING_FILL_BP,
                             bottom_length_bp: PENDING_FILL_BP,
                             color_hex: insert_color.to_string(),
                             bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: true,
+                            top_nick_after: false,
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
@@ -2083,6 +2160,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             color_hex: right_junction_color.to_string(),
                             bottom_color_hex: right_junction_color.to_string(),
                             top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "dest_right_tail".to_string(),
+                            label: "Right repaired gap".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: PENDING_FILL_BP,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
+                            top_nick_after: true,
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
@@ -2123,6 +2211,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
+                            id: "dest_left_tail".to_string(),
+                            label: "Left repaired gap".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: PENDING_FILL_BP,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
                             id: "left_overlap".to_string(),
                             label: "Left junction homology".to_string(),
                             length_bp: LEFT_OVERLAP_BP,
@@ -2134,8 +2233,8 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "left_filled_segment".to_string(),
-                            label: "Left repaired gap".to_string(),
+                            id: "insert_left_tail".to_string(),
+                            label: "Insert left repaired gap".to_string(),
                             length_bp: PENDING_FILL_BP,
                             top_length_bp: PENDING_FILL_BP,
                             bottom_length_bp: PENDING_FILL_BP,
@@ -2156,8 +2255,8 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_nick_after: false,
                         },
                         DnaFeatureCartoon {
-                            id: "right_filled_segment".to_string(),
-                            label: "Right repaired gap".to_string(),
+                            id: "insert_right_tail".to_string(),
+                            label: "Insert right repaired gap".to_string(),
                             length_bp: PENDING_FILL_BP,
                             top_length_bp: PENDING_FILL_BP,
                             bottom_length_bp: PENDING_FILL_BP,
@@ -2174,6 +2273,17 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
                             bottom_length_bp: RIGHT_OVERLAP_BP,
                             color_hex: right_junction_color.to_string(),
                             bottom_color_hex: right_junction_color.to_string(),
+                            top_nick_after: false,
+                            bottom_nick_after: false,
+                        },
+                        DnaFeatureCartoon {
+                            id: "dest_right_tail".to_string(),
+                            label: "Right repaired gap".to_string(),
+                            length_bp: PENDING_FILL_BP,
+                            top_length_bp: PENDING_FILL_BP,
+                            bottom_length_bp: PENDING_FILL_BP,
+                            color_hex: destination_color.to_string(),
+                            bottom_color_hex: destination_color.to_string(),
                             top_nick_after: false,
                             bottom_nick_after: false,
                         },
@@ -2942,6 +3052,91 @@ mod tests {
         let seal = &spec.events[4].molecules[0];
         assert!(seal.features.iter().any(|feature| feature.id == "left_overlap"));
         assert!(seal.features.iter().any(|feature| feature.id == "right_overlap"));
+    }
+
+    #[test]
+    fn dual_junction_chew_back_uses_correct_5prime_exonuclease_strands() {
+        let spec =
+            protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
+        let chew = &spec.events[1];
+        let left_arm = &chew.molecules[0];
+        let insert = &chew.molecules[1];
+        let right_arm = &chew.molecules[2];
+
+        assert_eq!(
+            left_arm.features.last().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            Some((24, 0))
+        );
+        assert_eq!(
+            insert.features.first().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            Some((0, 24))
+        );
+        assert_eq!(
+            insert.features.last().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            Some((24, 0))
+        );
+        assert_eq!(
+            right_arm.features.first().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            Some((0, 24))
+        );
+    }
+
+    #[test]
+    fn dual_junction_chew_back_extends_past_overlap_for_fill_in() {
+        let spec =
+            protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
+        let chew = &spec.events[1];
+        let left_arm = &chew.molecules[0];
+        let insert = &chew.molecules[1];
+        let right_arm = &chew.molecules[2];
+
+        assert_eq!(left_arm.features[1].id, "dest_left_tail_exposed");
+        assert_eq!(
+            (left_arm.features[1].top_length_bp, left_arm.features[1].bottom_length_bp),
+            (10, 0)
+        );
+        assert_eq!(insert.features[1].id, "insert_left_tail_exposed");
+        assert_eq!(
+            (insert.features[1].top_length_bp, insert.features[1].bottom_length_bp),
+            (0, 10)
+        );
+        assert_eq!(insert.features[3].id, "insert_right_tail_exposed");
+        assert_eq!(
+            (insert.features[3].top_length_bp, insert.features[3].bottom_length_bp),
+            (10, 0)
+        );
+        assert_eq!(right_arm.features[1].id, "dest_right_tail_exposed");
+        assert_eq!(
+            (right_arm.features[1].top_length_bp, right_arm.features[1].bottom_length_bp),
+            (0, 10)
+        );
+    }
+
+    #[test]
+    fn dual_junction_anneal_leaves_gaps_on_both_sides_of_each_overlap() {
+        let spec =
+            protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
+        let anneal = &spec.events[2].molecules[0];
+        assert_eq!(anneal.features[1].id, "dest_left_tail");
+        assert_eq!(
+            (anneal.features[1].top_length_bp, anneal.features[1].bottom_length_bp),
+            (10, 0)
+        );
+        assert_eq!(anneal.features[3].id, "insert_left_tail");
+        assert_eq!(
+            (anneal.features[3].top_length_bp, anneal.features[3].bottom_length_bp),
+            (0, 10)
+        );
+        assert_eq!(anneal.features[5].id, "insert_right_tail");
+        assert_eq!(
+            (anneal.features[5].top_length_bp, anneal.features[5].bottom_length_bp),
+            (10, 0)
+        );
+        assert_eq!(anneal.features[7].id, "dest_right_tail");
+        assert_eq!(
+            (anneal.features[7].top_length_bp, anneal.features[7].bottom_length_bp),
+            (0, 10)
+        );
     }
 
     #[test]

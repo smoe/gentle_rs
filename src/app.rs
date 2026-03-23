@@ -14368,9 +14368,11 @@ Error: `{err}`"
             .iter()
             .find(|primer| primer.side == "right_insert_primer")?;
         Some(format!(
-            "left primer  : [{}][{}]\nright primer : [{}][{}]",
+            "left primer\n  full       : {}\n  5' overlap : {}\n  3' priming : {}\nright primer\n  full       : {}\n  5' overlap : {}\n  3' priming : {}",
+            Self::compact_gibson_sequence(&left_primer.full_sequence, 10),
             Self::compact_gibson_sequence(&left_primer.overlap_5prime.sequence, 8),
             Self::compact_gibson_sequence(&left_primer.priming_3prime.sequence, 8),
+            Self::compact_gibson_sequence(&right_primer.full_sequence, 10),
             Self::compact_gibson_sequence(&right_primer.overlap_5prime.sequence, 8),
             Self::compact_gibson_sequence(&right_primer.priming_3prime.sequence, 8),
         ))
@@ -14827,7 +14829,7 @@ Error: `{err}`"
                         Self::gibson_primer_construction_text(preview)
                     {
                         ui.small("Insert primer construction:");
-                        let primer_rows = primer_construction_text.lines().count().clamp(2, 4);
+                        let primer_rows = primer_construction_text.lines().count().clamp(6, 10);
                         ui.add(
                             egui::TextEdit::multiline(&mut primer_construction_text)
                                 .desired_rows(primer_rows)
@@ -15086,7 +15088,7 @@ Error: `{err}`"
                 ui.add(
                     egui::Image::from_uri(self.gibson_preview_svg_uri.clone())
                         .max_width(ui.available_width())
-                        .max_height(360.0)
+                        .max_height(420.0)
                         .shrink_to_fit(),
                 );
             } else {

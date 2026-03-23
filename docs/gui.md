@@ -638,6 +638,12 @@ Patterns menu:
        - the current single-insert preview cartoon now shows both
          destination-insert junctions explicitly instead of collapsing the
          mechanism to one representative overlap
+       - cartoon panel text now avoids raw nucleotide strings inside the
+         panels; the cartoon stays focused on mechanism while sequence details
+         remain in the textual review blocks
+       - the `Insert primer construction` block now shows both primers
+         explicitly, including compact full-sequence plus `5' overlap` and
+         `3' priming` parts
        - preview notes repeat the shared Tm-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`

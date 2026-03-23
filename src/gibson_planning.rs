@@ -2411,6 +2411,7 @@ fn build_cartoon_bindings(
     right_overlap_seq: &str,
     representative_overlap_bp: usize,
 ) -> ProtocolCartoonTemplateBindings {
+    const CARTOON_FILL_TAIL_BP: usize = 10;
     let destination_label = compact_cartoon_label(&preview.destination.seq_id, "Destination", 18);
     let insert_label = compact_cartoon_label(&preview.insert.seq_id, "Insert", 18);
     let left_bp = preview
@@ -2425,8 +2426,8 @@ fn build_cartoon_bindings(
         .unwrap_or(representative_overlap_bp);
     let left_overlap_note = format!("left homology {} bp", left_bp);
     let right_overlap_note = format!("right homology {} bp", right_bp);
-    let compact_left_overlap = compact_cartoon_sequence(left_overlap_seq, 5);
-    let compact_right_overlap = compact_cartoon_sequence(right_overlap_seq, 5);
+    let _compact_left_overlap = compact_cartoon_sequence(left_overlap_seq, 5);
+    let _compact_right_overlap = compact_cartoon_sequence(right_overlap_seq, 5);
     ProtocolCartoonTemplateBindings {
         schema: "gentle.protocol_cartoon_template_bindings.v1".to_string(),
         template_id: Some(
@@ -2440,13 +2441,9 @@ fn build_cartoon_bindings(
                 event_id: "context".to_string(),
                 title: Some("Context".to_string()),
                 caption: Some(format!(
-                    "{} and {} are configured with two distinct terminal homologies: left {} bp ('{}') and right {} bp ('{}').",
-                    destination_label,
-                    insert_label,
+                    "The opened destination and insert are configured with two distinct terminal homologies: left {} bp and right {} bp.",
                     left_bp,
-                    compact_left_overlap,
-                    right_bp,
-                    compact_right_overlap
+                    right_bp
                 )),
                 action: None,
             },
@@ -2518,7 +2515,7 @@ fn build_cartoon_bindings(
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: left_bp.max(1),
+                    nt: left_bp.saturating_add(CARTOON_FILL_TAIL_BP).max(1),
                 }),
             },
             ProtocolCartoonTemplateMoleculeBinding {
@@ -2528,11 +2525,11 @@ fn build_cartoon_bindings(
                 topology: None,
                 left_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: left_bp.max(1),
+                    nt: left_bp.saturating_add(CARTOON_FILL_TAIL_BP).max(1),
                 }),
                 right_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: right_bp.max(1),
+                    nt: right_bp.saturating_add(CARTOON_FILL_TAIL_BP).max(1),
                 }),
             },
             ProtocolCartoonTemplateMoleculeBinding {
@@ -2542,7 +2539,7 @@ fn build_cartoon_bindings(
                 topology: None,
                 left_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: right_bp.max(1),
+                    nt: right_bp.saturating_add(CARTOON_FILL_TAIL_BP).max(1),
                 }),
                 right_end: Some(DnaEndStyle::Continuation),
             },
@@ -2630,8 +2627,8 @@ fn build_cartoon_bindings(
                 feature_id: "left_overlap_exposed".to_string(),
                 label: Some(format!("Left {} bp homology", left_bp)),
                 length_bp: Some(left_bp.max(1)),
-                top_length_bp: Some(0),
-                bottom_length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(0),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2643,8 +2640,8 @@ fn build_cartoon_bindings(
                 feature_id: "insert_left_overlap_exposed".to_string(),
                 label: Some(format!("Left {} bp homology", left_bp)),
                 length_bp: Some(left_bp.max(1)),
-                top_length_bp: Some(left_bp.max(1)),
-                bottom_length_bp: Some(0),
+                top_length_bp: Some(0),
+                bottom_length_bp: Some(left_bp.max(1)),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2656,8 +2653,8 @@ fn build_cartoon_bindings(
                 feature_id: "insert_right_overlap_exposed".to_string(),
                 label: Some(format!("Right {} bp homology", right_bp)),
                 length_bp: Some(right_bp.max(1)),
-                top_length_bp: Some(0),
-                bottom_length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(0),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2669,8 +2666,8 @@ fn build_cartoon_bindings(
                 feature_id: "right_overlap_exposed".to_string(),
                 label: Some(format!("Right {} bp homology", right_bp)),
                 length_bp: Some(right_bp.max(1)),
-                top_length_bp: Some(right_bp.max(1)),
-                bottom_length_bp: Some(0),
+                top_length_bp: Some(0),
+                bottom_length_bp: Some(right_bp.max(1)),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2765,8 +2762,6 @@ fn build_cartoon_title_summary(
 ) -> (String, String) {
     let _ = representative_overlap_bp;
     let _ = overlap_label;
-    let destination_label = compact_cartoon_label(&preview.destination.seq_id, "destination", 18);
-    let insert_label = compact_cartoon_label(&preview.insert.seq_id, "insert", 18);
     let left_bp = preview
         .resolved_junctions
         .first()
@@ -2780,8 +2775,8 @@ fn build_cartoon_title_summary(
     (
         "GENtle Protocol Cartoon: Gibson Single-Insert Assembly".to_string(),
         format!(
-            "Five-step Gibson mechanism for {} + {} with explicit left/right junctions ({} bp left, {} bp right).",
-            destination_label, insert_label, left_bp, right_bp
+            "Five-step Gibson mechanism with explicit left/right junctions ({} bp left, {} bp right).",
+            left_bp, right_bp
         ),
     )
 }
