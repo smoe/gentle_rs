@@ -13939,8 +13939,7 @@ impl MainAreaDna {
                     });
             });
 
-            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
-            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+            if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_dotplot_window = false;
             }
         });
@@ -14016,8 +14015,7 @@ impl MainAreaDna {
                     });
             });
 
-            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
-            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+            if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_splicing_expert_window = false;
             }
         });
@@ -17862,8 +17860,7 @@ impl MainAreaDna {
                 self.render_isoform_architecture_expert_view_ui(ui, &view);
             });
 
-            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
-            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+            if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_isoform_expert_window = false;
             }
         });

@@ -2074,6 +2074,14 @@ Use the top application menu:
 - `File -> Import JASPAR Data...`
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
+- `File -> Quit`
+
+Window/application close shortcuts:
+
+- `Cmd+W` closes the active auxiliary/native GENtle window on macOS
+- `Ctrl+W` is also accepted as a close-window shortcut
+- `Cmd+Q` quits GENtle on macOS
+- `Ctrl+Q` is also accepted as a quit shortcut
 
 Genome operations are available from the dedicated `Genome` menu:
 

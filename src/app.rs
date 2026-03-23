@@ -592,6 +592,7 @@ pub struct GENtleApp {
     pending_window_open_timestamps: HashMap<ViewportId, Instant>,
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
+    pending_app_quit: bool,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
@@ -792,6 +793,7 @@ enum ProjectAction {
     OpenPath(String),
     OpenTutorialChapter(String),
     Close,
+    Quit,
 }
 
 #[derive(Clone)]
@@ -1850,6 +1852,7 @@ impl Default for GENtleApp {
             pending_window_open_timestamps: HashMap::new(),
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
+            pending_app_quit: false,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
@@ -3406,10 +3409,20 @@ Error: `{err}`"
         self.open_configuration_dialog_for_tab(ConfigurationTab::Graphics);
     }
 
-    fn viewport_close_requested_or_shortcut(ctx: &egui::Context) -> bool {
-        let close_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::W);
-        let shortcut_triggered = ctx.input_mut(|i| i.consume_shortcut(&close_shortcut));
+    pub(crate) fn consume_command_or_ctrl_shortcut(ctx: &egui::Context, key: Key) -> bool {
+        let command_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, key);
+        let ctrl_shortcut = KeyboardShortcut::new(Modifiers::CTRL, key);
+        ctx.input_mut(|i| i.consume_shortcut(&command_shortcut))
+            || ctx.input_mut(|i| i.consume_shortcut(&ctrl_shortcut))
+    }
+
+    pub(crate) fn viewport_close_requested_or_shortcut(ctx: &egui::Context) -> bool {
+        let shortcut_triggered = Self::consume_command_or_ctrl_shortcut(ctx, Key::W);
         shortcut_triggered || ctx.input(|i| i.viewport().close_requested())
+    }
+
+    fn quit_application(&mut self) {
+        self.pending_app_quit = true;
     }
 
     fn open_command_palette_dialog(&mut self) {
@@ -5589,6 +5602,7 @@ Error: `{err}`"
         self.pending_focus_viewports.clear();
         self.viewport_id_counter = 0;
         self.pending_project_action = None;
+        self.pending_app_quit = false;
         self.show_reference_genome_blast_dialog = false;
         self.genome_blast_task = None;
         self.genome_blast_progress_fraction = None;
@@ -18610,6 +18624,7 @@ Error: `{err}`"
                 self.open_tutorial_project_chapter(&chapter_id)
             }
             ProjectAction::Close => self.close_project(),
+            ProjectAction::Quit => self.quit_application(),
         }
     }
 
@@ -19395,6 +19410,15 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.prompt_export_lineage_svg();
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .button("Quit")
+                    .on_hover_text("Quit GENtle (Cmd/Ctrl+Q)")
+                    .clicked()
+                {
+                    self.request_project_action(ProjectAction::Quit);
                     ui.close();
                 }
             });
@@ -28509,6 +28533,7 @@ impl eframe::App for GENtleApp {
             let save_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
             let close_project =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
+            let quit_application = KeyboardShortcut::new(Modifiers::COMMAND, Key::Q);
             let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
             let focus_main_window = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
             let open_command_palette = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
@@ -28549,6 +28574,11 @@ impl eframe::App for GENtleApp {
             }
             if ctx.input_mut(|i| i.consume_shortcut(&close_project)) {
                 self.request_project_action(ProjectAction::Close);
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&quit_application))
+                || Self::consume_command_or_ctrl_shortcut(ctx, Key::Q)
+            {
+                self.request_project_action(ProjectAction::Quit);
             }
             if ctx.input_mut(|i| i.consume_shortcut(&open_configuration)) {
                 self.open_configuration_dialog();
@@ -28625,6 +28655,11 @@ impl eframe::App for GENtleApp {
             self.render_unsaved_changes_dialog(ctx);
             self.render_status_bar(ctx);
 
+            if self.pending_app_quit {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                self.pending_app_quit = false;
+            }
+
             // Open new windows
             let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();
             for window in new_windows.drain(..) {
@@ -28675,7 +28710,7 @@ mod tests {
         HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY,
         LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, ROUTINE_DECISION_TRACE_SCHEMA,
+        PersistedLineageNodeGroup, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
         RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
         RoutineAssistantStage,
@@ -31641,6 +31676,33 @@ mod tests {
         app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         app.current_project_path = None;
         assert!(app.can_close_project());
+    }
+
+    #[test]
+    fn request_quit_without_unsaved_content_marks_application_for_close() {
+        let mut app = GENtleApp::default();
+        app.request_project_action(ProjectAction::Quit);
+        assert!(app.pending_app_quit);
+        assert!(app.pending_project_action.is_none());
+    }
+
+    #[test]
+    fn request_quit_with_unsaved_content_prompts_before_closing() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq1".to_string(),
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.request_project_action(ProjectAction::Quit);
+
+        assert!(matches!(
+            app.pending_project_action,
+            Some(ProjectAction::Quit)
+        ));
+        assert!(!app.pending_app_quit);
     }
 
     #[test]
