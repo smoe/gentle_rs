@@ -3465,6 +3465,24 @@ mod tests {
         assert!(svg.contains("No transcript-like RNA/exon feature is selected"));
         assert!(svg.contains("<svg"));
     }
+
+    #[test]
+    fn tooltip_help_splicing_expert_window_mentions_transcripts_and_rna_reads() {
+        let help = MainAreaDna::splicing_expert_window_help_text();
+        assert!(help.contains("transcript"));
+        assert!(help.contains("primer/qPCR"));
+        assert!(help.contains("RNA-read evidence"));
+    }
+
+    #[test]
+    fn tooltip_help_nanopore_cdna_panel_mentions_two_phase_report_flow() {
+        let help = MainAreaDna::splicing_nanopore_cdna_panel_help_text();
+        assert!(help.contains("two-phase"));
+        assert!(help.contains("InterpretRnaReads"));
+        assert!(help.contains("AlignRnaReadReport"));
+        assert!(help.contains("Report ID"));
+        assert!(help.contains("whole-genome mapper"));
+    }
 }
 
 fn default_true() -> bool {
@@ -14213,6 +14231,21 @@ impl MainAreaDna {
             .collect();
         let _ = self.splicing_selected_transcript_feature_id(view);
         ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new("Window guide [?]")
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+            )
+            .on_hover_text(Self::splicing_expert_window_help_text());
+            ui.label(
+                egui::RichText::new(
+                    "Annotation structure, transcript quick actions, and RNA-read evidence stay together here for the selected splicing group.",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.label("Transcript")
                 .on_hover_text("Select the transcript lane used by transcript-level quick actions");
             egui::ComboBox::from_id_salt((
@@ -14300,26 +14333,42 @@ impl MainAreaDna {
             );
         });
         ui.add_space(4.0);
-        egui::CollapsingHeader::new("Nanopore cDNA interpretation")
+        let nanopore_header = egui::CollapsingHeader::new("Nanopore cDNA interpretation")
             .default_open(false)
             .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new("Panel guide [?]")
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(71, 85, 105)),
+                    )
+                    .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+                    ui.label(
+                        egui::RichText::new(
+                            "Phase 1 keeps a retained top-hit report; phase 2 aligns that saved report and refreshes exon/junction support.",
+                        )
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
                 ui.label(
                     egui::RichText::new(
                         "Phase-1 path: FASTA input (.fa/.fasta, optional .gz); .sra requires external conversion.",
                     )
                     .size(9.0)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
-                );
+                )
+                .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
                 let controls_enabled = self.rna_read_task.is_none();
                 ui.add_enabled_ui(controls_enabled, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Input FASTA").on_hover_text(
-                            "Path to input reads in FASTA format (.fa/.fasta, optional .gz).",
+                            "Path to phase-1 input reads in FASTA format (.fa/.fasta, optional .gz). Reads are streamed sequentially from this file; .sra must be converted externally first.",
                         );
                         if ui
                             .text_edit_singleline(&mut self.rna_reads_ui.input_path)
                             .on_hover_text(
-                                "Reads are streamed from this file. .sra is not accepted directly in phase 1.",
+                                "InterpretRnaReads streams reads from this file during phase 1. The retained report stores scored rows, not the original reads file itself, so keep the path if you plan to rerun with different thresholds.",
                             )
                             .changed()
                         {
@@ -14350,12 +14399,12 @@ impl MainAreaDna {
                     });
                     ui.horizontal(|ui| {
                         ui.label("Report ID").on_hover_text(
-                            "Identifier used to store and retrieve this interpretation report. Leave empty for auto-ID.",
+                            "Identifier used to store and retrieve the retained top-hit report produced by phase 1. The same ID is reused by phase-2 alignment, inspection, and TSV/SVG export actions.",
                         );
                         if ui
                             .text_edit_singleline(&mut self.rna_reads_ui.report_id)
                             .on_hover_text(
-                                "Used by export/report commands and GUI report lookup.",
+                                "Leave empty to auto-derive from the input filename. This becomes the stable handle for report lookup across GUI, CLI, JS, and Lua.",
                             )
                             .changed()
                         {
@@ -14364,7 +14413,7 @@ impl MainAreaDna {
                     });
                     ui.horizontal(|ui| {
                         ui.label("Scope").on_hover_text(
-                            "Controls which transcript templates are indexed and scored for seed matching.",
+                            "Controls which transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes improve specificity when you already trust the focal locus.",
                         );
                         egui::ComboBox::from_id_salt(format!(
                             "rna_read_scope_{}_{}",
@@ -14416,14 +14465,14 @@ impl MainAreaDna {
                         persist_ui_state |= ui
                             .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
                             .on_hover_text(
-                                "Show or hide detailed seed/alignment threshold controls.",
+                                "Show deterministic seed-gate, origin-expansion, checkpoint/resume, and phase-2 alignment controls shared with InterpretRnaReads/AlignRnaReadReport across GUI, CLI, JS, and Lua.",
                             )
                             .changed();
                     });
                     if self.rna_reads_ui.show_advanced {
                         ui.horizontal_wrapped(|ui| {
                             ui.label("Origin mode").on_hover_text(
-                                "Controls whether RNA-read seeding uses only the current splicing scope (single_gene) or expands templates from target-gene IDs (multi_gene_sparse).",
+                                "Controls how transcript templates are gathered before hashing: only the current splicing scope (single_gene) or local target-gene expansion from Target genes (multi_gene_sparse). This remains local annotation-driven, not a genome-wide search.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_origin_mode_{}_{}",
@@ -14487,7 +14536,7 @@ impl MainAreaDna {
                         ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
                             ui.label("Report mode").on_hover_text(
-                                "Controls whether retained top-hits are persisted in full or only for seed-passed reads.",
+                                "Controls how much of the retained top-hit set is persisted under Report ID. This affects later inspection/export size, not the live seed scoring decisions themselves.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_report_mode_{}_{}",
@@ -14568,13 +14617,13 @@ impl MainAreaDna {
                                 "Input is cDNA (normalize T-rich 5' head)",
                             )
                             .on_hover_text(
-                                "If enabled, reads with a T-rich 5' head are reverse-complement normalized before scoring.",
+                                "If enabled, reads with a strong T-rich 5' head are reverse-complement normalized before scoring so cDNA reads are compared in transcript orientation. Disable this for direct RNA or when input orientation is already known to be correct.",
                             )
                             .changed();
                         if ui
                             .button("Apply TP73 specificity preset")
                             .on_hover_text(
-                                "Apply stricter TP73-focused defaults (scope, chain, gap, and transition thresholds) for pilot filtering.",
+                                "Apply stricter TP73-focused defaults: target-group/target-strand scope plus tighter chain, gap, and transition thresholds for focused pilot filtering.",
                             )
                             .clicked()
                         {
@@ -14840,7 +14889,7 @@ impl MainAreaDna {
                                 )
                                 .changed();
                             ui.label("align selection").on_hover_text(
-                                "Which retained-hit subset is re-aligned in phase 2.",
+                                "Which retained-hit subset from the saved report is re-aligned in phase 2. Use this to spend alignment time only on seed-passed rows, all retained rows, or rows that already have a mapping.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_align_selection_{}_{}",
@@ -15336,7 +15385,7 @@ impl MainAreaDna {
                         egui::Button::new("Run Nanopore cDNA interpretation"),
                     )
                     .on_hover_text(
-                        "Start asynchronous seed filtering with current settings and stream progress in this panel.",
+                        "Start asynchronous phase-1 interpretation with the current settings. Reads are optionally cDNA-normalized, scored against the admitted transcript/junction seed index, and written into the current Report ID for later inspection, alignment, and export.",
                     )
                     .clicked()
                 {
@@ -15348,7 +15397,7 @@ impl MainAreaDna {
                         egui::Button::new("Run alignment phase (retained report)"),
                     )
                     .on_hover_text(
-                        "Run phase-2 retained-read alignment for the current Report ID and refresh exon-transition/isoform support summaries.",
+                        "Reopen the retained report stored under Report ID, run phase-2 pairwise alignment on the selected retained rows, and refresh mapping summaries plus exon-transition/isoform support tables. This does not reread the FASTA input unless you rerun phase 1.",
                     )
                     .clicked()
                 {
@@ -15462,6 +15511,9 @@ impl MainAreaDna {
                     }
                 }
             });
+        nanopore_header
+            .header_response
+            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
         if persist_ui_state {
             self.save_engine_ops_state();
         }
@@ -24625,6 +24677,14 @@ impl MainAreaDna {
 
     fn feature_tree_filter_help_text() -> &'static str {
         "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer"
+    }
+
+    fn splicing_expert_window_help_text() -> &'static str {
+        "This window explains one splicing group from three angles:\n- annotation-derived transcript and exon structure\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels such as Nanopore cDNA mapping\n\nUse the transcript selector for transcript-level actions. The graphics remain annotation-first; the RNA-read section adds evidence without changing the underlying annotation model."
+    }
+
+    fn splicing_nanopore_cdna_panel_help_text() -> &'static str {
+        "Nanopore cDNA mapping here is a two-phase, ROI-first workflow.\n\nPhase 1 (`InterpretRnaReads`): stream FASTA input, optionally reverse-complement cDNA-like reads with a T-rich 5' head, hash full-read k-mers, and score each read against transcript templates admitted by Scope and Origin mode. Indexed evidence includes exon-body seeds and exon-exon junction transition seeds.\n\nThe retained top-hit report is stored under Report ID and can already be inspected or exported before alignment.\n\nPhase 2 (`AlignRnaReadReport`): reopen that saved report, align the selected retained rows with reference-guided pairwise alignment, and refresh mapping, exon-transition, and isoform-support summaries.\n\nThis panel compares reads against locally admitted transcript models for the current locus; it is not a whole-genome mapper."
     }
 
     fn append_filter_term(filter_text: &mut String, term: &str) {

@@ -326,7 +326,19 @@ Feature tree grouping:
       - transcript `-` strand -> `pair_reverse_complement`
     - step size is auto-increased when needed so pair evaluations stay within
       engine limits.
+  - `Window guide [?]` hover tooltip summarizes the whole splicing expert:
+    annotation structure, transcript quick actions, and RNA-read evidence for
+    the selected locus.
 - The splicing expert window also includes `Nanopore cDNA interpretation`:
+  - the section header and `Panel guide [?]` expose a detailed hover tooltip
+    for the two-phase workflow:
+    - phase 1 `InterpretRnaReads` streams FASTA input, optionally normalizes
+      cDNA-like reads with a T-rich 5' head, and scores reads against locally
+      admitted transcript/junction seed templates
+    - retained top hits are stored under `Report ID`
+    - phase 2 `AlignRnaReadReport` reopens that saved report, aligns retained
+      rows, and refreshes mapping/junction/isoform summaries
+    - the panel is ROI-first and local-model-first, not a whole-genome mapper
   - phase-1 FASTA input run panel for `InterpretRnaReads`
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
   - progress updates are throttled to reduce UI overhead:
@@ -338,6 +350,9 @@ Feature tree grouping:
     to manual path entry
   - if `Report ID` is left empty, a default ID is derived from the input file
     name (`cdna_<filename_stem>`)
+  - field tooltips now explain how `Report ID`, `Scope`, `Origin mode`,
+    `Report mode`, cDNA normalization, and alignment reuse affect retained
+    reports and later inspection/export
   - `Input is cDNA (normalize T-rich 5' head)` checkbox controls read
     normalization mode:
     - enabled (default): reads with a T-rich 5' head are reverse-complemented
@@ -406,6 +421,8 @@ Feature tree grouping:
     - `align selection` (`seed_passed|all|aligned`)
   - `Run alignment phase (retained report)` executes
     `AlignRnaReadReport` asynchronously for the current `Report ID`
+    - tooltip explicitly notes that phase 2 reuses the saved report and does
+      not reread the FASTA input unless phase 1 is run again
   - phase-2 alignment updates persisted report counters and support tables:
     - `aligned`
     - `msa-eligible(retained)`
