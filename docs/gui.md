@@ -616,6 +616,10 @@ Patterns menu:
          correction, fallback to the simple 2/4 estimate for ambiguous or very
          short sequences
     4. `Review`
+       - `Preview Gibson Plan` stays disabled until the current opening is
+         actually defined enough to build a plan; for `defined opening`, that
+         means both cut-edge fields must be set (or filled from a cutter
+         suggestion / active selection)
        - resolves terminal overlaps
        - derives insert primer suggestions as `5' overlap + 3' priming`
        - `Opening sketch` extends into an insert-primer construction view so
@@ -628,6 +632,9 @@ Patterns menu:
          keeps plain `Tm` text for reliable copying
        - findings, resolved junctions, primer suggestions, and status text are
          copyable directly from the window
+       - the in-window cartoon preview is rasterized from the same resolved
+         deterministic SVG payload so the specialist window remains reliable
+         even when direct SVG loading is temperamental on a given platform
        - preview notes repeat the shared Tm-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`
@@ -691,9 +698,9 @@ Node click behavior in lineage `Graph` view:
   pool member distribution available).
 - Double-click on an analysis node (`Dotplot` / `FlexibilityTrack`): opens the
   source sequence window.
-- Single-click on a Gibson operation square in the graph, or on the `Op` cell
-  for Gibson-created outputs in the table: reopens the Gibson specialist with
-  the saved plan loaded again for review.
+- Single-click on the dedicated `Gibson cloning` operation node in graph view,
+  or on the `Op` cell for Gibson-created outputs in the table: reopens the
+  Gibson specialist with the saved plan loaded again for review.
 - Right-click context menu (graph and table node-id cells):
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that

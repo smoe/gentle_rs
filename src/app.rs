@@ -91,6 +91,7 @@ use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, Viewp
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
+use resvg::{self, tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
@@ -13579,14 +13580,44 @@ Error: `{err}`"
     ) -> std::result::Result<(), String> {
         let spec = Self::resolve_gibson_preview_cartoon_spec(preview)?;
         let svg = render_protocol_cartoon_spec_svg(&spec);
-        let path = env::temp_dir().join(format!("gentle_gibson_preview_{}.svg", now_unix_ms_u64()));
-        fs::write(&path, svg).map_err(|e| {
+        let stamp = now_unix_ms_u64();
+        let svg_path = env::temp_dir().join(format!("gentle_gibson_preview_{stamp}.svg"));
+        fs::write(&svg_path, &svg).map_err(|e| {
             format!(
                 "Could not write temporary Gibson preview SVG '{}': {e}",
-                path.display()
+                svg_path.display()
             )
         })?;
-        self.gibson_preview_svg_uri = format!("file://{}", path.display());
+
+        let mut opt = usvg::Options {
+            resources_dir: svg_path.parent().map(|path| path.to_path_buf()),
+            ..usvg::Options::default()
+        };
+        opt.fontdb_mut().load_system_fonts();
+        let tree = usvg::Tree::from_str(&svg, &opt)
+            .map_err(|e| format!("Could not parse Gibson preview SVG: {e}"))?;
+        let pixmap_size = tree
+            .size()
+            .to_int_size()
+            .scale_by(1.0)
+            .ok_or_else(|| "Could not determine Gibson preview raster size".to_string())?;
+        let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
+            .ok_or_else(|| {
+                format!(
+                    "Could not allocate Gibson preview raster {}x{}",
+                    pixmap_size.width(),
+                    pixmap_size.height()
+                )
+            })?;
+        resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+        let png_path = env::temp_dir().join(format!("gentle_gibson_preview_{stamp}.png"));
+        pixmap.save_png(&png_path).map_err(|e| {
+            format!(
+                "Could not write temporary Gibson preview PNG '{}': {e}",
+                png_path.display()
+            )
+        })?;
+        self.gibson_preview_svg_uri = Self::file_uri_from_path(&png_path);
         Ok(())
     }
 
@@ -13613,6 +13644,12 @@ Error: `{err}`"
     }
 
     fn run_gibson_preview(&mut self) {
+        if let Err(err) = self.validate_gibson_preview_readiness() {
+            self.gibson_status = format!("Gibson preview blocked: {err}");
+            self.gibson_preview_output = None;
+            self.gibson_preview_svg_uri.clear();
+            return;
+        }
         let plan = match self.build_gibson_plan_from_ui() {
             Ok(plan) => plan,
             Err(err) => {
@@ -13654,7 +13691,7 @@ Error: `{err}`"
                     if let Err(err) = self.render_gibson_preview_svg(&preview) {
                         let base_status = self.gibson_status.clone();
                         self.gibson_status =
-                            format!("{} | preview SVG render note: {err}", base_status);
+                            format!("{} | preview render note: {err}", base_status);
                     }
                 }
                 Err(err) => {
@@ -14067,6 +14104,42 @@ Error: `{err}`"
             .and_then(|engine| engine.state().sequences.get(&destination_id).cloned())
     }
 
+    fn validate_gibson_preview_readiness(&self) -> std::result::Result<(), String> {
+        if self.gibson_destination_seq_id.trim().is_empty() {
+            return Err("Choose a destination sequence first.".to_string());
+        }
+        if self.gibson_insert_seq_id.trim().is_empty() {
+            return Err("Choose one insert sequence first.".to_string());
+        }
+        if self.gibson_opening_mode == GibsonUiOpeningMode::DefinedSite {
+            if self.gibson_opening_start_0based.trim().is_empty()
+                || self.gibson_opening_end_0based_exclusive.trim().is_empty()
+            {
+                return Err(
+                    "Set both left and right cut edges or choose a cutter suggestion first."
+                        .to_string(),
+                );
+            }
+            if self
+                .gibson_opening_start_0based
+                .trim()
+                .parse::<usize>()
+                .is_err()
+            {
+                return Err("Left cut edge must be a non-negative integer.".to_string());
+            }
+            if self
+                .gibson_opening_end_0based_exclusive
+                .trim()
+                .parse::<usize>()
+                .is_err()
+            {
+                return Err("Right cut edge must be a non-negative integer.".to_string());
+            }
+        }
+        Ok(())
+    }
+
     fn current_gibson_opening_edges(&self) -> Option<(usize, usize)> {
         let start = self
             .gibson_opening_start_0based
@@ -14452,6 +14525,17 @@ Error: `{err}`"
         self.show_gibson_dialog = false;
     }
 
+    fn is_lineage_operation_hub(row: &LineageRow) -> bool {
+        row.origin == "OperationHub"
+    }
+
+    fn is_lineage_operation_hub_connector(op_ids: &[String]) -> bool {
+        !op_ids.is_empty()
+            && op_ids
+                .iter()
+                .all(|op_id| op_id.ends_with("::hub_in") || op_id.ends_with("::hub_out"))
+    }
+
     fn render_gibson_contents(&mut self, ui: &mut Ui) -> bool {
         let mut cancel_clicked = false;
         self.render_specialist_window_nav(ui);
@@ -14488,6 +14572,9 @@ Error: `{err}`"
         let destination_opening_suggestions = self.current_gibson_destination_opening_suggestions();
         let mut selected_opening_suggestion: Option<GibsonDestinationOpeningSuggestion> = None;
         let tm_help = GentleEngine::primer_tm_model_description();
+        let preview_readiness = self.validate_gibson_preview_readiness();
+        let preview_ready = preview_readiness.is_ok();
+        let preview_ready_reason = preview_readiness.err();
 
         ui.separator();
         ui.heading("Destination");
@@ -14848,9 +14935,15 @@ Error: `{err}`"
         ui.heading("Review");
         ui.horizontal(|ui| {
             if ui
-                .button("Preview Gibson Plan")
+                .add_enabled(preview_ready, egui::Button::new("Preview Gibson Plan"))
                 .on_hover_text(
-                    "Resolve overlaps, derive Gibson primer suggestions, validate, and refresh the cartoon preview",
+                    if preview_ready {
+                        "Resolve overlaps, derive Gibson primer suggestions, validate, and refresh the cartoon preview"
+                    } else {
+                        preview_ready_reason
+                            .as_deref()
+                            .unwrap_or("Fill in the Gibson opening first.")
+                    },
                 )
                 .clicked()
             {
@@ -14866,6 +14959,9 @@ Error: `{err}`"
                 self.gibson_status = "Cleared Gibson preview output".to_string();
             }
         });
+        if let Some(reason) = preview_ready_reason.as_deref() {
+            ui.small(format!("Preview becomes available once: {reason}"));
+        }
 
         if let Some(preview) = self.gibson_preview_output.clone() {
             ui.small(format!(
@@ -14994,7 +15090,7 @@ Error: `{err}`"
                         .shrink_to_fit(),
                 );
             } else {
-                ui.small("No in-window SVG preview is currently loaded.");
+                ui.small("No in-window cartoon preview is currently loaded.");
             }
         } else {
             ui.small("No Gibson preview yet. Use 'Preview Gibson Plan' to resolve junctions, primers, and cartoon bindings.");
@@ -15095,35 +15191,47 @@ Error: `{err}`"
                 self.run_gibson_apply();
             }
             if ui
-                .button("Export Plan JSON...")
+                .add_enabled(preview_ready, egui::Button::new("Export Plan JSON..."))
                 .on_hover_text("Export the canonical Gibson plan JSON currently implied by this window")
                 .clicked()
             {
                 self.export_gibson_plan_json();
             }
             if ui
-                .button("Export Preview JSON...")
+                .add_enabled(
+                    self.gibson_preview_output.is_some(),
+                    egui::Button::new("Export Preview JSON..."),
+                )
                 .on_hover_text("Export the resolved Gibson preview payload")
                 .clicked()
             {
                 self.export_gibson_preview_json();
             }
             if ui
-                .button("Export Primer Summary...")
+                .add_enabled(
+                    self.gibson_preview_output.is_some(),
+                    egui::Button::new("Export Primer Summary..."),
+                )
                 .on_hover_text("Export a text summary of the current Gibson primer suggestions")
                 .clicked()
             {
                 self.export_gibson_primer_summary();
             }
             if ui
-                .button("Export Cartoon SVG...")
+                .add_enabled(
+                    self.gibson_preview_output.is_some(),
+                    egui::Button::new("Export Cartoon SVG..."),
+                )
                 .on_hover_text("Export the currently resolved Gibson cartoon as SVG")
                 .clicked()
             {
                 self.export_gibson_cartoon_svg();
             }
             if ui
-                .button("Open in Routine Assistant")
+                .add_enabled(
+                    self.gibson_preview_output.is_some(),
+                    egui::Button::new("Open in Routine Assistant"),
+                )
                 .on_hover_text("Hand the current Gibson preview into the existing routine workflow when possible")
                 .clicked()
             {
@@ -23085,7 +23193,11 @@ Error: `{err}`"
                                     .contains(pointer),
                                     LineageNodeKind::Analysis => egui::Rect::from_center_size(
                                         pos,
-                                        Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom),
+                                        if Self::is_lineage_operation_hub(row) {
+                                            Vec2::new(74.0 * graph_zoom, 30.0 * graph_zoom)
+                                        } else {
+                                            Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom)
+                                        },
                                     )
                                     .contains(pointer),
                                     LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -23146,27 +23258,31 @@ Error: `{err}`"
                                             row.macro_status.as_deref().unwrap_or("ok")
                                         ),
                                         LineageNodeKind::Analysis => {
-                                            let artifact_id = row
-                                                .analysis_artifact_id
-                                                .as_deref()
-                                                .unwrap_or(&row.display_name);
-                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
-                                            match row.analysis_kind {
-                                                Some(LineageAnalysisKind::Dotplot) => format!(
-                                                    "{} | mode={} | points={}",
-                                                    artifact_id,
-                                                    mode,
-                                                    row.analysis_point_count.unwrap_or(0)
-                                                ),
-                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
-                                                    format!(
-                                                        "{} | model={} | bins={}",
+                                            if Self::is_lineage_operation_hub(row) {
+                                                format!("operation={}", row.created_by_op)
+                                            } else {
+                                                let artifact_id = row
+                                                    .analysis_artifact_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.display_name);
+                                                let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                                match row.analysis_kind {
+                                                    Some(LineageAnalysisKind::Dotplot) => format!(
+                                                        "{} | mode={} | points={}",
                                                         artifact_id,
                                                         mode,
-                                                        row.analysis_bin_count.unwrap_or(0)
-                                                    )
+                                                        row.analysis_point_count.unwrap_or(0)
+                                                    ),
+                                                    Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                        format!(
+                                                            "{} | model={} | bins={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_bin_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    None => artifact_id.to_string(),
                                                 }
-                                                None => artifact_id.to_string(),
                                             }
                                         }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -23235,6 +23351,13 @@ Error: `{err}`"
                                     continue;
                                 }
                                 let edge_dir = edge / edge_len;
+                                if Self::is_lineage_operation_hub_connector(op_ids) {
+                                    painter.line_segment(
+                                        [*from, *to],
+                                        egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                    );
+                                    continue;
+                                }
                                 let op_node_size = (14.0 * graph_zoom).clamp(10.0, 20.0);
                                 let op_rect =
                                     egui::Rect::from_center_size(mid, Vec2::splat(op_node_size));
@@ -23446,12 +23569,22 @@ Error: `{err}`"
                                     LineageNodeKind::Analysis => {
                                         let rect = egui::Rect::from_center_size(
                                             pos,
-                                            Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom),
+                                            if Self::is_lineage_operation_hub(row) {
+                                                Vec2::new(74.0 * graph_zoom, 30.0 * graph_zoom)
+                                            } else {
+                                                Vec2::new(62.0 * graph_zoom, 28.0 * graph_zoom)
+                                            },
                                         );
                                         painter.rect_filled(
                                             rect,
                                             4.0 * graph_zoom,
-                                            if is_selected {
+                                            if Self::is_lineage_operation_hub(row) {
+                                                if is_selected {
+                                                    egui::Color32::from_rgb(76, 162, 142)
+                                                } else {
+                                                    egui::Color32::from_rgb(62, 142, 124)
+                                                }
+                                            } else if is_selected {
                                                 egui::Color32::from_rgb(156, 112, 184)
                                             } else {
                                                 egui::Color32::from_rgb(140, 98, 172)
@@ -23514,7 +23647,11 @@ Error: `{err}`"
                                         .as_ref()
                                         .map(|id| Self::compact_lineage_node_label(id, 12))
                                         .unwrap_or_else(|| {
-                                            Self::compact_lineage_node_label(&row.node_id, 12)
+                                            if Self::is_lineage_operation_hub(row) {
+                                                "GB".to_string()
+                                            } else {
+                                                Self::compact_lineage_node_label(&row.node_id, 12)
+                                            }
                                         }),
                                     LineageNodeKind::Sequence => {
                                         Self::compact_lineage_node_label(&row.node_id, 10)
@@ -23669,27 +23806,31 @@ Error: `{err}`"
                                             row.macro_status.as_deref().unwrap_or("ok")
                                         ),
                                         LineageNodeKind::Analysis => {
-                                            let artifact_id = row
-                                                .analysis_artifact_id
-                                                .as_deref()
-                                                .unwrap_or(&row.display_name);
-                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
-                                            match row.analysis_kind {
-                                                Some(LineageAnalysisKind::Dotplot) => format!(
-                                                    "dotplot={} | mode={} | points={}",
-                                                    artifact_id,
-                                                    mode,
-                                                    row.analysis_point_count.unwrap_or(0)
-                                                ),
-                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
-                                                    format!(
-                                                        "track={} | model={} | bins={}",
+                                            if Self::is_lineage_operation_hub(row) {
+                                                format!("op={}", row.created_by_op)
+                                            } else {
+                                                let artifact_id = row
+                                                    .analysis_artifact_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.display_name);
+                                                let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                                match row.analysis_kind {
+                                                    Some(LineageAnalysisKind::Dotplot) => format!(
+                                                        "dotplot={} | mode={} | points={}",
                                                         artifact_id,
                                                         mode,
-                                                        row.analysis_bin_count.unwrap_or(0)
-                                                    )
+                                                        row.analysis_point_count.unwrap_or(0)
+                                                    ),
+                                                    Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                        format!(
+                                                            "track={} | model={} | bins={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_bin_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    None => format!("analysis={artifact_id}"),
                                                 }
-                                                None => format!("analysis={artifact_id}"),
                                             }
                                         }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -23816,38 +23957,48 @@ Error: `{err}`"
                                             }
                                         }
                                         LineageNodeKind::Analysis => {
-                                            let artifact_id = row
-                                                .analysis_artifact_id
-                                                .as_deref()
-                                                .unwrap_or(&row.display_name);
-                                            let mode = row.analysis_mode.as_deref().unwrap_or("-");
-                                            let analysis_kind = row
-                                                .analysis_kind
-                                                .map(LineageAnalysisKind::as_str)
-                                                .unwrap_or("analysis");
-                                            ui.monospace(format!(
-                                                "{} | kind={} | mode={}",
-                                                artifact_id, analysis_kind, mode
-                                            ));
-                                            match row.analysis_kind {
-                                                Some(LineageAnalysisKind::Dotplot) => {
-                                                    ui.small(format!(
-                                                        "query={} | reference={} | points={}",
-                                                        row.seq_id,
-                                                        row.analysis_reference_seq_id
-                                                            .as_deref()
-                                                            .unwrap_or(&row.seq_id),
-                                                        row.analysis_point_count.unwrap_or(0)
-                                                    ));
+                                            if Self::is_lineage_operation_hub(row) {
+                                                ui.monospace(format!(
+                                                    "{} | op={}",
+                                                    row.display_name, row.created_by_op
+                                                ));
+                                                ui.small(
+                                                    "Click to reopen the Gibson specialist for this cloning operation.",
+                                                );
+                                            } else {
+                                                let artifact_id = row
+                                                    .analysis_artifact_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.display_name);
+                                                let mode = row.analysis_mode.as_deref().unwrap_or("-");
+                                                let analysis_kind = row
+                                                    .analysis_kind
+                                                    .map(LineageAnalysisKind::as_str)
+                                                    .unwrap_or("analysis");
+                                                ui.monospace(format!(
+                                                    "{} | kind={} | mode={}",
+                                                    artifact_id, analysis_kind, mode
+                                                ));
+                                                match row.analysis_kind {
+                                                    Some(LineageAnalysisKind::Dotplot) => {
+                                                        ui.small(format!(
+                                                            "query={} | reference={} | points={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or(&row.seq_id),
+                                                            row.analysis_point_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::FlexibilityTrack) => {
+                                                        ui.small(format!(
+                                                            "seq={} | bins={}",
+                                                            row.seq_id,
+                                                            row.analysis_bin_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    None => {}
                                                 }
-                                                Some(LineageAnalysisKind::FlexibilityTrack) => {
-                                                    ui.small(format!(
-                                                        "seq={} | bins={}",
-                                                        row.seq_id,
-                                                        row.analysis_bin_count.unwrap_or(0)
-                                                    ));
-                                                }
-                                                None => {}
                                             }
                                         }
                                         LineageNodeKind::Sequence => {
@@ -24102,6 +24253,16 @@ Error: `{err}`"
                                     if resp.clicked() {
                                         self.lineage_graph_selected_node_id =
                                             hover_row.map(|row| row.node_id.clone());
+                                        if let Some(row) = hover_row {
+                                            if Self::is_lineage_operation_hub(row)
+                                                && self
+                                                    .lineage_reopenable_gibson_op_ids
+                                                    .contains(&row.created_by_op)
+                                            {
+                                                reopen_gibson_from_operation =
+                                                    Some(row.created_by_op.clone());
+                                            }
+                                        }
                                     }
                                     if let Some(row) = hover_row {
                                         if resp.double_clicked() {
@@ -24114,13 +24275,18 @@ Error: `{err}`"
                                                 }
                                                 LineageNodeKind::Macro => {}
                                                 LineageNodeKind::Analysis => {
-                                                    if let Some((kind, seq_id, artifact_id)) =
-                                                        Self::lineage_analysis_open_payload(row)
-                                                    {
-                                                        open_lineage_analysis =
-                                                            Some((kind, seq_id, artifact_id));
+                                                    if Self::is_lineage_operation_hub(row) {
+                                                        reopen_gibson_from_operation =
+                                                            Some(row.created_by_op.clone());
                                                     } else {
-                                                        open_seq = Some(row.seq_id.clone());
+                                                        if let Some((kind, seq_id, artifact_id)) =
+                                                            Self::lineage_analysis_open_payload(row)
+                                                        {
+                                                            open_lineage_analysis =
+                                                                Some((kind, seq_id, artifact_id));
+                                                        } else {
+                                                            open_seq = Some(row.seq_id.clone());
+                                                        }
                                                     }
                                                 }
                                                 LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -30626,6 +30792,25 @@ mod tests {
         app.open_gibson_dialog();
 
         assert_eq!(app.gibson_destination_seq_id, "active_seq");
+    }
+
+    #[test]
+    fn gibson_preview_readiness_requires_defined_cut_edges() {
+        let mut app = GENtleApp::default();
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_insert_seq_id = "insert_x".to_string();
+        app.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+
+        let err = app
+            .validate_gibson_preview_readiness()
+            .expect_err("missing cut edges should block preview");
+        assert!(err.contains("choose a cutter suggestion") || err.contains("cut edges"));
+
+        app.gibson_opening_start_0based = "941".to_string();
+        app.gibson_opening_end_0based_exclusive = "941".to_string();
+
+        app.validate_gibson_preview_readiness()
+            .expect("filled cut edges should allow preview");
     }
 
     #[test]
