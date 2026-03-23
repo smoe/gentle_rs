@@ -78,6 +78,9 @@ order. Durable architecture constraints and decisions remain in
     - Gibson apply outputs now materialize as three separate singleton
       containers (two primer vials plus the assembled product) instead of one
       synthetic pool container
+    - protocol-cartoon preview now shows both destination-insert junctions
+      explicitly for the current single-insert flow instead of collapsing to
+      one representative overlap
     - deterministic feature transfer onto the assembled Gibson product
     - lineage reopen path: clicking a Gibson operation reopens the specialist
       with the saved plan loaded again

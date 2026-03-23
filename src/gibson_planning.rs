@@ -887,7 +887,9 @@ pub fn preview_gibson_assembly_plan(
         errors: vec![],
         notes: vec![],
         cartoon: GibsonCartoonPreview {
-            protocol_id: ProtocolCartoonKind::GibsonTwoFragment.id().to_string(),
+            protocol_id: ProtocolCartoonKind::GibsonSingleInsertDualJunction
+                .id()
+                .to_string(),
             representative_overlap_bp: 30,
             title: String::new(),
             summary: String::new(),
@@ -1156,7 +1158,7 @@ pub fn preview_gibson_assembly_plan(
         .notes
         .push(GentleEngine::primer_tm_model_description());
     preview.notes.push(
-        "The protocol-cartoon payload remains conceptual for the two-fragment Gibson mechanism while captions and labels are rebound from the resolved plan.".to_string(),
+        "The protocol-cartoon payload shows both destination-insert junctions explicitly for this single-insert Gibson plan.".to_string(),
     );
 
     let representative_overlap_bp = if left_overlap.1 == right_overlap.1 {
@@ -1170,7 +1172,9 @@ pub fn preview_gibson_assembly_plan(
         left_bp_label(left_overlap.1, right_overlap.1),
     );
     preview.cartoon = GibsonCartoonPreview {
-        protocol_id: ProtocolCartoonKind::GibsonTwoFragment.id().to_string(),
+        protocol_id: ProtocolCartoonKind::GibsonSingleInsertDualJunction
+            .id()
+            .to_string(),
         representative_overlap_bp,
         title: cartoon_title,
         summary: cartoon_summary,
@@ -2407,16 +2411,8 @@ fn build_cartoon_bindings(
     right_overlap_seq: &str,
     representative_overlap_bp: usize,
 ) -> ProtocolCartoonTemplateBindings {
-    let destination_label = if preview.destination.seq_id.trim().is_empty() {
-        "Destination".to_string()
-    } else {
-        preview.destination.seq_id.clone()
-    };
-    let insert_label = if preview.insert.seq_id.trim().is_empty() {
-        "Insert".to_string()
-    } else {
-        preview.insert.seq_id.clone()
-    };
+    let destination_label = compact_cartoon_label(&preview.destination.seq_id, "Destination", 18);
+    let insert_label = compact_cartoon_label(&preview.insert.seq_id, "Insert", 18);
     let left_bp = preview
         .resolved_junctions
         .first()
@@ -2427,25 +2423,30 @@ fn build_cartoon_bindings(
         .get(1)
         .map(|row| row.overlap_bp)
         .unwrap_or(representative_overlap_bp);
-    let joined_label = format!("{} + {}", destination_label, insert_label);
-    let overlap_note = if left_bp == right_bp {
-        format!("{} bp terminal overlap", left_bp)
-    } else {
-        format!("{} bp / {} bp terminal overlaps", left_bp, right_bp)
-    };
-    let compact_left_overlap = compact_cartoon_sequence(left_overlap_seq, 6);
-    let compact_right_overlap = compact_cartoon_sequence(right_overlap_seq, 6);
+    let left_overlap_note = format!("left homology {} bp", left_bp);
+    let right_overlap_note = format!("right homology {} bp", right_bp);
+    let compact_left_overlap = compact_cartoon_sequence(left_overlap_seq, 5);
+    let compact_right_overlap = compact_cartoon_sequence(right_overlap_seq, 5);
     ProtocolCartoonTemplateBindings {
         schema: "gentle.protocol_cartoon_template_bindings.v1".to_string(),
-        template_id: Some(ProtocolCartoonKind::GibsonTwoFragment.id().to_string()),
+        template_id: Some(
+            ProtocolCartoonKind::GibsonSingleInsertDualJunction
+                .id()
+                .to_string(),
+        ),
         defaults: Default::default(),
         event_overrides: vec![
             ProtocolCartoonTemplateEventBinding {
                 event_id: "context".to_string(),
                 title: Some("Context".to_string()),
                 caption: Some(format!(
-                    "The opened destination and insert are configured with terminal homology at both junctions (left {} bp: '{}', right {} bp: '{}').",
-                    left_bp, compact_left_overlap, right_bp, compact_right_overlap
+                    "{} and {} are configured with two distinct terminal homologies: left {} bp ('{}') and right {} bp ('{}').",
+                    destination_label,
+                    insert_label,
+                    left_bp,
+                    compact_left_overlap,
+                    right_bp,
+                    compact_right_overlap
                 )),
                 action: None,
             },
@@ -2453,8 +2454,9 @@ fn build_cartoon_bindings(
                 event_id: "chew_back".to_string(),
                 title: Some("Chew-back".to_string()),
                 caption: Some(format!(
-                    "A 5' exonuclease exposes single-stranded ends so the {} can anneal during Gibson assembly.",
-                    overlap_note
+                    "A 5' exonuclease exposes one 3' overhang at each destination arm and both ends of the insert so the left {} and right {} can anneal.",
+                    left_overlap_note,
+                    right_overlap_note
                 )),
                 action: None,
             },
@@ -2462,7 +2464,7 @@ fn build_cartoon_bindings(
                 event_id: "anneal".to_string(),
                 title: Some("Anneal".to_string()),
                 caption: Some(format!(
-                    "Complementary terminal homology anneals while destination- and insert-derived unique tails remain to be filled." 
+                    "Both junctions anneal simultaneously: the left homology pairs on one side of the insert and the right homology pairs on the other, while short single-stranded gaps remain to be filled."
                 )),
                 action: None,
             },
@@ -2470,7 +2472,7 @@ fn build_cartoon_bindings(
                 event_id: "extend".to_string(),
                 title: Some("Extend".to_string()),
                 caption: Some(
-                    "DNA polymerase fills the remaining single-stranded tails but leaves one nick on each strand.".to_string(),
+                    "DNA polymerase fills both remaining gaps but leaves one nick on each strand.".to_string(),
                 ),
                 action: None,
             },
@@ -2478,7 +2480,7 @@ fn build_cartoon_bindings(
                 event_id: "seal".to_string(),
                 title: Some("Seal".to_string()),
                 caption: Some(
-                    "DNA ligase seals the nicks, leaving one continuous assembled duplex with preserved origin colors.".to_string(),
+                    "DNA ligase seals both remaining nicks, leaving one continuous destination-insert-destination duplex.".to_string(),
                 ),
                 action: None,
             },
@@ -2486,46 +2488,68 @@ fn build_cartoon_bindings(
         molecule_overrides: vec![
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "context".to_string(),
-                molecule_id: "fragment_a_context".to_string(),
-                label: Some(destination_label.clone()),
+                molecule_id: "destination_left_context".to_string(),
+                label: Some(format!("{} left arm", destination_label)),
                 topology: None,
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Blunt),
             },
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "context".to_string(),
-                molecule_id: "fragment_b_context".to_string(),
+                molecule_id: "insert_context".to_string(),
                 label: Some(insert_label.clone()),
+                topology: None,
+                left_end: Some(DnaEndStyle::Blunt),
+                right_end: Some(DnaEndStyle::Blunt),
+            },
+            ProtocolCartoonTemplateMoleculeBinding {
+                event_id: "context".to_string(),
+                molecule_id: "destination_right_context".to_string(),
+                label: Some(format!("{} right arm", destination_label)),
                 topology: None,
                 left_end: Some(DnaEndStyle::Blunt),
                 right_end: Some(DnaEndStyle::Continuation),
             },
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "chew_back".to_string(),
-                molecule_id: "fragment_a_chewed".to_string(),
-                label: Some(format!("{} (chewed)", destination_label)),
+                molecule_id: "destination_left_chewed".to_string(),
+                label: Some("Left arm (chewed)".to_string()),
                 topology: None,
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: representative_overlap_bp.max(1),
+                    nt: left_bp.max(1),
                 }),
             },
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "chew_back".to_string(),
-                molecule_id: "fragment_b_chewed".to_string(),
-                label: Some(format!("{} (chewed)", insert_label)),
+                molecule_id: "insert_chewed".to_string(),
+                label: Some("Insert (chewed)".to_string()),
                 topology: None,
                 left_end: Some(DnaEndStyle::Sticky {
                     polarity: OverhangPolarity::ThreePrime,
-                    nt: representative_overlap_bp.max(1),
+                    nt: left_bp.max(1),
+                }),
+                right_end: Some(DnaEndStyle::Sticky {
+                    polarity: OverhangPolarity::ThreePrime,
+                    nt: right_bp.max(1),
+                }),
+            },
+            ProtocolCartoonTemplateMoleculeBinding {
+                event_id: "chew_back".to_string(),
+                molecule_id: "destination_right_chewed".to_string(),
+                label: Some("Right arm (chewed)".to_string()),
+                topology: None,
+                left_end: Some(DnaEndStyle::Sticky {
+                    polarity: OverhangPolarity::ThreePrime,
+                    nt: right_bp.max(1),
                 }),
                 right_end: Some(DnaEndStyle::Continuation),
             },
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "anneal".to_string(),
                 molecule_id: "annealed_intermediate".to_string(),
-                label: Some(format!("{} annealed", joined_label)),
+                label: Some("Annealed intermediate".to_string()),
                 topology: None,
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Continuation),
@@ -2533,7 +2557,7 @@ fn build_cartoon_bindings(
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "extend".to_string(),
                 molecule_id: "extended_intermediate".to_string(),
-                label: Some(format!("{} extended duplex", joined_label)),
+                label: Some("Extended intermediate".to_string()),
                 topology: None,
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Continuation),
@@ -2541,7 +2565,7 @@ fn build_cartoon_bindings(
             ProtocolCartoonTemplateMoleculeBinding {
                 event_id: "seal".to_string(),
                 molecule_id: "sealed_product".to_string(),
-                label: Some(format!("{} sealed product", joined_label)),
+                label: Some("Sealed product".to_string()),
                 topology: None,
                 left_end: Some(DnaEndStyle::Continuation),
                 right_end: Some(DnaEndStyle::Continuation),
@@ -2550,12 +2574,12 @@ fn build_cartoon_bindings(
         feature_overrides: vec![
             ProtocolCartoonTemplateFeatureBinding {
                 event_id: "context".to_string(),
-                molecule_id: "fragment_a_context".to_string(),
-                feature_id: "a_overlap".to_string(),
-                label: Some(format!("Left {} bp overlap", left_bp)),
-                length_bp: Some(representative_overlap_bp.max(1)),
-                top_length_bp: Some(representative_overlap_bp.max(1)),
-                bottom_length_bp: Some(representative_overlap_bp.max(1)),
+                molecule_id: "destination_left_context".to_string(),
+                feature_id: "left_overlap".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(left_bp.max(1)),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2563,12 +2587,90 @@ fn build_cartoon_bindings(
             },
             ProtocolCartoonTemplateFeatureBinding {
                 event_id: "context".to_string(),
-                molecule_id: "fragment_b_context".to_string(),
-                feature_id: "b_overlap".to_string(),
-                label: Some(format!("Right {} bp overlap", right_bp)),
-                length_bp: Some(representative_overlap_bp.max(1)),
-                top_length_bp: Some(representative_overlap_bp.max(1)),
-                bottom_length_bp: Some(representative_overlap_bp.max(1)),
+                molecule_id: "insert_context".to_string(),
+                feature_id: "insert_left_overlap".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(left_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "context".to_string(),
+                molecule_id: "insert_context".to_string(),
+                feature_id: "insert_right_overlap".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(right_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "context".to_string(),
+                molecule_id: "destination_right_context".to_string(),
+                feature_id: "right_overlap".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(right_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "chew_back".to_string(),
+                molecule_id: "destination_left_chewed".to_string(),
+                feature_id: "left_overlap_exposed".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(0),
+                bottom_length_bp: Some(left_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "chew_back".to_string(),
+                molecule_id: "insert_chewed".to_string(),
+                feature_id: "insert_left_overlap_exposed".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(0),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "chew_back".to_string(),
+                molecule_id: "insert_chewed".to_string(),
+                feature_id: "insert_right_overlap_exposed".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(0),
+                bottom_length_bp: Some(right_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "chew_back".to_string(),
+                molecule_id: "destination_right_chewed".to_string(),
+                feature_id: "right_overlap_exposed".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(0),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2577,11 +2679,76 @@ fn build_cartoon_bindings(
             ProtocolCartoonTemplateFeatureBinding {
                 event_id: "anneal".to_string(),
                 molecule_id: "annealed_intermediate".to_string(),
-                feature_id: "hybrid_overlap".to_string(),
-                label: Some(overlap_note.clone()),
-                length_bp: Some(representative_overlap_bp.max(1)),
-                top_length_bp: Some(representative_overlap_bp.max(1)),
-                bottom_length_bp: Some(representative_overlap_bp.max(1)),
+                feature_id: "left_overlap".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(left_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "anneal".to_string(),
+                molecule_id: "annealed_intermediate".to_string(),
+                feature_id: "right_overlap".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(right_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "extend".to_string(),
+                molecule_id: "extended_intermediate".to_string(),
+                feature_id: "left_overlap".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(left_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "extend".to_string(),
+                molecule_id: "extended_intermediate".to_string(),
+                feature_id: "right_overlap".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(right_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "seal".to_string(),
+                molecule_id: "sealed_product".to_string(),
+                feature_id: "left_overlap".to_string(),
+                label: Some(format!("Left {} bp homology", left_bp)),
+                length_bp: Some(left_bp.max(1)),
+                top_length_bp: Some(left_bp.max(1)),
+                bottom_length_bp: Some(left_bp.max(1)),
+                color_hex: None,
+                bottom_color_hex: None,
+                top_nick_after: None,
+                bottom_nick_after: None,
+            },
+            ProtocolCartoonTemplateFeatureBinding {
+                event_id: "seal".to_string(),
+                molecule_id: "sealed_product".to_string(),
+                feature_id: "right_overlap".to_string(),
+                label: Some(format!("Right {} bp homology", right_bp)),
+                length_bp: Some(right_bp.max(1)),
+                top_length_bp: Some(right_bp.max(1)),
+                bottom_length_bp: Some(right_bp.max(1)),
                 color_hex: None,
                 bottom_color_hex: None,
                 top_nick_after: None,
@@ -2596,24 +2763,25 @@ fn build_cartoon_title_summary(
     representative_overlap_bp: usize,
     overlap_label: String,
 ) -> (String, String) {
-    let destination_label = if preview.destination.seq_id.trim().is_empty() {
-        "destination".to_string()
-    } else {
-        preview.destination.seq_id.clone()
-    };
-    let insert_label = if preview.insert.seq_id.trim().is_empty() {
-        "insert".to_string()
-    } else {
-        preview.insert.seq_id.clone()
-    };
+    let _ = representative_overlap_bp;
+    let _ = overlap_label;
+    let destination_label = compact_cartoon_label(&preview.destination.seq_id, "destination", 18);
+    let insert_label = compact_cartoon_label(&preview.insert.seq_id, "insert", 18);
+    let left_bp = preview
+        .resolved_junctions
+        .first()
+        .map(|row| row.overlap_bp)
+        .unwrap_or(0);
+    let right_bp = preview
+        .resolved_junctions
+        .get(1)
+        .map(|row| row.overlap_bp)
+        .unwrap_or(left_bp);
     (
+        "GENtle Protocol Cartoon: Gibson Single-Insert Assembly".to_string(),
         format!(
-            "GENtle Protocol Cartoon: Gibson {} + {}",
-            destination_label, insert_label
-        ),
-        format!(
-            "Five-step Gibson mechanism for {} + {} with {} (representative overlap {} bp)",
-            destination_label, insert_label, overlap_label, representative_overlap_bp
+            "Five-step Gibson mechanism for {} + {} with explicit left/right junctions ({} bp left, {} bp right).",
+            destination_label, insert_label, left_bp, right_bp
         ),
     )
 }
@@ -2641,6 +2809,28 @@ fn compact_cartoon_sequence(sequence: &str, edge_bp: usize) -> String {
         &trimmed[..head],
         &trimmed[trimmed.len() - tail..]
     )
+}
+
+fn compact_cartoon_label(raw: &str, fallback: &str, max_chars: usize) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    let head_len = max_chars.saturating_sub(4) / 2;
+    let tail_len = max_chars.saturating_sub(3 + head_len);
+    let head: String = trimmed.chars().take(head_len).collect();
+    let tail: String = trimmed
+        .chars()
+        .rev()
+        .take(tail_len)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("{head}...{tail}")
 }
 
 fn build_routine_handoff(
@@ -2875,7 +3065,10 @@ mod tests {
         assert!(preview.can_execute);
         assert_eq!(preview.resolved_junctions.len(), 2);
         assert_eq!(preview.primer_suggestions.len(), 2);
-        assert_eq!(preview.cartoon.protocol_id, "gibson.two_fragment");
+        assert_eq!(
+            preview.cartoon.protocol_id,
+            "gibson.single_insert_dual_junction"
+        );
     }
 
     #[test]
