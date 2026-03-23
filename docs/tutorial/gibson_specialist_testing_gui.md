@@ -16,7 +16,7 @@ should do:
 1. accepts a circular destination plus one linear insert,
 2. derives left and right junction overlaps from an opening,
 3. suggests Gibson PCR primers from high-level overlap/Tm targets,
-4. renders the factual Gibson cartoon,
+4. prepares the factual Gibson cartoon payload for export,
 5. exports machine-readable plan/preview outputs, and
 6. matches the shared-shell/CLI `gibson preview` result.
 
@@ -48,7 +48,7 @@ By the end of this tutorial, you should have verified all of these:
 - `Preview Gibson Plan` yields:
   - two resolved junctions
   - two primer suggestions
-  - a visible Gibson cartoon
+  - a resolved Gibson cartoon payload that can be exported as SVG
 - `Export Plan JSON...`, `Export Preview JSON...`, `Export Primer Summary...`,
   and `Export Cartoon SVG...` all work
 - the exported plan can be replayed through:
@@ -220,7 +220,8 @@ What to verify in `Review`:
   - one full primer sequence
   - one `5' overlap`
   - one `3' priming` segment
-- `Cartoon preview` is visible in the same window
+- `Cartoon preview` may or may not render inline; for this tutorial, the
+  textual review blocks and the exported SVG are the canonical checks
 
 Expected interpretation:
 
@@ -260,7 +261,8 @@ What to verify:
   executing again
 - all four files are written successfully
 - the primer summary is human-readable
-- the SVG opens and matches the in-window cartoon logic
+- the SVG opens and matches the resolved cartoon logic described by the
+  textual review blocks
 
 ## Step 9: Check Shared CLI Parity
 
@@ -319,7 +321,7 @@ Mark the tutorial successful if all of these are true:
 - [ ] preview returns `2` resolved junctions
 - [ ] preview returns `2` primer suggestions
 - [ ] `Opening sketch` updates to show the two resolved 5' destination ends with overlap sequences
-- [ ] factual Gibson cartoon is visible
+- [ ] cartoon SVG export succeeds and matches the resolved review text
 - [ ] `Cancel` closes the specialist without applying anything
 - [ ] Gibson apply creates primer/product sequence nodes
 - [ ] clicking the Gibson operation reopens the specialist

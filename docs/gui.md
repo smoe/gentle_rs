@@ -650,8 +650,9 @@ Patterns menu:
        - findings, resolved junctions, primer suggestions, and status text are
          copyable directly from the window
        - the in-window cartoon preview is rasterized from the same resolved
-         deterministic SVG payload so the specialist window remains reliable
-         even when direct SVG loading is temperamental on a given platform
+         deterministic SVG payload; when a platform-specific widget issue still
+         prevents inline display, the exported SVG plus the textual review
+         blocks remain the canonical inspection path
        - the current single-insert preview cartoon now shows both
          destination-insert junctions explicitly instead of collapsing the
          mechanism to one representative overlap
