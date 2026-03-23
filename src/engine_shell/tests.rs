@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
+use crate::engine::ContainerKind;
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
     write_demo_workflow_with_shebang,
@@ -931,6 +932,36 @@ fn execute_gibson_apply_creates_output_sequences() {
             .iter()
             .any(|record| matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. }))
     );
+    let gibson_op_id = engine
+        .operation_log()
+        .last()
+        .map(|record| record.result.op_id.clone())
+        .expect("gibson op id");
+    let created_by_gibson = engine
+        .state()
+        .container_state
+        .containers
+        .values()
+        .filter(|container| container.created_by_op.as_deref() == Some(gibson_op_id.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(created_by_gibson.len(), 3);
+    assert!(created_by_gibson.iter().all(|container| {
+        matches!(container.kind, ContainerKind::Singleton) && container.members.len() == 1
+    }));
+    let latest = &engine.state().container_state.seq_to_latest_container;
+    for seq_id in ["insert_x_left_insert_primer", "insert_x_right_insert_primer", "out"] {
+        let container_id = latest
+            .get(seq_id)
+            .unwrap_or_else(|| panic!("missing latest container for {seq_id}"));
+        let container = engine
+            .state()
+            .container_state
+            .containers
+            .get(container_id)
+            .unwrap_or_else(|| panic!("missing container {container_id}"));
+        assert!(matches!(container.kind, ContainerKind::Singleton));
+        assert_eq!(container.members, vec![seq_id.to_string()]);
+    }
 }
 
 #[test]

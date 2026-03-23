@@ -645,6 +645,9 @@ Patterns menu:
          nodes for the two insert primers and the assembled product
        - in lineage `Graph` view, that apply step is projected as one explicit
          Gibson operation hub between the two inputs and three outputs
+       - in `Containers`, those three Gibson outputs land as separate
+         singleton containers rather than one pooled multi-output container,
+         matching the expected separate primer/product vials
        - `Cancel` closes the specialist without applying anything and keeps the
          current draft available when the window is reopened
        - the assembled product carries transferred destination/insert features

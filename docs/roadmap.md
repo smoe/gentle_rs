@@ -75,6 +75,9 @@ order. Durable architecture constraints and decisions remain in
     - dedicated `Tₘ Model` box in the Gibson window
     - apply-time sequence creation for the two insert primers plus the
       assembled product
+    - Gibson apply outputs now materialize as three separate singleton
+      containers (two primer vials plus the assembled product) instead of one
+      synthetic pool container
     - deterministic feature transfer onto the assembled Gibson product
     - lineage reopen path: clicking a Gibson operation reopens the specialist
       with the saved plan loaded again

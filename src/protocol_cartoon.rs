@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 pub enum ProtocolCartoonKind {
     #[serde(rename = "gibson.two_fragment")]
     GibsonTwoFragment,
+    #[serde(rename = "gibson.single_insert_dual_junction")]
+    GibsonSingleInsertDualJunction,
 }
 
 impl ProtocolCartoonKind {
@@ -20,6 +22,7 @@ impl ProtocolCartoonKind {
     pub fn id(&self) -> &'static str {
         match self {
             Self::GibsonTwoFragment => "gibson.two_fragment",
+            Self::GibsonSingleInsertDualJunction => "gibson.single_insert_dual_junction",
         }
     }
 
@@ -27,6 +30,9 @@ impl ProtocolCartoonKind {
     pub fn title(&self) -> &'static str {
         match self {
             Self::GibsonTwoFragment => "Gibson Assembly (two-fragment conceptual)",
+            Self::GibsonSingleInsertDualJunction => {
+                "Gibson Assembly (single-insert dual-junction preview)"
+            }
         }
     }
 
@@ -35,6 +41,9 @@ impl ProtocolCartoonKind {
         match self {
             Self::GibsonTwoFragment => {
                 "Event-sequence cartoon with continuation/sticky/blunt ends and strand-separated DNA glyphs"
+            }
+            Self::GibsonSingleInsertDualJunction => {
+                "Preview-oriented Gibson cartoon showing both destination-insert junctions explicitly"
             }
         }
     }
@@ -45,13 +54,23 @@ impl ProtocolCartoonKind {
             "gibson.two_fragment" | "gibson.two-fragment" | "gibson_two_fragment" | "gibson" => {
                 Some(Self::GibsonTwoFragment)
             }
+            "gibson.single_insert_dual_junction"
+            | "gibson.single-insert-dual-junction"
+            | "gibson_single_insert_dual_junction"
+            | "gibson.single_insert"
+            | "gibson.destination_first_single_insert" => {
+                Some(Self::GibsonSingleInsertDualJunction)
+            }
             _ => None,
         }
     }
 
     /// Deterministic ordered catalog for list commands.
     pub fn catalog() -> Vec<Self> {
-        vec![Self::GibsonTwoFragment]
+        vec![
+            Self::GibsonTwoFragment,
+            Self::GibsonSingleInsertDualJunction,
+        ]
     }
 }
 
@@ -914,6 +933,9 @@ pub fn protocol_cartoon_catalog_rows() -> Vec<ProtocolCartoonCatalogRow> {
 pub fn protocol_cartoon_template_for_kind(kind: &ProtocolCartoonKind) -> ProtocolCartoonTemplate {
     match kind {
         ProtocolCartoonKind::GibsonTwoFragment => gibson_two_fragment_template(),
+        ProtocolCartoonKind::GibsonSingleInsertDualJunction => {
+            gibson_single_insert_dual_junction_template()
+        }
     }
 }
 
@@ -1625,6 +1647,20 @@ fn protocol_cartoon_template_from_spec(spec: ProtocolCartoonSpec) -> ProtocolCar
 
 fn gibson_two_fragment_template() -> ProtocolCartoonTemplate {
     protocol_cartoon_template_from_spec(gibson_two_fragment_spec())
+}
+
+fn gibson_single_insert_dual_junction_template() -> ProtocolCartoonTemplate {
+    let mut template = gibson_two_fragment_template();
+    template.id = ProtocolCartoonKind::GibsonSingleInsertDualJunction
+        .id()
+        .to_string();
+    template.title = ProtocolCartoonKind::GibsonSingleInsertDualJunction
+        .title()
+        .to_string();
+    template.summary = ProtocolCartoonKind::GibsonSingleInsertDualJunction
+        .summary()
+        .to_string();
+    template
 }
 
 fn gibson_two_fragment_spec() -> ProtocolCartoonSpec {

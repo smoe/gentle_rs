@@ -250,6 +250,27 @@ impl GentleEngine {
         if matches!(op, Operation::DesignPrimerPairs { .. }) {
             return;
         }
+        // Gibson outputs represent distinct wet-lab artifacts (two primer vials
+        // plus the assembled product) and should therefore land in separate
+        // singleton containers instead of one synthetic pool container.
+        if matches!(op, Operation::ApplyGibsonAssemblyPlan { .. }) {
+            for seq_id in &result.created_seq_ids {
+                let name = self
+                    .state
+                    .sequences
+                    .get(seq_id)
+                    .and_then(|dna| dna.name().clone())
+                    .filter(|name| !name.trim().is_empty())
+                    .or_else(|| Some(seq_id.clone()));
+                let _ = self.add_container(
+                    std::slice::from_ref(seq_id),
+                    ContainerKind::Singleton,
+                    name,
+                    Some(&result.op_id),
+                );
+            }
+            return;
+        }
         let kind = if matches!(op, Operation::SelectCandidate { .. }) {
             ContainerKind::Selection
         } else if result.created_seq_ids.len() > 1 {
@@ -268,7 +289,6 @@ impl GentleEngine {
             Operation::MergeContainersById { .. } => Some("Merged container".to_string()),
             Operation::Ligation { .. } => Some("Ligation products".to_string()),
             Operation::LigationContainer { .. } => Some("Ligation products".to_string()),
-            Operation::ApplyGibsonAssemblyPlan { .. } => Some("Gibson cloning outputs".to_string()),
             Operation::Pcr { .. }
             | Operation::PcrAdvanced { .. }
             | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),
