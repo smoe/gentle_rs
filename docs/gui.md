@@ -840,7 +840,10 @@ Controls:
 15. Extract Sel
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
-16. PCR ROI
+16. Queue PCR selection
+   - One-click shortcut beside `Extract Sel` that queues the current linear
+     selection as one PCR region and opens Engine Ops.
+17. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
      - add current map/text selection to PCR region queue
@@ -848,12 +851,12 @@ Controls:
      - add selected feature(s) to PCR region queue (one queued row per feature)
    - opens Engine Ops so the user can run `Design Primer Pairs`,
      queue batch execution, or `Design qPCR Assays`.
-17. Export Seq
+18. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-18. Export SVG
+19. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-19. Export View SVG
+20. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
    - When linear `Splicing map` mode is active, export uses the same splicing

@@ -19,7 +19,7 @@
     "gui_steps": [
       "Load `test_files/tp73.ncbi.gb` and open `Engine Ops -> Primer and qPCR design reports`.",
       "Locate `TP73-AS2` annotation and make one promoter-proximal ROI selection near the antisense transcript 5' boundary (for example around genomic coordinates `61720..62120`).",
-      "Create one map/text ROI selection, then use DNA-window `PCR ROI -> Add current selection to queue`.",
+      "Create one map/text ROI selection, then use the visible DNA-window `Queue PCR selection` button.",
       "Select the `TP73-AS2` feature (or another nearby regulatory feature) and use DNA-window `PCR ROI -> Add selected feature(s) to queue`.",
       "In `Design primer pairs`, set shared constraints and a `report_id` base (for example `tp73_as2_promoter_batch`).",
       "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
@@ -43,10 +43,10 @@
         "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary."
       },
       {
-        "parameter": "PCR ROI source action (`Add current selection` vs `Add selected feature(s)`)",
-        "where_used": "DNA-window `PCR ROI` menu before queue execution",
+        "parameter": "PCR ROI source action (`Queue PCR selection` vs `Add selected feature(s)`)",
+        "where_used": "DNA-window toolbar beside `Extract Sel` and `PCR ROI` menu before queue execution",
         "why_it_matters": "Defines whether region bounds come from manual selection or feature coordinates and keeps queue-source labels interpretable.",
-        "how_to_derive": "Use current selection for ad hoc boundaries; use selected features for annotation-driven boundaries."
+        "how_to_derive": "Use the toolbar `Queue PCR selection` action for ad hoc boundaries; use selected features for annotation-driven boundaries."
       },
       {
         "parameter": "DesignPrimerPairs.report_id base",

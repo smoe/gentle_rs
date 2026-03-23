@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-22
+Last updated: 2026-03-24
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -406,6 +406,9 @@ order. Durable architecture constraints and decisions remain in
     - add current selection to PCR queue
     - seed/queue from current visible linear map span (selection-independent fallback)
     - add selected feature(s) to PCR queue (one region per feature)
+  - DNA-window toolbar now also exposes a visible `Queue PCR selection`
+    action beside `Extract Sel` so the current linear selection can be queued
+    without opening the menu first
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue

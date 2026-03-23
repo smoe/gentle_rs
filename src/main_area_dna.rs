@@ -6288,6 +6288,8 @@ impl MainAreaDna {
                 ui.separator();
             }
             if allow_roi_tools {
+                let selection_roi = self.current_selection_range_0based();
+                let visible_span_roi = self.current_visible_linear_span_range_0based();
                 if ui
                     .button("Extract Sel")
                     .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
@@ -6295,9 +6297,23 @@ impl MainAreaDna {
                 {
                     self.extract_current_selection_as_sequence();
                 }
+                let queue_selection_response = ui.add_enabled(
+                    selection_roi.is_some(),
+                    egui::Button::new("Queue PCR selection"),
+                );
+                let queue_selection_response = if selection_roi.is_some() {
+                    queue_selection_response.on_hover_text(
+                        "Queue the current linear selection as one PCR region for batch primer-pair design",
+                    )
+                } else {
+                    queue_selection_response.on_hover_text(
+                        "Requires a non-empty linear map/sequence selection; drag-select a region first",
+                    )
+                };
+                if queue_selection_response.clicked() {
+                    self.queue_current_selection_for_pcr();
+                }
                 ui.menu_button("PCR ROI", |ui| {
-                    let selection_roi = self.current_selection_range_0based();
-                    let visible_span_roi = self.current_visible_linear_span_range_0based();
                     let selection_response = ui.add_enabled(
                         selection_roi.is_some(),
                         egui::Button::new("From current selection"),
