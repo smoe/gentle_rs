@@ -2,7 +2,7 @@
 
 use std::{
     collections::hash_map::DefaultHasher,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
@@ -13577,16 +13577,7 @@ Error: `{err}`"
         &mut self,
         preview: &GibsonAssemblyPreview,
     ) -> std::result::Result<(), String> {
-        let protocol =
-            ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(|| {
-                format!(
-                    "Unknown protocol cartoon id '{}' in Gibson preview",
-                    preview.cartoon.protocol_id
-                )
-            })?;
-        let template = protocol_cartoon_template_for_kind(&protocol);
-        let spec =
-            resolve_protocol_cartoon_template_with_bindings(&template, &preview.cartoon.bindings)?;
+        let spec = Self::resolve_gibson_preview_cartoon_spec(preview)?;
         let svg = render_protocol_cartoon_spec_svg(&spec);
         let path = env::temp_dir().join(format!("gentle_gibson_preview_{}.svg", now_unix_ms_u64()));
         fs::write(&path, svg).map_err(|e| {
@@ -13597,6 +13588,28 @@ Error: `{err}`"
         })?;
         self.gibson_preview_svg_uri = format!("file://{}", path.display());
         Ok(())
+    }
+
+    fn resolve_gibson_preview_cartoon_spec(
+        preview: &GibsonAssemblyPreview,
+    ) -> std::result::Result<crate::protocol_cartoon::ProtocolCartoonSpec, String> {
+        let protocol =
+            ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(|| {
+                format!(
+                    "Unknown protocol cartoon id '{}' in Gibson preview",
+                    preview.cartoon.protocol_id
+                )
+            })?;
+        let template = protocol_cartoon_template_for_kind(&protocol);
+        let mut spec =
+            resolve_protocol_cartoon_template_with_bindings(&template, &preview.cartoon.bindings)?;
+        if !preview.cartoon.title.trim().is_empty() {
+            spec.title = preview.cartoon.title.trim().to_string();
+        }
+        if !preview.cartoon.summary.trim().is_empty() {
+            spec.summary = preview.cartoon.summary.trim().to_string();
+        }
+        Ok(spec)
     }
 
     fn run_gibson_preview(&mut self) {
@@ -13788,21 +13801,7 @@ Error: `{err}`"
             self.gibson_status = "Gibson cartoon export canceled".to_string();
             return;
         };
-        let protocol = match ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id) {
-            Some(protocol) => protocol,
-            None => {
-                self.gibson_status = format!(
-                    "Unknown protocol cartoon id '{}' in Gibson preview",
-                    preview.cartoon.protocol_id
-                );
-                return;
-            }
-        };
-        let template = protocol_cartoon_template_for_kind(&protocol);
-        let spec = match resolve_protocol_cartoon_template_with_bindings(
-            &template,
-            &preview.cartoon.bindings,
-        ) {
+        let spec = match Self::resolve_gibson_preview_cartoon_spec(preview) {
             Ok(spec) => spec,
             Err(err) => {
                 self.gibson_status = format!("Could not resolve Gibson cartoon bindings: {err}");
@@ -21440,6 +21439,148 @@ Error: `{err}`"
         (projected_rows, projected_edges)
     }
 
+    fn project_lineage_graph_operation_hubs(
+        rows: &[LineageRow],
+        edges: &[(String, String, String)],
+        op_label_by_id: &HashMap<String, String>,
+        hub_op_ids: &HashSet<String>,
+    ) -> (
+        Vec<LineageRow>,
+        Vec<(String, String, String)>,
+        HashMap<String, String>,
+    ) {
+        let valid_node_ids: HashSet<String> = rows.iter().map(|row| row.node_id.clone()).collect();
+        let row_by_node: HashMap<String, LineageRow> = rows
+            .iter()
+            .map(|row| (row.node_id.clone(), row.clone()))
+            .collect();
+        let mut op_parents: HashMap<String, BTreeSet<String>> = HashMap::new();
+        let mut op_children: HashMap<String, BTreeSet<String>> = HashMap::new();
+        for (from_node, to_node, op_id) in edges {
+            if !hub_op_ids.contains(op_id) {
+                continue;
+            }
+            if !valid_node_ids.contains(from_node) || !valid_node_ids.contains(to_node) {
+                continue;
+            }
+            op_parents
+                .entry(op_id.clone())
+                .or_default()
+                .insert(from_node.clone());
+            op_children
+                .entry(op_id.clone())
+                .or_default()
+                .insert(to_node.clone());
+        }
+
+        let hubbed_ops: HashSet<String> = hub_op_ids
+            .iter()
+            .filter(|op_id| {
+                op_parents.get(*op_id).map(|rows| rows.len()).unwrap_or(0) >= 2
+                    && op_children.get(*op_id).map(|rows| rows.len()).unwrap_or(0) >= 2
+            })
+            .cloned()
+            .collect();
+        if hubbed_ops.is_empty() {
+            return (rows.to_vec(), edges.to_vec(), op_label_by_id.clone());
+        }
+
+        let mut out_rows = rows.to_vec();
+        let mut out_edges: Vec<(String, String, String)> = vec![];
+        let mut out_op_label_by_id = op_label_by_id.clone();
+        let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+
+        for op_id in &hubbed_ops {
+            let parents = op_parents
+                .get(op_id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let children = op_children
+                .get(op_id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let hub_node_id = format!("operation:{op_id}");
+            let created_at = parents
+                .iter()
+                .filter_map(|node_id| row_by_node.get(node_id))
+                .map(|row| row.created_at)
+                .max()
+                .unwrap_or(0);
+            out_rows.push(LineageRow {
+                kind: LineageNodeKind::Analysis,
+                node_id: hub_node_id.clone(),
+                seq_id: op_id.clone(),
+                display_name: "Gibson cloning".to_string(),
+                origin: "OperationHub".to_string(),
+                created_by_op: op_id.clone(),
+                created_at,
+                parents: parents.clone(),
+                length: 0,
+                circular: false,
+                pool_size: 0,
+                pool_members: vec![],
+                arrangement_id: None,
+                arrangement_mode: None,
+                lane_container_ids: vec![],
+                ladders: vec![],
+                genome_anchor_summary: None,
+                genome_anchor_display: None,
+                is_full_genome_sequence: false,
+                retrieval_descriptor: None,
+                analysis_kind: None,
+                analysis_artifact_id: None,
+                analysis_reference_seq_id: None,
+                analysis_mode: Some("operation_hub".to_string()),
+                analysis_point_count: None,
+                analysis_bin_count: None,
+                macro_instance_id: None,
+                macro_routine_id: None,
+                macro_template_name: None,
+                macro_status: None,
+                macro_status_message: None,
+                macro_op_ids: vec![],
+                macro_inputs: vec![],
+                macro_outputs: vec![],
+            });
+
+            let inbound_op_id = format!("{op_id}::hub_in");
+            let outbound_op_id = format!("{op_id}::hub_out");
+            out_op_label_by_id.insert(inbound_op_id.clone(), "Gibson cloning".to_string());
+            out_op_label_by_id.insert(outbound_op_id.clone(), "Gibson cloning".to_string());
+            for parent in &parents {
+                let key = (parent.clone(), hub_node_id.clone(), inbound_op_id.clone());
+                if seen_edges.insert(key.clone()) {
+                    out_edges.push(key);
+                }
+            }
+            for child in &children {
+                let key = (hub_node_id.clone(), child.clone(), outbound_op_id.clone());
+                if seen_edges.insert(key.clone()) {
+                    out_edges.push(key);
+                }
+            }
+        }
+
+        for edge in edges {
+            if hubbed_ops.contains(&edge.2) {
+                continue;
+            }
+            if seen_edges.insert(edge.clone()) {
+                out_edges.push(edge.clone());
+            }
+        }
+        out_rows.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then(a.node_id.cmp(&b.node_id))
+        });
+        (out_rows, out_edges, out_op_label_by_id)
+    }
+
     fn build_lineage_table_entries(
         rows: &[LineageRow],
         groups: &[PersistedLineageNodeGroup],
@@ -22587,8 +22728,18 @@ Error: `{err}`"
                     &graph_op_label_by_id,
                 );
                 let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
+                let (
+                    graph_view_rows,
+                    graph_view_edges,
+                    graph_view_op_label_by_id,
+                ) = Self::project_lineage_graph_operation_hubs(
+                    &projected_graph_rows,
+                    &projected_graph_edges,
+                    &graph_op_label_by_id,
+                    &self.lineage_reopenable_gibson_op_ids,
+                );
                 let leaf_node_ids = Self::lineage_leaf_node_ids(&graph_rows, &graph_edges);
-                let visible_node_ids: HashSet<String> = projected_graph_rows
+                let visible_node_ids: HashSet<String> = graph_view_rows
                     .iter()
                     .map(|row| row.node_id.clone())
                     .collect();
@@ -22719,9 +22870,9 @@ Error: `{err}`"
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
             });
             ui.separator();
-            let rows = &projected_graph_rows;
-            let lineage_edges = &projected_graph_edges;
-            let op_label_by_id = &graph_op_label_by_id;
+            let rows = &graph_view_rows;
+            let lineage_edges = &graph_view_edges;
+            let op_label_by_id = &graph_view_op_label_by_id;
             let graph_panel_width = ui.available_width().max(1.0);
             let graph_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
             ui.allocate_ui_with_layout(
@@ -32608,6 +32759,55 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(
             projected_edges,
             vec![("n1".to_string(), "n3".to_string(), "op2".to_string())]
+        );
+    }
+
+    #[test]
+    fn project_lineage_graph_operation_hubs_inserts_one_gibson_box() {
+        let rows = vec![
+            make_lineage_row("n1", "dest"),
+            make_lineage_row("n2", "insert"),
+            make_lineage_row("n3", "primer_left"),
+            make_lineage_row("n4", "primer_right"),
+            make_lineage_row("n5", "product"),
+        ];
+        let edges = vec![
+            ("n1".to_string(), "n3".to_string(), "op-gb".to_string()),
+            ("n1".to_string(), "n4".to_string(), "op-gb".to_string()),
+            ("n1".to_string(), "n5".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n3".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n4".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n5".to_string(), "op-gb".to_string()),
+        ];
+        let op_labels = HashMap::from([("op-gb".to_string(), "Gibson cloning".to_string())]);
+        let hub_ops = HashSet::from(["op-gb".to_string()]);
+
+        let (projected_rows, projected_edges, projected_labels) =
+            GENtleApp::project_lineage_graph_operation_hubs(
+                &rows, &edges, &op_labels, &hub_ops,
+            );
+
+        let hub = projected_rows
+            .iter()
+            .find(|row| row.node_id == "operation:op-gb")
+            .expect("hub row");
+        assert_eq!(hub.origin, "OperationHub");
+        assert_eq!(hub.display_name, "Gibson cloning");
+        assert!(projected_edges.iter().all(|edge| edge.2 != "op-gb"));
+        assert!(projected_edges.contains(&(
+            "n1".to_string(),
+            "operation:op-gb".to_string(),
+            "op-gb::hub_in".to_string(),
+        )));
+        assert!(projected_edges.contains(&(
+            "operation:op-gb".to_string(),
+            "n5".to_string(),
+            "op-gb::hub_out".to_string(),
+        )));
+        assert_eq!(projected_edges.len(), 5);
+        assert_eq!(
+            projected_labels.get("op-gb::hub_in").map(String::as_str),
+            Some("Gibson cloning")
         );
     }
 

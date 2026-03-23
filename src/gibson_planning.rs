@@ -291,6 +291,8 @@ pub struct GibsonPrimerSegment {
 pub struct GibsonCartoonPreview {
     pub protocol_id: String,
     pub representative_overlap_bp: usize,
+    pub title: String,
+    pub summary: String,
     pub bindings: ProtocolCartoonTemplateBindings,
 }
 
@@ -299,6 +301,8 @@ impl Default for GibsonCartoonPreview {
         Self {
             protocol_id: String::new(),
             representative_overlap_bp: 0,
+            title: String::new(),
+            summary: String::new(),
             bindings: empty_protocol_cartoon_bindings(),
         }
     }
@@ -885,6 +889,8 @@ pub fn preview_gibson_assembly_plan(
         cartoon: GibsonCartoonPreview {
             protocol_id: ProtocolCartoonKind::GibsonTwoFragment.id().to_string(),
             representative_overlap_bp: 30,
+            title: String::new(),
+            summary: String::new(),
             bindings: empty_protocol_cartoon_bindings(),
         },
         routine_handoff: GibsonRoutineHandoffPreview::default(),
@@ -1158,9 +1164,16 @@ pub fn preview_gibson_assembly_plan(
     } else {
         left_overlap.1.min(right_overlap.1)
     };
+    let (cartoon_title, cartoon_summary) = build_cartoon_title_summary(
+        &preview,
+        representative_overlap_bp,
+        left_bp_label(left_overlap.1, right_overlap.1),
+    );
     preview.cartoon = GibsonCartoonPreview {
         protocol_id: ProtocolCartoonKind::GibsonTwoFragment.id().to_string(),
         representative_overlap_bp,
+        title: cartoon_title,
+        summary: cartoon_summary,
         bindings: build_cartoon_bindings(
             &preview,
             &left_overlap.2,
@@ -2420,6 +2433,8 @@ fn build_cartoon_bindings(
     } else {
         format!("{} bp / {} bp terminal overlaps", left_bp, right_bp)
     };
+    let compact_left_overlap = compact_cartoon_sequence(left_overlap_seq, 6);
+    let compact_right_overlap = compact_cartoon_sequence(right_overlap_seq, 6);
     ProtocolCartoonTemplateBindings {
         schema: "gentle.protocol_cartoon_template_bindings.v1".to_string(),
         template_id: Some(ProtocolCartoonKind::GibsonTwoFragment.id().to_string()),
@@ -2429,8 +2444,8 @@ fn build_cartoon_bindings(
                 event_id: "context".to_string(),
                 title: Some("Context".to_string()),
                 caption: Some(format!(
-                    "The opened destination and insert are configured with {} and {} bp terminal homology regions (left='{}', right='{}').",
-                    left_bp, right_bp, left_overlap_seq, right_overlap_seq
+                    "The opened destination and insert are configured with terminal homology at both junctions (left {} bp: '{}', right {} bp: '{}').",
+                    left_bp, compact_left_overlap, right_bp, compact_right_overlap
                 )),
                 action: None,
             },
@@ -2574,6 +2589,51 @@ fn build_cartoon_bindings(
             },
         ],
     }
+}
+
+fn build_cartoon_title_summary(
+    preview: &GibsonAssemblyPreview,
+    representative_overlap_bp: usize,
+    overlap_label: String,
+) -> (String, String) {
+    let destination_label = if preview.destination.seq_id.trim().is_empty() {
+        "destination".to_string()
+    } else {
+        preview.destination.seq_id.clone()
+    };
+    let insert_label = if preview.insert.seq_id.trim().is_empty() {
+        "insert".to_string()
+    } else {
+        preview.insert.seq_id.clone()
+    };
+    (
+        format!(
+            "GENtle Protocol Cartoon: Gibson {} + {}",
+            destination_label, insert_label
+        ),
+        format!(
+            "Five-step Gibson mechanism for {} + {} with {} (representative overlap {} bp)",
+            destination_label, insert_label, overlap_label, representative_overlap_bp
+        ),
+    )
+}
+
+fn left_bp_label(left_bp: usize, right_bp: usize) -> String {
+    if left_bp == right_bp {
+        format!("{} bp terminal homology on both junctions", left_bp)
+    } else {
+        format!("{} bp left / {} bp right terminal homology", left_bp, right_bp)
+    }
+}
+
+fn compact_cartoon_sequence(sequence: &str, edge_bp: usize) -> String {
+    let trimmed = sequence.trim();
+    if trimmed.len() <= edge_bp.saturating_mul(2).max(12) {
+        return trimmed.to_string();
+    }
+    let head = edge_bp.min(trimmed.len());
+    let tail = edge_bp.min(trimmed.len().saturating_sub(head));
+    format!("{}...{}", &trimmed[..head], &trimmed[trimmed.len() - tail..])
 }
 
 fn build_routine_handoff(

@@ -980,7 +980,9 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
 
     let mut svg = String::new();
     svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {:.0} {:.0}\" role=\"img\" aria-labelledby=\"title desc\" data-protocol-id=\"{}\">",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\" role=\"img\" aria-labelledby=\"title desc\" data-protocol-id=\"{}\">",
+        canvas_w,
+        canvas_h,
         canvas_w,
         canvas_h,
         escape_xml(&spec.id)
@@ -1569,7 +1571,7 @@ fn escape_xml(raw: &str) -> String {
 
 fn render_invalid_protocol_svg(id: &str, message: &str) -> String {
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 900 220\"><rect x=\"0\" y=\"0\" width=\"900\" height=\"220\" fill=\"#fff7ed\"/><text x=\"24\" y=\"56\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"#8a2f1f\">Invalid protocol cartoon: {}</text><text x=\"24\" y=\"96\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"18\" fill=\"#7a4a3b\">{}</text></svg>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"900\" height=\"220\" viewBox=\"0 0 900 220\"><rect x=\"0\" y=\"0\" width=\"900\" height=\"220\" fill=\"#fff7ed\"/><text x=\"24\" y=\"56\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"#8a2f1f\">Invalid protocol cartoon: {}</text><text x=\"24\" y=\"96\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"18\" fill=\"#7a4a3b\">{}</text></svg>",
         escape_xml(id),
         escape_xml(message)
     )
@@ -2452,6 +2454,8 @@ mod tests {
     fn render_gibson_svg_contains_expected_labels() {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::GibsonTwoFragment);
         assert!(svg.contains("<svg"));
+        assert!(svg.contains("width=\""));
+        assert!(svg.contains("height=\""));
         assert!(svg.contains("Context"));
         assert!(svg.contains("Chew-back"));
         assert!(svg.contains("Extend"));
@@ -2617,5 +2621,7 @@ mod tests {
         let svg = render_protocol_cartoon_spec_svg(&invalid);
         assert!(svg.contains("Invalid protocol cartoon"));
         assert!(svg.contains("broken"));
+        assert!(svg.contains("width=\"900\""));
+        assert!(svg.contains("height=\"220\""));
     }
 }
