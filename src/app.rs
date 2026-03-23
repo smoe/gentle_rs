@@ -32968,9 +32968,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         let hub_ops = HashSet::from(["op-gb".to_string()]);
 
         let (projected_rows, projected_edges, projected_labels) =
-            GENtleApp::project_lineage_graph_operation_hubs(
-                &rows, &edges, &op_labels, &hub_ops,
-            );
+            GENtleApp::project_lineage_graph_operation_hubs(&rows, &edges, &op_labels, &hub_ops);
 
         let hub = projected_rows
             .iter()

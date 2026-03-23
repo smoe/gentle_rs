@@ -187,12 +187,7 @@ fn blast_external_binary_preflight_report_with_executables(
 ) -> BlastExternalBinaryPreflightReport {
     BlastExternalBinaryPreflightReport {
         schema: "gentle.blast_external_binary_preflight.v1".to_string(),
-        blastn: probe_external_binary(
-            BLASTN_ENV_BIN,
-            "blastn",
-            blastn_executable,
-            &["-version"],
-        ),
+        blastn: probe_external_binary(BLASTN_ENV_BIN, "blastn", blastn_executable, &["-version"]),
         makeblastdb: probe_external_binary(
             MAKEBLASTDB_ENV_BIN,
             "makeblastdb",

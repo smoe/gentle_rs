@@ -2622,7 +2622,10 @@ fn left_bp_label(left_bp: usize, right_bp: usize) -> String {
     if left_bp == right_bp {
         format!("{} bp terminal homology on both junctions", left_bp)
     } else {
-        format!("{} bp left / {} bp right terminal homology", left_bp, right_bp)
+        format!(
+            "{} bp left / {} bp right terminal homology",
+            left_bp, right_bp
+        )
     }
 }
 
@@ -2633,7 +2636,11 @@ fn compact_cartoon_sequence(sequence: &str, edge_bp: usize) -> String {
     }
     let head = edge_bp.min(trimmed.len());
     let tail = edge_bp.min(trimmed.len().saturating_sub(head));
-    format!("{}...{}", &trimmed[..head], &trimmed[trimmed.len() - tail..])
+    format!(
+        "{}...{}",
+        &trimmed[..head],
+        &trimmed[trimmed.len() - tail..]
+    )
 }
 
 fn build_routine_handoff(

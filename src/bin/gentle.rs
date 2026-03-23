@@ -8,7 +8,7 @@ use std::{
     fs::OpenOptions,
     io::Write,
     panic,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -25,38 +25,70 @@ fn configure_macos_process_name() {
 #[cfg(not(target_os = "macos"))]
 fn configure_macos_process_name() {}
 
-fn resolve_runtime_asset_path(path: &str) -> PathBuf {
+fn resolve_runtime_asset_path_from(
+    path: &str,
+    current_exe: Option<&Path>,
+    manifest_dir: Option<&Path>,
+) -> PathBuf {
     let direct = PathBuf::from(path);
     if direct.exists() {
         return direct;
     }
-    if let Ok(exe_path) = env::current_exe() {
+    if let Some(manifest_dir) = manifest_dir {
+        let repo_relative = manifest_dir.join(path);
+        if repo_relative.exists() {
+            return repo_relative;
+        }
+    }
+    if let Some(exe_path) = current_exe {
         if let Some(exe_dir) = exe_path.parent() {
-            let bundled = exe_dir.join("../Resources").join(path);
-            if bundled.exists() {
-                return bundled;
+            let mut candidates: Vec<PathBuf> = Vec::new();
+            if let Some(parent) = exe_dir.parent() {
+                candidates.push(parent.join("Resources").join(path));
+                if let Some(grandparent) = parent.parent() {
+                    candidates.push(grandparent.join(path));
+                }
+            }
+            for candidate in candidates {
+                if candidate.exists() {
+                    return candidate;
+                }
             }
         }
     }
     PathBuf::from(path)
 }
 
-fn load_icon(path: &str) -> egui::IconData {
+fn resolve_runtime_asset_path(path: &str) -> PathBuf {
+    let current_exe = env::current_exe().ok();
+    let manifest_dir = option_env!("CARGO_MANIFEST_DIR").map(Path::new);
+    resolve_runtime_asset_path_from(path, current_exe.as_deref(), manifest_dir)
+}
+
+fn load_icon(path: &str) -> Option<egui::IconData> {
     let icon_path = resolve_runtime_asset_path(path);
     let (icon_rgba, icon_width, icon_height) = {
-        let image = image::open(&icon_path)
-            .unwrap_or_else(|e| panic!("Failed to open icon path '{}': {}", icon_path.display(), e))
-            .into_rgba8();
+        let image = match image::open(&icon_path) {
+            Ok(image) => image.into_rgba8(),
+            Err(err) => {
+                eprintln!(
+                    "Warning: could not load app icon '{}': {}; continuing without custom icon",
+                    icon_path.display(),
+                    err
+                );
+                return None;
+            }
+        };
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
     };
 
-    egui::IconData {
+    Some(egui::IconData {
         rgba: icon_rgba,
         width: icon_width,
         height: icon_height,
-    }
+    })
 }
 
 fn install_panic_logging() {
@@ -175,12 +207,14 @@ fn main() -> eframe::Result<()> {
         eprintln!("--allow-screenshots is not supported in this build");
     }
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([800.0, 600.0])
+        .with_min_inner_size([300.0, 220.0]);
+    if let Some(icon) = load_icon("assets/icon.png") {
+        viewport = viewport.with_icon(icon);
+    }
     let options = NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
-            .with_min_inner_size([300.0, 220.0])
-            .with_icon(load_icon("assets/icon.png")),
-
+        viewport,
         ..Default::default()
     };
 
@@ -193,4 +227,56 @@ fn main() -> eframe::Result<()> {
             )))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_icon, resolve_runtime_asset_path_from};
+    use std::path::Path;
+
+    #[test]
+    fn resolve_runtime_asset_path_uses_manifest_dir_fallback() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let manifest_dir = temp.path();
+        let relative = "test_runtime_assets/icon.png";
+        let assets_dir = manifest_dir.join("test_runtime_assets");
+        std::fs::create_dir_all(&assets_dir).expect("create assets dir");
+        let icon_path = assets_dir.join("icon.png");
+        std::fs::write(&icon_path, b"placeholder").expect("write placeholder icon");
+
+        let resolved = resolve_runtime_asset_path_from(relative, None, Some(manifest_dir));
+        assert_eq!(resolved, icon_path);
+    }
+
+    #[test]
+    fn resolve_runtime_asset_path_uses_executable_relative_dev_fallback() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp.path();
+        let relative = "test_runtime_assets/icon.png";
+        let assets_dir = repo_root.join("test_runtime_assets");
+        std::fs::create_dir_all(&assets_dir).expect("create assets dir");
+        let icon_path = assets_dir.join("icon.png");
+        std::fs::write(&icon_path, b"placeholder").expect("write placeholder icon");
+
+        let exe_path = repo_root.join("target").join("debug").join("gentle");
+        let resolved = resolve_runtime_asset_path_from(relative, Some(&exe_path), None);
+        assert_eq!(resolved, icon_path);
+    }
+
+    #[test]
+    fn load_icon_missing_file_returns_none() {
+        assert!(load_icon("assets/does-not-exist.png").is_none());
+    }
+
+    #[test]
+    fn load_icon_can_read_repo_icon_from_manifest_fallback() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let repo_icon = manifest_dir.join("assets").join("icon.png");
+        assert!(
+            repo_icon.exists(),
+            "expected repo icon fixture at '{}'",
+            repo_icon.display()
+        );
+        assert!(load_icon("assets/icon.png").is_some());
+    }
 }
