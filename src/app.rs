@@ -525,6 +525,7 @@ pub struct GENtleApp {
     help_search_selected: usize,
     help_focus_search_box: bool,
     help_last_content_width: f32,
+    help_selectable_text_mode: bool,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -1783,6 +1784,7 @@ impl Default for GENtleApp {
             help_search_selected: 0,
             help_focus_search_box: false,
             help_last_content_width: 0.0,
+            help_selectable_text_mode: false,
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -4797,6 +4799,10 @@ Error: `{err}`"
             HelpDoc::Shell => &self.help_shell_markdown,
             HelpDoc::Tutorial => &self.help_tutorial_markdown,
         }
+    }
+
+    fn active_help_copyable_text(&self) -> String {
+        self.active_help_markdown().to_string()
     }
 
     fn refresh_help_search_matches(&mut self) {
@@ -27914,6 +27920,31 @@ Error: `{err}`"
                     active_doc_changed = true;
                 }
                 if ui
+                    .button("Copy Page")
+                    .on_hover_text("Copy the current help/tutorial markdown source to the clipboard")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(self.active_help_copyable_text());
+                }
+                ui.separator();
+                ui.label("View:");
+                if ui
+                    .selectable_label(!self.help_selectable_text_mode, "Rendered")
+                    .on_hover_text("Show the current document as rendered markdown")
+                    .clicked()
+                {
+                    self.help_selectable_text_mode = false;
+                }
+                if ui
+                    .selectable_label(self.help_selectable_text_mode, "Selectable Text")
+                    .on_hover_text(
+                        "Show the current document as selectable raw markdown so any label or output id can be copied",
+                    )
+                    .clicked()
+                {
+                    self.help_selectable_text_mode = true;
+                }
+                if ui
                     .button("Close")
                     .on_hover_text("Close help window")
                     .clicked()
@@ -28057,9 +28088,20 @@ Error: `{err}`"
                         Vec2::new(content_width, 0.0),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            CommonMarkViewer::new()
-                                .max_image_width(Some(max_image_width))
-                                .show(ui, &mut self.help_markdown_cache, &rendered_markdown);
+                            if self.help_selectable_text_mode {
+                                let mut copyable_text = markdown;
+                                ui.add_sized(
+                                    [content_width, ui.available_height().max(320.0)],
+                                    egui::TextEdit::multiline(&mut copyable_text)
+                                        .font(egui::TextStyle::Monospace)
+                                        .desired_width(content_width)
+                                        .lock_focus(true),
+                                );
+                            } else {
+                                CommonMarkViewer::new()
+                                    .max_image_width(Some(max_image_width))
+                                    .show(ui, &mut self.help_markdown_cache, &rendered_markdown);
+                            }
                         },
                     );
                 });
@@ -31536,6 +31578,21 @@ mod tests {
                 .iter()
                 .any(|entry| entry.path == tutorial_path.to_string_lossy())
         );
+    }
+
+    #[test]
+    fn help_copyable_text_uses_active_document_markdown() {
+        let mut app = GENtleApp::default();
+        app.help_doc = HelpDoc::Tutorial;
+        app.help_tutorial_markdown = "# Tutorial\n\n- `gibson_ui_test_product`\n".to_string();
+        assert_eq!(
+            app.active_help_copyable_text(),
+            "# Tutorial\n\n- `gibson_ui_test_product`\n"
+        );
+
+        app.help_doc = HelpDoc::Gui;
+        app.help_gui_markdown = "GUI body".to_string();
+        assert_eq!(app.active_help_copyable_text(), "GUI body");
     }
 
     #[test]

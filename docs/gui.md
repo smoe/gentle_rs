@@ -1273,6 +1273,10 @@ Markdown image support:
 - images are dynamically constrained to 75% of help-pane width for readability
 - screenshots in this manual include explicit caption lines (`*Figure: ...*`)
 - `Reload` in the help window reloads markdown + images from disk
+- `Copy Page` copies the current help/tutorial markdown source to the clipboard
+- `View -> Selectable Text` switches the help body from rendered markdown to a
+  selectable raw-markdown text view so inline values such as output IDs can be
+  copied directly
 - help viewer supports in-window text search (`Cmd/Ctrl+F` focuses search box)
 - search UI includes match count and `Prev`/`Next` navigation
 - help header controls and markdown body reflow when the help window is resized

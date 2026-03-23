@@ -16298,6 +16298,7 @@ impl MainAreaDna {
             roi_seed_capture_enabled: self.rna_reads_ui.roi_seed_capture_enabled,
             seed_filter: RnaReadSeedFilterConfig {
                 kmer_len,
+                seed_stride_bp: RnaReadSeedFilterConfig::default().seed_stride_bp,
                 short_full_hash_max_bp,
                 long_window_bp,
                 long_window_count,
