@@ -712,6 +712,52 @@ fn test_workflow_digest_merge_ligation_is_deterministic() {
 }
 
 #[test]
+fn test_from_state_reseeds_operation_counter_from_existing_project_ops() {
+    let mut state = ProjectState::default();
+    state.sequences.insert("seed".to_string(), seq("ATGCATGC"));
+    state.lineage.next_node_counter = 1;
+    state.lineage.nodes.insert(
+        "n-1".to_string(),
+        LineageNode {
+            node_id: "n-1".to_string(),
+            seq_id: "seed".to_string(),
+            created_by_op: Some("op-41".to_string()),
+            origin: SequenceOrigin::ImportedSynthetic,
+            created_at_unix_ms: 1,
+        },
+    );
+    state
+        .lineage
+        .seq_to_node
+        .insert("seed".to_string(), "n-1".to_string());
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("seed".to_string()),
+            members: vec!["seed".to_string()],
+            created_by_op: Some("op-57".to_string()),
+            created_at_unix_ms: 1,
+        },
+    );
+    state
+        .container_state
+        .seq_to_latest_container
+        .insert("seed".to_string(), "container-1".to_string());
+    state.container_state.next_container_counter = 1;
+
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::SetParameter {
+            name: "max_fragments_per_container".to_string(),
+            value: json!(123),
+        })
+        .expect("set parameter");
+    assert_eq!(result.op_id, "op-58");
+}
+
+#[test]
 fn test_design_primer_pairs_persists_report() {
     let mut state = ProjectState::default();
     state.sequences.insert(

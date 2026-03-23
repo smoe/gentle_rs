@@ -5724,7 +5724,51 @@ impl GentleEngine {
         }
         ret.reconcile_lineage_nodes();
         ret.reconcile_containers();
+        ret.reseed_op_counter_from_state();
         ret
+    }
+
+    fn parse_op_counter_from_id(op_id: &str) -> Option<u64> {
+        let trimmed = op_id.trim();
+        let (prefix, suffix) = trimmed.split_once('-')?;
+        if !prefix.eq_ignore_ascii_case("op") {
+            return None;
+        }
+        suffix.parse::<u64>().ok()
+    }
+
+    fn reseed_op_counter_from_state(&mut self) {
+        let mut max_seen = self.op_counter;
+        let mut consider = |raw: &str| {
+            if let Some(value) = Self::parse_op_counter_from_id(raw) {
+                max_seen = max_seen.max(value);
+            }
+        };
+
+        for node in self.state.lineage.nodes.values() {
+            if let Some(op_id) = node.created_by_op.as_deref() {
+                consider(op_id);
+            }
+        }
+        for edge in &self.state.lineage.edges {
+            consider(&edge.op_id);
+        }
+        for instance in &self.state.lineage.macro_instances {
+            for op_id in &instance.expanded_op_ids {
+                consider(op_id);
+            }
+        }
+        for container in self.state.container_state.containers.values() {
+            if let Some(op_id) = container.created_by_op.as_deref() {
+                consider(op_id);
+            }
+        }
+        for arrangement in self.state.container_state.arrangements.values() {
+            if let Some(op_id) = arrangement.created_by_op.as_deref() {
+                consider(op_id);
+            }
+        }
+        self.op_counter = max_seen;
     }
 
     /// Borrow the canonical mutable-independent project snapshot.

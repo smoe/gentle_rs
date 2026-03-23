@@ -1465,6 +1465,43 @@ mod tests {
     }
 
     #[test]
+    fn seed_visible_linear_span_updates_pcr_roi_fields() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_linear_viewport(40, 60);
+
+        area.seed_current_visible_linear_span_for_primer_roi();
+
+        assert_eq!(area.primer_design_ui.roi_start_0based, "40");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "100");
+        assert_eq!(area.qpcr_design_ui.roi_start_0based, "40");
+        assert_eq!(area.qpcr_design_ui.roi_end_0based, "100");
+        assert!(area.op_status.contains("visible map span"));
+    }
+
+    #[test]
+    fn queue_visible_linear_span_adds_pcr_region() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_linear_viewport(55, 90);
+
+        area.queue_current_visible_linear_span_for_pcr();
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 1);
+        let queued = &area.pcr_queued_regions_ui[0];
+        assert_eq!(queued.template, "seq1");
+        assert_eq!(queued.source_label, "visible map span");
+        assert_eq!(queued.start_0based, 55);
+        assert_eq!(queued.end_0based_exclusive, 145);
+        assert_eq!(area.primer_design_ui.roi_start_0based, "55");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "145");
+        assert!(
+            area.op_status
+                .contains("Queued PCR region from visible map span")
+        );
+    }
+
+    #[test]
     fn queue_current_primer_roi_fields_adds_region_spec() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -6242,6 +6279,7 @@ impl MainAreaDna {
                 }
                 ui.menu_button("PCR ROI", |ui| {
                     let selection_roi = self.current_selection_range_0based();
+                    let visible_span_roi = self.current_visible_linear_span_range_0based();
                     let selection_response = ui.add_enabled(
                         selection_roi.is_some(),
                         egui::Button::new("From current selection"),
@@ -6252,7 +6290,7 @@ impl MainAreaDna {
                         )
                     } else {
                         selection_response.on_hover_text(
-                            "Requires a non-empty linear map/sequence selection",
+                            "Requires a non-empty linear map/sequence selection (or use visible map span fallback below)",
                         )
                     };
                     if selection_response.clicked() {
@@ -6276,11 +6314,47 @@ impl MainAreaDna {
                         )
                     } else {
                         queue_selection_response.on_hover_text(
-                            "Requires a non-empty linear map/sequence selection",
+                            "Requires a non-empty linear map/sequence selection (or use visible map span fallback below)",
                         )
                     };
                     if queue_selection_response.clicked() {
                         self.queue_current_selection_for_pcr();
+                        ui.close();
+                    }
+
+                    let visible_span_response = ui.add_enabled(
+                        visible_span_roi.is_some(),
+                        egui::Button::new("From visible map span"),
+                    );
+                    let visible_span_response = if visible_span_roi.is_some() {
+                        visible_span_response.on_hover_text(
+                            "Seed Primer/qPCR ROI from the currently visible linear map span",
+                        )
+                    } else {
+                        visible_span_response.on_hover_text(
+                            "Requires a visible linear (non-circular) map span",
+                        )
+                    };
+                    if visible_span_response.clicked() {
+                        self.seed_current_visible_linear_span_for_primer_roi();
+                        ui.close();
+                    }
+
+                    let queue_visible_span_response = ui.add_enabled(
+                        visible_span_roi.is_some(),
+                        egui::Button::new("Add visible map span to PCR queue"),
+                    );
+                    let queue_visible_span_response = if visible_span_roi.is_some() {
+                        queue_visible_span_response.on_hover_text(
+                            "Queue the current visible linear map span as one PCR region for batch primer-pair design",
+                        )
+                    } else {
+                        queue_visible_span_response.on_hover_text(
+                            "Requires a visible linear (non-circular) map span",
+                        )
+                    };
+                    if queue_visible_span_response.clicked() {
+                        self.queue_current_visible_linear_span_for_pcr();
                         ui.close();
                     }
 
@@ -8563,6 +8637,21 @@ impl MainAreaDna {
         Some((from, to))
     }
 
+    fn current_visible_linear_span_range_0based(&self) -> Option<(usize, usize)> {
+        if self.is_circular() {
+            return None;
+        }
+        let (start, span, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 || span == 0 {
+            return None;
+        }
+        let end_exclusive = start.saturating_add(span).min(sequence_length);
+        if end_exclusive <= start {
+            return None;
+        }
+        Some((start, end_exclusive))
+    }
+
     fn feature_roi_range_0based(&self, feature_id: usize) -> Option<(usize, usize)> {
         let dna = self.dna.read().ok()?;
         let feature = dna.features().get(feature_id)?;
@@ -8706,6 +8795,45 @@ impl MainAreaDna {
         Ok(true)
     }
 
+    fn seed_current_visible_linear_span_for_primer_roi(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status = "No visible linear map span available to seed as PCR ROI".to_string();
+            return;
+        };
+        self.seed_primer_design_roi_0based(start, end_exclusive, "visible map span");
+    }
+
+    fn queue_current_visible_linear_span_for_pcr(&mut self) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status = "No visible linear map span available to queue for PCR".to_string();
+            return;
+        };
+        match self.queue_pcr_region(&template, start, end_exclusive, "visible map span") {
+            Ok(true) => {
+                self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                self.show_engine_ops = true;
+                self.op_status = format!(
+                    "Queued PCR region from visible map span: {start}..{end_exclusive} (0-based, end-exclusive)"
+                );
+                self.save_engine_ops_state();
+            }
+            Ok(false) => {
+                self.op_status = format!(
+                    "PCR region already queued for template '{}': {}..{}",
+                    template, start, end_exclusive
+                );
+            }
+            Err(message) => {
+                self.op_status = format!("Could not queue PCR region: {message}");
+            }
+        }
+    }
+
     fn queue_current_selection_for_pcr(&mut self) {
         let template = self.seq_id.clone().unwrap_or_default();
         if template.trim().is_empty() {
@@ -8713,7 +8841,9 @@ impl MainAreaDna {
             return;
         }
         let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
-            self.op_status = "No non-empty linear selection available to queue for PCR".to_string();
+            self.op_status =
+                "No non-empty linear selection available to queue for PCR; use visible map span fallback"
+                    .to_string();
             return;
         };
         match self.queue_pcr_region(
@@ -21405,6 +21535,15 @@ impl MainAreaDna {
                             .clicked()
                         {
                             self.queue_current_primer_roi_fields_for_pcr();
+                        }
+                        if ui
+                            .button("Queue visible map span")
+                            .on_hover_text(
+                                "Queue the currently visible linear map span as one PCR region spec",
+                            )
+                            .clicked()
+                        {
+                            self.queue_current_visible_linear_span_for_pcr();
                         }
                         let run_batch_response = ui.add_enabled(
                             !self.pcr_queued_regions_ui.is_empty() && !primer_task_running,

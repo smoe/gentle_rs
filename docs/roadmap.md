@@ -399,12 +399,14 @@ order. Durable architecture constraints and decisions remain in
     - export current `report_id` to JSON via save dialog
   - DNA-window `PCR ROI` menu now supports selection-first queue capture:
     - add current selection to PCR queue
+    - seed/queue from current visible linear map span (selection-independent fallback)
     - add selected feature(s) to PCR queue (one region per feature)
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
       rows are ROI specifications (`template + start + end`) rather than
       immediate Primer3 jobs
+    - explicit `Queue visible map span` in-panel shortcut for map-first workflows
     - batch run action `Design Primer Pairs for queued regions`
     - deterministic batch report suffixing (`{base}_rNN`)
     - optional per-region `ExtractRegion` copy artifacts
