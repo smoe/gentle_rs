@@ -1630,6 +1630,8 @@ qPCR form:
   - `Probe side` with the same side-constraint fields
   - `max probe Tm delta`
   - `max assays`
+- the qPCR controls mirror the primer-pair hover help and use wider ROI
+  coordinate fields so large genomic positions remain easy to enter
 
 Buttons:
 

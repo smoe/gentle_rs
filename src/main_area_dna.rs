@@ -21308,6 +21308,14 @@ impl MainAreaDna {
         });
     }
 
+    fn render_tm_delta_label(ui: &mut egui::Ui, prefix: &str) -> egui::InnerResponse<()> {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label(prefix);
+            ui.label(egui::RichText::new("m").small());
+        })
+    }
+
     fn render_primer_pair_constraint_editor(
         ui: &mut egui::Ui,
         id_prefix: &str,
@@ -21324,18 +21332,20 @@ impl MainAreaDna {
                 .num_columns(4)
                 .show(ui, |ui| {
                     ui.label("fixed amplicon start")
-                        .on_hover_text("Optional fixed amplicon start coordinate (0-based).");
+                        .on_hover_text(
+                            "Optional fixed amplicon start coordinate (0-based). Large genomic coordinates are expected here.",
+                        );
                     ui.add(
                         egui::TextEdit::singleline(&mut pair.fixed_amplicon_start_0based)
-                            .desired_width(128.0),
+                            .desired_width(168.0),
                     )
                     .on_hover_text("Fix the amplicon start to this 0-based coordinate.");
                     ui.label("fixed amplicon end (exclusive)").on_hover_text(
-                        "Optional fixed amplicon end coordinate (0-based, end-exclusive).",
+                        "Optional fixed amplicon end coordinate (0-based, end-exclusive). Large genomic coordinates are expected here.",
                     );
                     ui.add(
                         egui::TextEdit::singleline(&mut pair.fixed_amplicon_end_0based_exclusive)
-                            .desired_width(96.0),
+                            .desired_width(168.0),
                     )
                     .on_hover_text("Fix the amplicon end to this 0-based end-exclusive coordinate.");
                     ui.end_row();
@@ -21480,7 +21490,8 @@ impl MainAreaDna {
                         )
                         .on_hover_text("Upper amplicon length bound.");
                         ui.end_row();
-                        ui.label("max ΔTₘ")
+                        Self::render_tm_delta_label(ui, "max ΔT")
+                            .response
                             .on_hover_text("Maximum allowed ΔTₘ (°C) between primer sides.");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
@@ -21805,47 +21816,74 @@ impl MainAreaDna {
                     "Tip: queue multi-region primer workflows in `Design primer pairs`; qPCR remains optional for follow-up assays.",
                 );
                 ui.horizontal(|ui| {
-                    ui.label("ROI start");
+                    ui.label("ROI start").on_hover_text(
+                        "PCR region-of-interest start coordinate (0-based). Supports large genomic coordinates.",
+                    );
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_start_0based)
-                            .desired_width(120.0),
+                            .desired_width(168.0),
+                    )
+                    .on_hover_text(
+                        "0-based ROI start. This is queued as region metadata, not a live qPCR process.",
                     );
-                    ui.label("ROI end");
+                    ui.label("ROI end").on_hover_text(
+                        "PCR region-of-interest end coordinate (0-based, end-exclusive).",
+                    );
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_end_0based)
-                            .desired_width(120.0),
+                            .desired_width(168.0),
+                    )
+                    .on_hover_text(
+                        "0-based end-exclusive ROI end. Together with ROI start this defines one queued region spec.",
                     );
-                    ui.label("min amplicon");
+                    ui.label("min amplicon")
+                        .on_hover_text("Minimum amplicon length in bp.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.min_amplicon_bp)
-                            .desired_width(80.0),
-                    );
-                    ui.label("max amplicon");
+                            .desired_width(92.0),
+                    )
+                    .on_hover_text("Lower amplicon length bound.");
+                    ui.label("max amplicon")
+                        .on_hover_text("Maximum amplicon length in bp.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_amplicon_bp)
-                            .desired_width(80.0),
-                    );
+                            .desired_width(92.0),
+                    )
+                    .on_hover_text("Upper amplicon length bound.");
                 });
                 ui.horizontal(|ui| {
-                    ui.label("max primer Tm delta");
+                    Self::render_tm_delta_label(ui, "max primer ΔT")
+                        .response
+                        .on_hover_text("Maximum allowed ΔTₘ (°C) between qPCR primer sides.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_tm_delta_c)
-                            .desired_width(80.0),
-                    );
-                    ui.label("max probe Tm delta");
+                            .desired_width(92.0),
+                    )
+                    .on_hover_text("Optional ΔTₘ constraint for qPCR primer-side ranking.");
+                    Self::render_tm_delta_label(ui, "max probe ΔT")
+                        .response
+                        .on_hover_text("Maximum allowed ΔTₘ (°C) between probe-side annealing temperatures.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_probe_tm_delta_c)
-                            .desired_width(80.0),
-                    );
-                    ui.label("max assays");
+                            .desired_width(92.0),
+                    )
+                    .on_hover_text("Optional ΔTₘ constraint for probe-side ranking.");
+                    ui.label("max assays")
+                        .on_hover_text("Maximum number of accepted qPCR assays to return.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_assays)
                             .desired_width(80.0),
+                    )
+                    .on_hover_text("Upper limit for returned qPCR assay candidates.");
+                    ui.label("report_id").on_hover_text(
+                        "Persisted report identifier for qPCR. Batch mode is not used here, so no `_rNN` suffixing applies automatically.",
                     );
-                    ui.label("report_id");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.report_id)
                             .desired_width(180.0),
+                    )
+                    .on_hover_text(
+                        "Optional report id stem. Empty value auto-derives from template and ROI.",
                     );
                 });
                 Self::render_primer_pair_constraint_editor(
