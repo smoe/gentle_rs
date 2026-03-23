@@ -340,6 +340,8 @@ order. Durable architecture constraints and decisions remain in
 - Top-level README showcase expansion is now underway:
   - shipped showcase figures now cover distinct GENtle usage modes:
     - built-in Gibson protocol cartoon
+    - single-insert dual-junction Gibson mechanism strip
+    - Gibson lineage graph export showing one operation plus concrete outputs
     - TP53/p53 isoform architecture from Ensembl 116 geometry plus curated
       isoform panel overlays
     - TP73 cDNA-vs-genomic dotplot derived locally from `test_files/tp73.ncbi.gb`

@@ -14,16 +14,30 @@ auditable instead of being redrawn by hand.
 
 ## Showcases
 
-### Gibson Protocol Cartoon
+### Gibson Workflow, Mechanism, and Provenance
 
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
 
-Built-in conceptual Gibson Assembly strip: two input fragments, 5' chew-back,
+The first strip is the compact conceptual view: two fragments, 5' chew-back,
 annealing across the homologous overlap, polymerase fill-in, and ligase
-sealing. It shows how executable GENtle workflows can also carry readable,
-factual visual explanations of the underlying molecular events.
+sealing. It introduces the mechanism at a glance.
 
-This README figure is rendered directly by the shared protocol-cartoon engine:
+![GENtle single-insert Gibson mechanism](docs/figures/gibson_single_insert_protocol_cartoon.svg)
+
+The second strip is the factual single-insert view produced from the same
+shared engine: one opened destination, one insert, two explicit junctions,
+correct 5' chew-back, annealing at both overlaps, polymerase fill-in, and
+ligase sealing.
+
+![GENtle Gibson lineage graph](docs/figures/gibson_single_insert_lineage.svg)
+
+And the same state remains inspectable as provenance: one `Gibson cloning`
+operation, two input sequences, two primer outputs, and one assembled product
+in the lineage graph.
+
+These README Gibson figures are generated from shared engine routes, not drawn
+by hand. The conceptual hero is rendered directly by the built-in
+protocol-cartoon engine:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -32,20 +46,19 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/gibson_two_fragment_protocol_cartoon.svg
 ```
 
-Canonical protocol-cartoon templates start from readable defaults and can then
-be adapted to the actual parameters of a concrete cloning routine. To start
-from an editable template instead of the built-in render directly, use:
+The single-insert mechanism strip is likewise rendered directly from the newer
+built-in dual-junction protocol cartoon:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon template-export \
-  gibson.two_fragment \
-  gibson.two_fragment.template.json
+  protocol-cartoon render-svg \
+  gibson.single_insert_dual_junction \
+  docs/figures/gibson_single_insert_protocol_cartoon.svg
 ```
 
-Then tweak the exported JSON and render it with
-`protocol-cartoon render-template-svg ...` or apply overrides with
-`protocol-cartoon render-with-bindings ...`.
+The lineage figure comes from the same tutorial baseline plus one deterministic
+Gibson apply + lineage export path. Exact regeneration commands for all three
+Gibson figures live in [`docs/figures/README.md`](docs/figures/README.md).
 
 The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose

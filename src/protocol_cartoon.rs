@@ -31,7 +31,7 @@ impl ProtocolCartoonKind {
         match self {
             Self::GibsonTwoFragment => "Gibson Assembly (two-fragment conceptual)",
             Self::GibsonSingleInsertDualJunction => {
-                "Gibson Assembly (single-insert dual-junction preview)"
+                "Gibson Assembly (single-insert dual-junction mechanism)"
             }
         }
     }
@@ -43,7 +43,7 @@ impl ProtocolCartoonKind {
                 "Event-sequence cartoon with continuation/sticky/blunt ends and strand-separated DNA glyphs"
             }
             Self::GibsonSingleInsertDualJunction => {
-                "Preview-oriented Gibson cartoon showing both destination-insert junctions explicitly"
+                "Single-insert Gibson cartoon showing both destination-insert junctions explicitly"
             }
         }
     }
