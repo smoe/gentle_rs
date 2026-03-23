@@ -635,6 +635,9 @@ Patterns menu:
        - the in-window cartoon preview is rasterized from the same resolved
          deterministic SVG payload so the specialist window remains reliable
          even when direct SVG loading is temperamental on a given platform
+       - the current single-insert preview cartoon now shows both
+         destination-insert junctions explicitly instead of collapsing the
+         mechanism to one representative overlap
        - preview notes repeat the shared Tm-model assumptions so GUI and CLI
          users see the same explanation
     5. `Outputs`
