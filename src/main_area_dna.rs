@@ -3425,7 +3425,7 @@ mod tests {
     fn splicing_map_placeholder_svg_mentions_selected_sequence() {
         let svg = MainAreaDna::render_splicing_map_placeholder_svg("tp53.seq");
         assert!(svg.contains("tp53.seq"));
-        assert!(svg.contains("No mRNA/exon feature is selected"));
+        assert!(svg.contains("No transcript-like RNA/exon feature is selected"));
         assert!(svg.contains("<svg"));
     }
 }
@@ -5371,7 +5371,7 @@ impl MainAreaDna {
                         "Splicing map",
                     )
                     .on_hover_text(
-                        "Show transcript/exon splicing lanes for selected mRNA/exon features",
+                        "Show transcript/exon splicing lanes for selected mRNA, ncRNA, transcript, or exon features",
                     )
                     .clicked()
                 {
@@ -19289,9 +19289,8 @@ impl MainAreaDna {
 
     fn render_splicing_map_placeholder_svg(seq_id: &str) -> String {
         let title = format!("Splicing map (read-only) | {seq_id}");
-        let subtitle = "No mRNA/exon feature is selected";
-        let hint =
-            "Select an mRNA or exon feature in the feature tree to render transcript/exon lanes.";
+        let subtitle = "No transcript-like RNA/exon feature is selected";
+        let hint = "Select an mRNA, ncRNA, transcript, or exon feature in the feature tree to render transcript/exon lanes.";
         format!(
             concat!(
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1200\" height=\"700\" viewBox=\"0 0 1200 700\">",
@@ -19558,7 +19557,7 @@ impl MainAreaDna {
                 )
             } else {
                 format!(
-                    "linear splicing view | {} bp | no selected mRNA/exon feature",
+                    "linear splicing view | {} bp | no selected transcript-like RNA/exon feature",
                     dna_guard.len()
                 )
             }
@@ -25396,7 +25395,10 @@ impl MainAreaDna {
                     let kind_upper = feature.kind.to_string().trim().to_ascii_uppercase();
                     if RenderDna::is_tfbs_feature(feature) {
                         expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
-                    } else if kind_upper == "MRNA" || kind_upper == "EXON" {
+                    } else if matches!(
+                        kind_upper.as_str(),
+                        "MRNA" | "TRANSCRIPT" | "NCRNA" | "EXON"
+                    ) {
                         expert_target = Some(FeatureExpertTarget::SplicingFeature {
                             feature_id: id,
                             scope: SplicingScopePreset::AllOverlappingBothStrands,

@@ -3056,7 +3056,7 @@ impl GentleEngine {
         let mut matched_requested = HashSet::<String>::new();
         let mut lanes = Vec::<SplicingTranscriptLane>::new();
         for (idx, feature) in features.iter().enumerate() {
-            if !Self::is_mrna_feature(feature) {
+            if !Self::is_splicing_transcript_feature(feature) {
                 continue;
             }
             let group = Self::splicing_group_label(feature, idx);

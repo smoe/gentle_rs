@@ -511,6 +511,10 @@ impl GentleEngine {
         kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
     }
 
+    pub(super) fn is_splicing_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
+        Self::is_mrna_feature(feature) || feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+    }
+
     pub(super) fn is_exon_feature(feature: &gb_io::seq::Feature) -> bool {
         feature.kind.to_string().eq_ignore_ascii_case("exon")
     }
@@ -2146,11 +2150,13 @@ impl GentleEngine {
                 feature_id, seq_id
             ),
         })?;
-        if !Self::is_mrna_feature(target_feature) && !Self::is_exon_feature(target_feature) {
+        if !Self::is_splicing_transcript_feature(target_feature)
+            && !Self::is_exon_feature(target_feature)
+        {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Feature '{}' in '{}' is not mRNA/exon and cannot seed a splicing view",
+                    "Feature '{}' in '{}' is not transcript-like RNA/exon and cannot seed a splicing view",
                     feature_id, seq_id
                 ),
             });
@@ -2165,7 +2171,7 @@ impl GentleEngine {
             if Self::splicing_group_label(feature, idx) != target_group {
                 continue;
             }
-            if !Self::is_mrna_feature(feature) && !Self::is_exon_feature(feature) {
+            if !Self::is_splicing_transcript_feature(feature) && !Self::is_exon_feature(feature) {
                 continue;
             }
             collect_location_ranges_usize(&feature.location, &mut roi_ranges_0based);
@@ -2206,7 +2212,7 @@ impl GentleEngine {
 
         let mut transcripts: Vec<TranscriptWork> = Vec::new();
         for (idx, feature) in features.iter().enumerate() {
-            if !Self::is_mrna_feature(feature) {
+            if !Self::is_splicing_transcript_feature(feature) {
                 continue;
             }
             if restrict_to_target_group && Self::splicing_group_label(feature, idx) != target_group
@@ -2268,7 +2274,7 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
-                    "No mRNA transcripts found for splicing group '{}' in '{}'",
+                    "No transcript-like RNA features found for splicing group '{}' in '{}'",
                     target_group, seq_id
                 ),
             });

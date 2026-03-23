@@ -11158,6 +11158,85 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
 }
 
 #[test]
+fn test_interpret_rna_reads_accepts_reverse_strand_tp73_ncrna_seed() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+
+    let ncrna_feature_id = engine
+        .state()
+        .sequences
+        .get("tp73")
+        .expect("tp73 sequence present")
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+                && feature
+                    .qualifier_values("gene".into())
+                    .any(|value| value.eq_ignore_ascii_case("TP73-AS3"))
+        })
+        .expect("TP73-AS3 ncRNA feature");
+
+    let splicing = engine
+        .build_splicing_expert_view(
+            "tp73",
+            ncrna_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
+        .expect("build ncRNA splicing view");
+    assert_eq!(splicing.strand, "-");
+    assert!(!splicing.transcripts.is_empty());
+
+    let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+    let read_sequence = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("tp73")
+            .expect("tp73 sequence present");
+        let template =
+            GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+        String::from_utf8(template.sequence).expect("template sequence")
+    };
+
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("tp73_as3_reads.fa");
+    fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+
+    engine
+        .apply(Operation::InterpretRnaReads {
+            seq_id: "tp73".to_string(),
+            seed_feature_id: ncrna_feature_id,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path: input_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("tp73_as3_reverse".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        })
+        .expect("interpret ncRNA reads");
+
+    let report = engine
+        .get_rna_read_report("tp73_as3_reverse")
+        .expect("stored report");
+    assert_eq!(report.read_count_total, 1);
+    assert_eq!(report.read_count_seed_passed, 1);
+}
+
+#[test]
 fn test_rna_read_progress_emit_policy_supports_read_and_timer_triggers() {
     assert!(GentleEngine::should_emit_rna_read_progress(
         1,

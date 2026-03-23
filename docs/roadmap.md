@@ -1172,6 +1172,10 @@ Status:
   - Splicing Expert now exposes explicit cDNA/direct-RNA interpretation mode
     control (`Input is cDNA` checkbox) with configurable poly-T prefix minimum
     for automatic reverse-complement normalization.
+  - Splicing Expert / `InterpretRnaReads` now admit `ncRNA` seed features in
+    addition to `mRNA`/`transcript`/`exon`, so reverse-strand antisense loci
+    such as `TP73-AS3` can use the shared cDNA filtering path without
+    feature-kind workarounds.
   - cDNA normalization now uses tolerant 5' T-rich head detection (minor
     interruptions in poly-T tails are accepted) to better normalize real
     Nanopore cDNA tails before seed scoring.

@@ -277,7 +277,7 @@ Feature tree grouping:
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
   - preset terms below the filter box are on/off toggle buttons
-- Selecting an `mRNA`/`exon` feature opens the splicing expert view in a
+- Selecting an `mRNA`/`transcript`/`ncRNA`/`exon` feature opens the splicing expert view in a
   dedicated, resizable window instead of the inline description pane.
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
