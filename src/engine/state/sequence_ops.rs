@@ -3274,6 +3274,28 @@ impl GentleEngine {
         map
     }
 
+    pub(super) fn primer3_explain_summary(map: &HashMap<String, String>) -> Option<String> {
+        let mut parts: Vec<String> = vec![];
+        for key in [
+            "PRIMER_PAIR_EXPLAIN",
+            "PRIMER_LEFT_EXPLAIN",
+            "PRIMER_RIGHT_EXPLAIN",
+        ] {
+            if let Some(value) = map
+                .get(key)
+                .map(|raw| raw.trim())
+                .filter(|raw| !raw.is_empty())
+            {
+                parts.push(format!("{key}={value}"));
+            }
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(" | "))
+        }
+    }
+
     pub(super) fn first_nonempty_utf8_line(bytes: &[u8]) -> Option<String> {
         String::from_utf8_lossy(bytes)
             .lines()
@@ -3350,6 +3372,8 @@ impl GentleEngine {
             Vec<PrimerDesignPairRecord>,
             PrimerDesignRejectionSummary,
             Option<String>,
+            Option<String>,
+            String,
         ),
         EngineError,
     > {
@@ -3399,6 +3423,7 @@ impl GentleEngine {
         let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
         let map = Self::parse_primer3_kv_output(&stdout_text);
+        let primer3_explain = Self::primer3_explain_summary(&map);
 
         if let Some(primer_error) = map.get("PRIMER_ERROR") {
             return Err(EngineError {
@@ -3643,6 +3668,8 @@ impl GentleEngine {
             pairs,
             rejection_summary,
             Self::probe_primer3_version(primer3_executable),
+            primer3_explain,
+            input,
         ))
     }
 

@@ -282,6 +282,37 @@ exit 2
     script_path.display().to_string()
 }
 
+#[cfg(unix)]
+fn install_fake_primer3_zero_pairs(path: &Path) -> (String, String) {
+    let script_path = path.join("fake_primer3_zero_pairs.sh");
+    let request_capture_path = path.join("fake_primer3_request_capture.txt");
+    let script = format!(
+        r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-fixture 2.6.1"
+  exit 0
+fi
+cat > "{}"
+echo "PRIMER_PAIR_NUM_RETURNED=0"
+echo "PRIMER_LEFT_NUM_RETURNED=0"
+echo "PRIMER_RIGHT_NUM_RETURNED=0"
+echo "PRIMER_PAIR_EXPLAIN=considered 16, no acceptable primer pairs"
+echo "="
+"#,
+        request_capture_path.display()
+    );
+    std::fs::write(&script_path, script).expect("write fake primer3 zero-pairs");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata fake primer3 zero-pairs")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod fake primer3 zero-pairs");
+    (
+        script_path.display().to_string(),
+        request_capture_path.display().to_string(),
+    )
+}
+
 fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
@@ -1064,6 +1095,61 @@ fn test_design_primer_pairs_primer3_backend_requires_executable() {
 
 #[cfg(unix)]
 #[test]
+fn test_design_primer_pairs_primer3_zero_pairs_persists_request_and_explain() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let tmp = tempdir().expect("tempdir");
+    let (fake_primer3, request_capture) = install_fake_primer3_zero_pairs(tmp.path());
+    engine.state_mut().parameters.primer3_executable = fake_primer3.clone();
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 10,
+            roi_end_0based: 30,
+            forward: PrimerDesignSideConstraint::default(),
+            reverse: PrimerDesignSideConstraint::default(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 20,
+            max_amplicon_bp: 80,
+            max_tm_delta_c: Some(10.0),
+            max_pairs: Some(10),
+            report_id: Some("tp73_roi_primer3_zero".to_string()),
+        })
+        .expect("fake primer3 zero-pair design should complete");
+
+    let report = engine
+        .get_primer_design_report("tp73_roi_primer3_zero")
+        .expect("primer3 zero-pair report");
+    assert_eq!(report.backend.used, "primer3");
+    assert_eq!(report.pair_count, 0);
+    assert!(
+        report
+            .backend
+            .primer3_explain
+            .as_deref()
+            .unwrap_or_default()
+            .contains("PRIMER_PAIR_EXPLAIN")
+    );
+    let request_payload = report
+        .backend
+        .primer3_request_boulder_io
+        .as_deref()
+        .expect("request payload should be captured");
+    assert!(request_payload.contains("SEQUENCE_TEMPLATE="));
+    assert!(request_payload.contains("PRIMER_EXPLAIN_FLAG=1"));
+
+    let captured = std::fs::read_to_string(&request_capture).expect("captured stdin payload");
+    assert_eq!(captured, request_payload);
+}
+
+#[cfg(unix)]
+#[test]
 fn test_primer3_preflight_report_success() {
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
@@ -1123,9 +1209,7 @@ fn test_design_primer_pairs_rejects_invalid_roi() {
 fn test_design_qpcr_assays_persists_report() {
     let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
     let mut state = ProjectState::default();
-    state
-        .sequences
-        .insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
     let result = engine

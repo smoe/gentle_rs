@@ -428,6 +428,13 @@ order. Durable architecture constraints and decisions remain in
     - `primers design ... --backend ... --primer3-exec ...`
   - report metadata now records backend provenance
     (`requested`, `used`, optional fallback reason + Primer3 executable/version)
+  - Primer3-backed reports now persist explain diagnostics and the exact
+    Boulder-IO request payload used for that run, enabling deterministic local
+    reruns of failed/empty designs from the exported request file
+  - GUI primer report summaries now explicitly flag zero-pair outcomes as
+    `NO ACCEPTED PRIMER PAIRS` with rejection counters + Primer3 explain text,
+    and the primer panel includes `Export Primer3 input...` for report-level
+    request export
   - `auto` mode now falls back deterministically to internal scoring when
     Primer3 is unavailable
   - `DesignPrimerPairs` is now lineage/graph-inspectable as a mutating

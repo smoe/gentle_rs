@@ -4445,7 +4445,7 @@ impl GentleEngine {
                         )
                     }
                     PrimerDesignBackend::Primer3 => {
-                        let (pairs, rejection_summary, version) =
+                        let (pairs, rejection_summary, version, explain, request_boulder_io) =
                             Self::design_primer_pairs_primer3(
                                 &template_seq,
                                 roi_start_0based,
@@ -4464,6 +4464,8 @@ impl GentleEngine {
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.primer3_version = version;
+                        backend.primer3_explain = explain;
+                        backend.primer3_request_boulder_io = Some(request_boulder_io);
                         (pairs, rejection_summary)
                     }
                     PrimerDesignBackend::Auto => {
@@ -4482,10 +4484,18 @@ impl GentleEngine {
                             max_pairs,
                             primer3_executable,
                         ) {
-                            Ok((pairs, rejection_summary, version)) => {
+                            Ok((
+                                pairs,
+                                rejection_summary,
+                                version,
+                                explain,
+                                request_boulder_io,
+                            )) => {
                                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                                 backend.primer3_executable = Some(primer3_executable.to_string());
                                 backend.primer3_version = version;
+                                backend.primer3_explain = explain;
+                                backend.primer3_request_boulder_io = Some(request_boulder_io);
                                 (pairs, rejection_summary)
                             }
                             Err(err) => {
@@ -4648,6 +4658,18 @@ impl GentleEngine {
                         "No primer pairs satisfied constraints for report '{}'",
                         report.report_id
                     ));
+                    if let Some(explain) = report.backend.primer3_explain.as_deref() {
+                        result.warnings.push(format!(
+                            "Primer3 explain for report '{}': {}",
+                            report.report_id, explain
+                        ));
+                    }
+                    if report.backend.primer3_request_boulder_io.is_some() {
+                        result.warnings.push(format!(
+                            "Primer3 request payload was captured for report '{}' and can be exported for local reruns",
+                            report.report_id
+                        ));
+                    }
                 }
             }
             Operation::DesignQpcrAssays {
@@ -4844,7 +4866,7 @@ impl GentleEngine {
                         )
                     }
                     PrimerDesignBackend::Primer3 => {
-                        let (pairs, rejection_summary, version) =
+                        let (pairs, rejection_summary, version, explain, request_boulder_io) =
                             Self::design_primer_pairs_primer3(
                                 &template_seq,
                                 roi_start_0based,
@@ -4863,6 +4885,8 @@ impl GentleEngine {
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.primer3_version = version;
+                        backend.primer3_explain = explain;
+                        backend.primer3_request_boulder_io = Some(request_boulder_io);
                         (pairs, rejection_summary)
                     }
                     PrimerDesignBackend::Auto => {
@@ -4881,10 +4905,18 @@ impl GentleEngine {
                             pair_generation_limit,
                             primer3_executable,
                         ) {
-                            Ok((pairs, rejection_summary, version)) => {
+                            Ok((
+                                pairs,
+                                rejection_summary,
+                                version,
+                                explain,
+                                request_boulder_io,
+                            )) => {
                                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                                 backend.primer3_executable = Some(primer3_executable.to_string());
                                 backend.primer3_version = version;
+                                backend.primer3_explain = explain;
+                                backend.primer3_request_boulder_io = Some(request_boulder_io);
                                 (pairs, rejection_summary)
                             }
                             Err(err) => {

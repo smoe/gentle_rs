@@ -247,6 +247,11 @@ struct PcrBatchResultRowUiState {
     start_0based: usize,
     end_0based_exclusive: usize,
     report_id: String,
+    report_pair_count: Option<usize>,
+    report_backend_requested: Option<String>,
+    report_backend_used: Option<String>,
+    report_primer3_explain: Option<String>,
+    report_note: Option<String>,
     report_error: Option<String>,
     copy_requested: bool,
     copy_seq_id: Option<String>,
@@ -262,6 +267,11 @@ impl Default for PcrBatchResultRowUiState {
             start_0based: 0,
             end_0based_exclusive: 0,
             report_id: String::new(),
+            report_pair_count: None,
+            report_backend_requested: None,
+            report_backend_used: None,
+            report_primer3_explain: None,
+            report_note: None,
             report_error: None,
             copy_requested: false,
             copy_seq_id: None,
@@ -278,6 +288,8 @@ impl PcrBatchResultRowUiState {
     fn report_status_label(&self) -> &'static str {
         if self.report_error.is_some() {
             "report:failed"
+        } else if matches!(self.report_pair_count, Some(0)) {
+            "report:empty"
         } else {
             "report:ok"
         }
@@ -1778,6 +1790,38 @@ mod tests {
         assert_eq!(second.report_id, "batch_result_r02");
         assert!(second.report_error.is_some());
         assert!(second.copy_error.is_some());
+    }
+
+    #[test]
+    fn queued_primer_batch_marks_zero_pair_reports_as_empty() {
+        let mut area = make_primer_batch_area();
+        area.primer_design_ui.report_id = "batch_empty".to_string();
+        area.primer_design_ui.forward.fixed_5prime = "AAAAAAAAAAAAAAAAAAAA".to_string();
+        area.primer_design_ui.reverse.fixed_5prime = "AAAAAAAAAAAAAAAAAAAA".to_string();
+        area.pcr_queued_regions_ui = vec![super::PcrQueuedRegionUiState {
+            template: "tpl".to_string(),
+            source_label: "selection".to_string(),
+            start_0based: 20,
+            end_0based_exclusive: 90,
+        }];
+
+        area.run_queued_primer_pair_design_batch();
+
+        assert_eq!(area.pcr_batch_results_ui.len(), 1);
+        let row = &area.pcr_batch_results_ui[0];
+        assert_eq!(row.report_status_label(), "report:empty");
+        assert_eq!(row.report_pair_count, Some(0));
+        assert!(row.report_error.is_none());
+        assert!(
+            row.report_note
+                .as_deref()
+                .unwrap_or_default()
+                .contains("no accepted primer pairs")
+        );
+        assert!(
+            area.op_status
+                .contains("Reports with no accepted primer pairs: 1")
+        );
     }
 
     #[test]
@@ -20235,6 +20279,11 @@ impl MainAreaDna {
                 start_0based: region.start_0based,
                 end_0based_exclusive: region.end_0based_exclusive,
                 report_id: report_id.clone(),
+                report_pair_count: None,
+                report_backend_requested: None,
+                report_backend_used: None,
+                report_primer3_explain: None,
+                report_note: None,
                 report_error: None,
                 copy_requested: create_copies,
                 copy_seq_id: None,
@@ -20285,6 +20334,28 @@ impl MainAreaDna {
                 report_id: Some(report_id.clone()),
             }) {
                 Ok(_) => {
+                    if let Ok(report) = engine.get_primer_design_report(&report_id) {
+                        row.report_pair_count = Some(report.pair_count);
+                        row.report_backend_requested = Some(report.backend.requested.clone());
+                        row.report_backend_used = Some(report.backend.used.clone());
+                        row.report_primer3_explain = report.backend.primer3_explain.clone();
+                        if report.pair_count == 0 {
+                            let mut detail = format!(
+                                "no accepted primer pairs (backend {}->{})",
+                                report.backend.requested, report.backend.used
+                            );
+                            if let Some(explain) = report
+                                .backend
+                                .primer3_explain
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|raw| !raw.is_empty())
+                            {
+                                detail.push_str(&format!("; {explain}"));
+                            }
+                            row.report_note = Some(detail);
+                        }
+                    }
                     successful_report_ids.push(report_id);
                 }
                 Err(err) => {
@@ -20332,6 +20403,17 @@ impl MainAreaDna {
             status_lines.push(format!(
                 "Report IDs: {}",
                 outcome.successful_report_ids.join(", ")
+            ));
+        }
+        let zero_pair_reports = self
+            .pcr_batch_results_ui
+            .iter()
+            .filter(|row| matches!(row.report_pair_count, Some(0)))
+            .count();
+        if zero_pair_reports > 0 {
+            status_lines.push(format!(
+                "Reports with no accepted primer pairs: {}",
+                zero_pair_reports
             ));
         }
         if outcome.create_copies {
@@ -20649,25 +20731,60 @@ impl MainAreaDna {
                 return;
             }
         };
-        let top = report
-            .pairs
-            .first()
-            .map(|pair| {
-                format!(
-                    "top amplicon={}..{} len={} score={:.3} 3p_clamp(F/R)={}/{} dimer(3p,max)={}/{}",
-                    pair.amplicon_start_0based,
-                    pair.amplicon_end_0based_exclusive,
-                    pair.amplicon_length_bp,
-                    pair.score,
-                    pair.forward.three_prime_gc_clamp,
-                    pair.reverse.three_prime_gc_clamp,
-                    pair.primer_pair_3prime_complementary_run_bp,
-                    pair.primer_pair_complementary_run_bp
-                )
-            })
-            .unwrap_or_else(|| "no accepted primer pairs".to_string());
+        let rejection = &report.rejection_summary;
+        let rejection_summary = format!(
+            "rejections(window/gc_tm/non_unique/amplicon/primer/pair/eval_skip)={}/{}/{}/{}/{}/{}/{}",
+            rejection.out_of_window,
+            rejection.gc_or_tm_out_of_bounds,
+            rejection.non_unique_anneal,
+            rejection.amplicon_or_roi_failure,
+            rejection.primer_constraint_failure,
+            rejection.pair_constraint_failure,
+            rejection.pair_evaluation_limit_skipped
+        );
+        if report.pair_count == 0 {
+            let mut detail_chunks = vec!["NO ACCEPTED PRIMER PAIRS".to_string(), rejection_summary];
+            if let Some(explain) = report
+                .backend
+                .primer3_explain
+                .as_deref()
+                .map(str::trim)
+                .filter(|raw| !raw.is_empty())
+            {
+                detail_chunks.push(format!("primer3_explain: {explain}"));
+            }
+            if report.backend.primer3_request_boulder_io.is_some() {
+                detail_chunks
+                    .push("primer3_request: available (use `Export Primer3 input...`)".to_string());
+            }
+            self.op_status = format!(
+                "Primer report '{}' template='{}' roi={}..{} pairs={} backend={}->{}; {}",
+                report.report_id,
+                report.template,
+                report.roi_start_0based,
+                report.roi_end_0based,
+                report.pair_count,
+                report.backend.requested,
+                report.backend.used,
+                detail_chunks.join(" | ")
+            );
+            return;
+        }
+        let top = report.pairs.first().map(|pair| {
+            format!(
+                "top amplicon={}..{} len={} score={:.3} 3p_clamp(F/R)={}/{} dimer(3p,max)={}/{}",
+                pair.amplicon_start_0based,
+                pair.amplicon_end_0based_exclusive,
+                pair.amplicon_length_bp,
+                pair.score,
+                pair.forward.three_prime_gc_clamp,
+                pair.reverse.three_prime_gc_clamp,
+                pair.primer_pair_3prime_complementary_run_bp,
+                pair.primer_pair_complementary_run_bp
+            )
+        });
         self.op_status = format!(
-            "Primer report '{}' template='{}' roi={}..{} pairs={} backend={}->{}; {}",
+            "Primer report '{}' template='{}' roi={}..{} pairs={} backend={}->{}; {} | {}",
             report.report_id,
             report.template,
             report.roi_start_0based,
@@ -20675,7 +20792,8 @@ impl MainAreaDna {
             report.pair_count,
             report.backend.requested,
             report.backend.used,
-            top
+            top.unwrap_or_else(|| "top pair unavailable".to_string()),
+            rejection_summary
         );
     }
 
@@ -20713,6 +20831,68 @@ impl MainAreaDna {
                 self.op_status = format!(
                     "Could not export primer report '{report_id}': {}",
                     err.message
+                );
+            }
+        }
+    }
+
+    fn export_primer3_request_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Primer report_id is empty".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let report = match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_primer_design_report(report_id)
+        {
+            Ok(report) => report,
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not load primer report '{report_id}': {}",
+                    err.message
+                );
+                return;
+            }
+        };
+        let Some(request_payload) = report.backend.primer3_request_boulder_io.as_deref() else {
+            self.op_status = format!(
+                "Primer3 request payload is unavailable for report '{}' (backend used='{}')",
+                report.report_id, report.backend.used
+            );
+            return;
+        };
+        let default_name = format!("{report_id}.primer3.boulderio.txt");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Primer3 request export canceled".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        match std::fs::write(&path, request_payload) {
+            Ok(()) => {
+                let executable = report
+                    .backend
+                    .primer3_executable
+                    .as_deref()
+                    .filter(|raw| !raw.trim().is_empty())
+                    .unwrap_or("primer3_core");
+                self.op_status = format!(
+                    "Exported Primer3 request for report '{}' to {} (rerun: {} < '{}')",
+                    report.report_id, path_text, executable, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export Primer3 request for report '{}': {}",
+                    report.report_id, err
                 );
             }
         }
@@ -21324,8 +21504,13 @@ impl MainAreaDna {
                                     let detail = row
                                         .report_error
                                         .clone()
+                                        .or_else(|| row.report_note.clone())
                                         .or_else(|| row.copy_error.clone())
-                                        .unwrap_or_else(|| "ok".to_string());
+                                        .unwrap_or_else(|| {
+                                            row.report_pair_count
+                                                .map(|count| format!("pairs={count}"))
+                                                .unwrap_or_else(|| "ok".to_string())
+                                        });
                                     ui.label(detail);
                                     ui.end_row();
                                 }
@@ -21409,6 +21594,16 @@ impl MainAreaDna {
                     {
                         let report_id = self.primer_design_ui.report_id.clone();
                         self.export_primer_design_report_dialog(&report_id);
+                    }
+                    if ui
+                        .button("Export Primer3 input...")
+                        .on_hover_text(
+                            "Export stored Primer3 Boulder-IO request payload for this report_id (when backend used Primer3)",
+                        )
+                        .clicked()
+                    {
+                        let report_id = self.primer_design_ui.report_id.clone();
+                        self.export_primer3_request_dialog(&report_id);
                     }
                 });
             });

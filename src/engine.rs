@@ -1546,6 +1546,8 @@ pub struct PrimerDesignBackendInfo {
     pub fallback_reason: Option<String>,
     pub primer3_executable: Option<String>,
     pub primer3_version: Option<String>,
+    pub primer3_explain: Option<String>,
+    pub primer3_request_boulder_io: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
