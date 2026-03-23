@@ -3286,6 +3286,99 @@ impl GentleEngine {
         rows
     }
 
+    pub(super) fn collect_mapped_isoform_support_rows(
+        hits: &[RnaReadInterpretationHit],
+    ) -> Vec<RnaReadMappedIsoformSupportRow> {
+        #[derive(Default)]
+        struct Accumulator {
+            transcript_feature_id: usize,
+            transcript_id: String,
+            transcript_label: String,
+            strand: String,
+            aligned_read_count: usize,
+            msa_eligible_read_count: usize,
+            identity_sum: f64,
+            query_coverage_sum: f64,
+            best_alignment_score: isize,
+            secondary_mapping_total: usize,
+        }
+
+        let mut accumulators = BTreeMap::<String, Accumulator>::new();
+        for hit in hits {
+            let Some(mapping) = hit.best_mapping.as_ref() else {
+                continue;
+            };
+            let row = accumulators
+                .entry(mapping.transcript_id.clone())
+                .or_insert_with(|| Accumulator {
+                    transcript_feature_id: mapping.transcript_feature_id,
+                    transcript_id: mapping.transcript_id.clone(),
+                    transcript_label: mapping.transcript_label.clone(),
+                    strand: mapping.strand.clone(),
+                    best_alignment_score: isize::MIN,
+                    ..Accumulator::default()
+                });
+            row.aligned_read_count = row.aligned_read_count.saturating_add(1);
+            if hit.msa_eligible {
+                row.msa_eligible_read_count = row.msa_eligible_read_count.saturating_add(1);
+            }
+            row.identity_sum += mapping.identity_fraction;
+            row.query_coverage_sum += mapping.query_coverage_fraction;
+            row.best_alignment_score = row.best_alignment_score.max(mapping.score);
+            row.secondary_mapping_total = row
+                .secondary_mapping_total
+                .saturating_add(hit.secondary_mappings.len());
+        }
+
+        let mut rows = accumulators
+            .into_values()
+            .map(|row| {
+                let denom = row.aligned_read_count.max(1) as f64;
+                RnaReadMappedIsoformSupportRow {
+                    transcript_feature_id: row.transcript_feature_id,
+                    transcript_id: row.transcript_id,
+                    transcript_label: row.transcript_label,
+                    strand: row.strand,
+                    aligned_read_count: row.aligned_read_count,
+                    msa_eligible_read_count: row.msa_eligible_read_count,
+                    mean_identity_fraction: row.identity_sum / denom,
+                    mean_query_coverage_fraction: row.query_coverage_sum / denom,
+                    best_alignment_score: if row.best_alignment_score == isize::MIN {
+                        0
+                    } else {
+                        row.best_alignment_score
+                    },
+                    secondary_mapping_total: row.secondary_mapping_total,
+                }
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .aligned_read_count
+                .cmp(&left.aligned_read_count)
+                .then(
+                    right
+                        .msa_eligible_read_count
+                        .cmp(&left.msa_eligible_read_count),
+                )
+                .then_with(|| {
+                    right
+                        .mean_identity_fraction
+                        .partial_cmp(&left.mean_identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right
+                        .mean_query_coverage_fraction
+                        .partial_cmp(&left.mean_query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then(right.best_alignment_score.cmp(&left.best_alignment_score))
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        rows
+    }
+
     pub(super) fn transition_gate_passes(
         confirmed_transitions: usize,
         total_transitions: usize,
@@ -4132,6 +4225,9 @@ impl GentleEngine {
                 isoform_support_rows: Self::collect_isoform_support_rows(
                     &isoform_support_accumulators,
                 ),
+                mapped_exon_support_frequencies: vec![],
+                mapped_junction_support_frequencies: vec![],
+                mapped_isoform_support_rows: vec![],
                 reads_with_transition_support,
                 transition_confirmations,
                 junction_crossing_seed_bits_indexed,
@@ -4352,6 +4448,15 @@ impl GentleEngine {
                         .entry(row.origin_class.as_str().to_string())
                         .or_insert(0) += 1;
                 }
+                let (mapped_exon_support_frequencies, mapped_junction_support_frequencies) =
+                    Self::build_rna_read_support_frequencies_from_counts(
+                        &splicing,
+                        &support_exon_counts,
+                        &support_junction_counts,
+                        support_aligned_reads,
+                    );
+                let mapped_isoform_support_rows =
+                    Self::collect_mapped_isoform_support_rows(&report.hits);
                 if !on_progress(OperationProgress::RnaReadInterpret(
                     RnaReadInterpretProgress {
                         seq_id: report.seq_id.clone(),
@@ -4385,6 +4490,9 @@ impl GentleEngine {
                         isoform_support_rows: Self::collect_isoform_support_rows(
                             &isoform_support_accumulators,
                         ),
+                        mapped_exon_support_frequencies,
+                        mapped_junction_support_frequencies,
+                        mapped_isoform_support_rows,
                         reads_with_transition_support,
                         transition_confirmations,
                         junction_crossing_seed_bits_indexed,
@@ -4428,6 +4536,8 @@ impl GentleEngine {
         report.transition_support_rows = transition_support_rows.clone();
         report.isoform_support_rows =
             Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        report.mapped_isoform_support_rows =
+            Self::collect_mapped_isoform_support_rows(&report.hits);
         report.origin_class_counts = origin_class_counts.clone();
         report
             .warnings
@@ -4469,6 +4579,7 @@ impl GentleEngine {
             reads_processed,
             cumulative_read_bases_processed,
         );
+        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&report.hits);
         if !on_progress(OperationProgress::RnaReadInterpret(
             RnaReadInterpretProgress {
                 seq_id: report.seq_id.clone(),
@@ -4498,6 +4609,9 @@ impl GentleEngine {
                 top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows,
                 isoform_support_rows: report.isoform_support_rows.clone(),
+                mapped_exon_support_frequencies: report.exon_support_frequencies.clone(),
+                mapped_junction_support_frequencies: report.junction_support_frequencies.clone(),
+                mapped_isoform_support_rows,
                 reads_with_transition_support,
                 transition_confirmations,
                 junction_crossing_seed_bits_indexed,
@@ -5136,6 +5250,9 @@ impl GentleEngine {
                 top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows: transition_support_rows.clone(),
                 isoform_support_rows: isoform_support_rows.clone(),
+                mapped_exon_support_frequencies: vec![],
+                mapped_junction_support_frequencies: vec![],
+                mapped_isoform_support_rows: vec![],
                 reads_with_transition_support,
                 transition_confirmations,
                 junction_crossing_seed_bits_indexed,
@@ -5457,6 +5574,9 @@ impl GentleEngine {
                             ),
                             transition_support_rows: transition_support_rows.clone(),
                             isoform_support_rows: isoform_support_rows.clone(),
+                            mapped_exon_support_frequencies: vec![],
+                            mapped_junction_support_frequencies: vec![],
+                            mapped_isoform_support_rows: vec![],
                             reads_with_transition_support,
                             transition_confirmations,
                             junction_crossing_seed_bits_indexed,
@@ -5546,6 +5666,14 @@ impl GentleEngine {
         let report_hit_count = hits.len();
         let retained_count_msa_eligible = hits.iter().filter(|hit| hit.msa_eligible).count();
         isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        let (mapped_exon_support_frequencies, mapped_junction_support_frequencies) =
+            Self::build_rna_read_support_frequencies_from_counts(
+                &splicing,
+                &support_exon_counts,
+                &support_junction_counts,
+                support_aligned_reads,
+            );
+        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&hits);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
             &read_length_counts,
             reads_total,
@@ -5580,6 +5708,9 @@ impl GentleEngine {
             top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
             transition_support_rows: transition_support_rows.clone(),
             isoform_support_rows: isoform_support_rows.clone(),
+            mapped_exon_support_frequencies: mapped_exon_support_frequencies.clone(),
+            mapped_junction_support_frequencies: mapped_junction_support_frequencies.clone(),
+            mapped_isoform_support_rows: mapped_isoform_support_rows.clone(),
             reads_with_transition_support,
             transition_confirmations,
             junction_crossing_seed_bits_indexed,
@@ -5642,13 +5773,6 @@ impl GentleEngine {
             Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
         }
 
-        let (exon_support_frequencies, junction_support_frequencies) =
-            Self::build_rna_read_support_frequencies_from_counts(
-                &splicing,
-                &support_exon_counts,
-                &support_junction_counts,
-                support_aligned_reads,
-            );
         let mut warnings = origin_mode_warnings;
         if !alignment_enabled {
             warnings.push(
@@ -5708,10 +5832,11 @@ impl GentleEngine {
             retained_count_msa_eligible,
             warnings,
             hits,
-            exon_support_frequencies,
-            junction_support_frequencies,
+            exon_support_frequencies: mapped_exon_support_frequencies,
+            junction_support_frequencies: mapped_junction_support_frequencies,
             transition_support_rows,
             isoform_support_rows,
+            mapped_isoform_support_rows,
             origin_class_counts,
             score_density_bins,
         })

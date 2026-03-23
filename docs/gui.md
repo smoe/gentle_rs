@@ -397,6 +397,7 @@ Feature tree grouping:
     - indexed seeds include annotated exon-body k-mers and exon-exon junction
       transition k-mers for admitted transcripts
   - phase-1 seed filtering hashes the full read span for every sequence
+    - current seed-start density is one start per base (effective stride `1`)
   - advanced seed constants expose a composite seed gate:
     - `k-mer length` (default `10`)
     - `min hit` (raw hit fraction, default `0.30`)
@@ -426,9 +427,10 @@ Feature tree grouping:
   - phase-2 alignment updates persisted report counters and support tables:
     - `aligned`
     - `msa-eligible(retained)`
-    - seed-confirmed exon-exon transition support table
-    - isoform support ranking table
-    - exon/transition abundance exports derived from refreshed support
+    - `Mapped` support tables for exon overlap, junction overlap, and mapped
+      isoform ranking
+    - seed/path diagnostics remain available separately under the `Seed` tab
+    - exon/transition abundance exports derived from refreshed mapped support
       frequencies
   - phase-2 alignment strategy is reference-guided pairwise mapping
     (`semiglobal` preferred with deterministic `local` fallback), and the
@@ -461,14 +463,18 @@ Feature tree grouping:
   - Seed-hit score-density chart includes a `Linear`/`Log` scale toggle
     (default `Log`); log mode uses `log(1+count)` so sparse high-score bins
     remain visible during strongly skewed runs
-  - `Seed-confirmed exon-exon transitions` table reports per-transition support
+  - support statistics now live behind `Seed` / `Mapped` tabs so seed/path
+    heuristics and alignment-derived support are not mixed together in one view
+  - `Seed-confirmed exon-exon transitions` reports per-transition support
     counts and percentages across seed-passed reads, plus junction-crossing
     indexed-seed diagnostics
-  - `Isoform support ranking` table shows one row per known transcript in scope
+  - `Seed-based isoform ranking` shows one row per known transcript in scope
     with assigned-read counts, seed-pass counts, transition coverage, gap
     statistics, best score, and strand-audit counters (`chain=same`,
-    `opposite-strand competition`, `ambiguous ties`); the best-supported
-    isoform is auto-picked during the same joint run
+    `opposite-strand competition`, `ambiguous ties`)
+  - `Mapped exon support`, `Mapped junction support`, and `Mapped isoform
+    ranking` use phase-2 best mappings only and are the intended interpretation
+    surface once retained-read alignment has been run
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time
@@ -512,6 +518,8 @@ Feature tree grouping:
     (no forced line wrapping)
   - a `Seed hash preview` panel lists representative seed rows in-window and
     full detail remains exportable via `Export Seed Hash Catalog (TSV)...`
+  - saved-report warnings and retained-preview details are collapsed by default
+    under `Saved report details` to reduce idle clutter after large runs
   - `Export RNA sample sheet ...` writes a TSV summary for current-sequence
     reports, including exon/junction support-frequency JSON columns
   - executes read-only interpretation/report generation (no direct feature

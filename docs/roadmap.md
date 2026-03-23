@@ -1226,6 +1226,9 @@ Status:
   - RNA-read reports persist exon-support and exon-exon junction-support
     frequency schema fields; phase-1 seed-only runs populate placeholders until
     the explicit phase-2 alignment step is run.
+  - Splicing Expert RNA-read support tables now separate `Seed` diagnostics
+    from `Mapped` phase-2 support so exon/junction/isoform interpretation can
+    follow retained-read alignments instead of reusing seed/path heuristics.
   - `rna-reads export-hits-fasta` now includes exon-path annotations in FASTA
     headers (`:` confirmed adjacent transition by seeds, `-` unconfirmed).
   - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV

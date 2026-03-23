@@ -3346,6 +3346,27 @@ pub struct RnaReadIsoformSupportRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadMappedIsoformSupportRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub aligned_read_count: usize,
+    #[serde(default)]
+    pub msa_eligible_read_count: usize,
+    #[serde(default)]
+    pub mean_identity_fraction: f64,
+    #[serde(default)]
+    pub mean_query_coverage_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_score: isize,
+    #[serde(default)]
+    pub secondary_mapping_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadSampleSheetExport {
     pub schema: String,
     pub path: String,
@@ -3507,6 +3528,8 @@ pub struct RnaReadInterpretationReport {
     pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
     #[serde(default)]
     pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub mapped_isoform_support_rows: Vec<RnaReadMappedIsoformSupportRow>,
     #[serde(default)]
     pub origin_class_counts: BTreeMap<String, usize>,
     #[serde(default)]
@@ -5569,6 +5592,12 @@ pub struct RnaReadInterpretProgress {
     pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
     #[serde(default)]
     pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub mapped_exon_support_frequencies: Vec<RnaReadExonSupportFrequency>,
+    #[serde(default)]
+    pub mapped_junction_support_frequencies: Vec<RnaReadJunctionSupportFrequency>,
+    #[serde(default)]
+    pub mapped_isoform_support_rows: Vec<RnaReadMappedIsoformSupportRow>,
     #[serde(default)]
     pub reads_with_transition_support: usize,
     #[serde(default)]

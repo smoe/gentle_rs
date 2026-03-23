@@ -12506,6 +12506,84 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
 }
 
 #[test]
+fn test_collect_mapped_isoform_support_rows_prefers_best_supported_mapping() {
+    let hits = vec![
+        RnaReadInterpretationHit {
+            record_index: 0,
+            header_id: "tx_a_1".to_string(),
+            msa_eligible: true,
+            secondary_mappings: vec![RnaReadMappingHit {
+                transcript_id: "tx_b".to_string(),
+                transcript_label: "TX_B".to_string(),
+                strand: "-".to_string(),
+                score: 80,
+                identity_fraction: 0.88,
+                query_coverage_fraction: 0.70,
+                ..RnaReadMappingHit::default()
+            }],
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_feature_id: 11,
+                transcript_id: "tx_a".to_string(),
+                transcript_label: "TX_A".to_string(),
+                strand: "+".to_string(),
+                score: 120,
+                identity_fraction: 0.92,
+                query_coverage_fraction: 0.75,
+                ..RnaReadMappingHit::default()
+            }),
+            ..RnaReadInterpretationHit::default()
+        },
+        RnaReadInterpretationHit {
+            record_index: 1,
+            header_id: "tx_a_2".to_string(),
+            msa_eligible: false,
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_feature_id: 11,
+                transcript_id: "tx_a".to_string(),
+                transcript_label: "TX_A".to_string(),
+                strand: "+".to_string(),
+                score: 105,
+                identity_fraction: 0.86,
+                query_coverage_fraction: 0.65,
+                ..RnaReadMappingHit::default()
+            }),
+            ..RnaReadInterpretationHit::default()
+        },
+        RnaReadInterpretationHit {
+            record_index: 2,
+            header_id: "tx_b_1".to_string(),
+            msa_eligible: true,
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_feature_id: 12,
+                transcript_id: "tx_b".to_string(),
+                transcript_label: "TX_B".to_string(),
+                strand: "-".to_string(),
+                score: 140,
+                identity_fraction: 0.98,
+                query_coverage_fraction: 0.96,
+                ..RnaReadMappingHit::default()
+            }),
+            ..RnaReadInterpretationHit::default()
+        },
+    ];
+
+    let rows = GentleEngine::collect_mapped_isoform_support_rows(&hits);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].transcript_id, "tx_a");
+    assert_eq!(rows[0].aligned_read_count, 2);
+    assert_eq!(rows[0].msa_eligible_read_count, 1);
+    assert!((rows[0].mean_identity_fraction - 0.89).abs() < 1e-9);
+    assert!((rows[0].mean_query_coverage_fraction - 0.70).abs() < 1e-9);
+    assert_eq!(rows[0].best_alignment_score, 120);
+    assert_eq!(rows[0].secondary_mapping_total, 1);
+
+    assert_eq!(rows[1].transcript_id, "tx_b");
+    assert_eq!(rows[1].aligned_read_count, 1);
+    assert_eq!(rows[1].msa_eligible_read_count, 1);
+    assert_eq!(rows[1].best_alignment_score, 140);
+}
+
+#[test]
 fn test_interpret_rna_reads_populates_exon_and_junction_support_frequencies() {
     let mut state = ProjectState::default();
     state

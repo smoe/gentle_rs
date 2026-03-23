@@ -2033,6 +2033,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - `AND confirmed_transition_fraction >= min_transition_support_fraction`
   - phase-1 seed-span behavior:
     - full-read hashing is always used for every read
+    - current seed-start density is one start per base (effective stride `1`)
     - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
       remain compatibility fields and currently have no runtime effect
   - sparse-origin behavior:
@@ -2068,8 +2069,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
       - per-hit `msa_eligible` and `msa_eligibility_reason`
       - aggregate `read_count_aligned` and `retained_count_msa_eligible`
-      - refreshed transition/isoform support rows and exon/junction abundance
-        frequencies
+      - refreshed seed/path diagnostics
+        (`transition_support_rows`, `isoform_support_rows`)
+      - refreshed mapped support rows
+        (`exon_support_frequencies`, `junction_support_frequencies`,
+        `mapped_isoform_support_rows`)
       - deterministic retained-hit re-ranking by alignment-aware retention rank
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`

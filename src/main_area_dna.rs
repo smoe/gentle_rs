@@ -509,6 +509,12 @@ struct RnaReadInterpretOpsUiState {
     show_advanced: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RnaReadStatisticsTab {
+    Seed,
+    Mapped,
+}
+
 impl Default for RnaReadInterpretOpsUiState {
     fn default() -> Self {
         Self {
@@ -3198,6 +3204,13 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_statistics_tab_defaults_to_seed() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        assert_eq!(area.rna_read_statistics_tab, super::RnaReadStatisticsTab::Seed);
+    }
+
+    #[test]
     fn primer_backend_controls_default_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -3981,6 +3994,7 @@ pub struct MainAreaDna {
     primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
     rna_read_progress: Option<RnaReadInterpretProgress>,
+    rna_read_statistics_tab: RnaReadStatisticsTab,
     rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
     rna_seed_highlight_record_index: Option<usize>,
     rna_seed_selected_record_indices: BTreeSet<usize>,
@@ -4317,6 +4331,7 @@ impl MainAreaDna {
             primer_design_task: None,
             rna_read_task: None,
             rna_read_progress: None,
+            rna_read_statistics_tab: RnaReadStatisticsTab::Seed,
             rna_seed_catalog_preview: vec![],
             rna_seed_highlight_record_index: None,
             rna_seed_selected_record_indices: BTreeSet::new(),
@@ -15208,8 +15223,7 @@ impl MainAreaDna {
                             progress,
                             self.rna_reads_ui.score_density_use_log_scale,
                         );
-                        self.render_rna_read_transition_support_table(ui, progress);
-                        self.render_rna_read_isoform_support_table(ui, progress);
+                        self.render_rna_read_statistics_tabs(ui, progress);
                         highlight_selection_update =
                             self.render_rna_read_top_hits_preview(ui, progress);
                     }
@@ -15291,8 +15305,7 @@ impl MainAreaDna {
                         progress,
                         self.rna_reads_ui.score_density_use_log_scale,
                     );
-                    self.render_rna_read_transition_support_table(ui, progress);
-                    self.render_rna_read_isoform_support_table(ui, progress);
+                    self.render_rna_read_statistics_tabs(ui, progress);
                     highlight_selection_update =
                         self.render_rna_read_top_hits_preview(ui, progress);
                 }
@@ -15346,61 +15359,69 @@ impl MainAreaDna {
                                             preview, suffix
                                         ));
                                     }
-                                    if !report.warnings.is_empty() {
-                                        for warning in report.warnings.iter().take(2) {
-                                            ui.small(
-                                                egui::RichText::new(format!("warning: {warning}"))
-                                                    .color(egui::Color32::from_rgb(180, 83, 9)),
-                                            );
-                                        }
-                                    }
-                                    if !report.origin_class_counts.is_empty() {
-                                        let class_parts = report
-                                            .origin_class_counts
-                                            .iter()
-                                            .map(|(class, count)| format!("{class}={count}"))
-                                            .collect::<Vec<_>>();
-                                        ui.small(format!(
-                                            "Origin classes: {}",
-                                            class_parts.join(" | ")
-                                        ));
-                                    }
-                                    ui.collapsing("Retained read preview (top 20)", |ui| {
-                                        egui::ScrollArea::vertical()
-                                            .max_height(140.0)
-                                            .show(ui, |ui| {
-                                                for hit in report.hits.iter().take(20) {
-                                                    let seq_preview = hit
-                                                        .sequence
-                                                        .chars()
-                                                        .take(48)
-                                                        .collect::<String>();
-                                                    ui.monospace(format!(
-                                                        "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} msa={} seq={}",
-                                                        hit.record_index + 1,
-                                                        hit.header_id,
-                                                        hit.seed_hit_fraction,
-                                                        hit.weighted_seed_hit_fraction,
-                                                        if hit.seed_transcript_gap_count == 0 {
-                                                            "na".to_string()
-                                                        } else {
-                                                            format!("{:.2}", hit.seed_median_transcript_gap)
-                                                        },
-                                                        hit.seed_transcript_gap_count,
-                                                        hit.seed_chain_support_fraction,
-                                                        hit.seed_chain_support_kmers,
-                                                        hit.origin_class.as_str(),
-                                                        hit.origin_confidence,
-                                                        hit.strand_confidence,
-                                                        hit.matched_kmers,
-                                                        hit.tested_kmers,
-                                                        hit.passed_seed_filter,
-                                                        hit.msa_eligible,
-                                                        seq_preview,
-                                                    ));
+                                    egui::CollapsingHeader::new("Saved report details")
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            if !report.warnings.is_empty() {
+                                                for warning in report.warnings.iter().take(2) {
+                                                    ui.small(
+                                                        egui::RichText::new(format!(
+                                                            "warning: {warning}"
+                                                        ))
+                                                        .color(egui::Color32::from_rgb(
+                                                            180, 83, 9
+                                                        )),
+                                                    );
                                                 }
+                                            }
+                                            if !report.origin_class_counts.is_empty() {
+                                                let class_parts = report
+                                                    .origin_class_counts
+                                                    .iter()
+                                                    .map(|(class, count)| format!("{class}={count}"))
+                                                    .collect::<Vec<_>>();
+                                                ui.small(format!(
+                                                    "Origin classes: {}",
+                                                    class_parts.join(" | ")
+                                                ));
+                                            }
+                                            ui.collapsing("Retained read preview (top 20)", |ui| {
+                                                egui::ScrollArea::vertical()
+                                                    .max_height(140.0)
+                                                    .show(ui, |ui| {
+                                                        for hit in report.hits.iter().take(20) {
+                                                            let seq_preview = hit
+                                                                .sequence
+                                                                .chars()
+                                                                .take(48)
+                                                                .collect::<String>();
+                                                            ui.monospace(format!(
+                                                                "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} msa={} seq={}",
+                                                                hit.record_index + 1,
+                                                                hit.header_id,
+                                                                hit.seed_hit_fraction,
+                                                                hit.weighted_seed_hit_fraction,
+                                                                if hit.seed_transcript_gap_count == 0 {
+                                                                    "na".to_string()
+                                                                } else {
+                                                                    format!("{:.2}", hit.seed_median_transcript_gap)
+                                                                },
+                                                                hit.seed_transcript_gap_count,
+                                                                hit.seed_chain_support_fraction,
+                                                                hit.seed_chain_support_kmers,
+                                                                hit.origin_class.as_str(),
+                                                                hit.origin_confidence,
+                                                                hit.strand_confidence,
+                                                                hit.matched_kmers,
+                                                                hit.tested_kmers,
+                                                                hit.passed_seed_filter,
+                                                                hit.msa_eligible,
+                                                                seq_preview,
+                                                            ));
+                                                        }
+                                                    });
                                             });
-                                    });
+                                        });
                                 }
                             }
                         }
@@ -17649,6 +17670,53 @@ impl MainAreaDna {
         ));
     }
 
+    fn render_rna_read_statistics_tabs(
+        &mut self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+    ) {
+        let has_mapped_support = progress.aligned > 0
+            || !progress.mapped_exon_support_frequencies.is_empty()
+            || !progress.mapped_junction_support_frequencies.is_empty()
+            || !progress.mapped_isoform_support_rows.is_empty();
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Support evidence:");
+            ui.selectable_value(
+                &mut self.rna_read_statistics_tab,
+                RnaReadStatisticsTab::Seed,
+                "Seed",
+            )
+            .on_hover_text(
+                "Show phase-1 seed and inferred-path support diagnostics. These rows are useful for triage but are not mapping-derived evidence.",
+            );
+            ui.selectable_value(
+                &mut self.rna_read_statistics_tab,
+                RnaReadStatisticsTab::Mapped,
+                "Mapped",
+            )
+            .on_hover_text(
+                "Show phase-2 support derived from retained-read alignments (best mappings, exon/junction overlap, mapped isoform ranking).",
+            );
+            if !has_mapped_support {
+                ui.small(
+                    egui::RichText::new(
+                        "Mapped tab stays empty until phase 2 produces aligned reads.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+        match self.rna_read_statistics_tab {
+            RnaReadStatisticsTab::Seed => {
+                self.render_rna_read_transition_support_table(ui, progress);
+                self.render_rna_read_isoform_support_table(ui, progress);
+            }
+            RnaReadStatisticsTab::Mapped => {
+                self.render_rna_read_mapped_support_tables(ui, progress);
+            }
+        }
+    }
+
     fn render_rna_read_transition_support_table(
         &self,
         ui: &mut egui::Ui,
@@ -17661,7 +17729,7 @@ impl MainAreaDna {
             (progress.reads_with_transition_support as f64 / seed_passed_denominator as f64) * 100.0
         };
         ui.small(format!(
-            "Junction-crossing seed bits indexed: {} | reads with confirmed exon-exon transitions (seed-passed): {}/{} ({:.2}%) | confirmed transitions total={}",
+            "Seed-screen junction support: indexed junction-crossing bits={} | reads with confirmed exon-exon transitions (seed-passed)={}/{} ({:.2}%) | confirmed transitions total={}",
             progress.junction_crossing_seed_bits_indexed,
             progress.reads_with_transition_support,
             seed_passed_denominator,
@@ -17730,7 +17798,7 @@ impl MainAreaDna {
             .find(|row| row.reads_seed_passed > 0)
             .unwrap_or(&progress.isoform_support_rows[0]);
         ui.small(format!(
-            "Auto-picked isoform: {} ({}) strand={} | seed-passed={}/{} | transition-coverage={:.1}%",
+            "Auto-picked seed isoform: {} ({}) strand={} | seed-passed={}/{} | transition-coverage={:.1}%",
             auto_pick.transcript_label,
             auto_pick.transcript_id,
             auto_pick.strand,
@@ -17738,7 +17806,7 @@ impl MainAreaDna {
             auto_pick.reads_assigned,
             auto_pick.transition_rows_supported_fraction * 100.0
         ));
-        ui.collapsing("Isoform support ranking", |ui| {
+        ui.collapsing("Seed-based isoform ranking", |ui| {
             egui::ScrollArea::vertical()
                 .max_height(200.0)
                 .show(ui, |ui| {
@@ -17805,7 +17873,157 @@ impl MainAreaDna {
                         });
                 });
             ui.small(
-                "Rows aggregate evidence over one joint run across all transcripts admitted by scope (including reverse strand when selected).",
+                "Rows aggregate phase-1 seed/path evidence over one joint run across all transcripts admitted by scope (including reverse strand when selected).",
+            );
+        });
+    }
+
+    fn render_rna_read_mapped_support_tables(
+        &self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+    ) {
+        ui.small(
+            "Mapped support uses phase-2 best mappings only; these rows are the evidence to use for exon/junction/isoform interpretation after alignment.",
+        );
+        if progress.aligned == 0 {
+            ui.small(
+                egui::RichText::new(
+                    "No mapping-derived exon or isoform support is available yet for this run/report.",
+                )
+                .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+            return;
+        }
+
+        ui.small(format!(
+            "Aligned reads contributing to mapped support: {}",
+            progress.aligned
+        ));
+
+        ui.collapsing("Mapped exon support", |ui| {
+            if progress.mapped_exon_support_frequencies.is_empty() {
+                ui.small("No mapped exon-overlap rows are available.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!("rna_mapped_exon_support_grid_{}", progress.seq_id))
+                        .striped(true)
+                        .num_columns(4)
+                        .show(ui, |ui| {
+                            ui.small("Exon span");
+                            ui.small("Reads");
+                            ui.small("Aligned %");
+                            ui.small("Fraction");
+                            ui.end_row();
+                            for row in &progress.mapped_exon_support_frequencies {
+                                ui.monospace(format!("{}..{}", row.start_1based, row.end_1based));
+                                ui.monospace(row.support_read_count.to_string());
+                                ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                                ui.monospace(format!("{:.4}", row.support_fraction));
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        ui.collapsing("Mapped junction support", |ui| {
+            if progress.mapped_junction_support_frequencies.is_empty() {
+                ui.small("No mapped junction-overlap rows are available.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!(
+                        "rna_mapped_junction_support_grid_{}",
+                        progress.seq_id
+                    ))
+                    .striped(true)
+                    .num_columns(5)
+                    .show(ui, |ui| {
+                        ui.small("Donor");
+                        ui.small("Acceptor");
+                        ui.small("Reads");
+                        ui.small("Aligned %");
+                        ui.small("Fraction");
+                        ui.end_row();
+                        for row in &progress.mapped_junction_support_frequencies {
+                            ui.monospace(row.donor_1based.to_string());
+                            ui.monospace(row.acceptor_1based.to_string());
+                            ui.monospace(row.support_read_count.to_string());
+                            ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                            ui.monospace(format!("{:.4}", row.support_fraction));
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+
+        if progress.mapped_isoform_support_rows.is_empty() {
+            ui.small("No mapped isoform rows are available yet.");
+            return;
+        }
+        let auto_pick = &progress.mapped_isoform_support_rows[0];
+        ui.small(format!(
+            "Top mapped isoform: {} ({}) strand={} | aligned={} | msa-eligible={} | mean identity={:.1}% | mean query coverage={:.1}%",
+            auto_pick.transcript_label,
+            auto_pick.transcript_id,
+            auto_pick.strand,
+            auto_pick.aligned_read_count,
+            auto_pick.msa_eligible_read_count,
+            auto_pick.mean_identity_fraction * 100.0,
+            auto_pick.mean_query_coverage_fraction * 100.0
+        ));
+        ui.collapsing("Mapped isoform ranking", |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(200.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!(
+                        "rna_mapped_isoform_support_grid_{}",
+                        progress.seq_id
+                    ))
+                    .striped(true)
+                    .num_columns(8)
+                    .show(ui, |ui| {
+                        ui.small("Transcript");
+                        ui.small("Strand");
+                        ui.small("Aligned");
+                        ui.small("MSA");
+                        ui.small("Mean id%");
+                        ui.small("Mean cov%");
+                        ui.small("Best score");
+                        ui.small("Secondary");
+                        ui.end_row();
+                        for row in &progress.mapped_isoform_support_rows {
+                            let is_auto_pick = row.transcript_id == auto_pick.transcript_id;
+                            let row_color = if is_auto_pick {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            } else {
+                                egui::Color32::from_gray(80)
+                            };
+                            ui.colored_label(
+                                row_color,
+                                format!("{} ({})", row.transcript_label, row.transcript_id),
+                            );
+                            ui.monospace(row.strand.as_str());
+                            ui.monospace(row.aligned_read_count.to_string());
+                            ui.monospace(row.msa_eligible_read_count.to_string());
+                            ui.monospace(format!("{:.1}", row.mean_identity_fraction * 100.0));
+                            ui.monospace(format!(
+                                "{:.1}",
+                                row.mean_query_coverage_fraction * 100.0
+                            ));
+                            ui.monospace(row.best_alignment_score.to_string());
+                            ui.monospace(row.secondary_mapping_total.to_string());
+                            ui.end_row();
+                        }
+                    });
+                });
+            ui.small(
+                "Rows aggregate best-mapping evidence only; they are intentionally separate from the seed-based isoform ranking above.",
             );
         });
     }
