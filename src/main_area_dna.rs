@@ -21,11 +21,11 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
-        RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, Workflow,
+        RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretProgress, RnaReadInterpretationProfile, RnaReadIsoformSupportRow,
+        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
+        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary,
+        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -512,9 +512,10 @@ struct RnaReadInterpretOpsUiState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RnaReadStatisticsTab {
-    Seed,
-    Mapped,
+enum RnaReadEvidenceSourceTab {
+    ReportedTranscript,
+    ThresholdedCdna,
+    MappedCdna,
 }
 
 impl Default for RnaReadInterpretOpsUiState {
@@ -921,12 +922,12 @@ mod tests {
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
             LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            SplicingScopePreset,
+            RnaReadInterpretProgress, RnaReadIsoformSupportRow, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
-            FeatureExpertView, IsoformArchitectureExpertView, SplicingExpertView, SplicingRange,
-            SplicingTranscriptLane,
+            FeatureExpertView, IsoformArchitectureExpertView, SplicingExonSummary,
+            SplicingExpertView, SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
@@ -3224,13 +3225,169 @@ mod tests {
     }
 
     #[test]
-    fn rna_read_statistics_tab_defaults_to_seed() {
+    fn rna_read_statistics_tab_defaults_to_thresholded_cdna() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
         assert_eq!(
             area.rna_read_statistics_tab,
-            super::RnaReadStatisticsTab::Seed
+            super::RnaReadEvidenceSourceTab::ThresholdedCdna
         );
+    }
+
+    #[test]
+    fn thresholded_cdna_exon_support_rows_follow_seed_passed_isoform_assignments() {
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 0,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 60,
+            transcript_count: 2,
+            unique_exon_count: 3,
+            instruction: String::new(),
+            transcripts: vec![
+                SplicingTranscriptLane {
+                    transcript_feature_id: 11,
+                    transcript_id: "TX1".to_string(),
+                    label: "TX1".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![
+                        SplicingRange {
+                            start_1based: 1,
+                            end_1based: 10,
+                        },
+                        SplicingRange {
+                            start_1based: 21,
+                            end_1based: 30,
+                        },
+                    ],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: true,
+                },
+                SplicingTranscriptLane {
+                    transcript_feature_id: 12,
+                    transcript_id: "TX2".to_string(),
+                    label: "TX2".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![
+                        SplicingRange {
+                            start_1based: 1,
+                            end_1based: 10,
+                        },
+                        SplicingRange {
+                            start_1based: 41,
+                            end_1based: 50,
+                        },
+                    ],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: false,
+                },
+            ],
+            unique_exons: vec![
+                SplicingExonSummary {
+                    start_1based: 1,
+                    end_1based: 10,
+                    support_transcript_count: 2,
+                    constitutive: true,
+                },
+                SplicingExonSummary {
+                    start_1based: 21,
+                    end_1based: 30,
+                    support_transcript_count: 1,
+                    constitutive: false,
+                },
+                SplicingExonSummary {
+                    start_1based: 41,
+                    end_1based: 50,
+                    support_transcript_count: 1,
+                    constitutive: false,
+                },
+            ],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![SplicingJunctionArc {
+                donor_1based: 10,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![11],
+            }],
+            events: vec![],
+        };
+        let progress = RnaReadInterpretProgress {
+            seq_id: "seq1".to_string(),
+            reads_processed: 5,
+            reads_total: 5,
+            read_bases_processed: 0,
+            mean_read_length_bp: 0.0,
+            median_read_length_bp: 0,
+            p95_read_length_bp: 0,
+            input_bytes_processed: 0,
+            input_bytes_total: 0,
+            seed_passed: 5,
+            aligned: 0,
+            tested_kmers: 0,
+            matched_kmers: 0,
+            seed_compute_ms: 0.0,
+            align_compute_ms: 0.0,
+            io_read_ms: 0.0,
+            fasta_parse_ms: 0.0,
+            normalize_compute_ms: 0.0,
+            inference_compute_ms: 0.0,
+            progress_emit_ms: 0.0,
+            update_every_reads: 1000,
+            done: true,
+            bins: vec![],
+            score_density_bins: vec![],
+            top_hits_preview: vec![],
+            transition_support_rows: vec![],
+            isoform_support_rows: vec![
+                RnaReadIsoformSupportRow {
+                    transcript_feature_id: 11,
+                    transcript_id: "TX1".to_string(),
+                    transcript_label: "TX1".to_string(),
+                    strand: "+".to_string(),
+                    exon_count: 2,
+                    expected_transition_count: 1,
+                    reads_assigned: 3,
+                    reads_seed_passed: 3,
+                    ..Default::default()
+                },
+                RnaReadIsoformSupportRow {
+                    transcript_feature_id: 12,
+                    transcript_id: "TX2".to_string(),
+                    transcript_label: "TX2".to_string(),
+                    strand: "+".to_string(),
+                    exon_count: 2,
+                    expected_transition_count: 1,
+                    reads_assigned: 2,
+                    reads_seed_passed: 2,
+                    ..Default::default()
+                },
+            ],
+            mapped_exon_support_frequencies: vec![],
+            mapped_junction_support_frequencies: vec![],
+            mapped_isoform_support_rows: vec![],
+            reads_with_transition_support: 0,
+            transition_confirmations: 0,
+            junction_crossing_seed_bits_indexed: 0,
+            origin_class_counts: std::collections::BTreeMap::new(),
+        };
+
+        let rows = MainAreaDna::collect_thresholded_cdna_exon_support_rows(
+            &view,
+            &progress.isoform_support_rows,
+            progress.seed_passed,
+        );
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].support_read_count, 5);
+        assert_eq!(rows[1].support_read_count, 3);
+        assert_eq!(rows[2].support_read_count, 2);
+        assert!((rows[0].support_fraction - 1.0).abs() < f64::EPSILON);
+        assert!((rows[1].support_fraction - 0.6).abs() < 1e-9);
+        assert!((rows[2].support_fraction - 0.4).abs() < 1e-9);
     }
 
     #[test]
@@ -4099,7 +4256,7 @@ pub struct MainAreaDna {
     primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
     rna_read_progress: Option<RnaReadInterpretProgress>,
-    rna_read_statistics_tab: RnaReadStatisticsTab,
+    rna_read_statistics_tab: RnaReadEvidenceSourceTab,
     rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
     rna_seed_highlight_record_index: Option<usize>,
     rna_seed_selected_record_indices: BTreeSet<usize>,
@@ -4436,7 +4593,7 @@ impl MainAreaDna {
             primer_design_task: None,
             rna_read_task: None,
             rna_read_progress: None,
-            rna_read_statistics_tab: RnaReadStatisticsTab::Seed,
+            rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
             rna_seed_catalog_preview: vec![],
             rna_seed_highlight_record_index: None,
             rna_seed_selected_record_indices: BTreeSet::new(),
@@ -15359,7 +15516,7 @@ impl MainAreaDna {
                             progress,
                             self.rna_reads_ui.score_density_use_log_scale,
                         );
-                        self.render_rna_read_statistics_tabs(ui, progress);
+                        self.render_rna_read_statistics_tabs(ui, view, progress);
                         highlight_selection_update =
                             self.render_rna_read_top_hits_preview(ui, progress);
                     }
@@ -15441,7 +15598,7 @@ impl MainAreaDna {
                         progress,
                         self.rna_reads_ui.score_density_use_log_scale,
                     );
-                    self.render_rna_read_statistics_tabs(ui, progress);
+                    self.render_rna_read_statistics_tabs(ui, view, progress);
                     highlight_selection_update =
                         self.render_rna_read_top_hits_preview(ui, progress);
                 }
@@ -17831,6 +17988,7 @@ impl MainAreaDna {
     fn render_rna_read_statistics_tabs(
         &mut self,
         ui: &mut egui::Ui,
+        view: &SplicingExpertView,
         progress: &RnaReadInterpretProgress,
     ) {
         let has_mapped_support = progress.aligned > 0
@@ -17838,19 +17996,27 @@ impl MainAreaDna {
             || !progress.mapped_junction_support_frequencies.is_empty()
             || !progress.mapped_isoform_support_rows.is_empty();
         ui.horizontal_wrapped(|ui| {
-            ui.small("Support evidence:");
+            ui.small("Analysis source:");
             ui.selectable_value(
                 &mut self.rna_read_statistics_tab,
-                RnaReadStatisticsTab::Seed,
-                "Seed",
+                RnaReadEvidenceSourceTab::ReportedTranscript,
+                "Reported transcript",
             )
             .on_hover_text(
-                "Show phase-1 seed and inferred-path support diagnostics. These rows are useful for triage but are not mapping-derived evidence.",
+                "Show the annotated transcript model for the selected locus: reported exons, reported junctions, and the transcript catalogue admitted by the current splicing view.",
             );
             ui.selectable_value(
                 &mut self.rna_read_statistics_tab,
-                RnaReadStatisticsTab::Mapped,
-                "Mapped",
+                RnaReadEvidenceSourceTab::ThresholdedCdna,
+                "Thresholded cDNA",
+            )
+            .on_hover_text(
+                "Show phase-1 retained/seed-passed cDNA support. These rows are useful for early triage but remain inference-driven rather than alignment-confirmed.",
+            );
+            ui.selectable_value(
+                &mut self.rna_read_statistics_tab,
+                RnaReadEvidenceSourceTab::MappedCdna,
+                "Mapped cDNA",
             )
             .on_hover_text(
                 "Show phase-2 support derived from retained-read alignments (best mappings, exon/junction overlap, mapped isoform ranking).",
@@ -17858,21 +18024,274 @@ impl MainAreaDna {
             if !has_mapped_support {
                 ui.small(
                     egui::RichText::new(
-                        "Mapped tab stays empty until phase 2 produces aligned reads.",
+                        "Mapped cDNA stays empty until phase 2 produces aligned reads.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
             }
         });
         match self.rna_read_statistics_tab {
-            RnaReadStatisticsTab::Seed => {
-                self.render_rna_read_transition_support_table(ui, progress);
-                self.render_rna_read_isoform_support_table(ui, progress);
+            RnaReadEvidenceSourceTab::ReportedTranscript => {
+                self.render_reported_transcript_support_tables(ui, view);
             }
-            RnaReadStatisticsTab::Mapped => {
+            RnaReadEvidenceSourceTab::ThresholdedCdna => {
+                self.render_thresholded_cdna_support_tables(ui, view, progress);
+            }
+            RnaReadEvidenceSourceTab::MappedCdna => {
                 self.render_rna_read_mapped_support_tables(ui, progress);
             }
         }
+    }
+
+    fn collect_thresholded_cdna_exon_support_rows(
+        view: &SplicingExpertView,
+        isoform_support_rows: &[RnaReadIsoformSupportRow],
+        seed_passed_denominator: usize,
+    ) -> Vec<RnaReadExonSupportFrequency> {
+        let exon_index = view
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(idx, exon)| ((exon.start_1based, exon.end_1based), idx))
+            .collect::<HashMap<_, _>>();
+        let mut support_counts = vec![0usize; view.unique_exons.len()];
+        for row in isoform_support_rows {
+            if row.reads_seed_passed == 0 {
+                continue;
+            }
+            let Some(transcript) = view
+                .transcripts
+                .iter()
+                .find(|lane| lane.transcript_feature_id == row.transcript_feature_id)
+            else {
+                continue;
+            };
+            for exon in &transcript.exons {
+                let Some(exon_idx) = exon_index
+                    .get(&(exon.start_1based, exon.end_1based))
+                    .copied()
+                else {
+                    continue;
+                };
+                support_counts[exon_idx] =
+                    support_counts[exon_idx].saturating_add(row.reads_seed_passed);
+            }
+        }
+        view.unique_exons
+            .iter()
+            .enumerate()
+            .map(|(idx, exon)| {
+                let support_read_count = support_counts[idx];
+                let support_fraction = if seed_passed_denominator == 0 {
+                    0.0
+                } else {
+                    support_read_count as f64 / seed_passed_denominator as f64
+                };
+                RnaReadExonSupportFrequency {
+                    start_1based: exon.start_1based,
+                    end_1based: exon.end_1based,
+                    support_read_count,
+                    support_fraction,
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn render_reported_transcript_support_tables(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        ui.small(format!(
+            "Reported transcript annotation: transcripts={} | unique exons={} | junctions={} | strand={}",
+            view.transcript_count,
+            view.unique_exons.len(),
+            view.junctions.len(),
+            view.strand
+        ));
+
+        ui.collapsing("Reported exon support", |ui| {
+            if view.unique_exons.is_empty() {
+                ui.small("No reported exon rows are available in the current annotation scope.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!("reported_exon_support_grid_{}", view.seq_id))
+                        .striped(true)
+                        .num_columns(5)
+                        .show(ui, |ui| {
+                            ui.small("Exon span");
+                            ui.small("Transcripts");
+                            ui.small("Transcript %");
+                            ui.small("Constitutive");
+                            ui.small("Fraction");
+                            ui.end_row();
+                            for exon in &view.unique_exons {
+                                let pct = if view.transcript_count == 0 {
+                                    0.0
+                                } else {
+                                    (exon.support_transcript_count as f64
+                                        / view.transcript_count as f64)
+                                        * 100.0
+                                };
+                                ui.monospace(format!("{}..{}", exon.start_1based, exon.end_1based));
+                                ui.monospace(exon.support_transcript_count.to_string());
+                                ui.monospace(format!("{pct:.2}%"));
+                                ui.monospace(if exon.constitutive { "yes" } else { "no" });
+                                ui.monospace(format!(
+                                    "{:.4}",
+                                    if view.transcript_count == 0 {
+                                        0.0
+                                    } else {
+                                        exon.support_transcript_count as f64
+                                            / view.transcript_count as f64
+                                    }
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        ui.collapsing("Reported junction support", |ui| {
+            if view.junctions.is_empty() {
+                ui.small("No reported exon-exon junction rows are available in the current annotation scope.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!("reported_junction_support_grid_{}", view.seq_id))
+                        .striped(true)
+                        .num_columns(5)
+                        .show(ui, |ui| {
+                            ui.small("Donor");
+                            ui.small("Acceptor");
+                            ui.small("Transcripts");
+                            ui.small("Transcript %");
+                            ui.small("Fraction");
+                            ui.end_row();
+                            for junction in &view.junctions {
+                                let pct = if view.transcript_count == 0 {
+                                    0.0
+                                } else {
+                                    (junction.support_transcript_count as f64
+                                        / view.transcript_count as f64)
+                                        * 100.0
+                                };
+                                ui.monospace(junction.donor_1based.to_string());
+                                ui.monospace(junction.acceptor_1based.to_string());
+                                ui.monospace(junction.support_transcript_count.to_string());
+                                ui.monospace(format!("{pct:.2}%"));
+                                ui.monospace(format!(
+                                    "{:.4}",
+                                    if view.transcript_count == 0 {
+                                        0.0
+                                    } else {
+                                        junction.support_transcript_count as f64
+                                            / view.transcript_count as f64
+                                    }
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        ui.collapsing("Reported isoform catalogue", |ui| {
+            if view.transcripts.is_empty() {
+                ui.small("No reported transcripts are available in the current annotation scope.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(200.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!("reported_isoform_catalogue_grid_{}", view.seq_id))
+                        .striped(true)
+                        .num_columns(5)
+                        .show(ui, |ui| {
+                            ui.small("Transcript");
+                            ui.small("Strand");
+                            ui.small("Exons");
+                            ui.small("Expected jx");
+                            ui.small("Target");
+                            ui.end_row();
+                            for transcript in &view.transcripts {
+                                let row_color = if transcript.has_target_feature {
+                                    egui::Color32::from_rgb(30, 64, 175)
+                                } else {
+                                    egui::Color32::from_gray(80)
+                                };
+                                ui.colored_label(
+                                    row_color,
+                                    format!("{} ({})", transcript.label, transcript.transcript_id),
+                                );
+                                ui.monospace(transcript.strand.as_str());
+                                ui.monospace(transcript.exons.len().to_string());
+                                ui.monospace(transcript.exons.len().saturating_sub(1).to_string());
+                                ui.monospace(if transcript.has_target_feature {
+                                    "yes"
+                                } else {
+                                    "no"
+                                });
+                                ui.end_row();
+                            }
+                        });
+                });
+            ui.small(
+                "These rows are the reported transcript model from the annotation currently loaded into the splicing view.",
+            );
+        });
+    }
+
+    fn render_thresholded_cdna_support_tables(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        progress: &RnaReadInterpretProgress,
+    ) {
+        let thresholded_exon_rows = Self::collect_thresholded_cdna_exon_support_rows(
+            view,
+            &progress.isoform_support_rows,
+            progress.seed_passed,
+        );
+        ui.small(
+            "Thresholded cDNA uses phase-1 seed-passed reads only. Exon rows are inferred from assigned transcript paths, and junction rows come from confirmed seed-supported transitions.",
+        );
+        ui.collapsing("Thresholded cDNA exon support", |ui| {
+            if thresholded_exon_rows.is_empty() {
+                ui.small("No thresholded exon-support rows are available yet.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    egui::Grid::new(format!(
+                        "thresholded_cdna_exon_support_grid_{}",
+                        progress.seq_id
+                    ))
+                    .striped(true)
+                    .num_columns(4)
+                    .show(ui, |ui| {
+                        ui.small("Exon span");
+                        ui.small("Reads");
+                        ui.small("Seed-pass %");
+                        ui.small("Fraction");
+                        ui.end_row();
+                        for row in &thresholded_exon_rows {
+                            ui.monospace(format!("{}..{}", row.start_1based, row.end_1based));
+                            ui.monospace(row.support_read_count.to_string());
+                            ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
+                            ui.monospace(format!("{:.4}", row.support_fraction));
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+        self.render_rna_read_transition_support_table(ui, progress);
+        self.render_rna_read_isoform_support_table(ui, progress);
     }
 
     fn render_rna_read_transition_support_table(
@@ -17887,14 +18306,14 @@ impl MainAreaDna {
             (progress.reads_with_transition_support as f64 / seed_passed_denominator as f64) * 100.0
         };
         ui.small(format!(
-            "Seed-screen junction support: indexed junction-crossing bits={} | reads with confirmed exon-exon transitions (seed-passed)={}/{} ({:.2}%) | confirmed transitions total={}",
+            "Thresholded cDNA junction support: indexed junction-crossing bits={} | reads with confirmed exon-exon transitions (seed-passed)={}/{} ({:.2}%) | confirmed transitions total={}",
             progress.junction_crossing_seed_bits_indexed,
             progress.reads_with_transition_support,
             seed_passed_denominator,
             reads_with_support_pct,
             progress.transition_confirmations,
         ));
-        ui.collapsing("Seed-confirmed exon-exon transitions", |ui| {
+        ui.collapsing("Thresholded cDNA junction support", |ui| {
             if progress.transition_support_rows.is_empty() {
                 ui.small("No exon-exon transition catalog rows in current scope.");
                 return;
@@ -17913,11 +18332,10 @@ impl MainAreaDna {
                             ui.small("Read %");
                             ui.end_row();
                             for row in &progress.transition_support_rows {
-                                let pct = if progress.reads_processed == 0 {
+                                let pct = if seed_passed_denominator == 0 {
                                     0.0
                                 } else {
-                                    (row.support_read_count as f64
-                                        / progress.reads_processed as f64)
+                                    (row.support_read_count as f64 / seed_passed_denominator as f64)
                                         * 100.0
                                 };
                                 ui.monospace(format!(
@@ -17956,7 +18374,7 @@ impl MainAreaDna {
             .find(|row| row.reads_seed_passed > 0)
             .unwrap_or(&progress.isoform_support_rows[0]);
         ui.small(format!(
-            "Auto-picked seed isoform: {} ({}) strand={} | seed-passed={}/{} | transition-coverage={:.1}%",
+            "Top thresholded cDNA isoform: {} ({}) strand={} | seed-passed={}/{} | transition-coverage={:.1}%",
             auto_pick.transcript_label,
             auto_pick.transcript_id,
             auto_pick.strand,
@@ -17964,7 +18382,7 @@ impl MainAreaDna {
             auto_pick.reads_assigned,
             auto_pick.transition_rows_supported_fraction * 100.0
         ));
-        ui.collapsing("Seed-based isoform ranking", |ui| {
+        ui.collapsing("Thresholded cDNA isoform ranking", |ui| {
             egui::ScrollArea::vertical()
                 .max_height(200.0)
                 .show(ui, |ui| {
@@ -18031,7 +18449,7 @@ impl MainAreaDna {
                         });
                 });
             ui.small(
-                "Rows aggregate phase-1 seed/path evidence over one joint run across all transcripts admitted by scope (including reverse strand when selected).",
+                "Rows aggregate phase-1 thresholded cDNA evidence over one joint run across all transcripts admitted by scope (including reverse strand when selected).",
             );
         });
     }
@@ -18042,7 +18460,7 @@ impl MainAreaDna {
         progress: &RnaReadInterpretProgress,
     ) {
         ui.small(
-            "Mapped support uses phase-2 best mappings only; these rows are the evidence to use for exon/junction/isoform interpretation after alignment.",
+            "Mapped cDNA uses phase-2 best mappings only; these rows are the evidence to use for exon/junction/isoform interpretation after alignment.",
         );
         if progress.aligned == 0 {
             ui.small(
@@ -18059,7 +18477,7 @@ impl MainAreaDna {
             progress.aligned
         ));
 
-        ui.collapsing("Mapped exon support", |ui| {
+        ui.collapsing("Mapped cDNA exon support", |ui| {
             if progress.mapped_exon_support_frequencies.is_empty() {
                 ui.small("No mapped exon-overlap rows are available.");
                 return;
@@ -18087,7 +18505,7 @@ impl MainAreaDna {
                 });
         });
 
-        ui.collapsing("Mapped junction support", |ui| {
+        ui.collapsing("Mapped cDNA junction support", |ui| {
             if progress.mapped_junction_support_frequencies.is_empty() {
                 ui.small("No mapped junction-overlap rows are available.");
                 return;
@@ -18126,7 +18544,7 @@ impl MainAreaDna {
         }
         let auto_pick = &progress.mapped_isoform_support_rows[0];
         ui.small(format!(
-            "Top mapped isoform: {} ({}) strand={} | aligned={} | msa-eligible={} | mean identity={:.1}% | mean query coverage={:.1}%",
+            "Top mapped cDNA isoform: {} ({}) strand={} | aligned={} | msa-eligible={} | mean identity={:.1}% | mean query coverage={:.1}%",
             auto_pick.transcript_label,
             auto_pick.transcript_id,
             auto_pick.strand,
@@ -18135,7 +18553,7 @@ impl MainAreaDna {
             auto_pick.mean_identity_fraction * 100.0,
             auto_pick.mean_query_coverage_fraction * 100.0
         ));
-        ui.collapsing("Mapped isoform ranking", |ui| {
+        ui.collapsing("Mapped cDNA isoform ranking", |ui| {
             egui::ScrollArea::vertical()
                 .max_height(200.0)
                 .show(ui, |ui| {
@@ -18181,7 +18599,7 @@ impl MainAreaDna {
                     });
                 });
             ui.small(
-                "Rows aggregate best-mapping evidence only; they are intentionally separate from the seed-based isoform ranking above.",
+                "Rows aggregate best-mapping evidence only; they are intentionally separate from the thresholded cDNA ranking above.",
             );
         });
     }

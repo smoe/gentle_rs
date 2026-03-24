@@ -470,18 +470,20 @@ Feature tree grouping:
   - Seed-hit score-density chart includes a `Linear`/`Log` scale toggle
     (default `Log`); log mode uses `log(1+count)` so sparse high-score bins
     remain visible during strongly skewed runs
-  - support statistics now live behind `Seed` / `Mapped` tabs so seed/path
-    heuristics and alignment-derived support are not mixed together in one view
-  - `Seed-confirmed exon-exon transitions` reports per-transition support
-    counts and percentages across seed-passed reads, plus junction-crossing
-    indexed-seed diagnostics
-  - `Seed-based isoform ranking` shows one row per known transcript in scope
-    with assigned-read counts, seed-pass counts, transition coverage, gap
-    statistics, best score, and strand-audit counters (`chain=same`,
-    `opposite-strand competition`, `ambiguous ties`)
-  - `Mapped exon support`, `Mapped junction support`, and `Mapped isoform
-    ranking` use phase-2 best mappings only and are the intended interpretation
-    surface once retained-read alignment has been run
+  - support statistics now live behind source tabs:
+    - `Reported transcript`
+    - `Thresholded cDNA`
+    - `Mapped cDNA`
+  - `Reported transcript` shows the annotation baseline for the current
+    splicing scope: reported exon support, reported junction support, and the
+    transcript catalogue
+  - `Thresholded cDNA` shows phase-1 seed-passed evidence:
+    - inferred exon support reconstructed from assigned transcript paths
+    - confirmed junction support from seed-supported transitions
+    - isoform ranking from thresholded cDNA assignments
+  - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and `Mapped
+    cDNA isoform ranking` use phase-2 best mappings only and are the intended
+    interpretation surface once retained-read alignment has been run
     - mapped exon/junction support now follows the aligned transcript-template
       offsets, so alternative exons inside the genomic span are no longer
       counted unless the mapping actually traversed them
