@@ -2020,6 +2020,7 @@ impl GentleEngine {
         sequence: &[u8],
         read_start_offset: usize,
         kmer_len: usize,
+        seed_stride_bp: usize,
         seed_index: &HashSet<u32>,
         histogram_index: &HashMap<u32, Vec<SeedHistogramWeight>>,
         bins: &mut [RnaReadSeedHistogramBin],
@@ -2034,7 +2035,8 @@ impl GentleEngine {
         let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
         let mut plus_bins_touched = HashSet::<usize>::new();
         let mut minus_bins_touched = HashSet::<usize>::new();
-        for start in 0..=sequence.len() - kmer_len {
+        let stride = seed_stride_bp.max(1);
+        for start in (0..=sequence.len() - kmer_len).step_by(stride) {
             let window = &sequence[start..start + kmer_len];
             let Some(bits) = Self::encode_kmer_bits(window) else {
                 continue;
@@ -2704,7 +2706,7 @@ impl GentleEngine {
         rows.into_iter().map(|row| row.preview).collect::<Vec<_>>()
     }
 
-    pub(super) fn accumulate_support_counts_for_mapping(
+    fn accumulate_support_counts_for_mapping_by_genomic_span(
         mapping: &RnaReadMappingHit,
         splicing: &SplicingExpertView,
         exon_counts: &mut [usize],
@@ -2724,6 +2726,110 @@ impl GentleEngine {
                 junction_counts[idx] = junction_counts[idx].saturating_add(1);
             }
         }
+    }
+
+    fn accumulate_support_counts_for_mapping_by_transcript_offsets(
+        mapping: &RnaReadMappingHit,
+        splicing: &SplicingExpertView,
+        exon_counts: &mut [usize],
+        junction_counts: &mut [usize],
+    ) -> bool {
+        if mapping.target_end_offset_0based_exclusive <= mapping.target_start_offset_0based {
+            return false;
+        }
+        let Some(transcript) = splicing
+            .transcripts
+            .iter()
+            .find(|row| row.transcript_feature_id == mapping.transcript_feature_id)
+        else {
+            return false;
+        };
+        if transcript.exons.is_empty() {
+            return false;
+        }
+        let exon_index = splicing
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(idx, exon)| ((exon.start_1based, exon.end_1based), idx))
+            .collect::<HashMap<_, _>>();
+        let junction_index = splicing
+            .junctions
+            .iter()
+            .enumerate()
+            .map(|(idx, junction)| ((junction.donor_1based, junction.acceptor_1based), idx))
+            .collect::<HashMap<_, _>>();
+        let ordered_exons = if transcript.strand.trim() == "-" {
+            transcript.exons.iter().rev().collect::<Vec<_>>()
+        } else {
+            transcript.exons.iter().collect::<Vec<_>>()
+        };
+        let aligned_start = mapping.target_start_offset_0based;
+        let aligned_end = mapping.target_end_offset_0based_exclusive;
+        let mut template_cursor = 0usize;
+        for (idx, exon) in ordered_exons.iter().enumerate() {
+            let exon_start_1based = exon.start_1based.min(exon.end_1based);
+            let exon_end_1based = exon.start_1based.max(exon.end_1based);
+            let exon_len = exon_end_1based
+                .saturating_sub(exon_start_1based)
+                .saturating_add(1);
+            if exon_len == 0 {
+                continue;
+            }
+            let exon_offset_start = template_cursor;
+            let exon_offset_end = template_cursor.saturating_add(exon_len);
+            if aligned_start < exon_offset_end && aligned_end > exon_offset_start {
+                if let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based)) {
+                    exon_counts[*exon_idx] = exon_counts[*exon_idx].saturating_add(1);
+                }
+            }
+            if idx + 1 < ordered_exons.len() {
+                let boundary_offset = exon_offset_end;
+                if aligned_start < boundary_offset && aligned_end > boundary_offset {
+                    let next_exon = ordered_exons[idx + 1];
+                    let next_start_1based = next_exon.start_1based.min(next_exon.end_1based);
+                    let next_end_1based = next_exon.start_1based.max(next_exon.end_1based);
+                    let (donor_1based, acceptor_1based) = if exon_start_1based <= next_start_1based
+                    {
+                        (exon_end_1based, next_start_1based)
+                    } else {
+                        (next_end_1based, exon_start_1based)
+                    };
+                    if let Some(junction_idx) = junction_index.get(&(donor_1based, acceptor_1based))
+                    {
+                        junction_counts[*junction_idx] =
+                            junction_counts[*junction_idx].saturating_add(1);
+                    }
+                }
+            }
+            template_cursor = exon_offset_end;
+            if template_cursor >= aligned_end {
+                break;
+            }
+        }
+        true
+    }
+
+    pub(super) fn accumulate_support_counts_for_mapping(
+        mapping: &RnaReadMappingHit,
+        splicing: &SplicingExpertView,
+        exon_counts: &mut [usize],
+        junction_counts: &mut [usize],
+    ) {
+        if Self::accumulate_support_counts_for_mapping_by_transcript_offsets(
+            mapping,
+            splicing,
+            exon_counts,
+            junction_counts,
+        ) {
+            return;
+        }
+        Self::accumulate_support_counts_for_mapping_by_genomic_span(
+            mapping,
+            splicing,
+            exon_counts,
+            junction_counts,
+        );
     }
 
     pub(super) fn build_rna_read_support_frequencies_from_counts(
@@ -3713,6 +3819,8 @@ impl GentleEngine {
             query_end_0based_exclusive: alignment.xend,
             target_start_1based,
             target_end_1based,
+            target_start_offset_0based: alignment.ystart,
+            target_end_offset_0based_exclusive: alignment.yend,
             matches,
             mismatches,
             score: alignment.score as isize,
@@ -4274,6 +4382,7 @@ impl GentleEngine {
                         &normalized_sequence[start..end],
                         start,
                         report.seed_filter.kmer_len,
+                        report.seed_filter.seed_stride_bp,
                         &seed_index,
                         &histogram_index,
                         &mut bins,
@@ -5317,6 +5426,7 @@ impl GentleEngine {
                             &normalized_sequence[start..end],
                             start,
                             seed_filter.kmer_len,
+                            seed_filter.seed_stride_bp,
                             &seed_index,
                             &histogram_index,
                             &mut bins,

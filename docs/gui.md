@@ -397,9 +397,12 @@ Feature tree grouping:
     - indexed seeds include annotated exon-body k-mers and exon-exon junction
       transition k-mers for admitted transcripts
   - phase-1 seed filtering hashes the full read span for every sequence
-    - current seed-start density is one start per base (effective stride `1`)
+    - `hash stride` controls the seed-start density along each read
+    - default seed-start density is one start per base (`seed_stride_bp=1`)
   - advanced seed constants expose a composite seed gate:
     - `k-mer length` (default `10`)
+    - `hash stride` (default `1`; higher values make the initial hash screen
+      sparser and faster)
     - `min hit` (raw hit fraction, default `0.30`)
     - `min weighted` (occurrence-weighted unique-k-mer fraction, default `0.05`)
     - `min unique` (minimum number of unique matched seed hashes, default `12`)
@@ -475,6 +478,9 @@ Feature tree grouping:
   - `Mapped exon support`, `Mapped junction support`, and `Mapped isoform
     ranking` use phase-2 best mappings only and are the intended interpretation
     surface once retained-read alignment has been run
+    - mapped exon/junction support now follows the aligned transcript-template
+      offsets, so alternative exons inside the genomic span are no longer
+      counted unless the mapping actually traversed them
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time

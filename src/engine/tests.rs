@@ -10438,6 +10438,8 @@ fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
         query_end_0based_exclusive: 120,
         target_start_1based: 101,
         target_end_1based: 220,
+        target_start_offset_0based: 0,
+        target_end_offset_0based_exclusive: 120,
         matches: 114,
         mismatches: 6,
         score: 342,
@@ -10454,6 +10456,8 @@ fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
         query_end_0based_exclusive: 104,
         target_start_1based: 140,
         target_end_1based: 239,
+        target_start_offset_0based: 40,
+        target_end_offset_0based_exclusive: 140,
         matches: 90,
         mismatches: 10,
         score: 210,
@@ -11903,6 +11907,7 @@ fn test_tp73_seed_filter_keeps_30pct_deleted_subsequences_and_rejects_random() {
                 read,
                 0,
                 seed_filter.kmer_len,
+                seed_filter.seed_stride_bp,
                 &seed_index,
                 &histogram,
                 &mut bins,
@@ -12064,6 +12069,7 @@ fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
                     &normalized[start..end],
                     start,
                     seed_filter.kmer_len,
+                    seed_filter.seed_stride_bp,
                     &seed_index,
                     &histogram,
                     bins,
@@ -12290,6 +12296,7 @@ fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
             read,
             0,
             kmer_len,
+            1,
             &all_seed_bits,
             &histogram_index,
             &mut bins,
@@ -12311,6 +12318,7 @@ fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
             read,
             0,
             kmer_len,
+            1,
             &empty_seed_index,
             &histogram_index,
             &mut bins,
@@ -12325,6 +12333,193 @@ fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
     assert_eq!(fraction_none, 0.0);
     assert!(!perfect_none);
     assert!(!passed_none);
+}
+
+#[test]
+fn test_rna_read_seed_stride_reduces_tested_kmers() {
+    let read = b"ACGTACGT";
+    let kmer_len = 2usize;
+    let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(read.len());
+    let histogram_index: HashMap<u32, Vec<SeedHistogramWeight>> = HashMap::new();
+    let seed_occurrence_counts = HashMap::<u32, usize>::new();
+    let mut all_seed_bits = HashSet::new();
+    for start in 0..=read.len() - kmer_len {
+        let bits = GentleEngine::encode_kmer_bits(&read[start..start + kmer_len]).expect("bits");
+        all_seed_bits.insert(bits);
+    }
+
+    let (tested_dense, matched_dense, _, matched_obs_dense) =
+        GentleEngine::count_seed_hits_in_window_with_histogram(
+            read,
+            0,
+            kmer_len,
+            1,
+            &all_seed_bits,
+            &histogram_index,
+            &mut bins,
+            &seed_occurrence_counts,
+        );
+    let (tested_sparse, matched_sparse, _, matched_obs_sparse) =
+        GentleEngine::count_seed_hits_in_window_with_histogram(
+            read,
+            0,
+            kmer_len,
+            2,
+            &all_seed_bits,
+            &histogram_index,
+            &mut bins,
+            &seed_occurrence_counts,
+        );
+
+    assert_eq!(tested_dense, 7);
+    assert_eq!(matched_dense, 7);
+    assert_eq!(tested_sparse, 4);
+    assert_eq!(matched_sparse, 4);
+    assert_eq!(
+        matched_obs_sparse
+            .iter()
+            .map(|row| row.read_start)
+            .collect::<Vec<_>>(),
+        vec![0, 2, 4, 6]
+    );
+    assert_eq!(matched_obs_dense.len(), tested_dense);
+}
+
+#[test]
+fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap() {
+    let splicing = SplicingExpertView {
+        seq_id: "seq".to_string(),
+        target_feature_id: 1,
+        group_label: "GENE1".to_string(),
+        strand: "+".to_string(),
+        region_start_1based: 1,
+        region_end_1based: 25,
+        transcript_count: 2,
+        unique_exon_count: 3,
+        instruction: String::new(),
+        transcripts: vec![
+            SplicingTranscriptLane {
+                transcript_feature_id: 1,
+                transcript_id: "tx_main".to_string(),
+                label: "TX_MAIN".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 5,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 25,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![SplicingRange {
+                    start_1based: 6,
+                    end_1based: 20,
+                }],
+                has_target_feature: true,
+            },
+            SplicingTranscriptLane {
+                transcript_feature_id: 2,
+                transcript_id: "tx_alt".to_string(),
+                label: "TX_ALT".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 5,
+                    },
+                    SplicingRange {
+                        start_1based: 11,
+                        end_1based: 15,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 25,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![
+                    SplicingRange {
+                        start_1based: 6,
+                        end_1based: 10,
+                    },
+                    SplicingRange {
+                        start_1based: 16,
+                        end_1based: 20,
+                    },
+                ],
+                has_target_feature: false,
+            },
+        ],
+        unique_exons: vec![
+            SplicingExonSummary {
+                start_1based: 1,
+                end_1based: 5,
+                support_transcript_count: 2,
+                constitutive: false,
+            },
+            SplicingExonSummary {
+                start_1based: 11,
+                end_1based: 15,
+                support_transcript_count: 1,
+                constitutive: false,
+            },
+            SplicingExonSummary {
+                start_1based: 21,
+                end_1based: 25,
+                support_transcript_count: 2,
+                constitutive: false,
+            },
+        ],
+        matrix_rows: vec![],
+        boundaries: vec![],
+        junctions: vec![
+            SplicingJunctionArc {
+                donor_1based: 5,
+                acceptor_1based: 11,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![2],
+            },
+            SplicingJunctionArc {
+                donor_1based: 5,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![1],
+            },
+            SplicingJunctionArc {
+                donor_1based: 15,
+                acceptor_1based: 21,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![2],
+            },
+        ],
+        events: vec![],
+    };
+    let mapping = RnaReadMappingHit {
+        transcript_feature_id: 1,
+        transcript_id: "tx_main".to_string(),
+        transcript_label: "TX_MAIN".to_string(),
+        strand: "+".to_string(),
+        target_start_1based: 1,
+        target_end_1based: 25,
+        target_start_offset_0based: 0,
+        target_end_offset_0based_exclusive: 10,
+        ..RnaReadMappingHit::default()
+    };
+    let mut exon_counts = vec![0usize; splicing.unique_exons.len()];
+    let mut junction_counts = vec![0usize; splicing.junctions.len()];
+
+    GentleEngine::accumulate_support_counts_for_mapping(
+        &mapping,
+        &splicing,
+        &mut exon_counts,
+        &mut junction_counts,
+    );
+
+    assert_eq!(exon_counts, vec![1, 0, 1]);
+    assert_eq!(junction_counts, vec![0, 1, 0]);
 }
 
 #[test]

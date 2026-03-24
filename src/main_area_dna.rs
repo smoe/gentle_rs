@@ -488,6 +488,8 @@ struct RnaReadInterpretOpsUiState {
     #[serde(default = "default_poly_t_prefix_min_bp_text")]
     poly_t_prefix_min_bp: String,
     kmer_len: String,
+    #[serde(default = "default_rna_seed_stride_bp_text")]
+    seed_stride_bp: String,
     short_full_hash_max_bp: String,
     long_window_bp: String,
     long_window_count: String,
@@ -533,6 +535,7 @@ impl Default for RnaReadInterpretOpsUiState {
             cdna_poly_t_flip_enabled: true,
             poly_t_prefix_min_bp: "18".to_string(),
             kmer_len: "10".to_string(),
+            seed_stride_bp: "1".to_string(),
             short_full_hash_max_bp: "420".to_string(),
             long_window_bp: "140".to_string(),
             long_window_count: "3".to_string(),
@@ -3048,6 +3051,7 @@ mod tests {
         value.as_object_mut().unwrap().remove("rna_reads_ui");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.rna_reads_ui.kmer_len, "10");
+        assert_eq!(decoded.rna_reads_ui.seed_stride_bp, "1");
         assert_eq!(decoded.rna_reads_ui.short_full_hash_max_bp, "420");
         assert_eq!(decoded.rna_reads_ui.long_window_bp, "140");
         assert_eq!(decoded.rna_reads_ui.min_seed_hit_fraction, "0.30");
@@ -3087,11 +3091,13 @@ mod tests {
             .get_mut("rna_reads_ui")
             .and_then(|v| v.as_object_mut())
             .expect("rna_reads_ui object");
+        rna.remove("seed_stride_bp");
         rna.remove("report_mode");
         rna.remove("checkpoint_path");
         rna.remove("checkpoint_every_reads");
         rna.remove("resume_from_checkpoint");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.rna_reads_ui.seed_stride_bp, "1");
         assert_eq!(
             decoded.rna_reads_ui.report_mode,
             crate::engine::RnaReadReportMode::Full
@@ -3136,6 +3142,7 @@ mod tests {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("TP73.ncbi".to_string()), None);
         area.rna_reads_ui.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
+        area.rna_reads_ui.seed_stride_bp = "3".to_string();
         area.rna_reads_ui.report_id.clear();
         area.workflow_run_id.clear();
         let view = SplicingExpertView {
@@ -3169,12 +3176,14 @@ mod tests {
                 seq_id,
                 seed_feature_id,
                 input_path,
+                seed_filter,
                 report_id,
                 ..
             } => {
                 assert_eq!(seq_id, "TP73.ncbi");
                 assert_eq!(*seed_feature_id, 42);
                 assert_eq!(input_path, "/tmp/SRR32957124.fasta.gz");
+                assert_eq!(seed_filter.seed_stride_bp, 3);
                 assert_eq!(report_id.as_deref(), Some("cdna_srr32957124"));
             }
             other => panic!("unexpected workflow op: {other:?}"),
@@ -3192,6 +3201,7 @@ mod tests {
             SplicingScopePreset::TargetGroupTargetStrand
         );
         assert_eq!(area.rna_reads_ui.kmer_len, "10");
+        assert_eq!(area.rna_reads_ui.seed_stride_bp, "1");
         assert!(area.rna_reads_ui.cdna_poly_t_flip_enabled);
         assert_eq!(area.rna_reads_ui.min_seed_hit_fraction, "0.30");
         assert_eq!(area.rna_reads_ui.min_weighted_seed_hit_fraction, "0.07");
@@ -3207,7 +3217,10 @@ mod tests {
     fn rna_read_statistics_tab_defaults_to_seed() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
-        assert_eq!(area.rna_read_statistics_tab, super::RnaReadStatisticsTab::Seed);
+        assert_eq!(
+            area.rna_read_statistics_tab,
+            super::RnaReadStatisticsTab::Seed
+        );
     }
 
     #[test]
@@ -3504,6 +3517,10 @@ fn default_true() -> bool {
 
 fn default_poly_t_prefix_min_bp_text() -> String {
     "18".to_string()
+}
+
+fn default_rna_seed_stride_bp_text() -> String {
+    "1".to_string()
 }
 
 fn default_min_chain_consistency_fraction_text() -> String {
@@ -14718,14 +14735,14 @@ impl MainAreaDna {
                     if self.rna_reads_ui.show_advanced {
                         ui.small(
                             egui::RichText::new(
-                                "Phase-1 note: short/long window fields are compatibility no-ops; full-read hashing is always used.",
+                                "Phase-1 note: full-read hashing is always used; hash stride is active, while short/long window fields remain compatibility no-ops.",
                             )
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
                         ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
                             ui.label("k-mer").on_hover_text(
-                                "Seed length used for hash matching (phase-1 default: 9).",
+                                "Seed length used for phase-1 hash matching.",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -14733,6 +14750,20 @@ impl MainAreaDna {
                                         .desired_width(46.0),
                                 )
                                 .on_hover_text("Seed hash length in bases.")
+                                .changed();
+                            ui.label("hash stride").on_hover_text(
+                                "Seed-start spacing in bases along each read. 1 hashes every possible start; higher values make the initial hash screen sparser and faster.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.seed_stride_bp,
+                                    )
+                                    .desired_width(52.0),
+                                )
+                                .on_hover_text(
+                                    "Phase-1 hash-density knob. Default 1 = one seed start per base.",
+                                )
                                 .changed();
                             ui.label("short<").on_hover_text(
                                 "Compatibility field in phase-1 (no runtime effect).",
@@ -15632,6 +15663,7 @@ impl MainAreaDna {
         self.rna_reads_ui.scope = SplicingScopePreset::TargetGroupTargetStrand;
         self.rna_reads_ui.cdna_poly_t_flip_enabled = true;
         self.rna_reads_ui.kmer_len = "10".to_string();
+        self.rna_reads_ui.seed_stride_bp = "1".to_string();
         self.rna_reads_ui.min_seed_hit_fraction = "0.30".to_string();
         self.rna_reads_ui.min_weighted_seed_hit_fraction = "0.07".to_string();
         self.rna_reads_ui.min_unique_matched_kmers = "16".to_string();
@@ -15830,13 +15862,18 @@ impl MainAreaDna {
         Some(bits)
     }
 
-    fn collect_read_seed_bit_counts(sequence: &str, kmer_len: usize) -> HashMap<u32, usize> {
+    fn collect_read_seed_bit_counts(
+        sequence: &str,
+        kmer_len: usize,
+        seed_stride_bp: usize,
+    ) -> HashMap<u32, usize> {
         let bytes = sequence.as_bytes();
         if kmer_len == 0 || bytes.len() < kmer_len {
             return HashMap::new();
         }
+        let stride = seed_stride_bp.max(1);
         let mut out = HashMap::<u32, usize>::new();
-        for start in 0..=bytes.len() - kmer_len {
+        for start in (0..=bytes.len() - kmer_len).step_by(stride) {
             if let Some(bits) = Self::encode_rna_seed_bits(&bytes[start..start + kmer_len]) {
                 *out.entry(bits).or_insert(0) += 1;
             }
@@ -16189,6 +16226,8 @@ impl MainAreaDna {
         if !(1..=16).contains(&kmer_len) {
             return Err("Invalid k-mer: expected within 1..=16".to_string());
         }
+        let seed_stride_bp =
+            Self::parse_positive_usize_text(&self.rna_reads_ui.seed_stride_bp, "seed_stride_bp")?;
         let short_full_hash_max_bp = Self::parse_positive_usize_text(
             &self.rna_reads_ui.short_full_hash_max_bp,
             "short_full_hash_max_bp",
@@ -16319,7 +16358,7 @@ impl MainAreaDna {
             roi_seed_capture_enabled: self.rna_reads_ui.roi_seed_capture_enabled,
             seed_filter: RnaReadSeedFilterConfig {
                 kmer_len,
-                seed_stride_bp: RnaReadSeedFilterConfig::default().seed_stride_bp,
+                seed_stride_bp,
                 short_full_hash_max_bp,
                 long_window_bp,
                 long_window_count,
@@ -17323,9 +17362,23 @@ impl MainAreaDna {
                         .filter(|len| *len > 0)
                         .unwrap_or(9)
                 });
+            let selected_seed_stride = self
+                .rna_reads_ui
+                .seed_stride_bp
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)
+                .unwrap_or_else(|| RnaReadSeedFilterConfig::default().seed_stride_bp);
             let recompute_started = Instant::now();
             let selected_seed_counts = selected_top_hit
-                .map(|row| Self::collect_read_seed_bit_counts(&row.sequence, selected_kmer_len))
+                .map(|row| {
+                    Self::collect_read_seed_bit_counts(
+                        &row.sequence,
+                        selected_kmer_len,
+                        selected_seed_stride,
+                    )
+                })
                 .unwrap_or_default();
             let mut selected_seed_budget = selected_seed_counts.clone();
             let recompute_elapsed_ms = recompute_started.elapsed().as_secs_f64() * 1000.0;

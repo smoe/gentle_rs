@@ -2013,6 +2013,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
     - `kmer_len=10`
+    - `seed_stride_bp=1`
     - `min_seed_hit_fraction=0.30` (bootstrap default; future SNR calibration track can override policy)
     - `min_weighted_seed_hit_fraction=0.05`
     - `min_unique_matched_kmers=12`
@@ -2033,7 +2034,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - `AND confirmed_transition_fraction >= min_transition_support_fraction`
   - phase-1 seed-span behavior:
     - full-read hashing is always used for every read
-    - current seed-start density is one start per base (effective stride `1`)
+    - seed-start density is controlled by `seed_stride_bp`
+    - default density is one start per base (`seed_stride_bp=1`)
     - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
       remain compatibility fields and currently have no runtime effect
   - sparse-origin behavior:
@@ -2074,6 +2076,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - refreshed mapped support rows
         (`exon_support_frequencies`, `junction_support_frequencies`,
         `mapped_isoform_support_rows`)
+      - mapped exon/junction support is derived from aligned transcript-template
+        offsets first and falls back to coarse genomic-span overlap only for
+        legacy mappings that do not carry template offsets
       - deterministic retained-hit re-ranking by alignment-aware retention rank
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`

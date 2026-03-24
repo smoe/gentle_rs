@@ -1186,6 +1186,9 @@ Status:
     with score-based coloring.
   - Phase-1 seed filtering now hashes full read span for every read (replacing
     prior sampled-window behavior) to improve filtering sensitivity.
+  - Splicing Expert now exposes the active phase-1 hash-density control
+    (`seed_stride_bp`, default `1`) so seed-start spacing can be tuned without
+    diverging from engine/CLI/shell contracts.
   - Runtime panel now reports detailed compute breakdown
     (`seed`, `align`, `io`, `parse`, `norm`, `infer`, `emit`, `other`) and
     throughput metrics (`reads/s`, `bp/s`, mean/median/p95 read length) to
@@ -1229,6 +1232,10 @@ Status:
   - Splicing Expert RNA-read support tables now separate `Seed` diagnostics
     from `Mapped` phase-2 support so exon/junction/isoform interpretation can
     follow retained-read alignments instead of reusing seed/path heuristics.
+  - Mapped exon/junction support counting now follows aligned
+    transcript-template offsets, reducing false support inflation from
+    alternative exons or junctions that lie inside the same broad genomic span
+    but were not actually traversed by the retained-read mapping.
   - `rna-reads export-hits-fasta` now includes exon-path annotations in FASTA
     headers (`:` confirmed adjacent transition by seeds, `-` unconfirmed).
   - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV

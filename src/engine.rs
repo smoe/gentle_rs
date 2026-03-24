@@ -3172,6 +3172,10 @@ pub struct RnaReadMappingHit {
     pub query_end_0based_exclusive: usize,
     pub target_start_1based: usize,
     pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_start_offset_0based: usize,
+    #[serde(default)]
+    pub target_end_offset_0based_exclusive: usize,
     pub matches: usize,
     pub mismatches: usize,
     pub score: isize,
