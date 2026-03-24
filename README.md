@@ -12,6 +12,68 @@ panels, and other imported resources can contribute directly to the same
 project state used by the GUI, CLI, and automation, so showcase figures remain
 auditable instead of being redrawn by hand.
 
+## How GENtle Fits Together
+
+![GENtle system overview](docs/figures/gentle_system_overview.svg)
+
+At a glance, GENtle is organized around one shared deterministic engine and
+one project state. Interactive interfaces, scripting routes, and imported
+biological context all meet in the same lineage-aware model, which then drives
+cloning workflows, retrieval, design, analysis, graphics, and provenance.
+
+The same structure in Mermaid form:
+
+```mermaid
+flowchart LR
+    subgraph Access["Interfaces"]
+        GUI["GUI"]
+        CLI["CLI and workflows"]
+        Script["JS / Lua / Python"]
+        MCP["MCP and AI tools"]
+    end
+
+    subgraph Inputs["Inputs and external context"]
+        Seq["Local sequences and annotations"]
+        Ref["Prepared genomes, .BED/.VCF, and BLAST targets"]
+        Cur["Curated panels, motifs, and tracks"]
+    end
+
+    subgraph Core["Shared GENtle core"]
+        Engine["Deterministic engine"]
+        State["Project state and lineage"]
+        Render["Shared renderers and exports"]
+        Engine <--> State
+        State --> Render
+    end
+
+    subgraph Work["Capabilities"]
+        Clone["Cloning workflows"]
+        Retrieve["Retrieval and projection"]
+        Design["Design and validation"]
+        Analysis["Analysis and expert views"]
+    end
+
+    subgraph Outputs["Outputs"]
+        Views["Interactive views and figures"]
+        Reports["Structured outputs"]
+        Provenance["Lineage and provenance"]
+    end
+
+    Access --> Engine
+    Inputs --> State
+    Engine --> Clone
+    Engine --> Retrieve
+    Engine --> Design
+    Engine --> Analysis
+    Clone --> State
+    Retrieve --> State
+    Design --> State
+    Analysis --> State
+    Render --> Views
+    State --> Reports
+    State --> Provenance
+```
+
 ## Showcases
 
 ### Gibson Workflow, Mechanism, and Provenance

@@ -1,5 +1,12 @@
 # Documentation Figures
 
+`gentle_system_overview.svg` is the hand-authored homepage schematic used near
+the top of the README. Unlike the cloning and analysis showcases below, it is
+not rendered from an engine operation; it is a maintained explanatory figure
+that summarizes how interfaces, imported context, the shared engine, and
+provenance interact. The Mermaid block in `README.md` mirrors the same
+structure in text-native form.
+
 `gibson_two_fragment_protocol_cartoon.svg` is a deterministic render of the
 built-in protocol cartoon `gibson.two_fragment`.
 
