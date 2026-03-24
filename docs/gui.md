@@ -1882,6 +1882,8 @@ Recommended flow:
      length and molecular mass metadata
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
+   - if the current `genome` is already prepared, use `Reinstall Selected...`;
+     GENtle asks for confirmation because reinstall can take some time
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
@@ -1970,6 +1972,8 @@ Recommended flow:
    - open `Prepared References...`
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
+   - use `Reinstall...` on a prepared row to refresh a stale or partial install;
+     GENtle asks for confirmation because reinstall can take some time
    - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
      prepared genome as proportional line lengths
    - when extraction fails with chromosome/contig mismatch, status messages now
