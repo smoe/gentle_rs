@@ -1972,7 +1972,7 @@ fn push_gibson_design_review_notes(
         ));
     } else {
         preview.notes.push(format!(
-            "PCR priming review: derived complete primer pairs for {}/{} insert fragments. The current blockers are in the 3' gene-specific priming window ({:.1}..{:.1} °C, {}..{} bp), not in the 5' Gibson overlaps.",
+            "PCR priming review: derived complete primer pairs for {}/{} insert fragments. The current blockers are in the 3' gene-specific priming window, not in the 5' Gibson overlaps. Current targets: {:.1}..{:.1} °C and {}..{} bp.",
             primed_fragment_count,
             expected_fragment_count,
             targets.priming_segment_tm_min_celsius,

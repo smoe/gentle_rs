@@ -124,14 +124,14 @@ Clone the repository and move into the project directory:
 ```sh
 git clone https://github.com/smoe/gentle_rs.git
 cd gentle_rs
+<<<<<<< HEAD
 ```
 
 ## First local build check
 
 Run a first local build check:
 
-```sh
-cargo check -q
+cargo check
 ```
 
 If this succeeds, your core contributor toolchain is in place.
