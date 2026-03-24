@@ -1088,6 +1088,12 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
         ".pc_feature_marker_text { font: 700 10px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #ffffff; }",
     );
     svg.push_str(
+        ".pc_primer_label { font: 700 10px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #ffffff; }",
+    );
+    svg.push_str(
+        ".pc_primer_end_label { font: 600 9px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #375965; }",
+    );
+    svg.push_str(
         ".pc_step_num { font: 700 13px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #ffffff; }",
     );
     svg.push_str(".pc_box { fill: url(#pc_panel); stroke: #c8dde3; stroke-width: 2; }");
@@ -1275,6 +1281,7 @@ fn render_linear_molecule(
     let mut bottom_spans: Vec<(f32, f32, String)> = vec![];
     let mut top_nicks: Vec<f32> = vec![];
     let mut bottom_nicks: Vec<f32> = vec![];
+    let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String)> = vec![];
     let mut feature_markers: Vec<(f32, String, String)> = vec![];
     for (feature_idx, feature) in molecule.features.iter().enumerate() {
         let slot_w = if feature_idx + 1 == molecule.features.len() {
@@ -1300,7 +1307,14 @@ fn render_linear_molecule(
         if bottom_seg_w > 0.0 {
             push_linear_span(&mut bottom_spans, slot_cursor, bottom_seg_w, bottom_color);
         }
-        if let Some((marker_label, marker_fill)) = feature_marker_badge(feature) {
+        if let Some(primer_kind) = primer_glyph_kind(feature) {
+            primer_glyphs.push((
+                slot_cursor + (slot_w * 0.5),
+                slot_w,
+                primer_kind,
+                normalize_hex_color(&feature.color_hex),
+            ));
+        } else if let Some((marker_label, marker_fill)) = feature_marker_badge(feature) {
             feature_markers.push((
                 slot_cursor + (slot_w * 0.5),
                 marker_label.to_string(),
@@ -1346,6 +1360,25 @@ fn render_linear_molecule(
     for nick_x in bottom_nicks {
         render_strand_nick(svg, nick_x, y + 11.0);
     }
+    for (center_x, primer_w, primer_kind, primer_fill) in primer_glyphs {
+        match primer_kind {
+            PrimerGlyphKind::Forward => {
+                render_primer_glyph(svg, center_x, y, primer_w, "F", &primer_fill, "top", false);
+            }
+            PrimerGlyphKind::Reverse => {
+                render_primer_glyph(
+                    svg,
+                    center_x,
+                    y + 11.0,
+                    primer_w,
+                    "R",
+                    &primer_fill,
+                    "bottom",
+                    true,
+                );
+            }
+        }
+    }
     for (marker_x, marker_label, marker_fill) in feature_markers {
         render_feature_marker(svg, marker_x, y, &marker_label, &marker_fill);
     }
@@ -1377,17 +1410,99 @@ fn render_strand_nick(svg: &mut String, x: f32, y: f32) {
     ));
 }
 
-fn feature_marker_badge(feature: &DnaFeatureCartoon) -> Option<(&'static str, &'static str)> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrimerGlyphKind {
+    Forward,
+    Reverse,
+}
+
+fn primer_glyph_kind(feature: &DnaFeatureCartoon) -> Option<PrimerGlyphKind> {
     let feature_id = feature.id.to_ascii_lowercase();
     if feature_id.contains("forward_primer") {
-        Some(("F", "#b5476d"))
+        Some(PrimerGlyphKind::Forward)
     } else if feature_id.contains("reverse_primer") {
-        Some(("R", "#4c5d9e"))
-    } else if feature_id.contains("probe_window") || feature_id.contains("probe_site") {
+        Some(PrimerGlyphKind::Reverse)
+    } else {
+        None
+    }
+}
+
+fn feature_marker_badge(feature: &DnaFeatureCartoon) -> Option<(&'static str, &'static str)> {
+    let feature_id = feature.id.to_ascii_lowercase();
+    if feature_id.contains("probe_window") || feature_id.contains("probe_site") {
         Some(("P", "#577590"))
     } else {
         None
     }
+}
+
+fn render_primer_glyph(
+    svg: &mut String,
+    center_x: f32,
+    anchor_y: f32,
+    nominal_w: f32,
+    label: &str,
+    fill: &str,
+    anchor: &str,
+    rotate_180: bool,
+) {
+    let glyph_w = nominal_w.max(20.0).min(40.0);
+    let glyph_h = 5.0;
+    let connector_y = anchor_y - 2.0;
+    let bar_y = anchor_y - 8.0;
+    let end_label_y = anchor_y - 11.5;
+    let label_y = bar_y + (glyph_h * 0.5) + 0.4;
+    let left_x = center_x - (glyph_w * 0.5);
+    let rotation_attr = if rotate_180 { "180" } else { "0" };
+    let transform = if rotate_180 {
+        format!(" transform=\"rotate(180 {:.1} {:.1})\"", center_x, anchor_y)
+    } else {
+        String::new()
+    };
+
+    svg.push_str(&format!(
+        "<g data-primer-glyph=\"{}\" data-primer-anchor=\"{}\" data-primer-rotation=\"{}\"{}>",
+        escape_xml(label),
+        escape_xml(anchor),
+        rotation_attr,
+        transform
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.4\"/>",
+        center_x,
+        anchor_y,
+        center_x,
+        connector_y,
+        fill
+    ));
+    svg.push_str(&format!(
+        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"2.2\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.8\"/>",
+        left_x,
+        bar_y,
+        glyph_w,
+        glyph_h,
+        fill,
+        fill
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_label\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
+        center_x,
+        label_y,
+        escape_xml(label)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"end\" dominant-baseline=\"middle\">{}</text>",
+        left_x - 3.5,
+        end_label_y,
+        escape_xml("5'")
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"start\" dominant-baseline=\"middle\">{}</text>",
+        left_x + glyph_w + 3.5,
+        end_label_y,
+        escape_xml("3'")
+    ));
+    svg.push_str("</g>");
 }
 
 fn render_feature_marker(svg: &mut String, center_x: f32, strand_y: f32, label: &str, fill: &str) {
@@ -3965,8 +4080,13 @@ mod tests {
         assert!(svg.contains("PCR Assay"));
         assert!(svg.contains("Selected ROI"));
         assert!(svg.contains("Accepted amplicon"));
-        assert!(svg.contains("data-feature-marker=\"F\""));
-        assert!(svg.contains("data-feature-marker=\"R\""));
+        assert!(svg.contains("data-primer-glyph=\"F\""));
+        assert!(svg.contains("data-primer-glyph=\"R\""));
+        assert!(svg.contains("data-primer-rotation=\"180\""));
+        assert!(svg.contains("5&apos;"));
+        assert!(svg.contains("3&apos;"));
+        assert!(!svg.contains("data-feature-marker=\"F\""));
+        assert!(!svg.contains("data-feature-marker=\"R\""));
     }
 
     #[test]
@@ -3984,9 +4104,12 @@ mod tests {
         assert!(svg.contains("qPCR Assay"));
         assert!(svg.contains("Probe-bearing amplicon"));
         assert!(svg.contains("Quantify"));
-        assert!(svg.contains("data-feature-marker=\"F\""));
-        assert!(svg.contains("data-feature-marker=\"R\""));
+        assert!(svg.contains("data-primer-glyph=\"F\""));
+        assert!(svg.contains("data-primer-glyph=\"R\""));
+        assert!(svg.contains("data-primer-rotation=\"180\""));
         assert!(svg.contains("data-feature-marker=\"P\""));
+        assert!(!svg.contains("data-feature-marker=\"F\""));
+        assert!(!svg.contains("data-feature-marker=\"R\""));
     }
 
     #[test]

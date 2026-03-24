@@ -1624,14 +1624,14 @@ Protocol-cartoon family growth direction (planned):
     explicit no-accepted-pairs outcome)
 - Implemented PCR baseline in the `pcr.assay.*` family:
   - `pcr.assay.pair`: base strip with one selected ROI, one assay-setup lane,
-    one amplification step, one amplicon/report outcome, and visible forward/
-    reverse primer-position markers
+    one amplification step, one amplicon/report outcome, and explicit forward/
+    reverse primer glyphs with 5'/3' orientation
   - `pcr.assay.pair.no_product`: same family with an explicit report-only
     terminal state when no accepted primer pair yields a product
 - Implemented qPCR baseline in the same `pcr.assay.*` family:
   - `pcr.assay.qpcr`: same base strip enriched with one internal probe window
-    plus forward/reverse primer-position markers and one quantitative readout
-    terminal state
+    plus explicit forward/reverse primer glyphs, a retained probe marker, and
+    one quantitative readout terminal state
 - Planned PCR modality adaptation should continue through the same
   `pcr.assay.*` protocol-cartoon family:
   - nested PCR: same family with two amplification stages (outer -> inner)
