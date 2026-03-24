@@ -123,7 +123,8 @@ Primary map modes (linear topology):
 - `Standard map`
   - regular linear feature-map rendering
 - `Splicing map`
-  - transcript/exon lane rendering for selected `mRNA`/`exon` features
+  - transcript/exon lane rendering for selected `mRNA`/`ncRNA`/`transcript`/
+    `exon`/`gene`/`CDS` features
 - `Dotplot map`
   - compact launcher/compute panel in sequence windows
   - selecting `Dotplot map` opens a dedicated standalone `Dotplot` workspace
@@ -834,7 +835,7 @@ Controls:
 5. Splicing map (linear mode)
    - Toggles primary map rendering between standard feature-map mode and a
      read-only transcript/exon splicing-lane mode for the selected
-     `mRNA`/`exon` feature.
+     `mRNA`/`ncRNA`/`transcript`/`exon`/`gene`/`CDS` feature.
    - Uses the same splicing payload/geometry contract as the dedicated
      Splicing Expert window.
    - Clicking a transcript lane focuses the corresponding transcript feature in
