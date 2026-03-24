@@ -1598,6 +1598,171 @@ fn escape_xml(raw: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[derive(Clone, Copy)]
+enum CartoonBlockOccupancy {
+    Duplex,
+    TopOnly,
+    BottomOnly,
+}
+
+fn strand_lengths(length_bp: usize, occupancy: CartoonBlockOccupancy) -> (usize, usize) {
+    match occupancy {
+        CartoonBlockOccupancy::Duplex => (length_bp, length_bp),
+        CartoonBlockOccupancy::TopOnly => (length_bp, 0),
+        CartoonBlockOccupancy::BottomOnly => (0, length_bp),
+    }
+}
+
+fn cartoon_feature_block(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    occupancy: CartoonBlockOccupancy,
+    top_color_hex: &str,
+    bottom_color_hex: &str,
+    top_nick_after: bool,
+    bottom_nick_after: bool,
+) -> DnaFeatureCartoon {
+    let (top_length_bp, bottom_length_bp) = strand_lengths(length_bp, occupancy);
+    DnaFeatureCartoon {
+        id: id.to_string(),
+        label: label.to_string(),
+        length_bp,
+        top_length_bp,
+        bottom_length_bp,
+        color_hex: top_color_hex.to_string(),
+        bottom_color_hex: bottom_color_hex.to_string(),
+        top_nick_after,
+        bottom_nick_after,
+    }
+}
+
+fn duplex_feature_block(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    color_hex: &str,
+) -> DnaFeatureCartoon {
+    cartoon_feature_block(
+        id,
+        label,
+        length_bp,
+        CartoonBlockOccupancy::Duplex,
+        color_hex,
+        color_hex,
+        false,
+        false,
+    )
+}
+
+fn duplex_feature_block_with_nicks(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    color_hex: &str,
+    top_nick_after: bool,
+    bottom_nick_after: bool,
+) -> DnaFeatureCartoon {
+    cartoon_feature_block(
+        id,
+        label,
+        length_bp,
+        CartoonBlockOccupancy::Duplex,
+        color_hex,
+        color_hex,
+        top_nick_after,
+        bottom_nick_after,
+    )
+}
+
+fn top_only_feature_block(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    color_hex: &str,
+) -> DnaFeatureCartoon {
+    cartoon_feature_block(
+        id,
+        label,
+        length_bp,
+        CartoonBlockOccupancy::TopOnly,
+        color_hex,
+        color_hex,
+        false,
+        false,
+    )
+}
+
+fn bottom_only_feature_block(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    color_hex: &str,
+) -> DnaFeatureCartoon {
+    cartoon_feature_block(
+        id,
+        label,
+        length_bp,
+        CartoonBlockOccupancy::BottomOnly,
+        color_hex,
+        color_hex,
+        false,
+        false,
+    )
+}
+
+fn hybrid_feature_block(
+    id: &str,
+    label: &str,
+    length_bp: usize,
+    top_color_hex: &str,
+    bottom_color_hex: &str,
+) -> DnaFeatureCartoon {
+    cartoon_feature_block(
+        id,
+        label,
+        length_bp,
+        CartoonBlockOccupancy::Duplex,
+        top_color_hex,
+        bottom_color_hex,
+        false,
+        false,
+    )
+}
+
+fn linear_molecule_block(
+    id: &str,
+    label: &str,
+    features: Vec<DnaFeatureCartoon>,
+    left_end: DnaEndStyle,
+    right_end: DnaEndStyle,
+) -> DnaMoleculeCartoon {
+    DnaMoleculeCartoon {
+        id: id.to_string(),
+        label: label.to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features,
+        left_end: Some(left_end),
+        right_end: Some(right_end),
+    }
+}
+
+fn event_block(
+    id: &str,
+    title: &str,
+    caption: &str,
+    action: ProtocolCartoonAction,
+    molecules: Vec<DnaMoleculeCartoon>,
+) -> ProtocolCartoonEvent {
+    ProtocolCartoonEvent {
+        id: id.to_string(),
+        title: title.to_string(),
+        caption: caption.to_string(),
+        action,
+        molecules,
+    }
+}
+
 fn render_invalid_protocol_svg(id: &str, message: &str) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"900\" height=\"220\" viewBox=\"0 0 900 220\"><rect x=\"0\" y=\"0\" width=\"900\" height=\"220\" fill=\"#fff7ed\"/><text x=\"24\" y=\"56\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"#8a2f1f\">Invalid protocol cartoon: {}</text><text x=\"24\" y=\"96\" font-family=\"Trebuchet MS, Segoe UI, sans-serif\" font-size=\"18\" fill=\"#7a4a3b\">{}</text></svg>",
@@ -1665,7 +1830,7 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
     const INSERT_BODY_BP: usize = 52;
     const LEFT_OVERLAP_BP: usize = 24;
     const RIGHT_OVERLAP_BP: usize = 24;
-    const PENDING_FILL_BP: usize = 12;
+    const PENDING_FILL_BP: usize = 10;
 
     let destination_color = "#f2c94c";
     let insert_color = "#3f80e0";
@@ -1677,632 +1842,407 @@ fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
             .id()
             .to_string(),
         title: "GENtle Protocol Cartoon: Gibson Single-Insert Assembly".to_string(),
-        summary: "Five-step Gibson mechanism with two explicit destination-insert junctions.".to_string(),
+        summary: "Five-step Gibson mechanism with two explicit destination-insert junctions."
+            .to_string(),
         events: vec![
-            ProtocolCartoonEvent {
-                id: "context".to_string(),
-                title: "Context".to_string(),
-                caption: "The opened destination contributes one left arm and one right arm, while the insert carries one matching terminal homology at each end.".to_string(),
-                action: ProtocolCartoonAction::Context,
-                molecules: vec![
-                    DnaMoleculeCartoon {
-                        id: "destination_left_context".to_string(),
-                        label: "Destination left arm".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "dest_left_body".to_string(),
-                                label: "Destination left flank".to_string(),
-                                length_bp: DEST_BODY_BP,
-                                top_length_bp: DEST_BODY_BP,
-                                bottom_length_bp: DEST_BODY_BP,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "left_overlap".to_string(),
-                                label: "Left junction homology".to_string(),
-                                length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: LEFT_OVERLAP_BP,
-                                bottom_length_bp: LEFT_OVERLAP_BP,
-                                color_hex: left_junction_color.to_string(),
-                                bottom_color_hex: left_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+            event_block(
+                "context",
+                "Context",
+                "The opened destination contributes one left arm and one right arm, while the insert carries one matching terminal homology at each end.",
+                ProtocolCartoonAction::Context,
+                vec![
+                    linear_molecule_block(
+                        "destination_left_context",
+                        "Destination left arm",
+                        vec![
+                            duplex_feature_block(
+                                "dest_left_body",
+                                "Destination left flank",
+                                DEST_BODY_BP,
+                                destination_color,
+                            ),
+                            duplex_feature_block(
+                                "left_overlap",
+                                "Left junction homology",
+                                LEFT_OVERLAP_BP,
+                                left_junction_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Continuation),
-                        right_end: Some(DnaEndStyle::Blunt),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "insert_context".to_string(),
-                        label: "Insert".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "insert_left_overlap".to_string(),
-                                label: "Left junction homology".to_string(),
-                                length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: LEFT_OVERLAP_BP,
-                                bottom_length_bp: LEFT_OVERLAP_BP,
-                                color_hex: left_junction_color.to_string(),
-                                bottom_color_hex: left_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_body".to_string(),
-                                label: "Insert body".to_string(),
-                                length_bp: INSERT_BODY_BP,
-                                top_length_bp: INSERT_BODY_BP,
-                                bottom_length_bp: INSERT_BODY_BP,
-                                color_hex: insert_color.to_string(),
-                                bottom_color_hex: insert_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_right_overlap".to_string(),
-                                label: "Right junction homology".to_string(),
-                                length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: RIGHT_OVERLAP_BP,
-                                bottom_length_bp: RIGHT_OVERLAP_BP,
-                                color_hex: right_junction_color.to_string(),
-                                bottom_color_hex: right_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        DnaEndStyle::Continuation,
+                        DnaEndStyle::Blunt,
+                    ),
+                    linear_molecule_block(
+                        "insert_context",
+                        "Insert",
+                        vec![
+                            duplex_feature_block(
+                                "insert_left_overlap",
+                                "Left junction homology",
+                                LEFT_OVERLAP_BP,
+                                left_junction_color,
+                            ),
+                            duplex_feature_block(
+                                "insert_body",
+                                "Insert body",
+                                INSERT_BODY_BP,
+                                insert_color,
+                            ),
+                            duplex_feature_block(
+                                "insert_right_overlap",
+                                "Right junction homology",
+                                RIGHT_OVERLAP_BP,
+                                right_junction_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Blunt),
-                        right_end: Some(DnaEndStyle::Blunt),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "destination_right_context".to_string(),
-                        label: "Destination right arm".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "right_overlap".to_string(),
-                                label: "Right junction homology".to_string(),
-                                length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: RIGHT_OVERLAP_BP,
-                                bottom_length_bp: RIGHT_OVERLAP_BP,
-                                color_hex: right_junction_color.to_string(),
-                                bottom_color_hex: right_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "dest_right_body".to_string(),
-                                label: "Destination right flank".to_string(),
-                                length_bp: DEST_BODY_BP,
-                                top_length_bp: DEST_BODY_BP,
-                                bottom_length_bp: DEST_BODY_BP,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        DnaEndStyle::Blunt,
+                        DnaEndStyle::Blunt,
+                    ),
+                    linear_molecule_block(
+                        "destination_right_context",
+                        "Destination right arm",
+                        vec![
+                            duplex_feature_block(
+                                "right_overlap",
+                                "Right junction homology",
+                                RIGHT_OVERLAP_BP,
+                                right_junction_color,
+                            ),
+                            duplex_feature_block(
+                                "dest_right_body",
+                                "Destination right flank",
+                                DEST_BODY_BP,
+                                destination_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Blunt),
-                        right_end: Some(DnaEndStyle::Continuation),
-                    },
+                        DnaEndStyle::Blunt,
+                        DnaEndStyle::Continuation,
+                    ),
                 ],
-            },
-            ProtocolCartoonEvent {
-                id: "chew_back".to_string(),
-                title: "Chew-back".to_string(),
-                caption: "A 5' exonuclease exposes one single-stranded 3' overhang at each destination arm and both ends of the insert, continuing slightly past each homology region so polymerase still has work to do.".to_string(),
-                action: ProtocolCartoonAction::Custom {
+            ),
+            event_block(
+                "chew_back",
+                "Chew-back",
+                "A 5' exonuclease exposes one single-stranded 3' overhang at each destination arm and both ends of the insert, continuing slightly past each homology region so polymerase still has work to do.",
+                ProtocolCartoonAction::Custom {
                     label: "5' Exonuclease".to_string(),
                 },
-                molecules: vec![
-                    DnaMoleculeCartoon {
-                        id: "destination_left_chewed".to_string(),
-                        label: "Left arm (chewed)".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "dest_left_body".to_string(),
-                                label: "Destination left flank".to_string(),
-                                length_bp: DEST_BODY_BP,
-                                top_length_bp: DEST_BODY_BP,
-                                bottom_length_bp: DEST_BODY_BP,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "dest_left_tail_exposed".to_string(),
-                                label: "Left-side gap to be filled".to_string(),
-                                length_bp: PENDING_FILL_BP,
-                                top_length_bp: PENDING_FILL_BP,
-                                bottom_length_bp: 0,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "left_overlap_exposed".to_string(),
-                                label: "Left junction homology".to_string(),
-                                length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: LEFT_OVERLAP_BP,
-                                bottom_length_bp: 0,
-                                color_hex: left_junction_color.to_string(),
-                                bottom_color_hex: left_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                vec![
+                    linear_molecule_block(
+                        "destination_left_chewed",
+                        "Left arm (chewed)",
+                        vec![
+                            duplex_feature_block(
+                                "dest_left_body",
+                                "Destination left flank",
+                                DEST_BODY_BP,
+                                destination_color,
+                            ),
+                            top_only_feature_block(
+                                "dest_left_tail_exposed",
+                                "Left-side gap to be filled",
+                                PENDING_FILL_BP,
+                                destination_color,
+                            ),
+                            top_only_feature_block(
+                                "left_overlap_exposed",
+                                "Left junction homology",
+                                LEFT_OVERLAP_BP,
+                                left_junction_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Continuation),
-                        right_end: Some(DnaEndStyle::Sticky {
+                        DnaEndStyle::Continuation,
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: LEFT_OVERLAP_BP + PENDING_FILL_BP,
-                        }),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "insert_chewed".to_string(),
-                        label: "Insert (chewed)".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "insert_left_overlap_exposed".to_string(),
-                                label: "Left junction homology".to_string(),
-                                length_bp: LEFT_OVERLAP_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: LEFT_OVERLAP_BP,
-                                color_hex: left_junction_color.to_string(),
-                                bottom_color_hex: left_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_left_tail_exposed".to_string(),
-                                label: "Insert left-side gap".to_string(),
-                                length_bp: PENDING_FILL_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: PENDING_FILL_BP,
-                                color_hex: insert_color.to_string(),
-                                bottom_color_hex: insert_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_body".to_string(),
-                                label: "Insert body".to_string(),
-                                length_bp: INSERT_BODY_BP,
-                                top_length_bp: INSERT_BODY_BP,
-                                bottom_length_bp: INSERT_BODY_BP,
-                                color_hex: insert_color.to_string(),
-                                bottom_color_hex: insert_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_right_tail_exposed".to_string(),
-                                label: "Insert right-side gap".to_string(),
-                                length_bp: PENDING_FILL_BP,
-                                top_length_bp: PENDING_FILL_BP,
-                                bottom_length_bp: 0,
-                                color_hex: insert_color.to_string(),
-                                bottom_color_hex: insert_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "insert_right_overlap_exposed".to_string(),
-                                label: "Right junction homology".to_string(),
-                                length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: RIGHT_OVERLAP_BP,
-                                bottom_length_bp: 0,
-                                color_hex: right_junction_color.to_string(),
-                                bottom_color_hex: right_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        },
+                    ),
+                    linear_molecule_block(
+                        "insert_chewed",
+                        "Insert (chewed)",
+                        vec![
+                            bottom_only_feature_block(
+                                "insert_left_overlap_exposed",
+                                "Left junction homology",
+                                LEFT_OVERLAP_BP,
+                                left_junction_color,
+                            ),
+                            bottom_only_feature_block(
+                                "insert_left_tail_exposed",
+                                "Insert left-side gap",
+                                PENDING_FILL_BP,
+                                insert_color,
+                            ),
+                            duplex_feature_block(
+                                "insert_body",
+                                "Insert body",
+                                INSERT_BODY_BP,
+                                insert_color,
+                            ),
+                            top_only_feature_block(
+                                "insert_right_tail_exposed",
+                                "Insert right-side gap",
+                                PENDING_FILL_BP,
+                                insert_color,
+                            ),
+                            top_only_feature_block(
+                                "insert_right_overlap_exposed",
+                                "Right junction homology",
+                                RIGHT_OVERLAP_BP,
+                                right_junction_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Sticky {
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: LEFT_OVERLAP_BP + PENDING_FILL_BP,
-                        }),
-                        right_end: Some(DnaEndStyle::Sticky {
+                        },
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: RIGHT_OVERLAP_BP + PENDING_FILL_BP,
-                        }),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "destination_right_chewed".to_string(),
-                        label: "Right arm (chewed)".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "right_overlap_exposed".to_string(),
-                                label: "Right junction homology".to_string(),
-                                length_bp: RIGHT_OVERLAP_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: RIGHT_OVERLAP_BP,
-                                color_hex: right_junction_color.to_string(),
-                                bottom_color_hex: right_junction_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "dest_right_tail_exposed".to_string(),
-                                label: "Right-side gap to be filled".to_string(),
-                                length_bp: PENDING_FILL_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: PENDING_FILL_BP,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "dest_right_body".to_string(),
-                                label: "Destination right flank".to_string(),
-                                length_bp: DEST_BODY_BP,
-                                top_length_bp: DEST_BODY_BP,
-                                bottom_length_bp: DEST_BODY_BP,
-                                color_hex: destination_color.to_string(),
-                                bottom_color_hex: destination_color.to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        },
+                    ),
+                    linear_molecule_block(
+                        "destination_right_chewed",
+                        "Right arm (chewed)",
+                        vec![
+                            bottom_only_feature_block(
+                                "right_overlap_exposed",
+                                "Right junction homology",
+                                RIGHT_OVERLAP_BP,
+                                right_junction_color,
+                            ),
+                            bottom_only_feature_block(
+                                "dest_right_tail_exposed",
+                                "Right-side gap to be filled",
+                                PENDING_FILL_BP,
+                                destination_color,
+                            ),
+                            duplex_feature_block(
+                                "dest_right_body",
+                                "Destination right flank",
+                                DEST_BODY_BP,
+                                destination_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Sticky {
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: RIGHT_OVERLAP_BP + PENDING_FILL_BP,
-                        }),
-                        right_end: Some(DnaEndStyle::Continuation),
-                    },
+                        },
+                        DnaEndStyle::Continuation,
+                    ),
                 ],
-            },
-            ProtocolCartoonEvent {
-                id: "anneal".to_string(),
-                title: "Anneal".to_string(),
-                caption: "The insert anneals to the left and right destination arms at both junctions while short single-stranded unique tails remain on both sides of the paired overlaps.".to_string(),
-                action: ProtocolCartoonAction::Anneal,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "annealed_intermediate".to_string(),
-                    label: "Annealed intermediate".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "dest_left_body".to_string(),
-                            label: "Destination left flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_left_tail".to_string(),
-                            label: "Left-side gap to be filled".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: 0,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "left_overlap".to_string(),
-                            label: "Left junction homology".to_string(),
-                            length_bp: LEFT_OVERLAP_BP,
-                            top_length_bp: LEFT_OVERLAP_BP,
-                            bottom_length_bp: LEFT_OVERLAP_BP,
-                            color_hex: left_junction_color.to_string(),
-                            bottom_color_hex: left_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_left_tail".to_string(),
-                            label: "Insert left-side gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: 0,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_body".to_string(),
-                            label: "Insert body".to_string(),
-                            length_bp: INSERT_BODY_BP,
-                            top_length_bp: INSERT_BODY_BP,
-                            bottom_length_bp: INSERT_BODY_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_right_tail".to_string(),
-                            label: "Insert right-side gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: 0,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "right_overlap".to_string(),
-                            label: "Right junction homology".to_string(),
-                            length_bp: RIGHT_OVERLAP_BP,
-                            top_length_bp: RIGHT_OVERLAP_BP,
-                            bottom_length_bp: RIGHT_OVERLAP_BP,
-                            color_hex: right_junction_color.to_string(),
-                            bottom_color_hex: right_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_tail".to_string(),
-                            label: "Right-side gap to be filled".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: 0,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_body".to_string(),
-                            label: "Destination right flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+            ),
+            event_block(
+                "anneal",
+                "Anneal",
+                "The insert anneals to the left and right destination arms at both junctions while short single-stranded unique tails remain on both sides of the paired overlaps.",
+                ProtocolCartoonAction::Anneal,
+                vec![linear_molecule_block(
+                    "annealed_intermediate",
+                    "Annealed intermediate",
+                    vec![
+                        duplex_feature_block(
+                            "dest_left_body",
+                            "Destination left flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                        ),
+                        top_only_feature_block(
+                            "dest_left_tail",
+                            "Left-side gap to be filled",
+                            PENDING_FILL_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "left_overlap",
+                            "Left junction homology",
+                            LEFT_OVERLAP_BP,
+                            left_junction_color,
+                        ),
+                        bottom_only_feature_block(
+                            "insert_left_tail",
+                            "Insert left-side gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "insert_body",
+                            "Insert body",
+                            INSERT_BODY_BP,
+                            insert_color,
+                        ),
+                        top_only_feature_block(
+                            "insert_right_tail",
+                            "Insert right-side gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "right_overlap",
+                            "Right junction homology",
+                            RIGHT_OVERLAP_BP,
+                            right_junction_color,
+                        ),
+                        bottom_only_feature_block(
+                            "dest_right_tail",
+                            "Right-side gap to be filled",
+                            PENDING_FILL_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "dest_right_body",
+                            "Destination right flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
-            ProtocolCartoonEvent {
-                id: "extend".to_string(),
-                title: "Extend".to_string(),
-                caption: "DNA polymerase fills both remaining gaps, leaving one nick on each strand at the two repaired junctions.".to_string(),
-                action: ProtocolCartoonAction::Extend,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "extended_intermediate".to_string(),
-                    label: "Extended intermediate".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "dest_left_body".to_string(),
-                            label: "Destination left flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: true,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_left_tail".to_string(),
-                            label: "Left repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "left_overlap".to_string(),
-                            label: "Left junction homology".to_string(),
-                            length_bp: LEFT_OVERLAP_BP,
-                            top_length_bp: LEFT_OVERLAP_BP,
-                            bottom_length_bp: LEFT_OVERLAP_BP,
-                            color_hex: left_junction_color.to_string(),
-                            bottom_color_hex: left_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_left_tail".to_string(),
-                            label: "Insert left repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: true,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_body".to_string(),
-                            label: "Insert body".to_string(),
-                            length_bp: INSERT_BODY_BP,
-                            top_length_bp: INSERT_BODY_BP,
-                            bottom_length_bp: INSERT_BODY_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: true,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_right_tail".to_string(),
-                            label: "Insert right repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "right_overlap".to_string(),
-                            label: "Right junction homology".to_string(),
-                            length_bp: RIGHT_OVERLAP_BP,
-                            top_length_bp: RIGHT_OVERLAP_BP,
-                            bottom_length_bp: RIGHT_OVERLAP_BP,
-                            color_hex: right_junction_color.to_string(),
-                            bottom_color_hex: right_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_tail".to_string(),
-                            label: "Right repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: true,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_body".to_string(),
-                            label: "Destination right flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
+            event_block(
+                "extend",
+                "Extend",
+                "DNA polymerase fills both remaining gaps, leaving one nick on each strand at the two repaired junctions.",
+                ProtocolCartoonAction::Extend,
+                vec![linear_molecule_block(
+                    "extended_intermediate",
+                    "Extended intermediate",
+                    vec![
+                        duplex_feature_block_with_nicks(
+                            "dest_left_body",
+                            "Destination left flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                            false,
+                            true,
+                        ),
+                        duplex_feature_block(
+                            "dest_left_tail",
+                            "Left repaired gap",
+                            PENDING_FILL_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "left_overlap",
+                            "Left junction homology",
+                            LEFT_OVERLAP_BP,
+                            left_junction_color,
+                        ),
+                        duplex_feature_block_with_nicks(
+                            "insert_left_tail",
+                            "Insert left repaired gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                            true,
+                            false,
+                        ),
+                        duplex_feature_block_with_nicks(
+                            "insert_body",
+                            "Insert body",
+                            INSERT_BODY_BP,
+                            insert_color,
+                            false,
+                            true,
+                        ),
+                        duplex_feature_block(
+                            "insert_right_tail",
+                            "Insert right repaired gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "right_overlap",
+                            "Right junction homology",
+                            RIGHT_OVERLAP_BP,
+                            right_junction_color,
+                        ),
+                        duplex_feature_block_with_nicks(
+                            "dest_right_tail",
+                            "Right repaired gap",
+                            PENDING_FILL_BP,
+                            destination_color,
+                            true,
+                            false,
+                        ),
+                        duplex_feature_block(
+                            "dest_right_body",
+                            "Destination right flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
-            ProtocolCartoonEvent {
-                id: "seal".to_string(),
-                title: "Seal".to_string(),
-                caption: "DNA ligase seals both remaining nicks, leaving one continuous destination-insert-destination duplex.".to_string(),
-                action: ProtocolCartoonAction::Seal,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "sealed_product".to_string(),
-                    label: "Sealed product".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "dest_left_body".to_string(),
-                            label: "Destination left flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_left_tail".to_string(),
-                            label: "Left repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "left_overlap".to_string(),
-                            label: "Left junction homology".to_string(),
-                            length_bp: LEFT_OVERLAP_BP,
-                            top_length_bp: LEFT_OVERLAP_BP,
-                            bottom_length_bp: LEFT_OVERLAP_BP,
-                            color_hex: left_junction_color.to_string(),
-                            bottom_color_hex: left_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_left_tail".to_string(),
-                            label: "Insert left repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_body".to_string(),
-                            label: "Insert body".to_string(),
-                            length_bp: INSERT_BODY_BP,
-                            top_length_bp: INSERT_BODY_BP,
-                            bottom_length_bp: INSERT_BODY_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "insert_right_tail".to_string(),
-                            label: "Insert right repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: insert_color.to_string(),
-                            bottom_color_hex: insert_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "right_overlap".to_string(),
-                            label: "Right junction homology".to_string(),
-                            length_bp: RIGHT_OVERLAP_BP,
-                            top_length_bp: RIGHT_OVERLAP_BP,
-                            bottom_length_bp: RIGHT_OVERLAP_BP,
-                            color_hex: right_junction_color.to_string(),
-                            bottom_color_hex: right_junction_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_tail".to_string(),
-                            label: "Right repaired gap".to_string(),
-                            length_bp: PENDING_FILL_BP,
-                            top_length_bp: PENDING_FILL_BP,
-                            bottom_length_bp: PENDING_FILL_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "dest_right_body".to_string(),
-                            label: "Destination right flank".to_string(),
-                            length_bp: DEST_BODY_BP,
-                            top_length_bp: DEST_BODY_BP,
-                            bottom_length_bp: DEST_BODY_BP,
-                            color_hex: destination_color.to_string(),
-                            bottom_color_hex: destination_color.to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
+            event_block(
+                "seal",
+                "Seal",
+                "DNA ligase seals both remaining nicks, leaving one continuous destination-insert-destination duplex.",
+                ProtocolCartoonAction::Seal,
+                vec![linear_molecule_block(
+                    "sealed_product",
+                    "Sealed product",
+                    vec![
+                        duplex_feature_block(
+                            "dest_left_body",
+                            "Destination left flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "dest_left_tail",
+                            "Left repaired gap",
+                            PENDING_FILL_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "left_overlap",
+                            "Left junction homology",
+                            LEFT_OVERLAP_BP,
+                            left_junction_color,
+                        ),
+                        duplex_feature_block(
+                            "insert_left_tail",
+                            "Insert left repaired gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "insert_body",
+                            "Insert body",
+                            INSERT_BODY_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "insert_right_tail",
+                            "Insert right repaired gap",
+                            PENDING_FILL_BP,
+                            insert_color,
+                        ),
+                        duplex_feature_block(
+                            "right_overlap",
+                            "Right junction homology",
+                            RIGHT_OVERLAP_BP,
+                            right_junction_color,
+                        ),
+                        duplex_feature_block(
+                            "dest_right_tail",
+                            "Right repaired gap",
+                            PENDING_FILL_BP,
+                            destination_color,
+                        ),
+                        duplex_feature_block(
+                            "dest_right_body",
+                            "Destination right flank",
+                            DEST_BODY_BP,
+                            destination_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
         ],
     }
 }
@@ -2323,369 +2263,257 @@ fn gibson_two_fragment_spec() -> ProtocolCartoonSpec {
         (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP - (DISPLAY_JOINED_TAIL_BP * 2)) / 2;
     const DISPLAY_SEALED_BODY_BP: usize = (DISPLAY_FRAGMENT_TOTAL_BP - DISPLAY_OVERLAP_BP) / 2;
 
+    let fragment_a_color = "#f2c94c";
+    let fragment_b_color = "#2f80ed";
+    let overlap_color = "#55a84f";
+
     ProtocolCartoonSpec {
         id: "gibson.two_fragment".to_string(),
         title: "GENtle Protocol Cartoon: Gibson Two-Fragment (A+B)".to_string(),
-        summary: "Five-step Gibson mechanism with origin colors (A=yellow, B=blue) and a 30 bp homologous overlap".to_string(),
+        summary:
+            "Five-step Gibson mechanism with origin colors (A=yellow, B=blue) and a 30 bp homologous overlap"
+                .to_string(),
         events: vec![
-            ProtocolCartoonEvent {
-                id: "context".to_string(),
-                title: "Context".to_string(),
-                caption: "Fragment A ends with a 30 bp homologous sequence at its 3' end, and fragment B starts with the same 30 bp sequence at its 5' end.".to_string(),
-                action: ProtocolCartoonAction::Context,
-                molecules: vec![
-                    DnaMoleculeCartoon {
-                        id: "fragment_a_context".to_string(),
-                        label: "A".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "a_body".to_string(),
-                                label: "A body".to_string(),
-                                length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                top_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                bottom_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                color_hex: "#f2c94c".to_string(),
-                                bottom_color_hex: "#f2c94c".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "a_overlap".to_string(),
-                                label: "A 30 bp overlap".to_string(),
-                                length_bp: DISPLAY_OVERLAP_BP,
-                                top_length_bp: DISPLAY_OVERLAP_BP,
-                                bottom_length_bp: DISPLAY_OVERLAP_BP,
-                                color_hex: "#55a84f".to_string(),
-                                bottom_color_hex: "#55a84f".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+            event_block(
+                "context",
+                "Context",
+                "Fragment A ends with a 30 bp homologous sequence at its 3' end, and fragment B starts with the same 30 bp sequence at its 5' end.",
+                ProtocolCartoonAction::Context,
+                vec![
+                    linear_molecule_block(
+                        "fragment_a_context",
+                        "A",
+                        vec![
+                            duplex_feature_block(
+                                "a_body",
+                                "A body",
+                                DISPLAY_PRE_JOIN_BODY_BP,
+                                fragment_a_color,
+                            ),
+                            duplex_feature_block(
+                                "a_overlap",
+                                "A 30 bp overlap",
+                                DISPLAY_OVERLAP_BP,
+                                overlap_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Continuation),
-                        right_end: Some(DnaEndStyle::Blunt),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "fragment_b_context".to_string(),
-                        label: "B".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "b_overlap".to_string(),
-                                label: "B 30 bp overlap".to_string(),
-                                length_bp: DISPLAY_OVERLAP_BP,
-                                top_length_bp: DISPLAY_OVERLAP_BP,
-                                bottom_length_bp: DISPLAY_OVERLAP_BP,
-                                color_hex: "#55a84f".to_string(),
-                                bottom_color_hex: "#55a84f".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "b_body".to_string(),
-                                label: "B body".to_string(),
-                                length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                top_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                bottom_length_bp: DISPLAY_PRE_JOIN_BODY_BP,
-                                color_hex: "#2f80ed".to_string(),
-                                bottom_color_hex: "#2f80ed".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        DnaEndStyle::Continuation,
+                        DnaEndStyle::Blunt,
+                    ),
+                    linear_molecule_block(
+                        "fragment_b_context",
+                        "B",
+                        vec![
+                            duplex_feature_block(
+                                "b_overlap",
+                                "B 30 bp overlap",
+                                DISPLAY_OVERLAP_BP,
+                                overlap_color,
+                            ),
+                            duplex_feature_block(
+                                "b_body",
+                                "B body",
+                                DISPLAY_PRE_JOIN_BODY_BP,
+                                fragment_b_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Blunt),
-                        right_end: Some(DnaEndStyle::Continuation),
-                    },
+                        DnaEndStyle::Blunt,
+                        DnaEndStyle::Continuation,
+                    ),
                 ],
-            },
-            ProtocolCartoonEvent {
-                id: "chew_back".to_string(),
-                title: "Chew-back".to_string(),
-                caption: "A 5' exonuclease chews back both fragments past the homologous ends, exposing the full 30 bp overlap plus a short unique single-stranded tail on each 3' end.".to_string(),
-                action: ProtocolCartoonAction::Custom {
+            ),
+            event_block(
+                "chew_back",
+                "Chew-back",
+                "A 5' exonuclease chews back both fragments past the homologous ends, exposing the full 30 bp overlap plus a short unique single-stranded tail on each 3' end.",
+                ProtocolCartoonAction::Custom {
                     label: "5' Exonuclease".to_string(),
                 },
-                molecules: vec![
-                    DnaMoleculeCartoon {
-                        id: "fragment_a_chewed".to_string(),
-                        label: "A (chewed)".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "a_body_ds".to_string(),
-                                label: "A body (duplex)".to_string(),
-                                length_bp: DISPLAY_CHEW_BODY_BP,
-                                top_length_bp: DISPLAY_CHEW_BODY_BP,
-                                bottom_length_bp: DISPLAY_CHEW_BODY_BP,
-                                color_hex: "#f2c94c".to_string(),
-                                bottom_color_hex: "#f2c94c".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "a_body_ss".to_string(),
-                                label: "A unique 3' tail".to_string(),
-                                length_bp: DISPLAY_CHEW_TAIL_BP,
-                                top_length_bp: DISPLAY_CHEW_TAIL_BP,
-                                bottom_length_bp: 0,
-                                color_hex: "#f2c94c".to_string(),
-                                bottom_color_hex: "#f2c94c".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "a_overlap_ss".to_string(),
-                                label: "A exposed 30 bp overlap".to_string(),
-                                length_bp: DISPLAY_OVERLAP_BP,
-                                top_length_bp: DISPLAY_OVERLAP_BP,
-                                bottom_length_bp: 0,
-                                color_hex: "#55a84f".to_string(),
-                                bottom_color_hex: "#55a84f".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                vec![
+                    linear_molecule_block(
+                        "fragment_a_chewed",
+                        "A (chewed)",
+                        vec![
+                            duplex_feature_block(
+                                "a_body_ds",
+                                "A body (duplex)",
+                                DISPLAY_CHEW_BODY_BP,
+                                fragment_a_color,
+                            ),
+                            top_only_feature_block(
+                                "a_body_ss",
+                                "A unique 3' tail",
+                                DISPLAY_CHEW_TAIL_BP,
+                                fragment_a_color,
+                            ),
+                            top_only_feature_block(
+                                "a_overlap_ss",
+                                "A exposed 30 bp overlap",
+                                DISPLAY_OVERLAP_BP,
+                                overlap_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Continuation),
-                        right_end: Some(DnaEndStyle::Sticky {
+                        DnaEndStyle::Continuation,
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: 30,
-                        }),
-                    },
-                    DnaMoleculeCartoon {
-                        id: "fragment_b_chewed".to_string(),
-                        label: "B (chewed)".to_string(),
-                        topology: DnaTopologyCartoon::Linear,
-                        features: vec![
-                            DnaFeatureCartoon {
-                                id: "b_overlap_ss".to_string(),
-                                label: "B exposed 30 bp overlap".to_string(),
-                                length_bp: DISPLAY_OVERLAP_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: DISPLAY_OVERLAP_BP,
-                                color_hex: "#55a84f".to_string(),
-                                bottom_color_hex: "#55a84f".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "b_body_ss".to_string(),
-                                label: "B unique 3' tail".to_string(),
-                                length_bp: DISPLAY_CHEW_TAIL_BP,
-                                top_length_bp: 0,
-                                bottom_length_bp: DISPLAY_CHEW_TAIL_BP,
-                                color_hex: "#2f80ed".to_string(),
-                                bottom_color_hex: "#2f80ed".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
-                            DnaFeatureCartoon {
-                                id: "b_body_ds".to_string(),
-                                label: "B body (duplex)".to_string(),
-                                length_bp: DISPLAY_CHEW_BODY_BP,
-                                top_length_bp: DISPLAY_CHEW_BODY_BP,
-                                bottom_length_bp: DISPLAY_CHEW_BODY_BP,
-                                color_hex: "#2f80ed".to_string(),
-                                bottom_color_hex: "#2f80ed".to_string(),
-                                top_nick_after: false,
-                                bottom_nick_after: false,
-                            },
+                        },
+                    ),
+                    linear_molecule_block(
+                        "fragment_b_chewed",
+                        "B (chewed)",
+                        vec![
+                            bottom_only_feature_block(
+                                "b_overlap_ss",
+                                "B exposed 30 bp overlap",
+                                DISPLAY_OVERLAP_BP,
+                                overlap_color,
+                            ),
+                            bottom_only_feature_block(
+                                "b_body_ss",
+                                "B unique 3' tail",
+                                DISPLAY_CHEW_TAIL_BP,
+                                fragment_b_color,
+                            ),
+                            duplex_feature_block(
+                                "b_body_ds",
+                                "B body (duplex)",
+                                DISPLAY_CHEW_BODY_BP,
+                                fragment_b_color,
+                            ),
                         ],
-                        left_end: Some(DnaEndStyle::Sticky {
+                        DnaEndStyle::Sticky {
                             polarity: OverhangPolarity::ThreePrime,
                             nt: 30,
-                        }),
-                        right_end: Some(DnaEndStyle::Continuation),
-                    },
+                        },
+                        DnaEndStyle::Continuation,
+                    ),
                 ],
-            },
-            ProtocolCartoonEvent {
-                id: "anneal".to_string(),
-                title: "Anneal".to_string(),
-                caption: "The exposed 3' overhangs anneal through the 30 bp homologous region, while the extra yellow and blue sequence-unique tails remain single-stranded.".to_string(),
-                action: ProtocolCartoonAction::Anneal,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "annealed_intermediate".to_string(),
-                    label: "A+B annealed".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "a_body_ds".to_string(),
-                            label: "A body (duplex)".to_string(),
-                            length_bp: DISPLAY_JOINED_BODY_BP,
-                            top_length_bp: DISPLAY_JOINED_BODY_BP,
-                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
-                            color_hex: "#f2c94c".to_string(),
-                            bottom_color_hex: "#f2c94c".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "a_body_ss".to_string(),
-                            label: "A unique single-stranded tail".to_string(),
-                            length_bp: DISPLAY_JOINED_TAIL_BP,
-                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            bottom_length_bp: 0,
-                            color_hex: "#f2c94c".to_string(),
-                            bottom_color_hex: "#f2c94c".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "hybrid_overlap".to_string(),
-                            label: "30 bp annealed overlap".to_string(),
-                            length_bp: DISPLAY_OVERLAP_BP,
-                            top_length_bp: DISPLAY_OVERLAP_BP,
-                            bottom_length_bp: DISPLAY_OVERLAP_BP,
-                            color_hex: "#55a84f".to_string(),
-                            bottom_color_hex: "#55a84f".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "b_body_ss".to_string(),
-                            label: "B unique single-stranded tail".to_string(),
-                            length_bp: DISPLAY_JOINED_TAIL_BP,
-                            top_length_bp: 0,
-                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            color_hex: "#2f80ed".to_string(),
-                            bottom_color_hex: "#2f80ed".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "b_body_ds".to_string(),
-                            label: "B body (duplex)".to_string(),
-                            length_bp: DISPLAY_JOINED_BODY_BP,
-                            top_length_bp: DISPLAY_JOINED_BODY_BP,
-                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
-                            color_hex: "#2f80ed".to_string(),
-                            bottom_color_hex: "#2f80ed".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+            ),
+            event_block(
+                "anneal",
+                "Anneal",
+                "The exposed 3' overhangs anneal through the 30 bp homologous region, while the extra yellow and blue sequence-unique tails remain single-stranded.",
+                ProtocolCartoonAction::Anneal,
+                vec![linear_molecule_block(
+                    "annealed_intermediate",
+                    "A+B annealed",
+                    vec![
+                        duplex_feature_block(
+                            "a_body_ds",
+                            "A body (duplex)",
+                            DISPLAY_JOINED_BODY_BP,
+                            fragment_a_color,
+                        ),
+                        top_only_feature_block(
+                            "a_body_ss",
+                            "A unique single-stranded tail",
+                            DISPLAY_JOINED_TAIL_BP,
+                            fragment_a_color,
+                        ),
+                        duplex_feature_block(
+                            "hybrid_overlap",
+                            "30 bp annealed overlap",
+                            DISPLAY_OVERLAP_BP,
+                            overlap_color,
+                        ),
+                        bottom_only_feature_block(
+                            "b_body_ss",
+                            "B unique single-stranded tail",
+                            DISPLAY_JOINED_TAIL_BP,
+                            fragment_b_color,
+                        ),
+                        duplex_feature_block(
+                            "b_body_ds",
+                            "B body (duplex)",
+                            DISPLAY_JOINED_BODY_BP,
+                            fragment_b_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
-            ProtocolCartoonEvent {
-                id: "extend".to_string(),
-                title: "Extend".to_string(),
-                caption: "DNA polymerase fills the single-stranded tails, restoring duplex DNA but leaving one nick on each strand for ligase to seal.".to_string(),
-                action: ProtocolCartoonAction::Extend,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "extended_intermediate".to_string(),
-                    label: "A+B extended duplex".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "a_body_ds".to_string(),
-                            label: "A body (duplex)".to_string(),
-                            length_bp: DISPLAY_JOINED_BODY_BP,
-                            top_length_bp: DISPLAY_JOINED_BODY_BP,
-                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
-                            color_hex: "#f2c94c".to_string(),
-                            bottom_color_hex: "#f2c94c".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: true,
-                        },
-                        DnaFeatureCartoon {
-                            id: "a_tail_filled".to_string(),
-                            label: "A tail filled by polymerase".to_string(),
-                            length_bp: DISPLAY_JOINED_TAIL_BP,
-                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            color_hex: "#f2c94c".to_string(),
-                            bottom_color_hex: "#f2c94c".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "hybrid_overlap".to_string(),
-                            label: "Annealed overlap".to_string(),
-                            length_bp: DISPLAY_OVERLAP_BP,
-                            top_length_bp: DISPLAY_OVERLAP_BP,
-                            bottom_length_bp: DISPLAY_OVERLAP_BP,
-                            color_hex: "#55a84f".to_string(),
-                            bottom_color_hex: "#55a84f".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "b_tail_filled".to_string(),
-                            label: "B tail filled by polymerase".to_string(),
-                            length_bp: DISPLAY_JOINED_TAIL_BP,
-                            top_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            bottom_length_bp: DISPLAY_JOINED_TAIL_BP,
-                            color_hex: "#2f80ed".to_string(),
-                            bottom_color_hex: "#2f80ed".to_string(),
-                            top_nick_after: true,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "b_body_ds".to_string(),
-                            label: "B body (duplex)".to_string(),
-                            length_bp: DISPLAY_JOINED_BODY_BP,
-                            top_length_bp: DISPLAY_JOINED_BODY_BP,
-                            bottom_length_bp: DISPLAY_JOINED_BODY_BP,
-                            color_hex: "#2f80ed".to_string(),
-                            bottom_color_hex: "#2f80ed".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
+            event_block(
+                "extend",
+                "Extend",
+                "DNA polymerase fills the single-stranded tails, restoring duplex DNA but leaving one nick on each strand for ligase to seal.",
+                ProtocolCartoonAction::Extend,
+                vec![linear_molecule_block(
+                    "extended_intermediate",
+                    "A+B extended duplex",
+                    vec![
+                        duplex_feature_block_with_nicks(
+                            "a_body_ds",
+                            "A body (duplex)",
+                            DISPLAY_JOINED_BODY_BP,
+                            fragment_a_color,
+                            false,
+                            true,
+                        ),
+                        duplex_feature_block(
+                            "a_tail_filled",
+                            "A tail filled by polymerase",
+                            DISPLAY_JOINED_TAIL_BP,
+                            fragment_a_color,
+                        ),
+                        duplex_feature_block(
+                            "hybrid_overlap",
+                            "Annealed overlap",
+                            DISPLAY_OVERLAP_BP,
+                            overlap_color,
+                        ),
+                        duplex_feature_block_with_nicks(
+                            "b_tail_filled",
+                            "B tail filled by polymerase",
+                            DISPLAY_JOINED_TAIL_BP,
+                            fragment_b_color,
+                            true,
+                            false,
+                        ),
+                        duplex_feature_block(
+                            "b_body_ds",
+                            "B body (duplex)",
+                            DISPLAY_JOINED_BODY_BP,
+                            fragment_b_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
-            ProtocolCartoonEvent {
-                id: "seal".to_string(),
-                title: "Seal".to_string(),
-                caption: "DNA ligase seals nicks; the assembled duplex is covalently continuous while retaining A/B color origin.".to_string(),
-                action: ProtocolCartoonAction::Seal,
-                molecules: vec![DnaMoleculeCartoon {
-                    id: "sealed_product".to_string(),
-                    label: "A+B sealed product".to_string(),
-                    topology: DnaTopologyCartoon::Linear,
-                    features: vec![
-                        DnaFeatureCartoon {
-                            id: "a_body".to_string(),
-                            label: "A body".to_string(),
-                            length_bp: DISPLAY_SEALED_BODY_BP,
-                            top_length_bp: DISPLAY_SEALED_BODY_BP,
-                            bottom_length_bp: DISPLAY_SEALED_BODY_BP,
-                            color_hex: "#f2c94c".to_string(),
-                            bottom_color_hex: "#f2c94c".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "hybrid_overlap".to_string(),
-                            label: "Scarless overlap junction".to_string(),
-                            length_bp: DISPLAY_OVERLAP_BP,
-                            top_length_bp: DISPLAY_OVERLAP_BP,
-                            bottom_length_bp: DISPLAY_OVERLAP_BP,
-                            color_hex: "#55a84f".to_string(),
-                            bottom_color_hex: "#55a84f".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
-                        DnaFeatureCartoon {
-                            id: "b_body".to_string(),
-                            label: "B body".to_string(),
-                            length_bp: DISPLAY_SEALED_BODY_BP,
-                            top_length_bp: DISPLAY_SEALED_BODY_BP,
-                            bottom_length_bp: DISPLAY_SEALED_BODY_BP,
-                            color_hex: "#2f80ed".to_string(),
-                            bottom_color_hex: "#2f80ed".to_string(),
-                            top_nick_after: false,
-                            bottom_nick_after: false,
-                        },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
+            event_block(
+                "seal",
+                "Seal",
+                "DNA ligase seals nicks; the assembled duplex is covalently continuous while retaining A/B color origin.",
+                ProtocolCartoonAction::Seal,
+                vec![linear_molecule_block(
+                    "sealed_product",
+                    "A+B sealed product",
+                    vec![
+                        duplex_feature_block(
+                            "a_body",
+                            "A body",
+                            DISPLAY_SEALED_BODY_BP,
+                            fragment_a_color,
+                        ),
+                        duplex_feature_block(
+                            "hybrid_overlap",
+                            "Scarless overlap junction",
+                            DISPLAY_OVERLAP_BP,
+                            overlap_color,
+                        ),
+                        duplex_feature_block(
+                            "b_body",
+                            "B body",
+                            DISPLAY_SEALED_BODY_BP,
+                            fragment_b_color,
+                        ),
                     ],
-                    left_end: Some(DnaEndStyle::Continuation),
-                    right_end: Some(DnaEndStyle::Continuation),
-                }],
-            },
+                    DnaEndStyle::Continuation,
+                    DnaEndStyle::Continuation,
+                )],
+            ),
         ],
     }
 }
@@ -2760,6 +2588,29 @@ mod tests {
                 ],
             }],
         }
+    }
+
+    #[test]
+    fn shared_building_blocks_preserve_strand_occupancy_and_nicks() {
+        let duplex =
+            duplex_feature_block_with_nicks("duplex", "Duplex", 20, "#112233", true, false);
+        assert_eq!((duplex.top_length_bp, duplex.bottom_length_bp), (20, 20));
+        assert!(duplex.top_nick_after);
+        assert!(!duplex.bottom_nick_after);
+
+        let top_only = top_only_feature_block("top", "Top only", 11, "#445566");
+        assert_eq!((top_only.top_length_bp, top_only.bottom_length_bp), (11, 0));
+
+        let bottom_only = bottom_only_feature_block("bottom", "Bottom only", 9, "#778899");
+        assert_eq!(
+            (bottom_only.top_length_bp, bottom_only.bottom_length_bp),
+            (0, 9)
+        );
+
+        let hybrid = hybrid_feature_block("hybrid", "Hybrid", 15, "#abcdef", "#fedcba");
+        assert_eq!((hybrid.top_length_bp, hybrid.bottom_length_bp), (15, 15));
+        assert_eq!(hybrid.color_hex, "#abcdef");
+        assert_eq!(hybrid.bottom_color_hex, "#fedcba");
     }
 
     #[test]
@@ -3050,8 +2901,16 @@ mod tests {
         let spec =
             protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
         let seal = &spec.events[4].molecules[0];
-        assert!(seal.features.iter().any(|feature| feature.id == "left_overlap"));
-        assert!(seal.features.iter().any(|feature| feature.id == "right_overlap"));
+        assert!(
+            seal.features
+                .iter()
+                .any(|feature| feature.id == "left_overlap")
+        );
+        assert!(
+            seal.features
+                .iter()
+                .any(|feature| feature.id == "right_overlap")
+        );
     }
 
     #[test]
@@ -3064,19 +2923,31 @@ mod tests {
         let right_arm = &chew.molecules[2];
 
         assert_eq!(
-            left_arm.features.last().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            left_arm
+                .features
+                .last()
+                .map(|f| (f.top_length_bp, f.bottom_length_bp)),
             Some((24, 0))
         );
         assert_eq!(
-            insert.features.first().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            insert
+                .features
+                .first()
+                .map(|f| (f.top_length_bp, f.bottom_length_bp)),
             Some((0, 24))
         );
         assert_eq!(
-            insert.features.last().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            insert
+                .features
+                .last()
+                .map(|f| (f.top_length_bp, f.bottom_length_bp)),
             Some((24, 0))
         );
         assert_eq!(
-            right_arm.features.first().map(|f| (f.top_length_bp, f.bottom_length_bp)),
+            right_arm
+                .features
+                .first()
+                .map(|f| (f.top_length_bp, f.bottom_length_bp)),
             Some((0, 24))
         );
     }
@@ -3092,22 +2963,34 @@ mod tests {
 
         assert_eq!(left_arm.features[1].id, "dest_left_tail_exposed");
         assert_eq!(
-            (left_arm.features[1].top_length_bp, left_arm.features[1].bottom_length_bp),
+            (
+                left_arm.features[1].top_length_bp,
+                left_arm.features[1].bottom_length_bp
+            ),
             (10, 0)
         );
         assert_eq!(insert.features[1].id, "insert_left_tail_exposed");
         assert_eq!(
-            (insert.features[1].top_length_bp, insert.features[1].bottom_length_bp),
+            (
+                insert.features[1].top_length_bp,
+                insert.features[1].bottom_length_bp
+            ),
             (0, 10)
         );
         assert_eq!(insert.features[3].id, "insert_right_tail_exposed");
         assert_eq!(
-            (insert.features[3].top_length_bp, insert.features[3].bottom_length_bp),
+            (
+                insert.features[3].top_length_bp,
+                insert.features[3].bottom_length_bp
+            ),
             (10, 0)
         );
         assert_eq!(right_arm.features[1].id, "dest_right_tail_exposed");
         assert_eq!(
-            (right_arm.features[1].top_length_bp, right_arm.features[1].bottom_length_bp),
+            (
+                right_arm.features[1].top_length_bp,
+                right_arm.features[1].bottom_length_bp
+            ),
             (0, 10)
         );
     }
@@ -3119,22 +3002,34 @@ mod tests {
         let anneal = &spec.events[2].molecules[0];
         assert_eq!(anneal.features[1].id, "dest_left_tail");
         assert_eq!(
-            (anneal.features[1].top_length_bp, anneal.features[1].bottom_length_bp),
+            (
+                anneal.features[1].top_length_bp,
+                anneal.features[1].bottom_length_bp
+            ),
             (10, 0)
         );
         assert_eq!(anneal.features[3].id, "insert_left_tail");
         assert_eq!(
-            (anneal.features[3].top_length_bp, anneal.features[3].bottom_length_bp),
+            (
+                anneal.features[3].top_length_bp,
+                anneal.features[3].bottom_length_bp
+            ),
             (0, 10)
         );
         assert_eq!(anneal.features[5].id, "insert_right_tail");
         assert_eq!(
-            (anneal.features[5].top_length_bp, anneal.features[5].bottom_length_bp),
+            (
+                anneal.features[5].top_length_bp,
+                anneal.features[5].bottom_length_bp
+            ),
             (10, 0)
         );
         assert_eq!(anneal.features[7].id, "dest_right_tail");
         assert_eq!(
-            (anneal.features[7].top_length_bp, anneal.features[7].bottom_length_bp),
+            (
+                anneal.features[7].top_length_bp,
+                anneal.features[7].bottom_length_bp
+            ),
             (0, 10)
         );
     }
@@ -3323,17 +3218,9 @@ mod tests {
                     id: "hybrid".to_string(),
                     label: "Hybrid".to_string(),
                     topology: DnaTopologyCartoon::Linear,
-                    features: vec![DnaFeatureCartoon {
-                        id: "overlap".to_string(),
-                        label: "overlap".to_string(),
-                        length_bp: 30,
-                        top_length_bp: 30,
-                        bottom_length_bp: 30,
-                        color_hex: "#d7ae2f".to_string(),
-                        bottom_color_hex: "#66aefb".to_string(),
-                        top_nick_after: false,
-                        bottom_nick_after: false,
-                    }],
+                    features: vec![hybrid_feature_block(
+                        "overlap", "overlap", 30, "#d7ae2f", "#66aefb",
+                    )],
                     left_end: Some(DnaEndStyle::NotShown),
                     right_end: Some(DnaEndStyle::NotShown),
                 }],

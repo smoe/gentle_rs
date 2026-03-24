@@ -1451,6 +1451,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - schema id: `gentle.protocol_cartoon_template.v1`
     - sparse template rows (event/molecule/feature) are resolved with
       deterministic defaults into render-ready specs.
+    - built-in protocol families should now be composed from shared internal
+      figure building blocks (feature spans, strand-specific tails, linear
+      molecule rows, event rows) rather than ad-hoc per-protocol struct
+      literals; this keeps future PCR/Gibson growth on one composition model
   - internal model used by renderer:
     - event -> molecules -> feature fragments
     - molecule topology supports `linear|circular`
@@ -1563,9 +1567,19 @@ Protocol-cartoon family growth direction (planned):
   strategy:
   - one protocol family should be expressed as a canonical
     `gentle.protocol_cartoon_template.v1` template plus deterministic bindings
+  - the renderer should grow a shared collection of reusable figure building
+    blocks that protocol families compose, instead of embedding protocol-
+    specific drawing code in each built-in cartoon
   - protocol growth in count/shape (for example multi-fragment Gibson) should
     prefer repeated events, repeated molecules, and binding-level overrides
     rather than renderer-specific special cases
+- Implemented baseline:
+  - built-in Gibson cartoons now compose from shared internal building blocks
+    for duplex spans, strand-specific tails, linear molecule rows, and event
+    rows
+  - this is intentionally still mechanism-first: Gibson cartoons describe
+    fragment flow and achieved homology relationships, not full primer objects
+    or low-level PCR parameter details
 - PCR-assay cartoons should follow the same rule. The shared renderer should
   remain chemistry-agnostic and continue to render only ordered events,
   molecules, and features; PCR-specific meaning belongs in template structure
@@ -1574,13 +1588,13 @@ Protocol-cartoon family growth direction (planned):
   - explain assay intent and artifact flow, not every thermocycler sub-step
   - stay aligned with engine-owned operations, reports, and lineage-visible
     artifacts
-  - remain readable even when exact primer/amplicon sequences are shown
-    elsewhere in the UI/report
+  - keep lower-level primer sequences/thermocycler details in adjacent textual
+    reports or inspectors rather than the cartoon itself
 - Canonical PCR assay scene vocabulary should stay stable across modalities:
   - source template/context event
   - target/ROI event (selected span, feature-derived span, or queued region)
-  - oligo-set event (forward/reverse and optional probe or staged inner/outer
-    sets)
+  - assay setup event (forward/reverse pair and optional probe or staged
+    inner/outer sets may be named, but do not need literal primer glyphs)
   - amplification event
   - product/artifact event (amplicon, extracted copy, report, export, or
     explicit no-accepted-pairs outcome)

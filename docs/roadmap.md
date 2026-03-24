@@ -339,8 +339,16 @@ order. Durable architecture constraints and decisions remain in
       features, circular molecules with linear end styles, zero-nt sticky ends)
   - Gibson specialist experience now confirms the intended growth model:
     extend protocol cartoons by template families + bindings (including
-    repeated events/molecules for multi-fragment cases), not by protocol-
-    specific renderer branches
+    repeated events/molecules for multi-fragment cases), with shared figure
+    building blocks under the built-ins, not protocol-specific renderer
+    branches
+  - internal shared protocol-cartoon building-block baseline is now in place
+    for:
+    - duplex feature spans
+    - strand-specific single-strand tails
+    - linear molecule rows with deterministic end styles
+    - event rows reused across Gibson variants and intended for future PCR
+      variants
   - next protocol-cartoon family target: PCR assays through one future
     `pcr.assay.*` family covering pair-PCR first, then qPCR, batch, nested,
     and inverse variants through the same template/binding abstraction
@@ -1765,10 +1773,11 @@ Repeated multi-tool gaps to prioritize:
        deterministic fallback and backend provenance in reports
    - next:
      - add shared PCR-assay protocol-cartoon family on top of the existing
-       template/binding renderer:
+       template/binding renderer and shared figure building blocks:
        - pair-PCR baseline first
-       - qPCR, batch ROI queue, and nested-PCR extensions through bindings and
-         repeated events/molecules rather than new renderer semantics
+       - qPCR, batch ROI queue, and nested-PCR extensions through bindings,
+         repeated events/molecules, and shared blocks rather than new renderer
+         semantics
        - explicit no-product/report-only cartoon state for failed or empty
          assay runs
      - add nested-PCR primer design workflow contracts:
