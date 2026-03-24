@@ -195,6 +195,16 @@ The README aims to show what is genuinely working today. The source of truth
 for current implementation status, open gaps, and execution order remains
 [`docs/roadmap.md`](docs/roadmap.md).
 
+Build note:
+- default Rust builds now focus on GUI/CLI/MCP/docs paths
+- embedded JavaScript and Lua shells are optional Cargo feature targets
+  (`js-interface`, `lua-interface`)
+- release packaging builds enable `script-interfaces`, so tagged release builds
+  include the embedded scripting adapter feature set even though default local
+  builds stay lean
+- the Python wrapper in `integrations/python/gentle_py` remains a separate
+  `gentle_cli`-based integration rather than a Rust build dependency
+
 ### PCR and Primer Design Snapshot
 
 | Flavor / workflow | Current support | Main engine route(s) | Current surface |

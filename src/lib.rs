@@ -1,7 +1,7 @@
 //! GENtle shared library crate.
 //!
 //! This crate exposes the shared biology engine, rendering paths, and adapter
-//! bridges used by GUI, CLI, JavaScript, and Lua frontends.
+//! bridges used by GUI, CLI, and optional JavaScript/Lua frontends.
 
 use amino_acids::AminoAcids;
 use dna_ladder::{LadderCatalog, default_dna_ladders, default_rna_ladders};
@@ -43,12 +43,14 @@ pub mod icons;
 /// IUPAC nucleotide-code conversion and validation helpers.
 pub mod iupac_code;
 /// JavaScript adapter wrappers over shared engine contracts.
+#[cfg(feature = "js-interface")]
 pub mod js_interface;
 /// Lineage graph export and serialization utilities.
 pub mod lineage_export;
 /// Adaptive routing decisions for linear DNA base-letter rendering.
 pub mod linear_base_routing;
 /// Lua adapter wrappers over shared engine contracts.
+#[cfg(feature = "lua-interface")]
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.
 pub mod main_area_dna;
