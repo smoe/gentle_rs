@@ -4601,6 +4601,22 @@ fn test_render_lineage_svg_operation() {
     assert!(res.messages.iter().any(|m| m.contains("lineage SVG")));
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("<svg"));
+    let height_marker = "height=\"";
+    let height_start = text
+        .find(height_marker)
+        .expect("svg height attribute should exist")
+        + height_marker.len();
+    let height_rest = &text[height_start..];
+    let height_end = height_rest
+        .find('"')
+        .expect("svg height attribute should terminate");
+    let height_value = height_rest[..height_end]
+        .parse::<f32>()
+        .expect("svg height should parse as number");
+    assert!(
+        height_value < 400.0,
+        "simple lineage export should size canvas to content, got height={height_value}"
+    );
 }
 
 #[test]

@@ -6,7 +6,17 @@ use svg::Document;
 use svg::node::element::{Circle, Line, Polygon, Rectangle, Text};
 
 const W: f32 = 1600.0;
-const H: f32 = 900.0;
+const MIN_H: f32 = 180.0;
+const TOP_CONTENT_Y: f32 = 120.0;
+const BOTTOM_PADDING: f32 = 72.0;
+
+fn lineage_canvas_height(pos_by_node: &HashMap<String, (f32, f32)>) -> f32 {
+    let max_content_y = pos_by_node
+        .values()
+        .map(|(_, y)| *y)
+        .fold(TOP_CONTENT_Y, f32::max);
+    (max_content_y + BOTTOM_PADDING).max(MIN_H)
+}
 
 pub fn export_lineage_svg(state: &ProjectState) -> String {
     let mut rows: Vec<(String, String, String, usize, usize)> = state
@@ -186,10 +196,12 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
         pos_by_node.insert(macro_row.node_id.clone(), (x, y));
     }
 
+    let canvas_height = lineage_canvas_height(&pos_by_node);
+
     let mut doc = Document::new()
-        .set("viewBox", (0, 0, W, H))
+        .set("viewBox", (0, 0, W, canvas_height))
         .set("width", W)
-        .set("height", H)
+        .set("height", canvas_height)
         .set("style", "background:#ffffff");
 
     doc = doc.add(
