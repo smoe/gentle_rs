@@ -13368,6 +13368,89 @@ fn test_export_rna_read_score_density_svg() {
 }
 
 #[test]
+fn test_export_rna_read_score_density_svg_includes_compact_bar_labels() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_density_labels".to_string(),
+            seq_id: "seq_density".to_string(),
+            score_density_bins: vec![0, 1_234, 15, 0],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert density-label report");
+
+    let td = tempdir().expect("tempdir");
+    let svg_path = td.path().join("score_density_labels.svg");
+    engine
+        .export_rna_read_score_density_svg(
+            "rna_reads_density_labels",
+            svg_path.to_str().expect("svg path"),
+            RnaReadScoreDensityScale::Log,
+        )
+        .expect("export score-density svg with labels");
+    let svg_text = fs::read_to_string(&svg_path).expect("read svg");
+    assert!(svg_text.contains("1.2k"));
+    assert!(svg_text.contains(">15<"));
+}
+
+#[test]
+fn test_materialize_rna_read_hit_sequences_creates_selected_sequences() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_origin".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("origin sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_materialize".to_string(),
+            seq_id: "seq_origin".to_string(),
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "read_alpha".to_string(),
+                    sequence: "AACCGG".to_string(),
+                    read_length_bp: 6,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "read_beta".to_string(),
+                    sequence: "TTAACC".to_string(),
+                    read_length_bp: 6,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert materialize report");
+
+    let result = engine
+        .apply(Operation::MaterializeRnaReadHitSequences {
+            report_id: "rna_reads_materialize".to_string(),
+            selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![1],
+            output_prefix: Some("tp73_outliers".to_string()),
+        })
+        .expect("materialize RNA-read hit sequence");
+    assert_eq!(result.created_seq_ids.len(), 1);
+    let created_seq_id = &result.created_seq_ids[0];
+    assert!(created_seq_id.starts_with("tp73_outliers_r2_read_beta"));
+    let created = engine
+        .state()
+        .sequences
+        .get(created_seq_id)
+        .expect("created read sequence present");
+    assert_eq!(created.get_forward_string(), "TTAACC");
+    assert!(result.messages.iter().any(|message| {
+        message.contains("Materialized 1 RNA-read hit sequence(s)")
+            && message.contains("rna_reads_materialize")
+    }));
+}
+
+#[test]
 fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
     let mut state = ProjectState::default();
     state

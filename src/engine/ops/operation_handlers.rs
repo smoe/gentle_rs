@@ -6164,6 +6164,122 @@ impl GentleEngine {
                     export.max_points
                 ));
             }
+            Operation::MaterializeRnaReadHitSequences {
+                report_id,
+                selection,
+                selected_record_indices,
+                output_prefix,
+            } => {
+                let report = self.get_rna_read_report(&report_id)?;
+                parent_seq_ids.push(report.seq_id.clone());
+                let mut explicit_record_indices = selected_record_indices.clone();
+                explicit_record_indices.sort_unstable();
+                explicit_record_indices.dedup();
+                let explicit_selection = !explicit_record_indices.is_empty();
+                let prefix = output_prefix
+                    .as_deref()
+                    .map(Self::normalize_id_token)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| {
+                        format!(
+                            "{}_rna_read_{}",
+                            Self::normalize_id_token(&report.seq_id),
+                            Self::normalize_id_token(&report.report_id)
+                        )
+                    });
+                let selected_hits = if explicit_selection {
+                    report
+                        .hits
+                        .iter()
+                        .filter(|hit| {
+                            explicit_record_indices
+                                .binary_search(&hit.record_index)
+                                .is_ok()
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    report
+                        .hits
+                        .iter()
+                        .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+                        .collect::<Vec<_>>()
+                };
+                if selected_hits.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: if explicit_selection {
+                            format!(
+                                "MaterializeRnaReadHitSequences did not find any hits for report '{}' and record_indices={:?}",
+                                report.report_id, explicit_record_indices
+                            )
+                        } else {
+                            format!(
+                                "MaterializeRnaReadHitSequences found no hits for report '{}' with selection '{}'",
+                                report.report_id,
+                                selection.as_str()
+                            )
+                        },
+                    });
+                }
+                let mut created = Vec::<String>::with_capacity(selected_hits.len());
+                for hit in selected_hits {
+                    let header_token = {
+                        let normalized = Self::normalize_id_token(&hit.header_id);
+                        if normalized.is_empty() {
+                            "read".to_string()
+                        } else {
+                            normalized
+                        }
+                    };
+                    let base = format!("{}_r{}_{}", prefix, hit.record_index + 1, header_token);
+                    let seq_id = self.unique_seq_id(&base);
+                    let mut dna =
+                        DNAsequence::from_sequence(&hit.sequence).map_err(|e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not create RNA-read hit sequence '{}' from report '{}': {e}",
+                                hit.header_id, report.report_id
+                            ),
+                        })?;
+                    dna.set_name(seq_id.clone());
+                    dna.set_circular(false);
+                    Self::prepare_sequence(&mut dna);
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(
+                        &seq_id,
+                        SequenceOrigin::InSilicoSelection,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(seq_id.clone());
+                    created.push(seq_id);
+                }
+                if explicit_selection && created.len() < explicit_record_indices.len() {
+                    result.warnings.push(format!(
+                        "Requested {} explicit record_index values but materialized {} retained hits from report '{}'",
+                        explicit_record_indices.len(),
+                        created.len(),
+                        report.report_id
+                    ));
+                }
+                let preview = created
+                    .iter()
+                    .take(4)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let suffix = if created.len() > 4 {
+                    format!(" (+{} more)", created.len() - 4)
+                } else {
+                    String::new()
+                };
+                result.messages.push(format!(
+                    "Materialized {} RNA-read hit sequence(s) from report '{}' into {}{}",
+                    created.len(),
+                    report.report_id,
+                    preview,
+                    suffix
+                ));
+            }
             Operation::ExtractRegion {
                 input,
                 from,
