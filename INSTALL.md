@@ -76,7 +76,7 @@ Clone the repository and run a first local build check:
 ```sh
 git clone https://github.com/smoe/gentle_rs.git
 cd gentle_rs
-cargo check -q
+cargo check
 ```
 
 ## Run GENtle
