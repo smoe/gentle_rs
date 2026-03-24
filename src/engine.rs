@@ -3489,6 +3489,20 @@ pub struct RnaSeedHashCatalogEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaSeedHashTemplateAuditEntry {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub template_sequence: String,
+    pub template_length_bp: usize,
+    pub template_first_genomic_pos_1based: usize,
+    pub template_last_genomic_pos_1based: usize,
+    pub reverse_complemented_from_genome: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadInterpretationReport {
     pub schema: String,
     pub report_id: String,
@@ -4519,6 +4533,15 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default = "default_rna_read_alignment_dotplot_max_points")]
         max_points: usize,
+    },
+    MaterializeRnaReadHitSequences {
+        report_id: String,
+        #[serde(default = "default_rna_align_report_selection")]
+        selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default)]
+        output_prefix: Option<SeqId>,
     },
     ExtractRegion {
         input: SeqId,
@@ -6156,6 +6179,7 @@ impl GentleEngine {
                 "ExportRnaReadScoreDensitySvg".to_string(),
                 "ExportRnaReadAlignmentsTsv".to_string(),
                 "ExportRnaReadAlignmentDotplotSvg".to_string(),
+                "MaterializeRnaReadHitSequences".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
