@@ -327,6 +327,7 @@ order. Durable architecture constraints and decisions remain in
     - `gibson.single_insert_dual_junction`
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
+    - `pcr.assay.qpcr`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence
     - event payload = one or more DNA molecules
@@ -362,9 +363,10 @@ order. Durable architecture constraints and decisions remain in
   - PCR-assay family baseline is now shipped through `pcr.assay.*`:
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
+    - `pcr.assay.qpcr`
   - next protocol-cartoon family expansion for PCR:
-    - qPCR, batch, nested, and inverse variants through the same
-      template/binding abstraction
+    - batch, nested, inverse, and richer artifact/readout variants through the
+      same template/binding abstraction
 - Top-level README showcase expansion is now underway:
   - shipped showcase figures now cover distinct GENtle usage modes:
     - built-in Gibson protocol cartoon
@@ -1798,8 +1800,8 @@ Repeated multi-tool gaps to prioritize:
      - extend the shipped shared PCR-assay protocol-cartoon family on top of
        the existing template/binding renderer and shared figure building
        blocks:
-       - qPCR, batch ROI queue, and nested-PCR extensions through bindings,
-         repeated events/molecules, and shared blocks rather than new renderer
+       - batch ROI queue and nested-PCR extensions through bindings, repeated
+         events/molecules, and shared blocks rather than new renderer
          semantics
        - additional explicit artifact lanes once the renderer grows beyond
          DNA-only rows

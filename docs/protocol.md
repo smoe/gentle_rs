@@ -1455,8 +1455,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 - Inputs:
   - `protocol` (built-in ids now include `gibson.two_fragment`,
-    `gibson.single_insert_dual_junction`, `pcr.assay.pair`, and
-    `pcr.assay.pair.no_product`)
+    `gibson.single_insert_dual_junction`, `pcr.assay.pair`,
+    `pcr.assay.pair.no_product`, and `pcr.assay.qpcr`)
   - `path` (output SVG)
 - Behavior:
   - renders a deterministic protocol-cartoon strip through one engine route,
@@ -1532,7 +1532,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 - Inputs:
   - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`
-    or `pcr.assay.pair`)
+    or `pcr.assay.pair` / `pcr.assay.qpcr`)
   - `path` (output JSON file)
 - Behavior:
   - materializes the canonical built-in template
@@ -1617,13 +1617,16 @@ Protocol-cartoon family growth direction (planned):
     explicit no-accepted-pairs outcome)
 - Implemented PCR baseline in the `pcr.assay.*` family:
   - `pcr.assay.pair`: base strip with one selected ROI, one assay-setup lane,
-    one amplification step, and one amplicon/report outcome
+    one amplification step, one amplicon/report outcome, and visible forward/
+    reverse primer-position markers
   - `pcr.assay.pair.no_product`: same family with an explicit report-only
     terminal state when no accepted primer pair yields a product
+- Implemented qPCR baseline in the same `pcr.assay.*` family:
+  - `pcr.assay.qpcr`: same base strip enriched with one internal probe window
+    plus forward/reverse primer-position markers and one quantitative readout
+    terminal state
 - Planned PCR modality adaptation should continue through the same
   `pcr.assay.*` protocol-cartoon family:
-  - qPCR: same base strip with probe-bearing assay bindings and quantitative
-    readout labels/badges
   - nested PCR: same family with two amplification stages (outer -> inner)
     instead of one, reusing the same event vocabulary
   - inverse PCR: same family with circular-template bindings and outward-facing
@@ -1633,8 +1636,8 @@ Protocol-cartoon family growth direction (planned):
   - empty/failure outcomes: report/artifact nodes can render without product
     nodes when no accepted assay is produced
 - Recommended rollout order:
-  - extend the shipped pair-PCR baseline to qPCR and queued batch PCR without
-    changing renderer semantics
+  - extend the shipped PCR/qPCR baseline to queued batch PCR without changing
+    renderer semantics
   - add nested, inverse, long-range, and multiplex variants as further
     template/binding expansions
 - Naming/design rule:

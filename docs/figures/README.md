@@ -33,6 +33,47 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/gibson_single_insert_protocol_cartoon.svg
 ```
 
+`pcr_pair_protocol_cartoon.svg` is the deterministic success-path render of the
+built-in protocol cartoon `pcr.assay.pair`. It keeps the PCR story
+selection-first: source template, highlighted ROI, visible primer locations,
+assay setup, amplification, and accepted amplicon outcome.
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-svg \
+  pcr.assay.pair \
+  docs/figures/pcr_pair_protocol_cartoon.svg
+```
+
+`pcr_pair_no_product_protocol_cartoon.svg` is the deterministic report-only
+render of `pcr.assay.pair.no_product`. It shows the same ROI-centered workflow
+when no accepted primer pair yields a product.
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-svg \
+  pcr.assay.pair.no_product \
+  docs/figures/pcr_pair_no_product_protocol_cartoon.svg
+```
+
+`qpcr_assay_protocol_cartoon.svg` is the deterministic probe-bearing qPCR strip
+for `pcr.assay.qpcr`. It reuses the same PCR family layout while adding an
+internal probe window, visible primer locations, and a quantitative readout
+terminal state.
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-svg \
+  pcr.assay.qpcr \
+  docs/figures/qpcr_assay_protocol_cartoon.svg
+```
+
 `gibson_single_insert_readme.plan.json` is the deterministic pGEX + insert demo
 Gibson plan used to generate the README lineage figure. It is not hand-drawn;
 it reuses the same tutorial destination/insert pair and the same `SmaI`
