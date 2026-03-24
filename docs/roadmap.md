@@ -60,9 +60,10 @@ order. Durable architecture constraints and decisions remain in
   - shared mutating apply path:
     `gibson apply PLAN_JSON_OR_@FILE`
   - current scope:
-    - single-insert, destination-first Gibson plan preview
-    - resolved terminal overlaps
-    - Gibson-specific primer suggestions (`5' overlap + 3' priming`)
+    - destination-first Gibson preview/apply for one or more ordered inserts
+    - resolved junction chain (`n + 1` junctions for `n` inserts)
+    - Gibson-specific primer suggestions (`5' overlap + 3' priming`) with two
+      primers per insert fragment
     - validation/advisory findings
     - destination opening suggestions start with unique cutters named by the
       MCS annotation, with an explicit option to reveal other unique cutters
@@ -73,14 +74,16 @@ order. Durable architecture constraints and decisions remain in
     - shared Tₘ-model assumptions surfaced in preview notes and Gibson-window
       help so GUI/CLI users see the same explanation
     - dedicated `Tₘ Model` box in the Gibson window
-    - apply-time sequence creation for the two insert primers plus the
-      assembled product
-    - Gibson apply outputs now materialize as three separate singleton
-      containers (two primer vials plus the assembled product) instead of one
+    - apply-time sequence creation for all insert primers plus the assembled
+      product
+    - Gibson apply outputs now materialize as separate singleton containers
+      (one vial per primer plus the assembled product) instead of one
       synthetic pool container
     - protocol-cartoon preview now shows both destination-insert junctions
       explicitly for the current single-insert flow instead of collapsing to
       one representative overlap
+    - multi-insert preview now carries an ordered dynamic cartoon spec through
+      the same export/review path
     - deterministic feature transfer onto the assembled Gibson product
     - lineage reopen path: clicking a Gibson operation reopens the specialist
       with the saved plan loaded again
@@ -92,6 +95,9 @@ order. Durable architecture constraints and decisions remain in
     - protocol-cartoon preview/export
     - Routine Assistant handoff when the destination already uses existing
       linear termini
+  - current limitation:
+    - multi-insert execution currently requires a defined destination opening;
+      `existing_termini` remains the single-fragment handoff path
 - CLI state loading now treats empty/whitespace `--state` files as
   uninitialized and starts from `ProjectState::default()` instead of failing
   parse.

@@ -594,8 +594,8 @@ Patterns menu:
   - export stage uses shared process artifact route:
     - `export-run-bundle OUTPUT.run_bundle.json`
 - `Patterns -> Gibson...`
-  - opens a dedicated destination-first Gibson specialist window for one
-    insert into one destination.
+  - opens a dedicated destination-first Gibson specialist window for one or
+    more inserts into one destination.
   - sections:
     1. `Destination`
        - choose destination sequence
@@ -629,8 +629,13 @@ Patterns menu:
          sequences
        - tooltips and quick help explain the difference between MCS-linked
          cutters and other unique cutters outside the annotated MCS
-    2. `Insert`
-       - choose one insert sequence and orientation
+    2. `Inserts`
+       - choose one or more insert sequences and orientations
+       - insert rows are ordered explicitly in the GUI
+       - one insert creates two terminal junctions; each additional insert
+         adds one internal Gibson junction
+       - extra insert rows can be added, removed, and reordered directly in
+         the specialist
     3. `Design Targets`
        - Gibson-specific overlap bp range
        - when overlap length is derived rather than fixed, GENtle prefers the
@@ -651,8 +656,10 @@ Patterns menu:
          actually defined enough to build a plan; for `defined opening`, that
          means both cut-edge fields must be set (or filled from a cutter
          suggestion / active selection)
-       - resolves terminal overlaps
-       - derives insert primer suggestions as `5' overlap + 3' priming`
+       - resolves the ordered Gibson junction chain (`n + 1` junctions for
+         `n` inserts)
+       - derives one left and one right insert primer per fragment as
+         `5' overlap + 3' priming`
        - `Opening sketch` extends into an insert-primer construction view so
          the actual overlap segment and insert-priming segment are both shown
        - shows blocking errors, warnings, and the factual Gibson cartoon
@@ -667,9 +674,11 @@ Patterns menu:
          deterministic SVG payload; when a platform-specific widget issue still
          prevents inline display, the exported SVG plus the textual review
          blocks remain the canonical inspection path
-       - the current single-insert preview cartoon now shows both
-         destination-insert junctions explicitly instead of collapsing the
-         mechanism to one representative overlap
+       - single-insert previews show both destination-insert junctions
+         explicitly instead of collapsing the mechanism to one representative
+         overlap
+       - multi-insert previews now carry the whole ordered fragment chain
+         through the same shared review/export path
        - cartoon panel text now avoids raw nucleotide strings inside the
          panels; the cartoon stays focused on mechanism while sequence details
          remain in the textual review blocks
@@ -683,9 +692,10 @@ Patterns menu:
          create
        - `Apply Gibson Cloning` only enables after preview reports no blocking
          errors, then runs one shared engine operation and creates new sequence
-         nodes for the two insert primers and the assembled product
+         nodes for two primers per insert plus the assembled product
        - in lineage `Graph` view, that apply step is projected as one explicit
-         Gibson operation hub between the two inputs and three outputs
+         Gibson operation hub between the destination + insert inputs and all
+         created outputs
        - in `Containers`, those three Gibson outputs land as separate
          singleton containers rather than one pooled multi-output container,
          matching the expected separate primer/product vials
