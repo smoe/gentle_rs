@@ -21,59 +21,6 @@ one project state. Interactive interfaces, scripting routes, and imported
 biological context all meet in the same lineage-aware model, which then drives
 cloning workflows, retrieval, design, analysis, graphics, and provenance.
 
-The same structure in Mermaid form:
-
-```mermaid
-flowchart LR
-    subgraph Access["Interfaces"]
-        GUI["GUI"]
-        CLI["CLI and workflows"]
-        Script["JS / Lua / Python"]
-        MCP["MCP and AI tools"]
-    end
-
-    subgraph Inputs["Inputs and external context"]
-        Seq["Local sequences and annotations"]
-        Ref["Prepared genomes, .BED/.VCF, and BLAST targets"]
-        Cur["Curated panels, motifs, and tracks"]
-    end
-
-    subgraph Core["Shared GENtle core"]
-        Engine["Deterministic engine"]
-        State["Project state and lineage"]
-        Render["Shared renderers and exports"]
-        Engine <--> State
-        State --> Render
-    end
-
-    subgraph Work["Capabilities"]
-        Clone["Cloning workflows"]
-        Retrieve["Retrieval and projection"]
-        Design["Design and validation"]
-        Analysis["Analysis and expert views"]
-    end
-
-    subgraph Outputs["Outputs"]
-        Views["Interactive views and figures"]
-        Reports["Structured outputs"]
-        Provenance["Lineage and provenance"]
-    end
-
-    Access --> Engine
-    Inputs --> State
-    Engine --> Clone
-    Engine --> Retrieve
-    Engine --> Design
-    Engine --> Analysis
-    Clone --> State
-    Retrieve --> State
-    Design --> State
-    Analysis --> State
-    Render --> Views
-    State --> Reports
-    State --> Provenance
-```
-
 ## Showcases
 
 ### Gibson Workflow, Mechanism, and Provenance
@@ -171,17 +118,17 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
-### Guided GUI Testing
+### Guided GUI Tutorials
 
 ![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)
 
-GENtle also ships tutorial-backed GUI testing paths. For example, the Gibson
-specialist has a dedicated walkthrough in
+GENtle also ships guided GUI tutorials. For example, the Gibson specialist has
+a dedicated walkthrough in
 [`docs/tutorial/gibson_specialist_testing_gui.md`](docs/tutorial/gibson_specialist_testing_gui.md),
 and that guide is available directly through the Help window with associated
-screenshots, so contributors can validate the rendered cloning representation
-against one stable sequence baseline and a reproducible step-by-step test
-script rather than ad hoc clicking.
+screenshots. This keeps the interactive workflow teachable and reproducible:
+users can follow a stable step-by-step path inside the GUI, and contributors
+still gain a concrete reference sequence baseline for validation when needed.
 
 ## Principles
 
