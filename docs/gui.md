@@ -843,6 +843,8 @@ Controls:
 16. Queue PCR selection
    - One-click shortcut beside `Extract Sel` that queues the current linear
      selection as one PCR region and opens Engine Ops.
+   - When a selection is present, the map area also shows an inline hint with
+     the active span and the same PCR queue action.
 17. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection

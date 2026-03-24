@@ -337,6 +337,13 @@ order. Durable architecture constraints and decisions remain in
       - deterministic overrides target defaults and event/molecule/feature ids
     - validation rejects malformed cartoons (empty ids/events, zero-length
       features, circular molecules with linear end styles, zero-nt sticky ends)
+  - Gibson specialist experience now confirms the intended growth model:
+    extend protocol cartoons by template families + bindings (including
+    repeated events/molecules for multi-fragment cases), not by protocol-
+    specific renderer branches
+  - next protocol-cartoon family target: PCR assays through one future
+    `pcr.assay.*` family covering pair-PCR first, then qPCR, batch, nested,
+    and inverse variants through the same template/binding abstraction
 - Top-level README showcase expansion is now underway:
   - shipped showcase figures now cover distinct GENtle usage modes:
     - built-in Gibson protocol cartoon
@@ -408,7 +415,8 @@ order. Durable architecture constraints and decisions remain in
     - add selected feature(s) to PCR queue (one region per feature)
   - DNA-window toolbar now also exposes a visible `Queue PCR selection`
     action beside `Extract Sel` so the current linear selection can be queued
-    without opening the menu first
+    without opening the menu first; the map area also shows an inline
+    selection-ready hint when a non-empty span exists
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
@@ -1756,6 +1764,13 @@ Repeated multi-tool gaps to prioritize:
      - optional Primer3 backend selection (`auto|internal|primer3`) with
        deterministic fallback and backend provenance in reports
    - next:
+     - add shared PCR-assay protocol-cartoon family on top of the existing
+       template/binding renderer:
+       - pair-PCR baseline first
+       - qPCR, batch ROI queue, and nested-PCR extensions through bindings and
+         repeated events/molecules rather than new renderer semantics
+       - explicit no-product/report-only cartoon state for failed or empty
+         assay runs
      - add nested-PCR primer design workflow contracts:
        - outer + inner primer-pair design in one deterministic request/report
        - explicit nesting constraints (inner amplicon must lie within outer

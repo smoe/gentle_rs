@@ -6313,6 +6313,17 @@ impl MainAreaDna {
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
                 }
+                if let Some((start, end_exclusive)) = selection_roi {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Selection ready for PCR: {start}..{end_exclusive}. Use `Queue PCR selection` or `PCR ROI -> Add current selection to PCR queue`."
+                            ))
+                            .weak()
+                            .italics(),
+                        );
+                    });
+                }
                 ui.menu_button("PCR ROI", |ui| {
                     let selection_response = ui.add_enabled(
                         selection_roi.is_some(),

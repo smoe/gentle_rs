@@ -368,6 +368,12 @@ Top-level structure:
 - `cartoon`
   - built-in protocol id plus template bindings for the shared
     protocol-cartoon renderer
+  - intended to stay mechanism-first:
+    - show resolved fragment flow and achieved homology/overlap relationships
+    - avoid drawing full primer objects or low-level PCR parameterization inside
+      the cartoon itself
+    - keep primer sequences, priming segments, Tm assumptions, and related PCR
+      details in adjacent textual/review payloads instead
 - `routine_handoff`
   - best-effort Routine Assistant handoff metadata for existing execution paths
 
@@ -1550,6 +1556,59 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Failure modes:
   - empty `path` => `InvalidInput`
   - unknown filtered `run_id` (no selected rows) => `NotFound`
+
+Protocol-cartoon family growth direction (planned):
+
+- Gibson specialist work now validates the abstraction-first protocol-cartoon
+  strategy:
+  - one protocol family should be expressed as a canonical
+    `gentle.protocol_cartoon_template.v1` template plus deterministic bindings
+  - protocol growth in count/shape (for example multi-fragment Gibson) should
+    prefer repeated events, repeated molecules, and binding-level overrides
+    rather than renderer-specific special cases
+- PCR-assay cartoons should follow the same rule. The shared renderer should
+  remain chemistry-agnostic and continue to render only ordered events,
+  molecules, and features; PCR-specific meaning belongs in template structure
+  and bindings, not in new PCR-only drawing primitives.
+- PCR cartoon purpose:
+  - explain assay intent and artifact flow, not every thermocycler sub-step
+  - stay aligned with engine-owned operations, reports, and lineage-visible
+    artifacts
+  - remain readable even when exact primer/amplicon sequences are shown
+    elsewhere in the UI/report
+- Canonical PCR assay scene vocabulary should stay stable across modalities:
+  - source template/context event
+  - target/ROI event (selected span, feature-derived span, or queued region)
+  - oligo-set event (forward/reverse and optional probe or staged inner/outer
+    sets)
+  - amplification event
+  - product/artifact event (amplicon, extracted copy, report, export, or
+    explicit no-accepted-pairs outcome)
+- Planned PCR modality adaptation should happen through one future
+  `pcr.assay.*` protocol-cartoon family:
+  - pair-PCR: base strip with one primer pair and one amplicon product
+  - qPCR: same base strip with probe-bearing assay bindings and quantitative
+    readout labels/badges
+  - nested PCR: same family with two amplification stages (outer -> inner)
+    instead of one, reusing the same event vocabulary
+  - inverse PCR: same family with circular-template bindings and outward-facing
+    primer semantics
+  - batch/multiplex/tiling: repeated assay groups or repeated output lanes in
+    bindings, not new renderer semantics per assay count
+  - empty/failure outcomes: report/artifact nodes can render without product
+    nodes when no accepted assay is produced
+- Recommended rollout order:
+  - first ship the smallest reusable pair-PCR template/binding baseline
+  - extend that family to qPCR and queued batch PCR without changing renderer
+    semantics
+  - add nested, inverse, long-range, and multiplex variants as further
+    template/binding expansions
+- Naming/design rule:
+  - do not introduce one built-in protocol id per assay count or minor UI view
+  - prefer one stable protocol family with bindings that carry assay modality,
+    stage count, molecule presence, and repeated-lane structure
+  - keep generated explanatory strips exportable through the existing
+    `protocol-cartoon ...` routes
 
 RNA secondary-structure semantics:
 
