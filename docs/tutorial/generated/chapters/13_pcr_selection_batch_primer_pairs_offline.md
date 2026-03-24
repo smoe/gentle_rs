@@ -42,7 +42,7 @@ This chapter is PCR-focused and biology-anchored without requiring genome mappin
 
 1. Load `test_files/tp73.ncbi.gb` and open `Engine Ops -> Primer and qPCR design reports`.
 2. Locate `TP73-AS2` annotation and make one promoter-proximal ROI selection near the antisense transcript 5' boundary (for example around genomic coordinates `61720..62120`).
-3. Create one map/text ROI selection, then use the visible DNA-window `Queue PCR selection` button.
+3. Create one map/text ROI selection, then use DNA-window `PCR ROI -> Add current selection to queue`.
 4. Select the `TP73-AS2` feature (or another nearby regulatory feature) and use DNA-window `PCR ROI -> Add selected feature(s) to queue`.
 5. In `Design primer pairs`, set shared constraints and a `report_id` base (for example `tp73_as2_promoter_batch`).
 6. Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.
@@ -62,9 +62,9 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/pcr_selec
 - `TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)` (where used: Design primer pairs ROI fields and queue sourcing around TP73-AS2)
   - Why it matters: Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.
   - How to derive it: Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.
-- `PCR ROI source action (`Queue PCR selection` vs `Add selected feature(s)`)` (where used: DNA-window toolbar beside `Extract Sel` and `PCR ROI` menu before queue execution)
+- `PCR ROI source action (`Add current selection` vs `Add selected feature(s)`)` (where used: DNA-window `PCR ROI` menu before queue execution)
   - Why it matters: Defines whether region bounds come from manual selection or feature coordinates and keeps queue-source labels interpretable.
-  - How to derive it: Use the toolbar `Queue PCR selection` action for ad hoc boundaries; use selected features for annotation-driven boundaries.
+  - How to derive it: Use current selection for ad hoc boundaries; use selected features for annotation-driven boundaries.
 - `DesignPrimerPairs.report_id base` (where used: batch execution in Design primer pairs form)
   - Why it matters: Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.
   - How to derive it: Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).
