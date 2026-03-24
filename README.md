@@ -135,6 +135,35 @@ screenshots. This keeps the interactive workflow teachable and reproducible:
 users can follow a stable step-by-step path inside the GUI, and contributors
 still gain a concrete reference sequence baseline for validation when needed.
 
+## Ongoing Development
+
+GENtle is under active development. The README should give a useful snapshot
+of what is already practical today, while the source of truth for current
+implementation status, open gaps, and execution order remains
+[`docs/roadmap.md`](docs/roadmap.md).
+
+### PCR and Primer Design Snapshot
+
+| Flavor / workflow | Current support | Main engine route(s) | Current surface |
+| --- | --- | --- | --- |
+| Standard endpoint PCR | Shipped | `Pcr` | GUI `PCR`, shared-shell/CLI operation payload |
+| Advanced PCR | Shipped | `PcrAdvanced` | GUI `PCR Adv`, shared-shell/CLI operation payload |
+| Degenerate / randomized primer-library PCR | Shipped inside advanced PCR | `PcrAdvanced` | shared-shell/CLI operation payload |
+| PCR mutagenesis | Shipped | `PcrMutagenesis` | GUI `PCR Mut`, shared-shell/CLI operation payload |
+| Primer-pair design for one ROI | Shipped | `DesignPrimerPairs` | Engine Ops, CLI/shared-shell report routes |
+| Selection-first batch primer-pair design | Shipped | repeated `DesignPrimerPairs` | DNA-window PCR queue + Engine Ops batch results |
+| qPCR assay design | Shipped | `DesignQpcrAssays` | Engine Ops, CLI/shared-shell qPCR report routes |
+| PCR protocol cartoons | Shipped baseline | `RenderProtocolCartoonSvg` | `pcr.assay.pair`, `pcr.assay.pair.no_product`, `pcr.assay.qpcr` |
+| Nested PCR | Planned | future `DesignPrimerPairs` family extension | tracked in roadmap |
+| Inverse PCR | Planned | future PCR modality extension | tracked in roadmap |
+| Long-range / multiplex / translocation PCR | Planned | future PCR modality extension | tracked in roadmap |
+
+The design direction is to keep these PCR flavors on one deterministic engine
+contract family rather than split them into unrelated specialist paths. For
+current detail on contracts and GUI behavior, see [`docs/protocol.md`](docs/protocol.md)
+and [`docs/gui.md`](docs/gui.md). For what is actively being built next, see
+[`docs/roadmap.md`](docs/roadmap.md).
+
 ## Principles
 
 - One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.
