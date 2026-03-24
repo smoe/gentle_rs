@@ -83,7 +83,8 @@ order. Durable architecture constraints and decisions remain in
       explicitly for the current single-insert flow instead of collapsing to
       one representative overlap
     - multi-insert preview now carries an ordered dynamic cartoon spec through
-      the same export/review path
+      the same export/review path, including strand-specific 5' chew-back,
+      exposed overlap/tail geometry, and downstream fill-in/seal states
     - deterministic feature transfer onto the assembled Gibson product
     - lineage reopen path: clicking a Gibson operation reopens the specialist
       with the saved plan loaded again

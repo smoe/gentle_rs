@@ -383,6 +383,8 @@ Top-level structure:
     `ProtocolCartoonSpec` directly
   - intended to stay mechanism-first:
     - show resolved fragment flow and achieved homology/overlap relationships
+    - preserve strand-specific 5' chew-back / exposed-tail geometry rather
+      than flattening the mechanism to duplex-only blocks
     - avoid drawing full primer objects or low-level PCR parameterization inside
       the cartoon itself
     - keep primer sequences, priming segments, Tm assumptions, and related PCR
