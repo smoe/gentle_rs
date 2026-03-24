@@ -1711,6 +1711,9 @@ fn bottom_only_feature_block(
     )
 }
 
+// Reserved for upcoming PCR/cartoon families where one duplex block needs
+// different top/bottom strand colors without introducing a feature break.
+#[allow(dead_code)]
 fn hybrid_feature_block(
     id: &str,
     label: &str,

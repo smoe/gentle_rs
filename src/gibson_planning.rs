@@ -1,8 +1,8 @@
 //! Gibson assembly planning contracts and deterministic preview derivation.
 //!
 //! This module promotes `gentle.gibson_assembly_plan.v1` from a docs-only draft
-//! into an engine-consumed planning artifact for a restricted v1 scope:
-//! destination-first, single-insert Gibson planning.
+//! into an engine-consumed planning artifact for destination-first Gibson
+//! planning.
 //! The preview result is non-mutating and is intended to drive GUI, shell/CLI,
 //! and protocol-cartoon rendering from one shared derivation path.
 
@@ -12,9 +12,10 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     protocol_cartoon::{
-        DnaEndStyle, OverhangPolarity, ProtocolCartoonKind, ProtocolCartoonTemplateBindings,
-        ProtocolCartoonTemplateEventBinding, ProtocolCartoonTemplateFeatureBinding,
-        ProtocolCartoonTemplateMoleculeBinding,
+        DnaEndStyle, DnaFeatureCartoon, DnaMoleculeCartoon, DnaTopologyCartoon,
+        OverhangPolarity, ProtocolCartoonAction, ProtocolCartoonEvent, ProtocolCartoonKind,
+        ProtocolCartoonSpec, ProtocolCartoonTemplateBindings, ProtocolCartoonTemplateEventBinding,
+        ProtocolCartoonTemplateFeatureBinding, ProtocolCartoonTemplateMoleculeBinding,
     },
     restriction_enzyme::RestrictionEnzymeSite,
 };
@@ -209,6 +210,8 @@ pub struct GibsonAssemblyPreview {
     pub summary: String,
     pub can_execute: bool,
     pub destination: GibsonPreviewDestination,
+    #[serde(default)]
+    pub fragments: Vec<GibsonPreviewInsert>,
     pub insert: GibsonPreviewInsert,
     #[serde(default)]
     pub resolved_junctions: Vec<GibsonResolvedJunctionPreview>,
@@ -257,6 +260,8 @@ pub struct GibsonResolvedJunctionPreview {
     pub left_member_id: String,
     pub right_member_id: String,
     pub overlap_bp: usize,
+    pub left_member_bp: usize,
+    pub right_member_bp: usize,
     pub overlap_tm_celsius: f64,
     pub overlap_sequence: String,
     pub overlap_source: String,
@@ -294,6 +299,8 @@ pub struct GibsonCartoonPreview {
     pub title: String,
     pub summary: String,
     pub bindings: ProtocolCartoonTemplateBindings,
+    #[serde(default)]
+    pub resolved_spec: Option<ProtocolCartoonSpec>,
 }
 
 impl Default for GibsonCartoonPreview {
@@ -304,6 +311,7 @@ impl Default for GibsonCartoonPreview {
             title: String::new(),
             summary: String::new(),
             bindings: empty_protocol_cartoon_bindings(),
+            resolved_spec: None,
         }
     }
 }
@@ -351,6 +359,28 @@ struct GibsonPrimerCandidate {
     tm_celsius: f64,
     gc_fraction: f64,
     anneal_hits: usize,
+}
+
+#[derive(Debug, Clone)]
+struct GibsonLoadedFragment {
+    preview: GibsonPreviewInsert,
+    dna: DNAsequence,
+    template_forward: String,
+    oriented_sequence: String,
+}
+
+#[derive(Debug, Clone)]
+struct GibsonResolvedOverlap {
+    junction_id: String,
+    left_member_id: String,
+    right_member_id: String,
+    overlap_bp: usize,
+    left_member_bp: usize,
+    right_member_bp: usize,
+    overlap_tm_celsius: f64,
+    overlap_sequence: String,
+    overlap_source: String,
+    distinct_from: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -880,6 +910,7 @@ pub fn preview_gibson_assembly_plan(
             left_end_id: plan.destination.opening.left_end_id.trim().to_string(),
             right_end_id: plan.destination.opening.right_end_id.trim().to_string(),
         },
+        fragments: vec![],
         insert: GibsonPreviewInsert::default(),
         resolved_junctions: vec![],
         primer_suggestions: vec![],
@@ -894,53 +925,31 @@ pub fn preview_gibson_assembly_plan(
             title: String::new(),
             summary: String::new(),
             bindings: empty_protocol_cartoon_bindings(),
+            resolved_spec: None,
         },
         routine_handoff: GibsonRoutineHandoffPreview::default(),
     };
 
-    if plan.fragments.len() != 1 {
-        preview.errors.push(format!(
-            "Gibson specialist v1 currently supports exactly one insert fragment, but plan declares {} fragment(s)",
-            plan.fragments.len()
-        ));
-        return finalize_preview(preview);
-    }
-    let insert_plan = &plan.fragments[0];
-    let insert_seq_id = insert_plan.seq_id.trim();
-    if insert_seq_id.is_empty() {
+    if plan.fragments.is_empty() {
         preview
             .errors
-            .push("Gibson specialist v1 requires fragments[0].seq_id".to_string());
+            .push("Gibson plan requires at least one insert fragment".to_string());
         return finalize_preview(preview);
     }
-    let insert = engine
-        .state()
-        .sequences
-        .get(insert_seq_id)
-        .ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!("Insert sequence '{}' not found", insert_seq_id),
-        })?
-        .clone();
-    preview.insert = GibsonPreviewInsert {
-        fragment_id: if insert_plan.id.trim().is_empty() {
-            "insert".to_string()
-        } else {
-            insert_plan.id.trim().to_string()
-        },
-        seq_id: insert_seq_id.to_string(),
-        role: if insert_plan.role.trim().is_empty() {
-            "insert".to_string()
-        } else {
-            insert_plan.role.trim().to_string()
-        },
-        orientation: normalized_orientation(&insert_plan.orientation),
-        length_bp: insert.len(),
-    };
+    let loaded_fragments = load_gibson_fragments(engine, plan)?;
+    preview.fragments = loaded_fragments
+        .iter()
+        .map(|fragment| fragment.preview.clone())
+        .collect();
+    preview.insert = preview.fragments.first().cloned().unwrap_or_default();
 
     validate_destination_topology(&plan.destination, &destination, &mut preview);
     let preview_fragment_id = preview.insert.fragment_id.clone();
-    validate_single_insert_shape(plan, &preview_fragment_id, &mut preview);
+    if loaded_fragments.len() == 1 {
+        validate_single_insert_shape(plan, &preview_fragment_id, &mut preview);
+    } else {
+        validate_multi_insert_shape(plan, &loaded_fragments, &mut preview);
+    }
 
     let resolved_opening = resolve_opening(plan, &destination, &mut preview);
     let Some(resolved_opening) = resolved_opening else {
@@ -953,6 +962,18 @@ pub fn preview_gibson_assembly_plan(
     preview.destination.removed_span_bp = resolved_opening.removed_span_bp;
     preview.destination.left_end_id = resolved_opening.left_end_id.clone();
     preview.destination.right_end_id = resolved_opening.right_end_id.clone();
+
+    if loaded_fragments.len() > 1 {
+        return preview_multi_insert_gibson_assembly_plan(
+            &destination,
+            plan,
+            resolved_opening,
+            loaded_fragments,
+            preview,
+        );
+    }
+
+    let insert = loaded_fragments[0].dna.clone();
 
     let oriented_insert_seq = if preview.insert.orientation.eq_ignore_ascii_case("reverse") {
         GentleEngine::reverse_complement(&insert.get_forward_string())
@@ -1040,6 +1061,8 @@ pub fn preview_gibson_assembly_plan(
             left_member_id: left_junction.left_member.id.clone(),
             right_member_id: left_junction.right_member.id.clone(),
             overlap_bp: left_overlap.1,
+            left_member_bp: left_overlap.1,
+            right_member_bp: 0,
             overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
             overlap_sequence: left_overlap.2.clone(),
             overlap_source: left_junction.overlap_source.clone(),
@@ -1052,6 +1075,8 @@ pub fn preview_gibson_assembly_plan(
             left_member_id: right_junction.left_member.id.clone(),
             right_member_id: right_junction.right_member.id.clone(),
             overlap_bp: right_overlap.1,
+            left_member_bp: 0,
+            right_member_bp: right_overlap.1,
             overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
             overlap_sequence: right_overlap.2.clone(),
             overlap_source: right_junction.overlap_source.clone(),
@@ -1184,6 +1209,7 @@ pub fn preview_gibson_assembly_plan(
             &right_overlap.2,
             representative_overlap_bp,
         ),
+        resolved_spec: None,
     };
     preview.routine_handoff = build_routine_handoff(&preview, representative_overlap_bp);
 
@@ -1219,34 +1245,52 @@ pub fn derive_gibson_execution_plan(
             ),
         })?
         .clone();
-    let insert = engine
-        .state()
-        .sequences
-        .get(&preview.insert.seq_id)
-        .ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!(
-                "Insert sequence '{}' not found during Gibson apply",
-                preview.insert.seq_id
-            ),
-        })?
-        .clone();
-
-    if preview.primer_suggestions.len() != 2 {
+    let mut oriented_inserts = Vec::with_capacity(preview.fragments.len());
+    let mut fragment_seq_ids = Vec::with_capacity(preview.fragments.len());
+    for fragment in &preview.fragments {
+        let insert = engine
+            .state()
+            .sequences
+            .get(&fragment.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Insert sequence '{}' not found during Gibson apply",
+                    fragment.seq_id
+                ),
+            })?
+            .clone();
+        fragment_seq_ids.push(fragment.seq_id.clone());
+        oriented_inserts.push(build_oriented_insert_for_gibson(&insert, &fragment.orientation));
+    }
+    if preview.primer_suggestions.len() != preview.fragments.len().saturating_mul(2) {
         return Err(EngineError {
             code: ErrorCode::Internal,
             message: format!(
-                "Executable Gibson preview should yield exactly 2 primer suggestions, found {}",
+                "Executable Gibson preview should yield exactly {} primer suggestions, found {}",
+                preview.fragments.len().saturating_mul(2),
                 preview.primer_suggestions.len()
             ),
         });
     }
 
-    let oriented_insert = build_oriented_insert_for_gibson(&insert, &preview.insert.orientation);
-    let oriented_insert_seq = oriented_insert.get_forward_string().to_ascii_uppercase();
+    let concatenated_insert_seq = oriented_inserts
+        .iter()
+        .map(|insert| insert.get_forward_string().to_ascii_uppercase())
+        .collect::<String>();
     let destination_seq = destination.get_forward_string().to_ascii_uppercase();
     let assembled_product_seq = match preview.destination.opening_mode.as_str() {
-        "existing_termini" => format!("{destination_seq}{oriented_insert_seq}"),
+        "existing_termini" => {
+            if oriented_inserts.len() != 1 {
+                return Err(EngineError {
+                    code: ErrorCode::Unsupported,
+                    message:
+                        "Multi-insert Gibson apply currently requires a defined destination opening"
+                            .to_string(),
+                });
+            }
+            format!("{destination_seq}{concatenated_insert_seq}")
+        }
         "defined_site" => {
             let start = preview
                 .destination
@@ -1268,7 +1312,7 @@ pub fn derive_gibson_execution_plan(
             format!(
                 "{}{}{}",
                 &destination_seq[..start],
-                oriented_insert_seq,
+                concatenated_insert_seq,
                 &destination_seq[end..]
             )
         }
@@ -1289,15 +1333,17 @@ pub fn derive_gibson_execution_plan(
                     "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
                     primer.primer_id
                 ),
-            })?;
+        })?;
         dna.set_name(match primer.side.as_str() {
-            "left_insert_primer" => {
-                format!("Gibson left insert primer for '{}'", preview.insert.seq_id)
-            }
-            "right_insert_primer" => {
-                format!("Gibson right insert primer for '{}'", preview.insert.seq_id)
-            }
-            _ => format!("Gibson primer for '{}'", preview.insert.seq_id),
+            "left_insert_primer" => format!(
+                "Gibson left primer for fragment '{}'",
+                primer.template_seq_id
+            ),
+            "right_insert_primer" => format!(
+                "Gibson right primer for fragment '{}'",
+                primer.template_seq_id
+            ),
+            _ => format!("Gibson primer for '{}'", primer.template_seq_id),
         });
         outputs.push(GibsonExecutionOutput {
             kind: primer.side.clone(),
@@ -1310,21 +1356,23 @@ pub fn derive_gibson_execution_plan(
     let product_base_id = if plan.product.output_id_hint.trim().is_empty() {
         format!(
             "{}_with_{}",
-            preview.destination.seq_id, preview.insert.seq_id
+            preview.destination.seq_id,
+            fragment_seq_ids.join("_")
         )
     } else {
         plan.product.output_id_hint.trim().to_string()
     };
     let mut product = build_gibson_assembled_product(
         &destination,
-        &oriented_insert,
+        &oriented_inserts,
         &preview,
         plan,
         &assembled_product_seq,
     )?;
     product.set_name(format!(
         "Gibson assembled product: {} + {}",
-        preview.destination.seq_id, preview.insert.seq_id
+        preview.destination.seq_id,
+        fragment_seq_ids.join(" + ")
     ));
     outputs.push(GibsonExecutionOutput {
         kind: "assembled_product".to_string(),
@@ -1333,10 +1381,8 @@ pub fn derive_gibson_execution_plan(
         dna: product,
     });
 
-    let parent_seq_ids = vec![
-        plan.destination.seq_id.trim().to_string(),
-        preview.insert.seq_id.clone(),
-    ];
+    let mut parent_seq_ids = vec![plan.destination.seq_id.trim().to_string()];
+    parent_seq_ids.extend(fragment_seq_ids);
     Ok(GibsonAssemblyExecutionPlan {
         preview,
         parent_seq_ids,
@@ -1358,7 +1404,7 @@ fn build_oriented_insert_for_gibson(insert: &DNAsequence, orientation: &str) -> 
 
 fn build_gibson_assembled_product(
     destination: &DNAsequence,
-    oriented_insert: &DNAsequence,
+    oriented_inserts: &[DNAsequence],
     preview: &GibsonAssemblyPreview,
     plan: &GibsonAssemblyPlan,
     assembled_product_seq: &str,
@@ -1371,11 +1417,16 @@ fn build_gibson_assembled_product(
     let mut features = Vec::new();
     match preview.destination.opening_mode.as_str() {
         "existing_termini" => {
+            if oriented_inserts.len() != 1 {
+                return Err(EngineError {
+                    code: ErrorCode::Unsupported,
+                    message:
+                        "Multi-insert Gibson feature transfer currently requires a defined destination opening"
+                            .to_string(),
+                });
+            }
             features.extend(clone_shifted_features(destination, 0));
-            features.extend(clone_shifted_features(
-                oriented_insert,
-                destination.len() as i64,
-            ));
+            features.extend(clone_shifted_features(&oriented_inserts[0], destination.len() as i64));
         }
         "defined_site" => {
             let start = preview
@@ -1393,9 +1444,10 @@ fn build_gibson_assembled_product(
                     code: ErrorCode::Internal,
                     message:
                         "Executable Gibson defined-site preview did not retain end_0based_exclusive"
-                            .to_string(),
+                        .to_string(),
                 })? as i64;
-            let delta = oriented_insert.len() as i64 - (end - start);
+            let total_insert_len = oriented_inserts.iter().map(|insert| insert.len()).sum::<usize>() as i64;
+            let delta = total_insert_len - (end - start);
             features.extend(destination.features().iter().filter_map(|feature| {
                 transform_destination_feature_for_defined_site(
                     feature,
@@ -1403,10 +1455,14 @@ fn build_gibson_assembled_product(
                     end,
                     delta,
                     destination.len() as i64,
-                    oriented_insert.len() as i64,
+                    total_insert_len,
                 )
             }));
-            features.extend(clone_shifted_features(oriented_insert, start));
+            let mut cumulative_shift = start;
+            for oriented_insert in oriented_inserts {
+                features.extend(clone_shifted_features(oriented_insert, cumulative_shift));
+                cumulative_shift += oriented_insert.len() as i64;
+            }
         }
         other => {
             return Err(EngineError {
@@ -1836,6 +1892,292 @@ fn finalize_preview(
     Ok(preview)
 }
 
+fn preview_multi_insert_gibson_assembly_plan(
+    destination: &DNAsequence,
+    plan: &GibsonAssemblyPlan,
+    resolved_opening: GibsonResolvedOpening,
+    loaded_fragments: Vec<GibsonLoadedFragment>,
+    mut preview: GibsonAssemblyPreview,
+) -> Result<GibsonAssemblyPreview, EngineError> {
+    let destination_seq = destination.get_forward_string().to_ascii_uppercase();
+    let fragments_by_id = loaded_fragments
+        .iter()
+        .cloned()
+        .map(|fragment| (fragment.preview.fragment_id.clone(), fragment))
+        .collect::<HashMap<_, _>>();
+
+    let ordered_fragment_ids = plan
+        .assembly_order
+        .iter()
+        .filter(|member| member.kind.eq_ignore_ascii_case("fragment"))
+        .map(|member| member.id.trim().to_string())
+        .collect::<Vec<_>>();
+
+    let mut resolved_overlaps = Vec::new();
+    for pair in plan.assembly_order.windows(2) {
+        let left = &pair[0];
+        let right = &pair[1];
+        let Some(junction) = find_plan_junction(plan, &left.id, &right.id) else {
+            preview.errors.push(format!(
+                "Could not resolve Gibson junction for adjacent members '{} -> {}'",
+                left.id, right.id
+            ));
+            continue;
+        };
+        match derive_resolved_overlap(
+            &destination_seq,
+            &resolved_opening,
+            &fragments_by_id,
+            junction,
+            &plan.validation_policy.design_targets,
+            &mut preview,
+        ) {
+            Some(row) => resolved_overlaps.push(row),
+            None if junction.required_overlap_bp.is_none() => preview.errors.push(format!(
+                "Could not derive an overlap length for junction '{}' within {}..{} bp at minimum overlap Tm {:.1} C",
+                junction.id,
+                plan.validation_policy.design_targets.overlap_bp_min,
+                plan.validation_policy.design_targets.overlap_bp_max,
+                plan.validation_policy.design_targets.minimum_overlap_tm_celsius
+            )),
+            None => {}
+        }
+    }
+
+    if let (Some(left_overlap), Some(right_overlap)) =
+        (resolved_overlaps.first(), resolved_overlaps.last())
+    {
+        if plan.validation_policy.require_distinct_terminal_junctions {
+            let right_overlap_rc =
+                GentleEngine::reverse_complement(&right_overlap.overlap_sequence);
+            if left_overlap
+                .overlap_sequence
+                .eq_ignore_ascii_case(&right_overlap.overlap_sequence)
+                || left_overlap
+                    .overlap_sequence
+                    .eq_ignore_ascii_case(&right_overlap_rc)
+            {
+                preview.errors.push(format!(
+                    "Terminal overlap regions are not distinct enough for a destination-first Gibson plan (left='{}', right='{}')",
+                    left_overlap.overlap_sequence, right_overlap.overlap_sequence
+                ));
+            }
+        }
+    }
+
+    preview.resolved_junctions = resolved_overlaps
+        .iter()
+        .map(|junction| GibsonResolvedJunctionPreview {
+            junction_id: junction.junction_id.clone(),
+            left_member_id: junction.left_member_id.clone(),
+            right_member_id: junction.right_member_id.clone(),
+            overlap_bp: junction.overlap_bp,
+            left_member_bp: junction.left_member_bp,
+            right_member_bp: junction.right_member_bp,
+            overlap_tm_celsius: junction.overlap_tm_celsius,
+            overlap_sequence: junction.overlap_sequence.clone(),
+            overlap_source: junction.overlap_source.clone(),
+            distinct_from: junction.distinct_from.clone(),
+        })
+        .collect();
+
+    for fragment_id in &ordered_fragment_ids {
+        let Some(fragment) = fragments_by_id.get(fragment_id) else {
+            preview.errors.push(format!(
+                "Could not resolve fragment '{}' from assembly_order while deriving primers",
+                fragment_id
+            ));
+            continue;
+        };
+        let Some(left_junction) = resolved_overlaps
+            .iter()
+            .find(|junction| junction.right_member_id.eq_ignore_ascii_case(fragment_id))
+        else {
+            preview.errors.push(format!(
+                "Could not resolve left-side Gibson junction for fragment '{}'",
+                fragment_id
+            ));
+            continue;
+        };
+        let Some(right_junction) = resolved_overlaps
+            .iter()
+            .find(|junction| junction.left_member_id.eq_ignore_ascii_case(fragment_id))
+        else {
+            preview.errors.push(format!(
+                "Could not resolve right-side Gibson junction for fragment '{}'",
+                fragment_id
+            ));
+            continue;
+        };
+        let left_priming = choose_insert_priming_segment(
+            &fragment.template_forward,
+            &fragment.oriented_sequence,
+            TerminalSide::Left,
+            &plan.validation_policy.design_targets,
+            &mut preview,
+        );
+        let right_priming = choose_insert_priming_segment(
+            &fragment.template_forward,
+            &fragment.oriented_sequence,
+            TerminalSide::Right,
+            &plan.validation_policy.design_targets,
+            &mut preview,
+        );
+        if let (Some(left_priming), Some(right_priming)) = (left_priming, right_priming) {
+            preview.primer_suggestions.push(GibsonPrimerSuggestion {
+                primer_id: format!("{}_left_insert_primer", fragment.preview.fragment_id),
+                side: "left_insert_primer".to_string(),
+                fragment_id: fragment.preview.fragment_id.clone(),
+                template_seq_id: fragment.preview.seq_id.clone(),
+                full_sequence: format!(
+                    "{}{}",
+                    left_junction.overlap_sequence, left_priming.sequence
+                ),
+                overlap_5prime: GibsonPrimerSegment {
+                    sequence: left_junction.overlap_sequence.clone(),
+                    length_bp: left_junction.overlap_bp,
+                    tm_celsius: left_junction.overlap_tm_celsius,
+                    gc_fraction: GentleEngine::sequence_gc_fraction(
+                        left_junction.overlap_sequence.as_bytes(),
+                    )
+                    .unwrap_or(0.0),
+                    anneal_hits: count_hits_both_strands(
+                        &destination_seq,
+                        &left_junction.overlap_sequence,
+                    ),
+                    note: format!(
+                        "5' non-priming overlap segment for the left end of fragment '{}'",
+                        fragment.preview.fragment_id
+                    ),
+                },
+                priming_3prime: GibsonPrimerSegment {
+                    note: format!(
+                        "3' gene-specific priming segment chosen from the left end of fragment '{}'",
+                        fragment.preview.fragment_id
+                    ),
+                    ..left_priming
+                },
+            });
+            preview.primer_suggestions.push(GibsonPrimerSuggestion {
+                primer_id: format!("{}_right_insert_primer", fragment.preview.fragment_id),
+                side: "right_insert_primer".to_string(),
+                fragment_id: fragment.preview.fragment_id.clone(),
+                template_seq_id: fragment.preview.seq_id.clone(),
+                full_sequence: format!(
+                    "{}{}",
+                    GentleEngine::reverse_complement(&right_junction.overlap_sequence),
+                    right_priming.sequence
+                ),
+                overlap_5prime: GibsonPrimerSegment {
+                    sequence: GentleEngine::reverse_complement(&right_junction.overlap_sequence),
+                    length_bp: right_junction.overlap_bp,
+                    tm_celsius: right_junction.overlap_tm_celsius,
+                    gc_fraction: GentleEngine::sequence_gc_fraction(
+                        right_junction.overlap_sequence.as_bytes(),
+                    )
+                    .unwrap_or(0.0),
+                    anneal_hits: count_hits_both_strands(
+                        &destination_seq,
+                        &right_junction.overlap_sequence,
+                    ),
+                    note: format!(
+                        "5' non-priming overlap segment for the right end of fragment '{}'",
+                        fragment.preview.fragment_id
+                    ),
+                },
+                priming_3prime: GibsonPrimerSegment {
+                    note: format!(
+                        "3' gene-specific priming segment chosen from the right end of fragment '{}'",
+                        fragment.preview.fragment_id
+                    ),
+                    ..right_priming
+                },
+            });
+        }
+    }
+
+    apply_uniqueness_advisories(
+        &plan.validation_policy.uniqueness_checks.destination_context,
+        "destination overlap",
+        &destination_seq,
+        &resolved_overlaps
+            .iter()
+            .map(|junction| junction.overlap_sequence.clone())
+            .collect::<Vec<_>>(),
+        &mut preview,
+    );
+    for fragment in fragments_by_id.values() {
+        let fragment_priming_segments = preview
+            .primer_suggestions
+            .iter()
+            .filter(|primer| primer.fragment_id == fragment.preview.fragment_id)
+            .map(|primer| primer.priming_3prime.sequence.clone())
+            .collect::<Vec<_>>();
+        apply_uniqueness_advisories(
+            &plan
+                .validation_policy
+                .uniqueness_checks
+                .participating_fragments,
+            "insert priming segment",
+            &fragment.template_forward,
+            &fragment_priming_segments,
+            &mut preview,
+        );
+    }
+
+    preview.notes.push(format!(
+        "Destination opening resolves '{}' and '{}' as the two terminal Gibson junction anchors.",
+        resolved_opening.left_end_id, resolved_opening.right_end_id
+    ));
+    preview.notes.push(format!(
+        "This Gibson plan contains {} insert fragment(s) and {} explicit junction(s) in one ordered assembly chain.",
+        loaded_fragments.len(),
+        resolved_overlaps.len()
+    ));
+    preview.notes.push(
+        "Primer suggestions stay Gibson-specific: every fragment gets one left primer and one right primer with a 5' overlap plus a 3' gene-specific priming segment.".to_string(),
+    );
+    preview.notes.push(GentleEngine::primer_tm_model_description());
+
+    let representative_overlap_bp = resolved_overlaps
+        .iter()
+        .map(|junction| junction.overlap_bp)
+        .min()
+        .unwrap_or(0);
+    let title = format!(
+        "GENtle Protocol Cartoon: Gibson Multi-Insert Assembly ({})",
+        compact_cartoon_label(&preview.destination.seq_id, "Destination", 18)
+    );
+    let summary = format!(
+        "Five-step Gibson mechanism with {} inserts and {} explicit junctions.",
+        loaded_fragments.len(),
+        resolved_overlaps.len()
+    );
+    let resolved_spec = build_multi_insert_cartoon_spec(
+        &preview,
+        &ordered_fragment_ids,
+        representative_overlap_bp,
+    );
+    preview.cartoon = GibsonCartoonPreview {
+        protocol_id: "gibson.multi_insert_dynamic".to_string(),
+        representative_overlap_bp,
+        title,
+        summary,
+        bindings: empty_protocol_cartoon_bindings(),
+        resolved_spec: Some(resolved_spec),
+    };
+    preview.routine_handoff = GibsonRoutineHandoffPreview {
+        supported: false,
+        routine_id: String::new(),
+        reason: Some(
+            "Routine Assistant handoff currently covers the single-insert Gibson specialist only."
+                .to_string(),
+        ),
+        bindings: BTreeMap::new(),
+    };
+    finalize_preview(preview)
+}
+
 fn validate_destination_topology(
     destination: &GibsonPlanDestination,
     dna: &crate::dna_sequence::DNAsequence,
@@ -1856,6 +2198,166 @@ fn validate_destination_topology(
             requested, actual, destination.seq_id
         ));
     }
+}
+
+fn load_gibson_fragments(
+    engine: &GentleEngine,
+    plan: &GibsonAssemblyPlan,
+) -> Result<Vec<GibsonLoadedFragment>, EngineError> {
+    let mut loaded = Vec::with_capacity(plan.fragments.len());
+    for (idx, fragment) in plan.fragments.iter().enumerate() {
+        let seq_id = fragment.seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Gibson plan fragment {} requires seq_id", idx + 1),
+            });
+        }
+        let dna = engine
+            .state()
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Insert sequence '{}' not found", seq_id),
+            })?
+            .clone();
+        let preview_fragment = GibsonPreviewInsert {
+            fragment_id: if fragment.id.trim().is_empty() {
+                format!("insert_{}", idx + 1)
+            } else {
+                fragment.id.trim().to_string()
+            },
+            seq_id: seq_id.to_string(),
+            role: if fragment.role.trim().is_empty() {
+                "insert".to_string()
+            } else {
+                fragment.role.trim().to_string()
+            },
+            orientation: normalized_orientation(&fragment.orientation),
+            length_bp: dna.len(),
+        };
+        let oriented_dna = build_oriented_insert_for_gibson(&dna, &preview_fragment.orientation);
+        loaded.push(GibsonLoadedFragment {
+            preview: preview_fragment,
+            dna: dna.clone(),
+            template_forward: dna.get_forward_string().to_ascii_uppercase(),
+            oriented_sequence: oriented_dna.get_forward_string().to_ascii_uppercase(),
+        });
+    }
+    Ok(loaded)
+}
+
+fn validate_multi_insert_shape(
+    plan: &GibsonAssemblyPlan,
+    fragments: &[GibsonLoadedFragment],
+    preview: &mut GibsonAssemblyPreview,
+) {
+    if !plan.product.topology.trim().is_empty()
+        && !matches!(
+            plan.product.topology.trim().to_ascii_lowercase().as_str(),
+            "linear" | "circular"
+        )
+    {
+        preview.errors.push(format!(
+            "Unsupported product.topology '{}' for Gibson specialist",
+            plan.product.topology.trim()
+        ));
+    }
+    if plan.destination.opening.mode.trim().eq_ignore_ascii_case("existing_termini") {
+        preview.errors.push(
+            "Multi-insert Gibson currently requires a defined destination opening; 'existing_termini' remains single-fragment only."
+                .to_string(),
+        );
+    }
+
+    let expected_len = fragments.len().saturating_add(2);
+    if plan.assembly_order.len() != expected_len {
+        preview.errors.push(format!(
+            "Multi-insert Gibson expects assembly_order to contain {} members (left end -> {} insert(s) -> right end), but found {}",
+            expected_len,
+            fragments.len(),
+            plan.assembly_order.len()
+        ));
+        return;
+    }
+    if !plan
+        .assembly_order
+        .first()
+        .map(|member| member.kind.eq_ignore_ascii_case("destination_end"))
+        .unwrap_or(false)
+        || !plan
+            .assembly_order
+            .last()
+            .map(|member| member.kind.eq_ignore_ascii_case("destination_end"))
+            .unwrap_or(false)
+    {
+        preview.errors.push(
+            "Multi-insert Gibson expects assembly_order to begin/end with destination_end members."
+                .to_string(),
+        );
+    }
+
+    let fragment_ids = fragments
+        .iter()
+        .map(|fragment| fragment.preview.fragment_id.clone())
+        .collect::<HashSet<_>>();
+    let mut seen_fragment_ids = HashSet::new();
+    for member in plan
+        .assembly_order
+        .iter()
+        .skip(1)
+        .take(plan.assembly_order.len().saturating_sub(2))
+    {
+        if !member.kind.eq_ignore_ascii_case("fragment") {
+            preview.errors.push(
+                "Multi-insert Gibson expects every interior assembly_order member to be a fragment."
+                    .to_string(),
+            );
+            continue;
+        }
+        if !fragment_ids.contains(member.id.trim()) {
+            preview.errors.push(format!(
+                "assembly_order references unknown fragment '{}'",
+                member.id
+            ));
+        }
+        if !seen_fragment_ids.insert(member.id.trim().to_string()) {
+            preview.errors.push(format!(
+                "assembly_order references fragment '{}' more than once",
+                member.id
+            ));
+        }
+    }
+    if seen_fragment_ids.len() != fragment_ids.len() {
+        preview.errors.push(format!(
+            "assembly_order covers {} fragment ids, but {} fragment(s) were declared",
+            seen_fragment_ids.len(),
+            fragment_ids.len()
+        ));
+    }
+
+    for pair in plan.assembly_order.windows(2) {
+        let left = &pair[0];
+        let right = &pair[1];
+        if find_plan_junction(plan, &left.id, &right.id).is_none() {
+            preview.errors.push(format!(
+                "No Gibson junction was declared for adjacent assembly_order members '{} -> {}'",
+                left.id, right.id
+            ));
+        }
+    }
+}
+
+fn find_plan_junction<'a>(
+    plan: &'a GibsonAssemblyPlan,
+    left_member_id: &str,
+    right_member_id: &str,
+) -> Option<&'a GibsonPlanJunction> {
+    plan.junctions.iter().find(|junction| {
+        junction.left_member.id.eq_ignore_ascii_case(left_member_id)
+            && junction.right_member.id.eq_ignore_ascii_case(right_member_id)
+    })
 }
 
 fn validate_single_insert_shape(
@@ -1993,6 +2495,215 @@ fn resolve_opening(
 enum TerminalSide {
     Left,
     Right,
+}
+
+fn resolve_overlap_partition(
+    junction: &GibsonPlanJunction,
+    opening: &GibsonResolvedOpening,
+    actual_len: usize,
+) -> Result<(usize, usize), String> {
+    if let Some(partition) = &junction.overlap_partition {
+        let explicit_total = partition
+            .left_member_bp
+            .saturating_add(partition.right_member_bp);
+        if explicit_total > 0 {
+            if explicit_total != actual_len {
+                return Err(format!(
+                    "Junction '{}' overlap_partition {}+{} does not match resolved overlap length {}",
+                    junction.id, partition.left_member_bp, partition.right_member_bp, actual_len
+                ));
+            }
+            return Ok((partition.left_member_bp, partition.right_member_bp));
+        }
+    }
+    if junction
+        .overlap_source
+        .trim()
+        .eq_ignore_ascii_case("derive_from_destination_left_flank")
+        || junction
+            .left_member
+            .id
+            .eq_ignore_ascii_case(&opening.left_end_id)
+    {
+        return Ok((actual_len, 0));
+    }
+    if junction
+        .overlap_source
+        .trim()
+        .eq_ignore_ascii_case("derive_from_destination_right_flank")
+        || junction
+            .right_member
+            .id
+            .eq_ignore_ascii_case(&opening.right_end_id)
+    {
+        return Ok((0, actual_len));
+    }
+    let left_member_bp = actual_len / 2;
+    Ok((left_member_bp, actual_len.saturating_sub(left_member_bp)))
+}
+
+fn member_suffix_sequence(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    fragments: &HashMap<String, GibsonLoadedFragment>,
+    member: &GibsonPlanAssemblyMember,
+    len: usize,
+) -> Option<String> {
+    if len == 0 {
+        return Some(String::new());
+    }
+    if member.kind.eq_ignore_ascii_case("fragment") {
+        let fragment = fragments.get(member.id.trim())?;
+        let total = fragment.oriented_sequence.len();
+        return total
+            .checked_sub(len)
+            .and_then(|start| fragment.oriented_sequence.get(start..total))
+            .map(str::to_string);
+    }
+    if member.id.eq_ignore_ascii_case(&opening.left_end_id) {
+        return overlap_sequence_for_side(destination_seq, opening, TerminalSide::Left, len);
+    }
+    if member.id.eq_ignore_ascii_case(&opening.right_end_id) {
+        return overlap_sequence_for_side(destination_seq, opening, TerminalSide::Right, len);
+    }
+    None
+}
+
+fn member_prefix_sequence(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    fragments: &HashMap<String, GibsonLoadedFragment>,
+    member: &GibsonPlanAssemblyMember,
+    len: usize,
+) -> Option<String> {
+    if len == 0 {
+        return Some(String::new());
+    }
+    if member.kind.eq_ignore_ascii_case("fragment") {
+        let fragment = fragments.get(member.id.trim())?;
+        return fragment.oriented_sequence.get(0..len).map(str::to_string);
+    }
+    if member.id.eq_ignore_ascii_case(&opening.left_end_id) {
+        return overlap_sequence_for_side(destination_seq, opening, TerminalSide::Left, len);
+    }
+    if member.id.eq_ignore_ascii_case(&opening.right_end_id) {
+        return overlap_sequence_for_side(destination_seq, opening, TerminalSide::Right, len);
+    }
+    None
+}
+
+fn overlap_sequence_for_junction(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    fragments: &HashMap<String, GibsonLoadedFragment>,
+    junction: &GibsonPlanJunction,
+    len: usize,
+) -> Result<(usize, usize, String), String> {
+    if len == 0 {
+        return Err(format!(
+            "Junction '{}' resolved to zero-length overlap",
+            junction.id
+        ));
+    }
+    let (left_member_bp, right_member_bp) = resolve_overlap_partition(junction, opening, len)?;
+    let left = member_suffix_sequence(
+        destination_seq,
+        opening,
+        fragments,
+        &junction.left_member,
+        left_member_bp,
+    )
+    .ok_or_else(|| {
+        format!(
+            "Could not derive {} bp from left member '{}' for junction '{}'",
+            left_member_bp, junction.left_member.id, junction.id
+        )
+    })?;
+    let right = member_prefix_sequence(
+        destination_seq,
+        opening,
+        fragments,
+        &junction.right_member,
+        right_member_bp,
+    )
+    .ok_or_else(|| {
+        format!(
+            "Could not derive {} bp from right member '{}' for junction '{}'",
+            right_member_bp, junction.right_member.id, junction.id
+        )
+    })?;
+    Ok((left_member_bp, right_member_bp, format!("{left}{right}")))
+}
+
+fn choose_overlap_len_for_junction(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    fragments: &HashMap<String, GibsonLoadedFragment>,
+    junction: &GibsonPlanJunction,
+    targets: &GibsonPlanDesignTargets,
+) -> Option<usize> {
+    for len in targets.overlap_bp_min..=targets.overlap_bp_max {
+        let Ok((_, _, sequence)) =
+            overlap_sequence_for_junction(destination_seq, opening, fragments, junction, len)
+        else {
+            continue;
+        };
+        let tm = GentleEngine::estimate_primer_tm_c(sequence.as_bytes());
+        if tm >= targets.minimum_overlap_tm_celsius {
+            return Some(len);
+        }
+    }
+    None
+}
+
+fn derive_resolved_overlap(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    fragments: &HashMap<String, GibsonLoadedFragment>,
+    junction: &GibsonPlanJunction,
+    targets: &GibsonPlanDesignTargets,
+    preview: &mut GibsonAssemblyPreview,
+) -> Option<GibsonResolvedOverlap> {
+    let preferred_len = junction.required_overlap_bp.unwrap_or(0);
+    let actual_len = if preferred_len > 0 {
+        preferred_len
+    } else {
+        choose_overlap_len_for_junction(destination_seq, opening, fragments, junction, targets)?
+    };
+    let (left_member_bp, right_member_bp, overlap_sequence) =
+        match overlap_sequence_for_junction(destination_seq, opening, fragments, junction, actual_len)
+        {
+            Ok(value) => value,
+            Err(message) => {
+                preview.errors.push(message);
+                return None;
+            }
+        };
+    if actual_len < targets.overlap_bp_min || actual_len > targets.overlap_bp_max {
+        preview.warnings.push(format!(
+            "Junction '{}' uses {} bp overlap outside the preferred Gibson target range {}..{} bp",
+            junction.id, actual_len, targets.overlap_bp_min, targets.overlap_bp_max
+        ));
+    }
+    let overlap_tm_celsius = GentleEngine::estimate_primer_tm_c(overlap_sequence.as_bytes());
+    if overlap_tm_celsius < targets.minimum_overlap_tm_celsius {
+        preview.errors.push(format!(
+            "Junction '{}' overlap Tm {:.1} C is below the configured minimum {:.1} C",
+            junction.id, overlap_tm_celsius, targets.minimum_overlap_tm_celsius
+        ));
+    }
+    Some(GibsonResolvedOverlap {
+        junction_id: junction.id.clone(),
+        left_member_id: junction.left_member.id.clone(),
+        right_member_id: junction.right_member.id.clone(),
+        overlap_bp: actual_len,
+        left_member_bp,
+        right_member_bp,
+        overlap_tm_celsius,
+        overlap_sequence,
+        overlap_source: junction.overlap_source.clone(),
+        distinct_from: junction.distinct_from.clone(),
+    })
 }
 
 fn derive_terminal_overlap(
@@ -2755,6 +3466,293 @@ fn build_cartoon_bindings(
     }
 }
 
+fn cartoon_feature(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    length_bp: usize,
+    color_hex: impl Into<String>,
+) -> DnaFeatureCartoon {
+    let length_bp = length_bp.max(1);
+    let color_hex = color_hex.into();
+    DnaFeatureCartoon {
+        id: id.into(),
+        label: label.into(),
+        length_bp,
+        top_length_bp: length_bp,
+        bottom_length_bp: length_bp,
+        color_hex: color_hex.clone(),
+        bottom_color_hex: color_hex,
+        top_nick_after: false,
+        bottom_nick_after: false,
+    }
+}
+
+fn build_multi_insert_cartoon_spec(
+    preview: &GibsonAssemblyPreview,
+    ordered_fragment_ids: &[String],
+    representative_overlap_bp: usize,
+) -> ProtocolCartoonSpec {
+    const DEST_ARM_BODY_BP: usize = 88;
+    const INSERT_BODY_BP: usize = 92;
+    const CHEW_EXTRA_BP: usize = 8;
+    let body_palette = [
+        "#f2c84b", "#4e8bd8", "#f08a39", "#8c6dd7", "#5aaa55", "#d66f8f",
+    ];
+    let overlap_palette = ["#58b05c", "#f29d38", "#4ba3a1", "#d97b89", "#7ab648"];
+    let fragment_map = preview
+        .fragments
+        .iter()
+        .map(|fragment| (fragment.fragment_id.clone(), fragment))
+        .collect::<HashMap<_, _>>();
+    let mut context_molecules = Vec::new();
+    let mut chew_back_molecules = Vec::new();
+    let mut assembled_features = Vec::new();
+
+    let left_terminal = preview
+        .resolved_junctions
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    let right_terminal = preview
+        .resolved_junctions
+        .last()
+        .cloned()
+        .unwrap_or_default();
+
+    context_molecules.push(DnaMoleculeCartoon {
+        id: "destination_left_context".to_string(),
+        label: format!(
+            "{} left arm",
+            compact_cartoon_label(&preview.destination.seq_id, "Destination", 18)
+        ),
+        topology: DnaTopologyCartoon::Linear,
+        features: vec![
+            cartoon_feature("dest_left_body", "Destination left arm", DEST_ARM_BODY_BP, body_palette[0]),
+            cartoon_feature(
+                "junction_left_overlap",
+                format!("Left junction {} bp", left_terminal.overlap_bp.max(representative_overlap_bp)),
+                left_terminal.overlap_bp.max(representative_overlap_bp),
+                overlap_palette[0],
+            ),
+        ],
+        left_end: Some(DnaEndStyle::Continuation),
+        right_end: Some(DnaEndStyle::Blunt),
+    });
+    chew_back_molecules.push(DnaMoleculeCartoon {
+        id: "destination_left_chewed".to_string(),
+        label: "Left arm (chewed)".to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features: context_molecules[0].features.clone(),
+        left_end: Some(DnaEndStyle::Continuation),
+        right_end: Some(DnaEndStyle::Sticky {
+            polarity: OverhangPolarity::ThreePrime,
+            nt: left_terminal
+                .overlap_bp
+                .max(representative_overlap_bp)
+                .saturating_add(CHEW_EXTRA_BP)
+                .max(1),
+        }),
+    });
+    assembled_features.push(cartoon_feature(
+        "assembled_dest_left_body",
+        "Destination left arm",
+        DEST_ARM_BODY_BP,
+        body_palette[0],
+    ));
+
+    for (idx, fragment_id) in ordered_fragment_ids.iter().enumerate() {
+        let Some(fragment) = fragment_map.get(fragment_id) else {
+            continue;
+        };
+        let left_junction = preview
+            .resolved_junctions
+            .iter()
+            .find(|junction| junction.right_member_id.eq_ignore_ascii_case(fragment_id))
+            .cloned()
+            .unwrap_or_default();
+        let right_junction = preview
+            .resolved_junctions
+            .iter()
+            .find(|junction| junction.left_member_id.eq_ignore_ascii_case(fragment_id))
+            .cloned()
+            .unwrap_or_default();
+        let body_color = body_palette[(idx + 1) % body_palette.len()];
+        let left_overlap_color = overlap_palette[idx % overlap_palette.len()];
+        let right_overlap_color = overlap_palette[(idx + 1) % overlap_palette.len()];
+        context_molecules.push(DnaMoleculeCartoon {
+            id: format!("{}_context", fragment_id),
+            label: compact_cartoon_label(&fragment.seq_id, &fragment.fragment_id, 18),
+            topology: DnaTopologyCartoon::Linear,
+            features: vec![
+                cartoon_feature(
+                    format!("{}_left_overlap_context", fragment_id),
+                    format!("{} left junction", fragment.fragment_id),
+                    left_junction.overlap_bp.max(representative_overlap_bp),
+                    left_overlap_color,
+                ),
+                cartoon_feature(
+                    format!("{}_body_context", fragment_id),
+                    compact_cartoon_label(&fragment.seq_id, "Insert", 14),
+                    INSERT_BODY_BP,
+                    body_color,
+                ),
+                cartoon_feature(
+                    format!("{}_right_overlap_context", fragment_id),
+                    format!("{} right junction", fragment.fragment_id),
+                    right_junction.overlap_bp.max(representative_overlap_bp),
+                    right_overlap_color,
+                ),
+            ],
+            left_end: Some(DnaEndStyle::Blunt),
+            right_end: Some(DnaEndStyle::Blunt),
+        });
+        chew_back_molecules.push(DnaMoleculeCartoon {
+            id: format!("{}_chewed", fragment_id),
+            label: format!("{} (chewed)", compact_cartoon_label(&fragment.seq_id, "Insert", 18)),
+            topology: DnaTopologyCartoon::Linear,
+            features: context_molecules.last().map(|row| row.features.clone()).unwrap_or_default(),
+            left_end: Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::ThreePrime,
+                nt: left_junction
+                    .overlap_bp
+                    .max(representative_overlap_bp)
+                    .saturating_add(CHEW_EXTRA_BP)
+                    .max(1),
+            }),
+            right_end: Some(DnaEndStyle::Sticky {
+                polarity: OverhangPolarity::ThreePrime,
+                nt: right_junction
+                    .overlap_bp
+                    .max(representative_overlap_bp)
+                    .saturating_add(CHEW_EXTRA_BP)
+                    .max(1),
+            }),
+        });
+        assembled_features.push(cartoon_feature(
+            format!("assembled_left_overlap_{}", fragment_id),
+            format!("Left junction {}", idx + 1),
+            left_junction.overlap_bp.max(representative_overlap_bp),
+            left_overlap_color,
+        ));
+        assembled_features.push(cartoon_feature(
+            format!("assembled_body_{}", fragment_id),
+            compact_cartoon_label(&fragment.seq_id, "Insert", 14),
+            INSERT_BODY_BP,
+            body_color,
+        ));
+        if idx + 1 == ordered_fragment_ids.len() {
+            assembled_features.push(cartoon_feature(
+                format!("assembled_right_overlap_{}", fragment_id),
+                "Right terminal junction",
+                right_junction.overlap_bp.max(representative_overlap_bp),
+                right_overlap_color,
+            ));
+        }
+    }
+
+    context_molecules.push(DnaMoleculeCartoon {
+        id: "destination_right_context".to_string(),
+        label: format!(
+            "{} right arm",
+            compact_cartoon_label(&preview.destination.seq_id, "Destination", 18)
+        ),
+        topology: DnaTopologyCartoon::Linear,
+        features: vec![
+            cartoon_feature(
+                "junction_right_overlap",
+                format!("Right junction {} bp", right_terminal.overlap_bp.max(representative_overlap_bp)),
+                right_terminal.overlap_bp.max(representative_overlap_bp),
+                overlap_palette[ordered_fragment_ids.len() % overlap_palette.len()],
+            ),
+            cartoon_feature("dest_right_body", "Destination right arm", DEST_ARM_BODY_BP, body_palette[0]),
+        ],
+        left_end: Some(DnaEndStyle::Blunt),
+        right_end: Some(DnaEndStyle::Continuation),
+    });
+    chew_back_molecules.push(DnaMoleculeCartoon {
+        id: "destination_right_chewed".to_string(),
+        label: "Right arm (chewed)".to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features: context_molecules.last().map(|row| row.features.clone()).unwrap_or_default(),
+        left_end: Some(DnaEndStyle::Sticky {
+            polarity: OverhangPolarity::ThreePrime,
+            nt: right_terminal
+                .overlap_bp
+                .max(representative_overlap_bp)
+                .saturating_add(CHEW_EXTRA_BP)
+                .max(1),
+        }),
+        right_end: Some(DnaEndStyle::Continuation),
+    });
+    assembled_features.push(cartoon_feature(
+        "assembled_dest_right_body",
+        "Destination right arm",
+        DEST_ARM_BODY_BP,
+        body_palette[0],
+    ));
+
+    let assembled_molecule = DnaMoleculeCartoon {
+        id: "assembled_chain".to_string(),
+        label: "Assembled chain".to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features: assembled_features.clone(),
+        left_end: Some(DnaEndStyle::Continuation),
+        right_end: Some(DnaEndStyle::Continuation),
+    };
+    ProtocolCartoonSpec {
+        id: "gibson.multi_insert_dynamic".to_string(),
+        title: "GENtle Protocol Cartoon: Gibson Multi-Insert Assembly".to_string(),
+        summary: format!(
+            "Five-step Gibson mechanism with {} inserts and {} junctions.",
+            ordered_fragment_ids.len(),
+            ordered_fragment_ids.len().saturating_add(1)
+        ),
+        events: vec![
+            ProtocolCartoonEvent {
+                id: "context".to_string(),
+                title: "Context".to_string(),
+                caption: format!(
+                    "The opened destination and {} insert fragment(s) are configured with one ordered chain of {} Gibson junctions.",
+                    ordered_fragment_ids.len(),
+                    ordered_fragment_ids.len().saturating_add(1)
+                ),
+                action: ProtocolCartoonAction::Context,
+                molecules: context_molecules,
+            },
+            ProtocolCartoonEvent {
+                id: "chew_back".to_string(),
+                title: "Chew-back".to_string(),
+                caption: "A 5' exonuclease exposes complementary 3' overhangs at every destination/insert junction so the whole chain can anneal in one reaction.".to_string(),
+                action: ProtocolCartoonAction::Custom {
+                    label: "5' Exonuclease".to_string(),
+                },
+                molecules: chew_back_molecules,
+            },
+            ProtocolCartoonEvent {
+                id: "anneal".to_string(),
+                title: "Anneal".to_string(),
+                caption: "All junctions anneal across the ordered fragment chain, bringing the opened destination and all inserts into one intermediate.".to_string(),
+                action: ProtocolCartoonAction::Anneal,
+                molecules: vec![assembled_molecule.clone()],
+            },
+            ProtocolCartoonEvent {
+                id: "extend".to_string(),
+                title: "Extend".to_string(),
+                caption: "DNA polymerase fills the remaining single-stranded gaps across the assembled chain.".to_string(),
+                action: ProtocolCartoonAction::Extend,
+                molecules: vec![assembled_molecule.clone()],
+            },
+            ProtocolCartoonEvent {
+                id: "seal".to_string(),
+                title: "Seal".to_string(),
+                caption: "DNA ligase seals the remaining nicks, leaving one continuous destination-insert product.".to_string(),
+                action: ProtocolCartoonAction::Seal,
+                molecules: vec![assembled_molecule],
+            },
+        ],
+    }
+}
+
 fn build_cartoon_title_summary(
     preview: &GibsonAssemblyPreview,
     representative_overlap_bp: usize,
@@ -2924,6 +3922,11 @@ mod tests {
                 .expect("insert sequence");
         insert.set_name("insert_x_amplicon".to_string());
         insert.set_circular(false);
+        let mut insert_y =
+            DNAsequence::from_sequence("GCTAGCATCGTACGATCGTAGGCTAACGTTAGCGTACGATCGTACGTA")
+                .expect("second insert sequence");
+        insert_y.set_name("insert_y_amplicon".to_string());
+        insert_y.set_circular(false);
         engine
             .state_mut()
             .sequences
@@ -2932,6 +3935,10 @@ mod tests {
             .state_mut()
             .sequences
             .insert("insert_x_amplicon".to_string(), insert);
+        engine
+            .state_mut()
+            .sequences
+            .insert("insert_y_amplicon".to_string(), insert_y);
         engine.state_mut().display = ProjectState::default().display;
         engine
     }
@@ -3025,6 +4032,105 @@ mod tests {
         .expect("plan json")
     }
 
+    fn multi_insert_plan() -> GibsonAssemblyPlan {
+        serde_json::from_str(
+            r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "preview_test_multi",
+  "title": "Preview test multi",
+  "summary": "two inserts",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "out_multi"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_1_2"}
+    },
+    {
+      "id": "insert_y",
+      "seq_id": "insert_y_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_1_2"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "fragment", "id": "insert_y"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_1_2",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "fragment", "id": "insert_y"},
+      "required_overlap_bp": 24,
+      "overlap_partition": {"left_member_bp": 12, "right_member_bp": 12},
+      "overlap_source": "designed_bridge_sequence",
+      "distinct_from": []
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_y"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 30,
+      "minimum_overlap_tm_celsius": 0.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#,
+        )
+        .expect("multi-insert plan json")
+    }
+
     fn feature_by_label<'a>(dna: &'a DNAsequence, label: &str) -> &'a Feature {
         dna.features()
             .iter()
@@ -3064,6 +4170,26 @@ mod tests {
             preview.cartoon.protocol_id,
             "gibson.single_insert_dual_junction"
         );
+    }
+
+    #[test]
+    fn preview_multi_insert_plan_returns_ordered_junctions_and_primers() {
+        let engine = test_engine_with_sequences();
+        let preview =
+            preview_gibson_assembly_plan(&engine, &multi_insert_plan()).expect("preview output");
+        assert!(preview.can_execute, "errors: {:?}", preview.errors);
+        assert_eq!(preview.fragments.len(), 2);
+        assert_eq!(preview.resolved_junctions.len(), 3);
+        assert_eq!(preview.primer_suggestions.len(), 4);
+        assert_eq!(
+            preview.resolved_junctions[1].junction_id,
+            "junction_1_2"
+        );
+        assert_eq!(
+            preview.cartoon.protocol_id,
+            "gibson.multi_insert_dynamic"
+        );
+        assert!(preview.cartoon.resolved_spec.is_some());
     }
 
     #[test]
@@ -3250,6 +4376,32 @@ mod tests {
             execution.preview.destination.length_bp
                 - execution.preview.destination.removed_span_bp.unwrap_or(0)
                 + execution.preview.insert.length_bp
+        );
+    }
+
+    #[test]
+    fn derive_execution_plan_multi_insert_creates_all_primers_and_product() {
+        let engine = test_engine_with_sequences();
+        let execution =
+            derive_gibson_execution_plan(&engine, &multi_insert_plan()).expect("execution plan");
+        assert_eq!(execution.outputs.len(), 5);
+        assert_eq!(execution.parent_seq_ids.len(), 3);
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        let total_insert_bp = execution
+            .preview
+            .fragments
+            .iter()
+            .map(|fragment| fragment.length_bp)
+            .sum::<usize>();
+        assert_eq!(
+            product.dna.len(),
+            execution.preview.destination.length_bp
+                - execution.preview.destination.removed_span_bp.unwrap_or(0)
+                + total_insert_bp
         );
     }
 

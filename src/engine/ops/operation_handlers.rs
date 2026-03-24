@@ -1423,15 +1423,26 @@ impl GentleEngine {
                     ));
                 }
                 let plan_label = execution.preview.plan_id.trim();
+                let insert_summary = if execution.preview.fragments.is_empty() {
+                    "-".to_string()
+                } else {
+                    execution
+                        .preview
+                        .fragments
+                        .iter()
+                        .map(|fragment| fragment.seq_id.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
                 result.messages.push(format!(
-                    "Applied Gibson assembly plan '{}' from destination '{}' and insert '{}'",
+                    "Applied Gibson assembly plan '{}' from destination '{}' and inserts '{}'",
                     if plan_label.is_empty() {
                         execution.preview.title.as_str()
                     } else {
                         plan_label
                     },
                     execution.preview.destination.seq_id,
-                    execution.preview.insert.seq_id
+                    insert_summary
                 ));
             }
             Operation::CreateArrangementSerial {

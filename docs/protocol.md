@@ -101,10 +101,12 @@ Purpose:
 
 Status:
 
-- restricted single-insert destination-first subset is now consumed by the
-  shared Gibson preview path (`gibson preview ...` and the `Patterns ->
-  Gibson...` specialist window)
-- multi-fragment plans remain draft design resources in this release
+- destination-first single-insert and ordered multi-insert plans are now
+  consumed by the shared Gibson preview/apply path (`gibson preview ...`,
+  `gibson apply`, and the `Patterns -> Gibson...` specialist window)
+- current limit:
+  - multi-insert execution currently assumes a defined destination opening
+  - `existing_termini` remains the single-fragment handoff path for now
 
 Canonical examples:
 
@@ -338,8 +340,8 @@ Planning implication:
 
 Purpose:
 
-- provide one deterministic, non-mutating preview response for the restricted
-  single-insert Gibson specialist flow,
+- provide one deterministic, non-mutating preview response for the current
+  Gibson specialist flow,
 - keep GUI, shared shell, and direct CLI on the same overlap/primer/cartoon
   derivation path.
 
@@ -355,10 +357,15 @@ Top-level structure:
 - `can_execute`
 - `destination`
   - resolved opening mode/span or cutpoint and actual topology
+- `fragments[]`
+  - resolved ordered insert rows (fragment id, template seq id, orientation,
+    length)
 - `insert`
-  - resolved fragment id, template seq id, orientation, length
+  - compatibility mirror of the first insert row for older single-insert
+    consumers
 - `resolved_junctions[]`
-  - overlap bp, overlap Tm, resolved overlap sequence, source note
+  - overlap bp, left/right member contributions, overlap Tm, resolved overlap
+    sequence, source note
 - `primer_suggestions[]`
   - full primer sequence plus explicit `overlap_5prime` and
     `priming_3prime` segments
@@ -366,8 +373,9 @@ Top-level structure:
   - includes the shared Tₘ-model note used by GUI/CLI so the assumptions stay
     visible to the user
 - `cartoon`
-  - built-in protocol id plus template bindings for the shared
-    protocol-cartoon renderer
+  - built-in protocol id plus template bindings for single-insert flows
+  - multi-insert previews may instead carry one fully resolved
+    `ProtocolCartoonSpec` directly
   - intended to stay mechanism-first:
     - show resolved fragment flow and achieved homology/overlap relationships
     - avoid drawing full primer objects or low-level PCR parameterization inside
@@ -379,13 +387,19 @@ Top-level structure:
 
 Current v1 scope and limits:
 
-- exactly one insert fragment
+- one or more insert fragments in an explicit ordered chain
 - destination-first order:
-  `destination_left -> insert -> destination_right`
-- terminal overlaps are derived from destination context
+  `destination_left -> insert_1 -> ... -> insert_n -> destination_right`
+- the shared preview derives `n + 1` explicit Gibson junctions for `n` inserts
+- terminal overlaps are derived from destination context; internal junctions
+  are normalized from the adjacent fragment ends / partition rules
 - user influence over PCR design stays high-level and Gibson-specific:
   overlap bp range, minimum overlap Tm, priming-segment Tm window, and
   priming-segment length window
+- current execution limitation:
+  - multi-insert apply currently requires `destination.opening.mode=defined_site`
+  - `existing_termini` remains the single-fragment path used by the current
+    Routine Assistant handoff
 - current Tₘ fields use the shared GENtle nearest-neighbor estimate with fixed
   assumptions:
   - exact complement

@@ -680,6 +680,7 @@ pub struct GENtleApp {
     gibson_opening_end_0based_exclusive: String,
     gibson_insert_seq_id: String,
     gibson_insert_orientation: GibsonUiInsertOrientation,
+    gibson_extra_inserts: Vec<GibsonUiInsertRow>,
     gibson_overlap_bp_min: String,
     gibson_overlap_bp_max: String,
     gibson_minimum_overlap_tm_celsius: String,
@@ -1669,6 +1670,21 @@ impl GibsonUiInsertOrientation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GibsonUiInsertRow {
+    seq_id: String,
+    orientation: GibsonUiInsertOrientation,
+}
+
+impl Default for GibsonUiInsertRow {
+    fn default() -> Self {
+        Self {
+            seq_id: String::new(),
+            orientation: GibsonUiInsertOrientation::Forward,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct OpenWindowEntry {
     native_menu_key: u64,
@@ -1943,6 +1959,7 @@ impl Default for GENtleApp {
             gibson_opening_end_0based_exclusive: String::new(),
             gibson_insert_seq_id: String::new(),
             gibson_insert_orientation: GibsonUiInsertOrientation::Forward,
+            gibson_extra_inserts: vec![],
             gibson_overlap_bp_min: "20".to_string(),
             gibson_overlap_bp_max: "40".to_string(),
             gibson_minimum_overlap_tm_celsius: "60.0".to_string(),
@@ -5627,6 +5644,7 @@ Error: `{err}`"
         self.gibson_opening_start_0based.clear();
         self.gibson_opening_end_0based_exclusive.clear();
         self.gibson_insert_seq_id.clear();
+        self.gibson_extra_inserts.clear();
         self.gibson_output_id_hint.clear();
         self.gibson_show_all_unique_cutters = false;
         self.gibson_status.clear();
@@ -6284,6 +6302,42 @@ Error: `{err}`"
         Some((guard.sequence_id()?, guard.selection_range_0based()))
     }
 
+    fn gibson_ui_insert_rows(&self) -> Vec<GibsonUiInsertRow> {
+        let mut rows = vec![];
+        if !self.gibson_insert_seq_id.trim().is_empty() {
+            rows.push(GibsonUiInsertRow {
+                seq_id: self.gibson_insert_seq_id.trim().to_string(),
+                orientation: self.gibson_insert_orientation,
+            });
+        }
+        rows.extend(
+            self.gibson_extra_inserts
+                .iter()
+                .filter(|row| !row.seq_id.trim().is_empty())
+                .cloned(),
+        );
+        rows
+    }
+
+    fn refresh_gibson_output_id_hint_default(&mut self) {
+        if !self.gibson_output_id_hint.trim().is_empty() {
+            return;
+        }
+        let insert_ids = self
+            .gibson_ui_insert_rows()
+            .into_iter()
+            .map(|row| row.seq_id)
+            .collect::<Vec<_>>();
+        if self.gibson_destination_seq_id.trim().is_empty() || insert_ids.is_empty() {
+            return;
+        }
+        self.gibson_output_id_hint = format!(
+            "{}_with_{}",
+            self.gibson_destination_seq_id,
+            insert_ids.join("_")
+        );
+    }
+
     fn prefill_gibson_from_active_context(&mut self) {
         let active_context = self.active_dna_window_context();
         if self.gibson_destination_seq_id.trim().is_empty() {
@@ -6311,13 +6365,8 @@ Error: `{err}`"
             }
         }
         if self.gibson_output_id_hint.trim().is_empty()
-            && !self.gibson_destination_seq_id.trim().is_empty()
-            && !self.gibson_insert_seq_id.trim().is_empty()
         {
-            self.gibson_output_id_hint = format!(
-                "{}_with_{}",
-                self.gibson_destination_seq_id, self.gibson_insert_seq_id
-            );
+            self.refresh_gibson_output_id_hint_default();
         }
     }
 
@@ -13209,13 +13258,16 @@ Error: `{err}`"
         if destination_seq_id.is_empty() {
             return Err("Choose a destination sequence for Gibson planning".to_string());
         }
-        let insert_seq_id = self.gibson_insert_seq_id.trim();
-        if insert_seq_id.is_empty() {
-            return Err("Choose one insert sequence for Gibson planning".to_string());
+        let insert_rows = self.gibson_ui_insert_rows();
+        if insert_rows.is_empty() {
+            return Err("Choose at least one insert sequence for Gibson planning".to_string());
         }
-        if destination_seq_id == insert_seq_id {
+        if insert_rows
+            .iter()
+            .any(|row| destination_seq_id == row.seq_id.trim())
+        {
             return Err(
-                "Destination and insert sequence ids must differ for Gibson specialist v1"
+                "Destination and insert sequence ids must differ for Gibson planning"
                     .to_string(),
             );
         }
@@ -13291,17 +13343,143 @@ Error: `{err}`"
             ));
         }
         let output_id_hint = if self.gibson_output_id_hint.trim().is_empty() {
-            format!("{destination_seq_id}_with_{insert_seq_id}")
+            format!(
+                "{destination_seq_id}_with_{}",
+                insert_rows
+                    .iter()
+                    .map(|row| row.seq_id.trim())
+                    .collect::<Vec<_>>()
+                    .join("_")
+            )
         } else {
             self.gibson_output_id_hint.trim().to_string()
         };
 
+        let fragments = insert_rows
+            .iter()
+            .enumerate()
+            .map(|(idx, row)| GibsonPlanFragment {
+                id: format!("insert_{}", idx + 1),
+                seq_id: row.seq_id.trim().to_string(),
+                role: "insert".to_string(),
+                orientation: row.orientation.as_plan_orientation().to_string(),
+                left_end_strategy: Some(GibsonPlanEndStrategy {
+                    mode: "primer_added_overlap".to_string(),
+                    target_junction_id: if idx == 0 {
+                        "junction_left".to_string()
+                    } else {
+                        format!("junction_{}_{}", idx, idx + 1)
+                    },
+                }),
+                right_end_strategy: Some(GibsonPlanEndStrategy {
+                    mode: "primer_added_overlap".to_string(),
+                    target_junction_id: if idx + 1 == insert_rows.len() {
+                        "junction_right".to_string()
+                    } else {
+                        format!("junction_{}_{}", idx + 1, idx + 2)
+                    },
+                }),
+                source_span_1based: None,
+            })
+            .collect::<Vec<_>>();
+        let mut assembly_order = vec![GibsonPlanAssemblyMember {
+            kind: "destination_end".to_string(),
+            id: "dest_left".to_string(),
+        }];
+        assembly_order.extend((0..insert_rows.len()).map(|idx| GibsonPlanAssemblyMember {
+            kind: "fragment".to_string(),
+            id: format!("insert_{}", idx + 1),
+        }));
+        assembly_order.push(GibsonPlanAssemblyMember {
+            kind: "destination_end".to_string(),
+            id: "dest_right".to_string(),
+        });
+        let mut junctions = vec![GibsonPlanJunction {
+            id: "junction_left".to_string(),
+            left_member: GibsonPlanAssemblyMember {
+                kind: "destination_end".to_string(),
+                id: "dest_left".to_string(),
+            },
+            right_member: GibsonPlanAssemblyMember {
+                kind: "fragment".to_string(),
+                id: "insert_1".to_string(),
+            },
+            required_overlap_bp: None,
+            overlap_partition: Some(GibsonPlanOverlapPartition {
+                left_member_bp: 0,
+                right_member_bp: 0,
+            }),
+            overlap_source: "derive_from_destination_left_flank".to_string(),
+            distinct_from: vec!["junction_right".to_string()],
+        }];
+        for idx in 0..insert_rows.len().saturating_sub(1) {
+            junctions.push(GibsonPlanJunction {
+                id: format!("junction_{}_{}", idx + 1, idx + 2),
+                left_member: GibsonPlanAssemblyMember {
+                    kind: "fragment".to_string(),
+                    id: format!("insert_{}", idx + 1),
+                },
+                right_member: GibsonPlanAssemblyMember {
+                    kind: "fragment".to_string(),
+                    id: format!("insert_{}", idx + 2),
+                },
+                required_overlap_bp: None,
+                overlap_partition: Some(GibsonPlanOverlapPartition {
+                    left_member_bp: 0,
+                    right_member_bp: 0,
+                }),
+                overlap_source: "designed_bridge_sequence".to_string(),
+                distinct_from: vec![],
+            });
+        }
+        junctions.push(GibsonPlanJunction {
+            id: "junction_right".to_string(),
+            left_member: GibsonPlanAssemblyMember {
+                kind: "fragment".to_string(),
+                id: format!("insert_{}", insert_rows.len()),
+            },
+            right_member: GibsonPlanAssemblyMember {
+                kind: "destination_end".to_string(),
+                id: "dest_right".to_string(),
+            },
+            required_overlap_bp: None,
+            overlap_partition: Some(GibsonPlanOverlapPartition {
+                left_member_bp: 0,
+                right_member_bp: 0,
+            }),
+            overlap_source: "derive_from_destination_right_flank".to_string(),
+            distinct_from: vec!["junction_left".to_string()],
+        });
+
         Ok(GibsonAssemblyPlan {
             schema: "gentle.gibson_assembly_plan.v1".to_string(),
-            id: format!("gibson_plan_{destination_seq_id}_{insert_seq_id}"),
-            title: format!("Gibson assembly plan: {destination_seq_id} + {insert_seq_id}"),
-            summary: "Destination-first single-insert Gibson preview from specialist UI"
-                .to_string(),
+            id: format!(
+                "gibson_plan_{}_{}",
+                destination_seq_id,
+                insert_rows
+                    .iter()
+                    .map(|row| row.seq_id.trim())
+                    .collect::<Vec<_>>()
+                    .join("_")
+            ),
+            title: format!(
+                "Gibson assembly plan: {} + {}",
+                destination_seq_id,
+                insert_rows
+                    .iter()
+                    .map(|row| row.seq_id.trim())
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            ),
+            summary: if insert_rows.len() == 1 {
+                "Destination-first single-insert Gibson preview from specialist UI"
+                    .to_string()
+            } else {
+                format!(
+                    "Destination-first multi-insert Gibson preview from specialist UI ({} inserts)",
+                    insert_rows.len()
+                )
+            },
             destination: GibsonPlanDestination {
                 seq_id: destination_seq_id.to_string(),
                 topology_before_opening: destination_topology.clone(),
@@ -13322,76 +13500,9 @@ Error: `{err}`"
                 topology: destination_topology,
                 output_id_hint,
             },
-            fragments: vec![GibsonPlanFragment {
-                id: "insert_1".to_string(),
-                seq_id: insert_seq_id.to_string(),
-                role: "insert".to_string(),
-                orientation: self
-                    .gibson_insert_orientation
-                    .as_plan_orientation()
-                    .to_string(),
-                left_end_strategy: Some(GibsonPlanEndStrategy {
-                    mode: "primer_added_overlap".to_string(),
-                    target_junction_id: "junction_left".to_string(),
-                }),
-                right_end_strategy: Some(GibsonPlanEndStrategy {
-                    mode: "primer_added_overlap".to_string(),
-                    target_junction_id: "junction_right".to_string(),
-                }),
-                source_span_1based: None,
-            }],
-            assembly_order: vec![
-                GibsonPlanAssemblyMember {
-                    kind: "destination_end".to_string(),
-                    id: "dest_left".to_string(),
-                },
-                GibsonPlanAssemblyMember {
-                    kind: "fragment".to_string(),
-                    id: "insert_1".to_string(),
-                },
-                GibsonPlanAssemblyMember {
-                    kind: "destination_end".to_string(),
-                    id: "dest_right".to_string(),
-                },
-            ],
-            junctions: vec![
-                GibsonPlanJunction {
-                    id: "junction_left".to_string(),
-                    left_member: GibsonPlanAssemblyMember {
-                        kind: "destination_end".to_string(),
-                        id: "dest_left".to_string(),
-                    },
-                    right_member: GibsonPlanAssemblyMember {
-                        kind: "fragment".to_string(),
-                        id: "insert_1".to_string(),
-                    },
-                    required_overlap_bp: None,
-                    overlap_partition: Some(GibsonPlanOverlapPartition {
-                        left_member_bp: 0,
-                        right_member_bp: 0,
-                    }),
-                    overlap_source: "derive_from_destination_left_flank".to_string(),
-                    distinct_from: vec!["junction_right".to_string()],
-                },
-                GibsonPlanJunction {
-                    id: "junction_right".to_string(),
-                    left_member: GibsonPlanAssemblyMember {
-                        kind: "fragment".to_string(),
-                        id: "insert_1".to_string(),
-                    },
-                    right_member: GibsonPlanAssemblyMember {
-                        kind: "destination_end".to_string(),
-                        id: "dest_right".to_string(),
-                    },
-                    required_overlap_bp: None,
-                    overlap_partition: Some(GibsonPlanOverlapPartition {
-                        left_member_bp: 0,
-                        right_member_bp: 0,
-                    }),
-                    overlap_source: "derive_from_destination_right_flank".to_string(),
-                    distinct_from: vec!["junction_left".to_string()],
-                },
-            ],
+            fragments,
+            assembly_order,
+            junctions,
             validation_policy: GibsonPlanValidationPolicy {
                 require_unambiguous_destination_opening: true,
                 require_distinct_terminal_junctions: true,
@@ -13432,10 +13543,22 @@ Error: `{err}`"
             .end_0based_exclusive
             .map(|value| value.to_string())
             .unwrap_or_default();
+        self.gibson_extra_inserts.clear();
         if let Some(fragment) = plan.fragments.first() {
             self.gibson_insert_seq_id = fragment.seq_id.trim().to_string();
             self.gibson_insert_orientation =
                 GibsonUiInsertOrientation::from_plan_orientation(&fragment.orientation);
+            self.gibson_extra_inserts = plan
+                .fragments
+                .iter()
+                .skip(1)
+                .map(|fragment| GibsonUiInsertRow {
+                    seq_id: fragment.seq_id.trim().to_string(),
+                    orientation: GibsonUiInsertOrientation::from_plan_orientation(
+                        &fragment.orientation,
+                    ),
+                })
+                .collect();
         } else {
             self.gibson_insert_seq_id.clear();
             self.gibson_insert_orientation = GibsonUiInsertOrientation::Forward;
@@ -13630,6 +13753,9 @@ Error: `{err}`"
     fn resolve_gibson_preview_cartoon_spec(
         preview: &GibsonAssemblyPreview,
     ) -> std::result::Result<crate::protocol_cartoon::ProtocolCartoonSpec, String> {
+        if let Some(spec) = preview.cartoon.resolved_spec.as_ref() {
+            return Ok(spec.clone());
+        }
         let protocol =
             ProtocolCartoonKind::parse_id(&preview.cartoon.protocol_id).ok_or_else(|| {
                 format!(
@@ -14114,8 +14240,8 @@ Error: `{err}`"
         if self.gibson_destination_seq_id.trim().is_empty() {
             return Err("Choose a destination sequence first.".to_string());
         }
-        if self.gibson_insert_seq_id.trim().is_empty() {
-            return Err("Choose one insert sequence first.".to_string());
+        if self.gibson_ui_insert_rows().is_empty() {
+            return Err("Choose at least one insert sequence first.".to_string());
         }
         if self.gibson_opening_mode == GibsonUiOpeningMode::DefinedSite {
             if self.gibson_opening_start_0based.trim().is_empty()
@@ -14365,23 +14491,25 @@ Error: `{err}`"
     }
 
     fn gibson_primer_construction_text(preview: &GibsonAssemblyPreview) -> Option<String> {
-        let left_primer = preview
-            .primer_suggestions
-            .iter()
-            .find(|primer| primer.side == "left_insert_primer")?;
-        let right_primer = preview
-            .primer_suggestions
-            .iter()
-            .find(|primer| primer.side == "right_insert_primer")?;
-        Some(format!(
-            "left primer\n  full       : {}\n  5' overlap : {}\n  3' priming : {}\nright primer\n  full       : {}\n  5' overlap : {}\n  3' priming : {}",
-            Self::compact_gibson_sequence(&left_primer.full_sequence, 10),
-            Self::compact_gibson_sequence(&left_primer.overlap_5prime.sequence, 8),
-            Self::compact_gibson_sequence(&left_primer.priming_3prime.sequence, 8),
-            Self::compact_gibson_sequence(&right_primer.full_sequence, 10),
-            Self::compact_gibson_sequence(&right_primer.overlap_5prime.sequence, 8),
-            Self::compact_gibson_sequence(&right_primer.priming_3prime.sequence, 8),
-        ))
+        if preview.primer_suggestions.is_empty() {
+            return None;
+        }
+        Some(
+            preview
+                .primer_suggestions
+                .iter()
+                .map(|primer| {
+                    format!(
+                        "{}\n  full       : {}\n  5' overlap : {}\n  3' priming : {}",
+                        primer.primer_id,
+                        Self::compact_gibson_sequence(&primer.full_sequence, 10),
+                        Self::compact_gibson_sequence(&primer.overlap_5prime.sequence, 8),
+                        Self::compact_gibson_sequence(&primer.priming_3prime.sequence, 8),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        )
     }
 
     fn displayed_gibson_destination_opening_suggestions(
@@ -14848,8 +14976,12 @@ Error: `{err}`"
         }
 
         ui.separator();
-        ui.heading("Insert");
+        ui.heading("Inserts");
+        ui.small(
+            "Insert rows are assembled in the listed order. One insert creates two terminal junctions; each additional insert adds one internal Gibson junction.",
+        );
         ui.horizontal(|ui| {
+            ui.label("1.");
             ui.label("sequence");
             egui::ComboBox::from_id_salt("gibson_insert_seq_id")
                 .selected_text(if self.gibson_insert_seq_id.trim().is_empty() {
@@ -14882,6 +15014,96 @@ Error: `{err}`"
                     );
                 });
         });
+        let mut remove_extra_index = None;
+        let mut move_extra_up = None;
+        let mut move_extra_down = None;
+        let extra_insert_count = self.gibson_extra_inserts.len();
+        for (idx, row) in self.gibson_extra_inserts.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(format!("{}.", idx + 2));
+                ui.label("sequence");
+                egui::ComboBox::from_id_salt(format!("gibson_insert_seq_id_extra_{idx}"))
+                    .selected_text(if row.seq_id.trim().is_empty() {
+                        "(choose insert)"
+                    } else {
+                        row.seq_id.as_str()
+                    })
+                    .show_ui(ui, |ui| {
+                        for seq_id in &sequence_ids {
+                            if seq_id == &self.gibson_destination_seq_id {
+                                continue;
+                            }
+                            ui.selectable_value(&mut row.seq_id, seq_id.clone(), seq_id);
+                        }
+                    });
+                ui.text_edit_singleline(&mut row.seq_id);
+                ui.label("orientation");
+                egui::ComboBox::from_id_salt(format!("gibson_insert_orientation_extra_{idx}"))
+                    .selected_text(row.orientation.label())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut row.orientation,
+                            GibsonUiInsertOrientation::Forward,
+                            GibsonUiInsertOrientation::Forward.label(),
+                        );
+                        ui.selectable_value(
+                            &mut row.orientation,
+                            GibsonUiInsertOrientation::Reverse,
+                            GibsonUiInsertOrientation::Reverse.label(),
+                        );
+                    });
+                if ui
+                    .small_button("Up")
+                    .on_hover_text("Move this insert earlier in the Gibson assembly order")
+                    .clicked()
+                {
+                    move_extra_up = Some(idx);
+                }
+                if ui
+                    .small_button("Down")
+                    .on_hover_text("Move this insert later in the Gibson assembly order")
+                    .clicked()
+                    && idx + 1 < extra_insert_count
+                {
+                    move_extra_down = Some(idx);
+                }
+                if ui
+                    .small_button("Remove")
+                    .on_hover_text("Remove this insert row from the Gibson assembly order")
+                    .clicked()
+                {
+                    remove_extra_index = Some(idx);
+                }
+            });
+        }
+        if let Some(idx) = move_extra_up {
+            if idx == 0 {
+                std::mem::swap(
+                    &mut self.gibson_insert_seq_id,
+                    &mut self.gibson_extra_inserts[0].seq_id,
+                );
+                std::mem::swap(
+                    &mut self.gibson_insert_orientation,
+                    &mut self.gibson_extra_inserts[0].orientation,
+                );
+            } else {
+                self.gibson_extra_inserts.swap(idx, idx - 1);
+            }
+        }
+        if let Some(idx) = move_extra_down {
+            self.gibson_extra_inserts.swap(idx, idx + 1);
+        }
+        if let Some(idx) = remove_extra_index {
+            self.gibson_extra_inserts.remove(idx);
+        }
+        if ui
+            .button("Add Insert")
+            .on_hover_text("Append another insert to the Gibson assembly order")
+            .clicked()
+        {
+            self.gibson_extra_inserts.push(GibsonUiInsertRow::default());
+        }
+        self.refresh_gibson_output_id_hint_default();
 
         ui.separator();
         ui.heading("Design Targets");
@@ -15110,23 +15332,34 @@ Error: `{err}`"
             let planned_product_id = if self.gibson_output_id_hint.trim().is_empty() {
                 format!(
                     "{}_with_{}",
-                    preview.destination.seq_id, preview.insert.seq_id
+                    preview.destination.seq_id,
+                    preview
+                        .fragments
+                        .iter()
+                        .map(|fragment| fragment.seq_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join("_")
                 )
             } else {
                 self.gibson_output_id_hint.trim().to_string()
             };
+            let total_insert_bp = preview
+                .fragments
+                .iter()
+                .map(|fragment| fragment.length_bp)
+                .sum::<usize>();
             let planned_product_length_bp = if preview
                 .destination
                 .opening_mode
                 .eq_ignore_ascii_case("existing_termini")
             {
-                preview.destination.length_bp + preview.insert.length_bp
+                preview.destination.length_bp + total_insert_bp
             } else {
                 preview
                     .destination
                     .length_bp
                     .saturating_sub(preview.destination.removed_span_bp.unwrap_or(0))
-                    + preview.insert.length_bp
+                    + total_insert_bp
             };
             let planned_product_topology = match self.build_gibson_plan_from_ui() {
                 Ok(plan)
@@ -18799,6 +19032,7 @@ Error: `{err}`"
         self.gibson_opening_start_0based.clear();
         self.gibson_opening_end_0based_exclusive.clear();
         self.gibson_insert_seq_id.clear();
+        self.gibson_extra_inserts.clear();
         self.gibson_output_id_hint.clear();
         self.gibson_status.clear();
         self.gibson_preview_output = None;
@@ -28194,11 +28428,15 @@ Error: `{err}`"
                 let parsed: Result<GibsonAssemblyPlan, _> = serde_json::from_str(plan_json);
                 match parsed {
                     Ok(plan) => {
-                        let insert_seq_id = plan
-                            .fragments
-                            .first()
-                            .map(|fragment| fragment.seq_id.clone())
-                            .unwrap_or_else(|| "-".to_string());
+                        let insert_seq_ids = if plan.fragments.is_empty() {
+                            "-".to_string()
+                        } else {
+                            plan.fragments
+                                .iter()
+                                .map(|fragment| fragment.seq_id.clone())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        };
                         let opening_mode = if plan.destination.opening.mode.trim().is_empty() {
                             "-".to_string()
                         } else {
@@ -28210,8 +28448,8 @@ Error: `{err}`"
                             plan.product.output_id_hint.trim().to_string()
                         };
                         format!(
-                            "Gibson cloning: destination={}, insert={}, opening={}, output={}",
-                            plan.destination.seq_id, insert_seq_id, opening_mode, output
+                            "Gibson cloning: destination={}, inserts={}, opening={}, output={}",
+                            plan.destination.seq_id, insert_seq_ids, opening_mode, output
                         )
                     }
                     Err(_) => "Gibson cloning".to_string(),
@@ -29067,7 +29305,8 @@ mod tests {
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
+        GenomeTrackImportTaskMessage, GibsonUiInsertOrientation, GibsonUiInsertRow,
+        GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
         HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY,
         LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
@@ -30887,6 +31126,49 @@ mod tests {
     }
 
     #[test]
+    fn build_gibson_plan_from_ui_supports_multiple_ordered_inserts() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("destination sequence"),
+        );
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "insert_x".to_string(),
+            DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGA").expect("insert sequence"),
+        );
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "insert_y".to_string(),
+            DNAsequence::from_sequence("GCTAGCATCGTACGATCGTA").expect("second insert sequence"),
+        );
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_insert_seq_id = "insert_x".to_string();
+        app.gibson_extra_inserts.push(GibsonUiInsertRow {
+            seq_id: "insert_y".to_string(),
+            orientation: GibsonUiInsertOrientation::Reverse,
+        });
+        app.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+        app.gibson_opening_start_0based = "4".to_string();
+        app.gibson_opening_end_0based_exclusive = "4".to_string();
+        app.gibson_overlap_bp_min = "20".to_string();
+        app.gibson_overlap_bp_max = "40".to_string();
+        app.gibson_minimum_overlap_tm_celsius = "60.0".to_string();
+        app.gibson_priming_tm_min_celsius = "58.0".to_string();
+        app.gibson_priming_tm_max_celsius = "68.0".to_string();
+        app.gibson_priming_length_min_bp = "18".to_string();
+        app.gibson_priming_length_max_bp = "35".to_string();
+
+        let plan = app.build_gibson_plan_from_ui().expect("build Gibson plan");
+
+        assert_eq!(plan.fragments.len(), 2);
+        assert_eq!(plan.fragments[0].seq_id, "insert_x");
+        assert_eq!(plan.fragments[1].seq_id, "insert_y");
+        assert_eq!(plan.fragments[1].orientation, "reverse");
+        assert_eq!(plan.assembly_order.len(), 4);
+        assert_eq!(plan.junctions.len(), 3);
+        assert_eq!(plan.junctions[1].id, "junction_1_2");
+    }
+
+    #[test]
     fn humanize_gibson_ui_text_formats_tm_and_celsius() {
         let raw = "minimum overlap Tm 60.0 C";
         assert_eq!(
@@ -30938,6 +31220,8 @@ mod tests {
                 left_member_id: "dest_left".to_string(),
                 right_member_id: "insert_1".to_string(),
                 overlap_bp: 20,
+                left_member_bp: 20,
+                right_member_bp: 0,
                 overlap_tm_celsius: 61.5,
                 overlap_sequence: "AAATCGGATCTGATCGAAGG".to_string(),
                 overlap_source: "derive_from_destination_left_flank".to_string(),
@@ -31215,7 +31499,7 @@ mod tests {
         });
         assert!(summary.contains("Gibson cloning"));
         assert!(summary.contains("destination=dest"));
-        assert!(summary.contains("insert=insert"));
+        assert!(summary.contains("inserts=insert"));
         assert!(summary.contains("output=assembled"));
     }
 
