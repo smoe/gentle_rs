@@ -23,6 +23,11 @@ cloning workflows, retrieval, design, analysis, graphics, and provenance.
 
 ## Showcases
 
+GENtle can not only perform cloning tasks, but also explain them from the
+same deterministic project state and render those explanations graphically.
+All of the figures below were produced by GENtle itself through shared engine
+routes, without manual redrawing or post-hoc illustration.
+
 ### Gibson Workflow, Mechanism, and Provenance
 
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
