@@ -12,6 +12,38 @@ panels, and other imported resources can contribute directly to the same
 project state used by the GUI, CLI, and automation, so showcase figures remain
 auditable instead of being redrawn by hand.
 
+## Operations, Routines, and Specialists
+
+GENtle is intentionally layered so cloning logic stays deterministic without
+forcing every user to work at the same level of abstraction.
+
+| Layer | What it is for | Typical examples | Where you meet it |
+| --- | --- | --- | --- |
+| Engine operations | One deterministic state transition or report step | `Digest`, `Ligation`, `Pcr`, `DesignPrimerPairs`, `DesignQpcrAssays`, `ExtractGenomeRegion` | GUI Engine Ops, shared shell, CLI JSON/workflow execution |
+| Routines | Named, typed workflow patterns with explainability and preflight | `gibson.two_fragment_overlap_preview`, `golden_gate.type_iis_single_insert`, `gateway.bp_single_insert`, `restriction.digest_ligate_extract_sticky` | `Patterns -> Routine Assistant...`, `routines list/explain/compare`, `macros template-run --validate-only` |
+| Specialists | Guided task-specific windows built on the same engine and routine ideas | `Patterns -> Gibson...`, DNA-window PCR tools, Routine Assistant | GUI-first planning and review flows |
+| Explanation artifacts | Factual outputs generated from the same project state | protocol cartoons, lineage graph, exported reports | README figures, SVG/PNG exports, Help/tutorial flows |
+
+The intended usage is:
+
+1. Use operations when you already know the exact atomic steps you want.
+2. Use routines when you want GENtle to help choose, explain, preflight, and
+   bind a named cloning workflow.
+3. Use specialists when a workflow deserves a focused GUI for planning,
+   review, and export, but should still land on the same shared engine
+   contracts underneath.
+
+This is why the same project can simultaneously hold raw operations, named
+routine logic, generated cartoons, and lineage/provenance without those
+becoming separate worlds.
+
+This architecture is still evolving. Some domains already have richer
+specialists than the generic routine layer, and some routine families are much
+deeper than others. The important current invariant is not that every surface
+looks identical yet, but that they are converging on the same deterministic
+engine, the same typed preflight logic, and the same inspectable project
+state.
+
 ## How GENtle Fits Together
 
 ![GENtle system overview](docs/figures/gentle_system_overview.svg)
@@ -159,10 +191,18 @@ implementation status, open gaps, and execution order remains
 | Long-range / multiplex / translocation PCR | Planned | future PCR modality extension | tracked in roadmap |
 
 The design direction is to keep these PCR flavors on one deterministic engine
-contract family rather than split them into unrelated specialist paths. For
-current detail on contracts and GUI behavior, see [`docs/protocol.md`](docs/protocol.md)
-and [`docs/gui.md`](docs/gui.md). For what is actively being built next, see
-[`docs/roadmap.md`](docs/roadmap.md).
+contract family rather than split them into unrelated specialist paths. In the
+layering above, that means:
+
+- PCR execution lives in engine operations such as `Pcr`, `PcrAdvanced`,
+  `PcrMutagenesis`, `DesignPrimerPairs`, and `DesignQpcrAssays`
+- PCR deep-dive GUI work lives in specialists and DNA-window tools
+- PCR explanation lives in shared protocol-cartoon outputs such as
+  `pcr.assay.pair`, `pcr.assay.pair.no_product`, and `pcr.assay.qpcr`
+
+For current detail on contracts and GUI behavior, see
+[`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
+what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Principles
 

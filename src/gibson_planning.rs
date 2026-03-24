@@ -3566,11 +3566,16 @@ fn build_cartoon_bindings(
     }
 }
 
-fn cartoon_feature(
+fn cartoon_feature_with_occupancy(
     id: impl Into<String>,
     label: impl Into<String>,
     length_bp: usize,
+    top_length_bp: usize,
+    bottom_length_bp: usize,
     color_hex: impl Into<String>,
+    bottom_color_hex: impl Into<Option<String>>,
+    top_nick_after: bool,
+    bottom_nick_after: bool,
 ) -> DnaFeatureCartoon {
     let length_bp = length_bp.max(1);
     let color_hex = color_hex.into();
@@ -3578,13 +3583,95 @@ fn cartoon_feature(
         id: id.into(),
         label: label.into(),
         length_bp,
-        top_length_bp: length_bp,
-        bottom_length_bp: length_bp,
+        top_length_bp: top_length_bp.min(length_bp),
+        bottom_length_bp: bottom_length_bp.min(length_bp),
         color_hex: color_hex.clone(),
-        bottom_color_hex: color_hex,
-        top_nick_after: false,
-        bottom_nick_after: false,
+        bottom_color_hex: bottom_color_hex.into().unwrap_or(color_hex),
+        top_nick_after,
+        bottom_nick_after,
     }
+}
+
+fn duplex_cartoon_feature(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    length_bp: usize,
+    color_hex: impl Into<String>,
+) -> DnaFeatureCartoon {
+    let length_bp = length_bp.max(1);
+    cartoon_feature_with_occupancy(
+        id,
+        label,
+        length_bp,
+        length_bp,
+        length_bp,
+        color_hex,
+        None::<String>,
+        false,
+        false,
+    )
+}
+
+fn duplex_cartoon_feature_with_nicks(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    length_bp: usize,
+    color_hex: impl Into<String>,
+    top_nick_after: bool,
+    bottom_nick_after: bool,
+) -> DnaFeatureCartoon {
+    let length_bp = length_bp.max(1);
+    cartoon_feature_with_occupancy(
+        id,
+        label,
+        length_bp,
+        length_bp,
+        length_bp,
+        color_hex,
+        None::<String>,
+        top_nick_after,
+        bottom_nick_after,
+    )
+}
+
+fn top_only_cartoon_feature(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    length_bp: usize,
+    color_hex: impl Into<String>,
+) -> DnaFeatureCartoon {
+    let length_bp = length_bp.max(1);
+    cartoon_feature_with_occupancy(
+        id,
+        label,
+        length_bp,
+        length_bp,
+        0,
+        color_hex,
+        None::<String>,
+        false,
+        false,
+    )
+}
+
+fn bottom_only_cartoon_feature(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    length_bp: usize,
+    color_hex: impl Into<String>,
+) -> DnaFeatureCartoon {
+    let length_bp = length_bp.max(1);
+    cartoon_feature_with_occupancy(
+        id,
+        label,
+        length_bp,
+        0,
+        length_bp,
+        color_hex,
+        None::<String>,
+        false,
+        false,
+    )
 }
 
 fn build_multi_insert_cartoon_spec(
@@ -3604,9 +3691,17 @@ fn build_multi_insert_cartoon_spec(
         .iter()
         .map(|fragment| (fragment.fragment_id.clone(), fragment))
         .collect::<HashMap<_, _>>();
+    #[derive(Clone)]
+    struct MultiInsertFragmentCartoonSpec {
+        fragment_id: String,
+        label: String,
+        body_color: &'static str,
+        right_overlap_color: &'static str,
+        right_overlap_bp: usize,
+    }
     let mut context_molecules = Vec::new();
     let mut chew_back_molecules = Vec::new();
-    let mut assembled_features = Vec::new();
+    let mut fragment_specs = Vec::new();
 
     let left_terminal = preview
         .resolved_junctions
@@ -3618,6 +3713,11 @@ fn build_multi_insert_cartoon_spec(
         .last()
         .cloned()
         .unwrap_or_default();
+    let left_terminal_bp = left_terminal.overlap_bp.max(representative_overlap_bp).max(1);
+    let right_terminal_bp = right_terminal
+        .overlap_bp
+        .max(representative_overlap_bp)
+        .max(1);
 
     context_molecules.push(DnaMoleculeCartoon {
         id: "destination_left_context".to_string(),
@@ -3627,11 +3727,16 @@ fn build_multi_insert_cartoon_spec(
         ),
         topology: DnaTopologyCartoon::Linear,
         features: vec![
-            cartoon_feature("dest_left_body", "Destination left arm", DEST_ARM_BODY_BP, body_palette[0]),
-            cartoon_feature(
+            duplex_cartoon_feature(
+                "dest_left_body",
+                "Destination left arm",
+                DEST_ARM_BODY_BP,
+                body_palette[0],
+            ),
+            duplex_cartoon_feature(
                 "junction_left_overlap",
-                format!("Left junction {} bp", left_terminal.overlap_bp.max(representative_overlap_bp)),
-                left_terminal.overlap_bp.max(representative_overlap_bp),
+                format!("Left junction {} bp", left_terminal_bp),
+                left_terminal_bp,
                 overlap_palette[0],
             ),
         ],
@@ -3642,23 +3747,32 @@ fn build_multi_insert_cartoon_spec(
         id: "destination_left_chewed".to_string(),
         label: "Left arm (chewed)".to_string(),
         topology: DnaTopologyCartoon::Linear,
-        features: context_molecules[0].features.clone(),
+        features: vec![
+            duplex_cartoon_feature(
+                "dest_left_body",
+                "Destination left arm",
+                DEST_ARM_BODY_BP,
+                body_palette[0],
+            ),
+            top_only_cartoon_feature(
+                "dest_left_tail_exposed",
+                "Left-side gap to be filled",
+                CHEW_EXTRA_BP,
+                body_palette[0],
+            ),
+            top_only_cartoon_feature(
+                "left_overlap_exposed",
+                "Left terminal homology",
+                left_terminal_bp,
+                overlap_palette[0],
+            ),
+        ],
         left_end: Some(DnaEndStyle::Continuation),
         right_end: Some(DnaEndStyle::Sticky {
             polarity: OverhangPolarity::ThreePrime,
-            nt: left_terminal
-                .overlap_bp
-                .max(representative_overlap_bp)
-                .saturating_add(CHEW_EXTRA_BP)
-                .max(1),
+            nt: left_terminal_bp.saturating_add(CHEW_EXTRA_BP).max(1),
         }),
     });
-    assembled_features.push(cartoon_feature(
-        "assembled_dest_left_body",
-        "Destination left arm",
-        DEST_ARM_BODY_BP,
-        body_palette[0],
-    ));
 
     for (idx, fragment_id) in ordered_fragment_ids.iter().enumerate() {
         let Some(fragment) = fragment_map.get(fragment_id) else {
@@ -3679,27 +3793,39 @@ fn build_multi_insert_cartoon_spec(
         let body_color = body_palette[(idx + 1) % body_palette.len()];
         let left_overlap_color = overlap_palette[idx % overlap_palette.len()];
         let right_overlap_color = overlap_palette[(idx + 1) % overlap_palette.len()];
+        let left_overlap_bp = left_junction.overlap_bp.max(representative_overlap_bp).max(1);
+        let right_overlap_bp = right_junction
+            .overlap_bp
+            .max(representative_overlap_bp)
+            .max(1);
+        fragment_specs.push(MultiInsertFragmentCartoonSpec {
+            fragment_id: fragment_id.clone(),
+            label: compact_cartoon_label(&fragment.seq_id, &fragment.fragment_id, 18),
+            body_color,
+            right_overlap_color,
+            right_overlap_bp,
+        });
         context_molecules.push(DnaMoleculeCartoon {
             id: format!("{}_context", fragment_id),
             label: compact_cartoon_label(&fragment.seq_id, &fragment.fragment_id, 18),
             topology: DnaTopologyCartoon::Linear,
             features: vec![
-                cartoon_feature(
+                duplex_cartoon_feature(
                     format!("{}_left_overlap_context", fragment_id),
                     format!("{} left junction", fragment.fragment_id),
-                    left_junction.overlap_bp.max(representative_overlap_bp),
+                    left_overlap_bp,
                     left_overlap_color,
                 ),
-                cartoon_feature(
+                duplex_cartoon_feature(
                     format!("{}_body_context", fragment_id),
                     compact_cartoon_label(&fragment.seq_id, "Insert", 14),
                     INSERT_BODY_BP,
                     body_color,
                 ),
-                cartoon_feature(
+                duplex_cartoon_feature(
                     format!("{}_right_overlap_context", fragment_id),
                     format!("{} right junction", fragment.fragment_id),
-                    right_junction.overlap_bp.max(representative_overlap_bp),
+                    right_overlap_bp,
                     right_overlap_color,
                 ),
             ],
@@ -3710,44 +3836,47 @@ fn build_multi_insert_cartoon_spec(
             id: format!("{}_chewed", fragment_id),
             label: format!("{} (chewed)", compact_cartoon_label(&fragment.seq_id, "Insert", 18)),
             topology: DnaTopologyCartoon::Linear,
-            features: context_molecules.last().map(|row| row.features.clone()).unwrap_or_default(),
+            features: vec![
+                bottom_only_cartoon_feature(
+                    format!("{}_left_overlap_exposed", fragment_id),
+                    format!("{} left homology", fragment.fragment_id),
+                    left_overlap_bp,
+                    left_overlap_color,
+                ),
+                bottom_only_cartoon_feature(
+                    format!("{}_left_tail_exposed", fragment_id),
+                    format!("{} left-side gap", fragment.fragment_id),
+                    CHEW_EXTRA_BP,
+                    body_color,
+                ),
+                duplex_cartoon_feature(
+                    format!("{}_body", fragment_id),
+                    compact_cartoon_label(&fragment.seq_id, "Insert", 14),
+                    INSERT_BODY_BP,
+                    body_color,
+                ),
+                top_only_cartoon_feature(
+                    format!("{}_right_tail_exposed", fragment_id),
+                    format!("{} right-side gap", fragment.fragment_id),
+                    CHEW_EXTRA_BP,
+                    body_color,
+                ),
+                top_only_cartoon_feature(
+                    format!("{}_right_overlap_exposed", fragment_id),
+                    format!("{} right homology", fragment.fragment_id),
+                    right_overlap_bp,
+                    right_overlap_color,
+                ),
+            ],
             left_end: Some(DnaEndStyle::Sticky {
                 polarity: OverhangPolarity::ThreePrime,
-                nt: left_junction
-                    .overlap_bp
-                    .max(representative_overlap_bp)
-                    .saturating_add(CHEW_EXTRA_BP)
-                    .max(1),
+                nt: left_overlap_bp.saturating_add(CHEW_EXTRA_BP).max(1),
             }),
             right_end: Some(DnaEndStyle::Sticky {
                 polarity: OverhangPolarity::ThreePrime,
-                nt: right_junction
-                    .overlap_bp
-                    .max(representative_overlap_bp)
-                    .saturating_add(CHEW_EXTRA_BP)
-                    .max(1),
+                nt: right_overlap_bp.saturating_add(CHEW_EXTRA_BP).max(1),
             }),
         });
-        assembled_features.push(cartoon_feature(
-            format!("assembled_left_overlap_{}", fragment_id),
-            format!("Left junction {}", idx + 1),
-            left_junction.overlap_bp.max(representative_overlap_bp),
-            left_overlap_color,
-        ));
-        assembled_features.push(cartoon_feature(
-            format!("assembled_body_{}", fragment_id),
-            compact_cartoon_label(&fragment.seq_id, "Insert", 14),
-            INSERT_BODY_BP,
-            body_color,
-        ));
-        if idx + 1 == ordered_fragment_ids.len() {
-            assembled_features.push(cartoon_feature(
-                format!("assembled_right_overlap_{}", fragment_id),
-                "Right terminal junction",
-                right_junction.overlap_bp.max(representative_overlap_bp),
-                right_overlap_color,
-            ));
-        }
     }
 
     context_molecules.push(DnaMoleculeCartoon {
@@ -3758,13 +3887,18 @@ fn build_multi_insert_cartoon_spec(
         ),
         topology: DnaTopologyCartoon::Linear,
         features: vec![
-            cartoon_feature(
+            duplex_cartoon_feature(
                 "junction_right_overlap",
-                format!("Right junction {} bp", right_terminal.overlap_bp.max(representative_overlap_bp)),
-                right_terminal.overlap_bp.max(representative_overlap_bp),
+                format!("Right junction {} bp", right_terminal_bp),
+                right_terminal_bp,
                 overlap_palette[ordered_fragment_ids.len() % overlap_palette.len()],
             ),
-            cartoon_feature("dest_right_body", "Destination right arm", DEST_ARM_BODY_BP, body_palette[0]),
+            duplex_cartoon_feature(
+                "dest_right_body",
+                "Destination right arm",
+                DEST_ARM_BODY_BP,
+                body_palette[0],
+            ),
         ],
         left_end: Some(DnaEndStyle::Blunt),
         right_end: Some(DnaEndStyle::Continuation),
@@ -3773,29 +3907,238 @@ fn build_multi_insert_cartoon_spec(
         id: "destination_right_chewed".to_string(),
         label: "Right arm (chewed)".to_string(),
         topology: DnaTopologyCartoon::Linear,
-        features: context_molecules.last().map(|row| row.features.clone()).unwrap_or_default(),
+        features: vec![
+            bottom_only_cartoon_feature(
+                "right_overlap_exposed",
+                "Right terminal homology",
+                right_terminal_bp,
+                overlap_palette[ordered_fragment_ids.len() % overlap_palette.len()],
+            ),
+            bottom_only_cartoon_feature(
+                "dest_right_tail_exposed",
+                "Right-side gap to be filled",
+                CHEW_EXTRA_BP,
+                body_palette[0],
+            ),
+            duplex_cartoon_feature(
+                "dest_right_body",
+                "Destination right arm",
+                DEST_ARM_BODY_BP,
+                body_palette[0],
+            ),
+        ],
         left_end: Some(DnaEndStyle::Sticky {
             polarity: OverhangPolarity::ThreePrime,
-            nt: right_terminal
-                .overlap_bp
-                .max(representative_overlap_bp)
-                .saturating_add(CHEW_EXTRA_BP)
-                .max(1),
+            nt: right_terminal_bp.saturating_add(CHEW_EXTRA_BP).max(1),
         }),
         right_end: Some(DnaEndStyle::Continuation),
     });
-    assembled_features.push(cartoon_feature(
+
+    let mut annealed_features = vec![duplex_cartoon_feature(
+        "assembled_dest_left_body",
+        "Destination left arm",
+        DEST_ARM_BODY_BP,
+        body_palette[0],
+    )];
+    if let Some(first_fragment) = fragment_specs.first() {
+        annealed_features.push(top_only_cartoon_feature(
+            "assembled_dest_left_tail",
+            "Left-side gap to be filled",
+            CHEW_EXTRA_BP,
+            body_palette[0],
+        ));
+        annealed_features.push(duplex_cartoon_feature(
+            "assembled_left_terminal_overlap",
+            "Left terminal junction",
+            left_terminal_bp,
+            overlap_palette[0],
+        ));
+        annealed_features.push(bottom_only_cartoon_feature(
+            format!("assembled_{}_left_tail", first_fragment.fragment_id),
+            format!("{} left-side gap", first_fragment.label),
+            CHEW_EXTRA_BP,
+            first_fragment.body_color,
+        ));
+    }
+    for (idx, fragment) in fragment_specs.iter().enumerate() {
+        annealed_features.push(duplex_cartoon_feature(
+            format!("assembled_body_{}", fragment.fragment_id),
+            fragment.label.clone(),
+            INSERT_BODY_BP,
+            fragment.body_color,
+        ));
+        annealed_features.push(top_only_cartoon_feature(
+            format!("assembled_{}_right_tail", fragment.fragment_id),
+            format!("{} right-side gap", fragment.label),
+            CHEW_EXTRA_BP,
+            fragment.body_color,
+        ));
+        let overlap_id = if idx + 1 < fragment_specs.len() {
+            format!(
+                "assembled_internal_overlap_{}_{}",
+                fragment.fragment_id,
+                fragment_specs[idx + 1].fragment_id
+            )
+        } else {
+            "assembled_right_terminal_overlap".to_string()
+        };
+        let overlap_label = if idx + 1 < fragment_specs.len() {
+            format!("Internal junction {}", idx + 2)
+        } else {
+            "Right terminal junction".to_string()
+        };
+        annealed_features.push(duplex_cartoon_feature(
+            overlap_id,
+            overlap_label,
+            fragment.right_overlap_bp,
+            fragment.right_overlap_color,
+        ));
+        if let Some(next_fragment) = fragment_specs.get(idx + 1) {
+            annealed_features.push(bottom_only_cartoon_feature(
+                format!("assembled_{}_left_tail", next_fragment.fragment_id),
+                format!("{} left-side gap", next_fragment.label),
+                CHEW_EXTRA_BP,
+                next_fragment.body_color,
+            ));
+        } else {
+            annealed_features.push(bottom_only_cartoon_feature(
+                "assembled_dest_right_tail",
+                "Right-side gap to be filled",
+                CHEW_EXTRA_BP,
+                body_palette[0],
+            ));
+        }
+    }
+    annealed_features.push(duplex_cartoon_feature(
         "assembled_dest_right_body",
         "Destination right arm",
         DEST_ARM_BODY_BP,
         body_palette[0],
     ));
 
+    let mut extended_features = vec![duplex_cartoon_feature_with_nicks(
+        "assembled_dest_left_body",
+        "Destination left arm",
+        DEST_ARM_BODY_BP,
+        body_palette[0],
+        false,
+        !fragment_specs.is_empty(),
+    )];
+    if let Some(first_fragment) = fragment_specs.first() {
+        extended_features.push(duplex_cartoon_feature(
+            "assembled_dest_left_tail",
+            "Left repaired gap",
+            CHEW_EXTRA_BP,
+            body_palette[0],
+        ));
+        extended_features.push(duplex_cartoon_feature(
+            "assembled_left_terminal_overlap",
+            "Left terminal junction",
+            left_terminal_bp,
+            overlap_palette[0],
+        ));
+        extended_features.push(duplex_cartoon_feature_with_nicks(
+            format!("assembled_{}_left_tail", first_fragment.fragment_id),
+            format!("{} left repaired gap", first_fragment.label),
+            CHEW_EXTRA_BP,
+            first_fragment.body_color,
+            true,
+            false,
+        ));
+    }
+    for (idx, fragment) in fragment_specs.iter().enumerate() {
+        extended_features.push(duplex_cartoon_feature_with_nicks(
+            format!("assembled_body_{}", fragment.fragment_id),
+            fragment.label.clone(),
+            INSERT_BODY_BP,
+            fragment.body_color,
+            false,
+            true,
+        ));
+        extended_features.push(duplex_cartoon_feature(
+            format!("assembled_{}_right_tail", fragment.fragment_id),
+            format!("{} right repaired gap", fragment.label),
+            CHEW_EXTRA_BP,
+            fragment.body_color,
+        ));
+        let overlap_id = if idx + 1 < fragment_specs.len() {
+            format!(
+                "assembled_internal_overlap_{}_{}",
+                fragment.fragment_id,
+                fragment_specs[idx + 1].fragment_id
+            )
+        } else {
+            "assembled_right_terminal_overlap".to_string()
+        };
+        let overlap_label = if idx + 1 < fragment_specs.len() {
+            format!("Internal junction {}", idx + 2)
+        } else {
+            "Right terminal junction".to_string()
+        };
+        extended_features.push(duplex_cartoon_feature(
+            overlap_id,
+            overlap_label,
+            fragment.right_overlap_bp,
+            fragment.right_overlap_color,
+        ));
+        if let Some(next_fragment) = fragment_specs.get(idx + 1) {
+            extended_features.push(duplex_cartoon_feature_with_nicks(
+                format!("assembled_{}_left_tail", next_fragment.fragment_id),
+                format!("{} left repaired gap", next_fragment.label),
+                CHEW_EXTRA_BP,
+                next_fragment.body_color,
+                true,
+                false,
+            ));
+        } else {
+            extended_features.push(duplex_cartoon_feature_with_nicks(
+                "assembled_dest_right_tail",
+                "Right repaired gap",
+                CHEW_EXTRA_BP,
+                body_palette[0],
+                true,
+                false,
+            ));
+        }
+    }
+    extended_features.push(duplex_cartoon_feature(
+        "assembled_dest_right_body",
+        "Destination right arm",
+        DEST_ARM_BODY_BP,
+        body_palette[0],
+    ));
+
+    let mut sealed_features = Vec::with_capacity(extended_features.len());
+    for feature in &extended_features {
+        sealed_features.push(duplex_cartoon_feature(
+            feature.id.clone(),
+            feature.label.clone(),
+            feature.length_bp,
+            feature.color_hex.clone(),
+        ));
+    }
+
     let assembled_molecule = DnaMoleculeCartoon {
         id: "assembled_chain".to_string(),
         label: "Assembled chain".to_string(),
         topology: DnaTopologyCartoon::Linear,
-        features: assembled_features.clone(),
+        features: annealed_features,
+        left_end: Some(DnaEndStyle::Continuation),
+        right_end: Some(DnaEndStyle::Continuation),
+    };
+    let extended_molecule = DnaMoleculeCartoon {
+        id: "extended_chain".to_string(),
+        label: "Extended chain".to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features: extended_features,
+        left_end: Some(DnaEndStyle::Continuation),
+        right_end: Some(DnaEndStyle::Continuation),
+    };
+    let sealed_molecule = DnaMoleculeCartoon {
+        id: "sealed_chain".to_string(),
+        label: "Sealed chain".to_string(),
+        topology: DnaTopologyCartoon::Linear,
+        features: sealed_features,
         left_end: Some(DnaEndStyle::Continuation),
         right_end: Some(DnaEndStyle::Continuation),
     };
@@ -3838,16 +4181,16 @@ fn build_multi_insert_cartoon_spec(
             ProtocolCartoonEvent {
                 id: "extend".to_string(),
                 title: "Extend".to_string(),
-                caption: "DNA polymerase fills the remaining single-stranded gaps across the assembled chain.".to_string(),
+                caption: "DNA polymerase fills the remaining single-stranded gaps across the assembled chain, leaving one nick on each repaired strand segment.".to_string(),
                 action: ProtocolCartoonAction::Extend,
-                molecules: vec![assembled_molecule.clone()],
+                molecules: vec![extended_molecule],
             },
             ProtocolCartoonEvent {
                 id: "seal".to_string(),
                 title: "Seal".to_string(),
                 caption: "DNA ligase seals the remaining nicks, leaving one continuous destination-insert product.".to_string(),
                 action: ProtocolCartoonAction::Seal,
-                molecules: vec![assembled_molecule],
+                molecules: vec![sealed_molecule],
             },
         ],
     }
@@ -4290,6 +4633,74 @@ mod tests {
             "gibson.multi_insert_dynamic"
         );
         assert!(preview.cartoon.resolved_spec.is_some());
+    }
+
+    #[test]
+    fn preview_multi_insert_cartoon_preserves_chew_back_and_fill_geometry() {
+        let engine = test_engine_with_sequences();
+        let preview =
+            preview_gibson_assembly_plan(&engine, &multi_insert_plan()).expect("preview output");
+        let spec = preview
+            .cartoon
+            .resolved_spec
+            .as_ref()
+            .expect("resolved multi-insert cartoon spec");
+
+        let chew_back = spec
+            .events
+            .iter()
+            .find(|event| event.id == "chew_back")
+            .expect("chew-back event");
+        assert_eq!(chew_back.molecules.len(), 4);
+
+        let left_arm = chew_back
+            .molecules
+            .iter()
+            .find(|molecule| molecule.id == "destination_left_chewed")
+            .expect("left arm");
+        assert_eq!(left_arm.features[1].top_length_bp, 8);
+        assert_eq!(left_arm.features[1].bottom_length_bp, 0);
+        assert!(left_arm.features[2].top_length_bp > 0);
+        assert_eq!(left_arm.features[2].bottom_length_bp, 0);
+
+        let first_insert = chew_back
+            .molecules
+            .iter()
+            .find(|molecule| molecule.id == "insert_x_chewed")
+            .expect("first insert");
+        assert_eq!(first_insert.features[0].top_length_bp, 0);
+        assert!(first_insert.features[0].bottom_length_bp > 0);
+        assert_eq!(first_insert.features[1].top_length_bp, 0);
+        assert_eq!(first_insert.features[1].bottom_length_bp, 8);
+        assert_eq!(first_insert.features[3].top_length_bp, 8);
+        assert_eq!(first_insert.features[3].bottom_length_bp, 0);
+        assert!(first_insert.features[4].top_length_bp > 0);
+        assert_eq!(first_insert.features[4].bottom_length_bp, 0);
+
+        let right_arm = chew_back
+            .molecules
+            .iter()
+            .find(|molecule| molecule.id == "destination_right_chewed")
+            .expect("right arm");
+        assert_eq!(right_arm.features[0].top_length_bp, 0);
+        assert!(right_arm.features[0].bottom_length_bp > 0);
+        assert_eq!(right_arm.features[1].top_length_bp, 0);
+        assert_eq!(right_arm.features[1].bottom_length_bp, 8);
+
+        let anneal = spec
+            .events
+            .iter()
+            .find(|event| event.id == "anneal")
+            .expect("anneal event");
+        let assembled = anneal.molecules.first().expect("assembled molecule");
+        assert!(assembled
+            .features
+            .iter()
+            .any(|feature| feature.top_length_bp > 0 && feature.bottom_length_bp == 0));
+        assert!(assembled
+            .features
+            .iter()
+            .any(|feature| feature.top_length_bp == 0 && feature.bottom_length_bp > 0));
     }
 
     #[test]
