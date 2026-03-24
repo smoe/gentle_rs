@@ -777,6 +777,7 @@ cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
 cargo run --bin gentle_cli -- protocol-cartoon list
 cargo run --bin gentle_cli -- protocol-cartoon render-svg gibson.two_fragment gibson.protocol.svg
+cargo run --bin gentle_cli -- protocol-cartoon render-svg pcr.assay.pair pcr_pair.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/protocol_cartoon/demo_template.json
 cargo run --bin gentle_cli -- protocol-cartoon render-with-bindings docs/examples/protocol_cartoon/demo_template.json docs/examples/protocol_cartoon/demo_bindings.json demo.bound.protocol.svg
@@ -1216,7 +1217,9 @@ Rendering export commands:
   - Lists deterministic protocol-cartoon IDs currently supported by the engine.
 - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
   - Calls engine operation `RenderProtocolCartoonSvg`.
-  - Current baseline protocol ID: `gibson.two_fragment`.
+  - Built-in protocol IDs currently include `gibson.two_fragment`,
+    `gibson.single_insert_dual_junction`, `pcr.assay.pair`, and
+    `pcr.assay.pair.no_product`.
 - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
   - Calls engine operation `RenderProtocolCartoonTemplateSvg`.
   - Loads template JSON schema `gentle.protocol_cartoon_template.v1` and resolves

@@ -1454,7 +1454,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `RenderProtocolCartoonSvg` semantics:
 
 - Inputs:
-  - `protocol` (currently supported baseline: `gibson.two_fragment`)
+  - `protocol` (built-in ids now include `gibson.two_fragment`,
+    `gibson.single_insert_dual_junction`, `pcr.assay.pair`, and
+    `pcr.assay.pair.no_product`)
   - `path` (output SVG)
 - Behavior:
   - renders a deterministic protocol-cartoon strip through one engine route,
@@ -1529,7 +1531,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `ExportProtocolCartoonTemplateJson` semantics:
 
 - Inputs:
-  - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`)
+  - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`
+    or `pcr.assay.pair`)
   - `path` (output JSON file)
 - Behavior:
   - materializes the canonical built-in template
@@ -1612,9 +1615,13 @@ Protocol-cartoon family growth direction (planned):
   - amplification event
   - product/artifact event (amplicon, extracted copy, report, export, or
     explicit no-accepted-pairs outcome)
-- Planned PCR modality adaptation should happen through one future
+- Implemented PCR baseline in the `pcr.assay.*` family:
+  - `pcr.assay.pair`: base strip with one selected ROI, one assay-setup lane,
+    one amplification step, and one amplicon/report outcome
+  - `pcr.assay.pair.no_product`: same family with an explicit report-only
+    terminal state when no accepted primer pair yields a product
+- Planned PCR modality adaptation should continue through the same
   `pcr.assay.*` protocol-cartoon family:
-  - pair-PCR: base strip with one primer pair and one amplicon product
   - qPCR: same base strip with probe-bearing assay bindings and quantitative
     readout labels/badges
   - nested PCR: same family with two amplification stages (outer -> inner)
@@ -1626,9 +1633,8 @@ Protocol-cartoon family growth direction (planned):
   - empty/failure outcomes: report/artifact nodes can render without product
     nodes when no accepted assay is produced
 - Recommended rollout order:
-  - first ship the smallest reusable pair-PCR template/binding baseline
-  - extend that family to qPCR and queued batch PCR without changing renderer
-    semantics
+  - extend the shipped pair-PCR baseline to qPCR and queued batch PCR without
+    changing renderer semantics
   - add nested, inverse, long-range, and multiplex variants as further
     template/binding expansions
 - Naming/design rule:

@@ -15,6 +15,10 @@ pub enum ProtocolCartoonKind {
     GibsonTwoFragment,
     #[serde(rename = "gibson.single_insert_dual_junction")]
     GibsonSingleInsertDualJunction,
+    #[serde(rename = "pcr.assay.pair")]
+    PcrAssayPair,
+    #[serde(rename = "pcr.assay.pair.no_product")]
+    PcrAssayPairNoProduct,
 }
 
 impl ProtocolCartoonKind {
@@ -23,6 +27,8 @@ impl ProtocolCartoonKind {
         match self {
             Self::GibsonTwoFragment => "gibson.two_fragment",
             Self::GibsonSingleInsertDualJunction => "gibson.single_insert_dual_junction",
+            Self::PcrAssayPair => "pcr.assay.pair",
+            Self::PcrAssayPairNoProduct => "pcr.assay.pair.no_product",
         }
     }
 
@@ -33,6 +39,8 @@ impl ProtocolCartoonKind {
             Self::GibsonSingleInsertDualJunction => {
                 "Gibson Assembly (single-insert dual-junction mechanism)"
             }
+            Self::PcrAssayPair => "PCR Assay (pair-primer baseline)",
+            Self::PcrAssayPairNoProduct => "PCR Assay (report-only no-product)",
         }
     }
 
@@ -44,6 +52,12 @@ impl ProtocolCartoonKind {
             }
             Self::GibsonSingleInsertDualJunction => {
                 "Single-insert Gibson cartoon showing both destination-insert junctions explicitly"
+            }
+            Self::PcrAssayPair => {
+                "Mechanism-first pair-PCR strip: template context, ROI, assay setup, amplification, and amplicon/report outcome"
+            }
+            Self::PcrAssayPairNoProduct => {
+                "Pair-PCR report-only strip showing a selected ROI and failed/no-product assay outcome without literal primer glyphs"
             }
         }
     }
@@ -61,6 +75,13 @@ impl ProtocolCartoonKind {
             | "gibson.destination_first_single_insert" => {
                 Some(Self::GibsonSingleInsertDualJunction)
             }
+            "pcr.assay.pair" | "pcr.assay" | "pcr.pair" | "pcr_pair" | "pcr" => {
+                Some(Self::PcrAssayPair)
+            }
+            "pcr.assay.pair.no_product"
+            | "pcr.assay.pair.report_only"
+            | "pcr.assay.report_only"
+            | "pcr_pair_no_product" => Some(Self::PcrAssayPairNoProduct),
             _ => None,
         }
     }
@@ -70,6 +91,8 @@ impl ProtocolCartoonKind {
         vec![
             Self::GibsonTwoFragment,
             Self::GibsonSingleInsertDualJunction,
+            Self::PcrAssayPair,
+            Self::PcrAssayPairNoProduct,
         ]
     }
 }
@@ -936,6 +959,8 @@ pub fn protocol_cartoon_template_for_kind(kind: &ProtocolCartoonKind) -> Protoco
         ProtocolCartoonKind::GibsonSingleInsertDualJunction => {
             gibson_single_insert_dual_junction_template()
         }
+        ProtocolCartoonKind::PcrAssayPair => pcr_assay_pair_template(),
+        ProtocolCartoonKind::PcrAssayPairNoProduct => pcr_assay_pair_no_product_template(),
     }
 }
 
@@ -1711,9 +1736,7 @@ fn bottom_only_feature_block(
     )
 }
 
-// Reserved for upcoming PCR/cartoon families where one duplex block needs
-// different top/bottom strand colors without introducing a feature break.
-#[allow(dead_code)]
+#[cfg(test)]
 fn hybrid_feature_block(
     id: &str,
     label: &str,
@@ -1826,6 +1849,303 @@ fn gibson_two_fragment_template() -> ProtocolCartoonTemplate {
 
 fn gibson_single_insert_dual_junction_template() -> ProtocolCartoonTemplate {
     protocol_cartoon_template_from_spec(gibson_single_insert_dual_junction_spec())
+}
+
+fn pcr_assay_pair_template() -> ProtocolCartoonTemplate {
+    protocol_cartoon_template_from_spec(pcr_assay_pair_spec())
+}
+
+fn pcr_assay_pair_no_product_template() -> ProtocolCartoonTemplate {
+    protocol_cartoon_template_from_spec(pcr_assay_pair_no_product_spec())
+}
+
+fn pcr_template_context_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    roi_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    roi_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            duplex_feature_block("roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
+    )
+}
+
+fn pcr_roi_molecule(id: &str, label: &str, roi_bp: usize, roi_color: &str) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![duplex_feature_block(
+            "roi",
+            "Selected ROI",
+            roi_bp,
+            roi_color,
+        )],
+        DnaEndStyle::Blunt,
+        DnaEndStyle::Blunt,
+    )
+}
+
+fn pcr_amplicon_molecule(
+    id: &str,
+    label: &str,
+    flank_bp: usize,
+    roi_bp: usize,
+    flank_color: &str,
+    roi_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "amplicon_left_flank",
+                "Assay-defined flank",
+                flank_bp,
+                flank_color,
+            ),
+            duplex_feature_block("amplicon_roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "amplicon_right_flank",
+                "Assay-defined flank",
+                flank_bp,
+                flank_color,
+            ),
+        ],
+        DnaEndStyle::Blunt,
+        DnaEndStyle::Blunt,
+    )
+}
+
+fn pcr_assay_pair_spec() -> ProtocolCartoonSpec {
+    const TEMPLATE_LEFT_BP: usize = 90;
+    const ROI_BP: usize = 120;
+    const TEMPLATE_RIGHT_BP: usize = 90;
+    const AMPLICON_FLANK_BP: usize = 24;
+
+    let template_color = "#c9b37e";
+    let roi_color = "#2a9d8f";
+    let flank_color = "#e07a5f";
+
+    ProtocolCartoonSpec {
+        id: ProtocolCartoonKind::PcrAssayPair.id().to_string(),
+        title: "GENtle Protocol Cartoon: PCR Assay (pair-primer baseline)".to_string(),
+        summary: "Five-step pair-PCR strip from source template to selected ROI, assay setup, amplification, and amplicon/report outcome.".to_string(),
+        events: vec![
+            event_block(
+                "context",
+                "Context",
+                "A source template contains one user-selected ROI inside broader sequence context.",
+                ProtocolCartoonAction::Context,
+                vec![pcr_template_context_molecule(
+                    "template_context",
+                    "Source template",
+                    TEMPLATE_LEFT_BP,
+                    ROI_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    roi_color,
+                )],
+            ),
+            event_block(
+                "roi",
+                "ROI",
+                "The assay narrows to the selected region of interest; the same ROI can also be extracted as a copy artifact elsewhere in the workflow.",
+                ProtocolCartoonAction::Custom {
+                    label: "ROI".to_string(),
+                },
+                vec![
+                    pcr_template_context_molecule(
+                        "template_context_targeted",
+                        "Template with highlighted ROI",
+                        TEMPLATE_LEFT_BP,
+                        ROI_BP,
+                        TEMPLATE_RIGHT_BP,
+                        template_color,
+                        roi_color,
+                    ),
+                    pcr_roi_molecule("selected_roi", "Selected ROI", ROI_BP, roi_color),
+                ],
+            ),
+            event_block(
+                "assay_setup",
+                "Assay Setup",
+                "One primer pair is planned to bracket the ROI with short assay-defined flanks; primer sequences remain inspectable in the report rather than the cartoon itself.",
+                ProtocolCartoonAction::Custom {
+                    label: "Assay Setup".to_string(),
+                },
+                vec![pcr_amplicon_molecule(
+                    "planned_amplicon",
+                    "Planned amplicon",
+                    AMPLICON_FLANK_BP,
+                    ROI_BP,
+                    flank_color,
+                    roi_color,
+                )],
+            ),
+            event_block(
+                "amplify",
+                "Amplify",
+                "Thermocycling enriches the bracketed segment, turning the planned ROI into one amplicon product class.",
+                ProtocolCartoonAction::Custom {
+                    label: "Amplify".to_string(),
+                },
+                vec![
+                    pcr_template_context_molecule(
+                        "template_source_during_pcr",
+                        "Template source",
+                        TEMPLATE_LEFT_BP,
+                        ROI_BP,
+                        TEMPLATE_RIGHT_BP,
+                        template_color,
+                        roi_color,
+                    ),
+                    pcr_amplicon_molecule(
+                        "amplicon_class",
+                        "Amplicon class",
+                        AMPLICON_FLANK_BP,
+                        ROI_BP,
+                        flank_color,
+                        roi_color,
+                    ),
+                ],
+            ),
+            event_block(
+                "product",
+                "Product",
+                "The accepted primer pair yields one inspectable amplicon artifact and one linked report or primer-pair container downstream.",
+                ProtocolCartoonAction::Custom {
+                    label: "Product".to_string(),
+                },
+                vec![pcr_amplicon_molecule(
+                    "accepted_amplicon",
+                    "Accepted amplicon",
+                    AMPLICON_FLANK_BP,
+                    ROI_BP,
+                    flank_color,
+                    roi_color,
+                )],
+            ),
+        ],
+    }
+}
+
+fn pcr_assay_pair_no_product_spec() -> ProtocolCartoonSpec {
+    const TEMPLATE_LEFT_BP: usize = 90;
+    const ROI_BP: usize = 120;
+    const TEMPLATE_RIGHT_BP: usize = 90;
+    const AMPLICON_FLANK_BP: usize = 24;
+
+    let template_color = "#c9b37e";
+    let roi_color = "#2a9d8f";
+    let flank_color = "#e07a5f";
+
+    ProtocolCartoonSpec {
+        id: ProtocolCartoonKind::PcrAssayPairNoProduct.id().to_string(),
+        title: "GENtle Protocol Cartoon: PCR Assay (report-only no-product)".to_string(),
+        summary: "Five-step pair-PCR strip where a defined ROI remains inspectable but no accepted primer pair yields an amplicon product.".to_string(),
+        events: vec![
+            event_block(
+                "context",
+                "Context",
+                "A source template contains one user-selected ROI inside broader sequence context.",
+                ProtocolCartoonAction::Context,
+                vec![pcr_template_context_molecule(
+                    "template_context",
+                    "Source template",
+                    TEMPLATE_LEFT_BP,
+                    ROI_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    roi_color,
+                )],
+            ),
+            event_block(
+                "roi",
+                "ROI",
+                "The selected ROI remains the stable target even when no assay satisfies all constraints.",
+                ProtocolCartoonAction::Custom {
+                    label: "ROI".to_string(),
+                },
+                vec![
+                    pcr_template_context_molecule(
+                        "template_context_targeted",
+                        "Template with highlighted ROI",
+                        TEMPLATE_LEFT_BP,
+                        ROI_BP,
+                        TEMPLATE_RIGHT_BP,
+                        template_color,
+                        roi_color,
+                    ),
+                    pcr_roi_molecule("selected_roi", "Selected ROI", ROI_BP, roi_color),
+                ],
+            ),
+            event_block(
+                "assay_setup",
+                "Assay Setup",
+                "One primer-pair design attempt still brackets the ROI conceptually, but downstream constraint checks can reject every candidate.",
+                ProtocolCartoonAction::Custom {
+                    label: "Assay Setup".to_string(),
+                },
+                vec![pcr_amplicon_molecule(
+                    "planned_amplicon",
+                    "Planned amplicon",
+                    AMPLICON_FLANK_BP,
+                    ROI_BP,
+                    flank_color,
+                    roi_color,
+                )],
+            ),
+            event_block(
+                "review",
+                "Review",
+                "Constraint checks exhaust the candidate space, so the workflow keeps an explanation report even though no accepted primer pair remains.",
+                ProtocolCartoonAction::Custom {
+                    label: "Review".to_string(),
+                },
+                vec![pcr_roi_molecule(
+                    "selected_roi_under_review",
+                    "ROI retained for review",
+                    ROI_BP,
+                    roi_color,
+                )],
+            ),
+            event_block(
+                "report_only",
+                "Report Only",
+                "No amplicon product is emitted; users inspect the retained ROI context and the failure report rather than a product container.",
+                ProtocolCartoonAction::Custom {
+                    label: "Report".to_string(),
+                },
+                vec![pcr_roi_molecule(
+                    "selected_roi_report_only",
+                    "ROI retained for report",
+                    ROI_BP,
+                    roi_color,
+                )],
+            ),
+        ],
+    }
 }
 
 fn gibson_single_insert_dual_junction_spec() -> ProtocolCartoonSpec {
@@ -2862,16 +3182,27 @@ mod tests {
             ProtocolCartoonKind::parse_id("gibson.single_insert_dual_junction"),
             Some(ProtocolCartoonKind::GibsonSingleInsertDualJunction)
         );
+        assert_eq!(
+            ProtocolCartoonKind::parse_id("pcr"),
+            Some(ProtocolCartoonKind::PcrAssayPair)
+        );
+        assert_eq!(
+            ProtocolCartoonKind::parse_id("pcr.assay.pair.no_product"),
+            Some(ProtocolCartoonKind::PcrAssayPairNoProduct)
+        );
         assert!(ProtocolCartoonKind::parse_id("unknown.protocol").is_none());
     }
 
     #[test]
     fn catalog_rows_are_deterministic() {
         let rows = protocol_cartoon_catalog_rows();
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].id, "gibson.two_fragment");
         assert_eq!(rows[1].id, "gibson.single_insert_dual_junction");
+        assert_eq!(rows[2].id, "pcr.assay.pair");
+        assert_eq!(rows[3].id, "pcr.assay.pair.no_product");
         assert!(rows[0].title.contains("Gibson"));
+        assert!(rows[2].title.contains("PCR"));
     }
 
     #[test]
@@ -2880,6 +3211,11 @@ mod tests {
         assert_eq!(template.schema, "gentle.protocol_cartoon_template.v1");
         assert_eq!(template.id, "gibson.two_fragment");
         assert!(!template.events.is_empty());
+
+        let pcr_template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        assert_eq!(pcr_template.schema, "gentle.protocol_cartoon_template.v1");
+        assert_eq!(pcr_template.id, "pcr.assay.pair");
+        assert!(!pcr_template.events.is_empty());
     }
 
     #[test]
@@ -2923,20 +3259,15 @@ mod tests {
             .unwrap_or_else(|| panic!("missing event '{id}'"))
     }
 
-    fn molecule_by_id<'a>(
-        event: &'a ProtocolCartoonEvent,
-        id: &str,
-    ) -> &'a DnaMoleculeCartoon {
-        event.molecules
+    fn molecule_by_id<'a>(event: &'a ProtocolCartoonEvent, id: &str) -> &'a DnaMoleculeCartoon {
+        event
+            .molecules
             .iter()
             .find(|molecule| molecule.id == id)
             .unwrap_or_else(|| panic!("missing molecule '{id}'"))
     }
 
-    fn feature_by_id<'a>(
-        molecule: &'a DnaMoleculeCartoon,
-        id: &str,
-    ) -> &'a DnaFeatureCartoon {
+    fn feature_by_id<'a>(molecule: &'a DnaMoleculeCartoon, id: &str) -> &'a DnaFeatureCartoon {
         molecule
             .features
             .iter()
@@ -2996,28 +3327,39 @@ mod tests {
 
         let expected_dest_left_tail_bp = feature_by_id(extended, "dest_left_tail").length_bp;
         let expected_insert_left_tail_bp = feature_by_id(extended, "insert_left_tail").length_bp;
-        let expected_insert_right_tail_bp =
-            feature_by_id(extended, "insert_right_tail").length_bp;
+        let expected_insert_right_tail_bp = feature_by_id(extended, "insert_right_tail").length_bp;
         let expected_dest_right_tail_bp = feature_by_id(extended, "dest_right_tail").length_bp;
 
         let dest_left_tail = feature_by_id(left_arm, "dest_left_tail_exposed");
         assert_eq!(
-            (dest_left_tail.top_length_bp, dest_left_tail.bottom_length_bp),
+            (
+                dest_left_tail.top_length_bp,
+                dest_left_tail.bottom_length_bp
+            ),
             (expected_dest_left_tail_bp, 0)
         );
         let insert_left_tail = feature_by_id(insert, "insert_left_tail_exposed");
         assert_eq!(
-            (insert_left_tail.top_length_bp, insert_left_tail.bottom_length_bp),
+            (
+                insert_left_tail.top_length_bp,
+                insert_left_tail.bottom_length_bp
+            ),
             (0, expected_insert_left_tail_bp)
         );
         let insert_right_tail = feature_by_id(insert, "insert_right_tail_exposed");
         assert_eq!(
-            (insert_right_tail.top_length_bp, insert_right_tail.bottom_length_bp),
+            (
+                insert_right_tail.top_length_bp,
+                insert_right_tail.bottom_length_bp
+            ),
             (expected_insert_right_tail_bp, 0)
         );
         let dest_right_tail = feature_by_id(right_arm, "dest_right_tail_exposed");
         assert_eq!(
-            (dest_right_tail.top_length_bp, dest_right_tail.bottom_length_bp),
+            (
+                dest_right_tail.top_length_bp,
+                dest_right_tail.bottom_length_bp
+            ),
             (0, expected_dest_right_tail_bp)
         );
     }
@@ -3031,29 +3373,85 @@ mod tests {
 
         let expected_dest_left_tail_bp = feature_by_id(extend, "dest_left_tail").length_bp;
         let expected_insert_left_tail_bp = feature_by_id(extend, "insert_left_tail").length_bp;
-        let expected_insert_right_tail_bp =
-            feature_by_id(extend, "insert_right_tail").length_bp;
+        let expected_insert_right_tail_bp = feature_by_id(extend, "insert_right_tail").length_bp;
         let expected_dest_right_tail_bp = feature_by_id(extend, "dest_right_tail").length_bp;
 
         let dest_left_tail = feature_by_id(anneal, "dest_left_tail");
         assert_eq!(
-            (dest_left_tail.top_length_bp, dest_left_tail.bottom_length_bp),
+            (
+                dest_left_tail.top_length_bp,
+                dest_left_tail.bottom_length_bp
+            ),
             (expected_dest_left_tail_bp, 0)
         );
         let insert_left_tail = feature_by_id(anneal, "insert_left_tail");
         assert_eq!(
-            (insert_left_tail.top_length_bp, insert_left_tail.bottom_length_bp),
+            (
+                insert_left_tail.top_length_bp,
+                insert_left_tail.bottom_length_bp
+            ),
             (0, expected_insert_left_tail_bp)
         );
         let insert_right_tail = feature_by_id(anneal, "insert_right_tail");
         assert_eq!(
-            (insert_right_tail.top_length_bp, insert_right_tail.bottom_length_bp),
+            (
+                insert_right_tail.top_length_bp,
+                insert_right_tail.bottom_length_bp
+            ),
             (expected_insert_right_tail_bp, 0)
         );
         let dest_right_tail = feature_by_id(anneal, "dest_right_tail");
         assert_eq!(
-            (dest_right_tail.top_length_bp, dest_right_tail.bottom_length_bp),
+            (
+                dest_right_tail.top_length_bp,
+                dest_right_tail.bottom_length_bp
+            ),
             (0, expected_dest_right_tail_bp)
+        );
+    }
+
+    #[test]
+    fn pcr_pair_spec_is_event_sequence() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        assert_eq!(spec.events.len(), 5);
+        assert_eq!(spec.events[0].action, ProtocolCartoonAction::Context);
+        assert_eq!(spec.events[2].title, "Assay Setup");
+        assert_eq!(spec.events[4].title, "Product");
+    }
+
+    #[test]
+    fn pcr_pair_spec_highlights_roi_and_final_amplicon() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        let context = &spec.events[0].molecules[0];
+        let product = &spec.events[4].molecules[0];
+
+        assert!(context.features.iter().any(|feature| feature.id == "roi"));
+        assert!(
+            product
+                .features
+                .iter()
+                .any(|feature| feature.id == "amplicon_roi")
+        );
+        assert!(
+            product
+                .features
+                .iter()
+                .any(|feature| feature.id == "amplicon_left_flank")
+        );
+    }
+
+    #[test]
+    fn pcr_pair_no_product_finishes_with_report_only_context() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
+        let final_event = &spec.events[4];
+
+        assert_eq!(final_event.title, "Report Only");
+        assert!(final_event.caption.contains("No amplicon product"));
+        assert!(
+            !final_event.molecules[0]
+                .features
+                .iter()
+                .any(|feature| feature.id.contains("amplicon"))
         );
     }
 
@@ -3178,6 +3576,23 @@ mod tests {
         assert!(svg.contains("Destination right arm"));
         assert!(svg.contains("Annealed intermediate"));
         assert!(svg.contains("Sealed product"));
+    }
+
+    #[test]
+    fn render_pcr_pair_svg_contains_expected_labels() {
+        let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayPair);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("PCR Assay"));
+        assert!(svg.contains("Selected ROI"));
+        assert!(svg.contains("Accepted amplicon"));
+    }
+
+    #[test]
+    fn render_pcr_report_only_svg_contains_expected_labels() {
+        let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayPairNoProduct);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Report Only"));
+        assert!(svg.contains("ROI retained for report"));
     }
 
     #[test]

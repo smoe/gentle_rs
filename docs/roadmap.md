@@ -322,7 +322,11 @@ order. Durable architecture constraints and decisions remain in
     - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
     - command surface intentionally stays canonical under
       `protocol-cartoon ...` without extra aliases
-  - first shipped protocol id: `gibson.two_fragment`
+  - shipped built-in protocol ids now include:
+    - `gibson.two_fragment`
+    - `gibson.single_insert_dual_junction`
+    - `pcr.assay.pair`
+    - `pcr.assay.pair.no_product`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence
     - event payload = one or more DNA molecules
@@ -355,9 +359,12 @@ order. Durable architecture constraints and decisions remain in
     - linear molecule rows with deterministic end styles
     - event rows reused across Gibson variants and intended for future PCR
       variants
-  - next protocol-cartoon family target: PCR assays through one future
-    `pcr.assay.*` family covering pair-PCR first, then qPCR, batch, nested,
-    and inverse variants through the same template/binding abstraction
+  - PCR-assay family baseline is now shipped through `pcr.assay.*`:
+    - `pcr.assay.pair`
+    - `pcr.assay.pair.no_product`
+  - next protocol-cartoon family expansion for PCR:
+    - qPCR, batch, nested, and inverse variants through the same
+      template/binding abstraction
 - Top-level README showcase expansion is now underway:
   - shipped showcase figures now cover distinct GENtle usage modes:
     - built-in Gibson protocol cartoon
@@ -1788,14 +1795,14 @@ Repeated multi-tool gaps to prioritize:
      - optional Primer3 backend selection (`auto|internal|primer3`) with
        deterministic fallback and backend provenance in reports
    - next:
-     - add shared PCR-assay protocol-cartoon family on top of the existing
-       template/binding renderer and shared figure building blocks:
-       - pair-PCR baseline first
+     - extend the shipped shared PCR-assay protocol-cartoon family on top of
+       the existing template/binding renderer and shared figure building
+       blocks:
        - qPCR, batch ROI queue, and nested-PCR extensions through bindings,
          repeated events/molecules, and shared blocks rather than new renderer
          semantics
-       - explicit no-product/report-only cartoon state for failed or empty
-         assay runs
+       - additional explicit artifact lanes once the renderer grows beyond
+         DNA-only rows
      - add nested-PCR primer design workflow contracts:
        - outer + inner primer-pair design in one deterministic request/report
        - explicit nesting constraints (inner amplicon must lie within outer
