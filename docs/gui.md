@@ -363,6 +363,12 @@ Feature tree grouping:
       before seed scoring (cDNA-oriented mode); minor interruptions in the
       head are tolerated
     - disabled: direct-RNA mode (reads are scored as provided)
+  - seed-hash preview now includes a transcript-template audit section showing
+    the exact transcript-oriented sequences used for hash generation:
+    - minus-strand transcript templates are shown after exon concatenation and
+      reverse-complement normalization from genomic orientation
+    - hovering indexed seed dots reports the local hash window within that
+      transcript-oriented template
   - advanced settings include `poly-T head min T-bp` (`poly_t_prefix_min_bp`):
     minimum T support required in the 5' detection window for the cDNA
     auto-flip gate
@@ -490,6 +496,12 @@ Feature tree grouping:
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time
+  - the top-read area is explicitly a live preview, not the whole retained
+    report; saved-report selection helpers now let you:
+    - select all reads tied at maximal seed score
+    - select all reads in the rightmost non-empty score-density bin
+    - keep those selections active even when some rows fall outside the
+      top-preview cap
   - `Evaluate Top Hits (phase-2)` in the same panel runs
     `AlignRnaReadReport` immediately with the current `align selection`
     setting, so retained top rows gain mapping metrics without leaving the
@@ -510,11 +522,20 @@ Feature tree grouping:
     - `Copy highlighted FASTA` for the active highlighted row
     - `Ctrl/Cmd+C` copies selected rows (or highlighted row fallback)
     - row context menu (`right-click`) includes `Copy FASTA` actions
+    - these copy paths now prefer the saved report when available, so selected
+      rows beyond the top-preview cap are still included
+  - `Dotplots` menu in the top-read preview:
+    - `Export dotplot for highlighted read...`
+    - `Export dotplots for selected reads...`
+    - these create ordinary project read sequences through the engine and then
+      reuse the standard pairwise dotplot export path against the current
+      splicing ROI
   - export actions include:
     - `Export Retained Top Reads (FASTA)...`
     - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows)
     - `Export Exon Abundance (TSV)...` (exon/transition abundance rows)
-    - `Export Score Density (SVG)...` (uses current `Linear`/`Log` scale toggle)
+    - `Export Score Density (SVG)...` (uses current `Linear`/`Log` scale toggle
+      and now keeps the compact per-bin count labels seen in the live plot)
     - `Export RNA sample sheet ...` (multi-report cohort summary)
   - top-read ranking now includes weighted seed score (inverse seed-occurrence
     weighting) to reduce dominance from repetitive low-complexity seeds

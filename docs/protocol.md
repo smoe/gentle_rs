@@ -2185,6 +2185,14 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - export schema: `gentle.rna_read_alignment_dotplot_svg_export.v1`
   - output: SVG scatter of query coverage vs identity for aligned hits with
     score-colored points and report-config threshold guide.
+- Read-sequence materialization:
+  - operation:
+    `MaterializeRnaReadHitSequences { report_id, selection, selected_record_indices?, output_prefix? }`
+  - output:
+    - creates one ordinary project sequence per selected retained RNA-read hit
+    - exact `selected_record_indices` takes precedence over coarse `selection`
+    - intended for downstream dotplots/manual inspection of saved-report
+      outliers without re-reading the FASTA input
 - `rna-reads export-hits-fasta` header extensions:
   - `exon_path_tx=<transcript_id|none>`
   - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent

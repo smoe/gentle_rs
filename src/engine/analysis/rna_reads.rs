@@ -1066,6 +1066,26 @@ impl GentleEngine {
             .replace('\'', "&apos;")
     }
 
+    fn format_score_density_count_compact(count: u64) -> String {
+        if count >= 1_000_000 {
+            let value = count as f64 / 1_000_000.0;
+            if value >= 10.0 {
+                format!("{value:.0}M")
+            } else {
+                format!("{value:.1}M")
+            }
+        } else if count >= 1_000 {
+            let value = count as f64 / 1_000.0;
+            if value >= 10.0 {
+                format!("{value:.0}k")
+            } else {
+                format!("{value:.1}k")
+            }
+        } else {
+            count.to_string()
+        }
+    }
+
     pub(super) fn render_rna_read_score_density_svg_text(
         report: &RnaReadInterpretationReport,
         bins: &[u64],
@@ -1156,6 +1176,23 @@ impl GentleEngine {
                 w = (x1 - x0).max(0.2),
                 h = (axis_bottom - y).max(0.2)
             ));
+            if (x1 - x0) >= 22.0 {
+                let label =
+                    Self::escape_svg_text(&Self::format_score_density_count_compact(*count));
+                if bar_height >= 12.0 {
+                    svg.push_str(&format!(
+                        "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8\" fill=\"#071811\">{label}</text>\n",
+                        x = (x0 + x1) * 0.5,
+                        y = (y + 8.0).max(plot_top + 8.0),
+                    ));
+                } else {
+                    svg.push_str(&format!(
+                        "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8\" fill=\"#121212\">{label}</text>\n",
+                        x = (x0 + x1) * 0.5,
+                        y = (y - 2.0).max(plot_top + 8.0),
+                    ));
+                }
+            }
         }
         svg.push_str(&format!(
             "<line x1=\"{x1:.1}\" y1=\"{y:.1}\" x2=\"{x2:.1}\" y2=\"{y:.1}\" stroke=\"#6b7280\" stroke-width=\"1\"/>\n",
@@ -1427,6 +1464,33 @@ impl GentleEngine {
         scope: SplicingScopePreset,
         seed_filter: &RnaReadSeedFilterConfig,
     ) -> Result<Vec<RnaSeedHashCatalogEntry>, EngineError> {
+        let templates =
+            self.collect_rna_seed_templates(seq_id, seed_feature_id, scope, seed_filter)?;
+        Ok(Self::collect_rna_seed_hash_catalog_rows(
+            &templates,
+            seed_filter.kmer_len,
+        ))
+    }
+
+    pub fn collect_rna_seed_hash_template_audit(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Result<Vec<RnaSeedHashTemplateAuditEntry>, EngineError> {
+        let templates =
+            self.collect_rna_seed_templates(seq_id, seed_feature_id, scope, seed_filter)?;
+        Ok(Self::collect_rna_seed_hash_template_audit_rows(&templates))
+    }
+
+    pub(super) fn collect_rna_seed_templates(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Result<Vec<SplicingTranscriptTemplate>, EngineError> {
         if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -1458,10 +1522,7 @@ impl GentleEngine {
                 ),
             });
         }
-        Ok(Self::collect_rna_seed_hash_catalog_rows(
-            &templates,
-            seed_filter.kmer_len,
-        ))
+        Ok(templates)
     }
 
     pub fn export_rna_seed_hash_catalog(
@@ -1573,6 +1634,40 @@ impl GentleEngine {
                         .cmp(&right.template_offset_0based)
                 })
                 .then_with(|| left.seed_bits.cmp(&right.seed_bits))
+        });
+        rows
+    }
+
+    pub(super) fn collect_rna_seed_hash_template_audit_rows(
+        templates: &[SplicingTranscriptTemplate],
+    ) -> Vec<RnaSeedHashTemplateAuditEntry> {
+        let mut rows = templates
+            .iter()
+            .map(|template| RnaSeedHashTemplateAuditEntry {
+                transcript_feature_id: template.transcript_feature_id,
+                transcript_id: template.transcript_id.clone(),
+                transcript_label: template.transcript_label.clone(),
+                strand: template.strand.clone(),
+                template_sequence: String::from_utf8_lossy(&template.sequence).to_string(),
+                template_length_bp: template.sequence.len(),
+                template_first_genomic_pos_1based: template
+                    .genomic_positions_1based
+                    .first()
+                    .copied()
+                    .unwrap_or(0),
+                template_last_genomic_pos_1based: template
+                    .genomic_positions_1based
+                    .last()
+                    .copied()
+                    .unwrap_or(0),
+                reverse_complemented_from_genome: template.strand.trim() == "-",
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.strand
+                .cmp(&right.strand)
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+                .then_with(|| left.transcript_feature_id.cmp(&right.transcript_feature_id))
         });
         rows
     }
@@ -5950,5 +6045,71 @@ impl GentleEngine {
             origin_class_counts,
             score_density_bins,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{dna_sequence::DNAsequence, feature_expert::SplicingRange};
+
+    fn range(start_1based: usize, end_1based: usize) -> SplicingRange {
+        SplicingRange {
+            start_1based,
+            end_1based,
+        }
+    }
+
+    #[test]
+    fn make_transcript_template_reverse_strand_uses_reverse_complemented_exon_concat() {
+        let dna = DNAsequence::from_sequence("AACCGGTT").expect("sequence");
+        let lane = SplicingTranscriptLane {
+            transcript_feature_id: 73,
+            transcript_id: "tp73_tx".to_string(),
+            label: "TP73 transcript".to_string(),
+            strand: "-".to_string(),
+            exons: vec![range(1, 2), range(5, 6)],
+            exon_cds_phases: vec![],
+            introns: vec![range(3, 4)],
+            has_target_feature: true,
+        };
+
+        let template = GentleEngine::make_transcript_template(&dna, &lane, 2);
+
+        assert_eq!(String::from_utf8_lossy(&template.sequence), "CCTT");
+        assert_eq!(template.genomic_positions_1based, vec![6, 5, 2, 1]);
+
+        let rows = GentleEngine::collect_rna_seed_hash_catalog_rows(&[template], 2);
+        assert!(rows.iter().any(|row| {
+            row.strand == "-"
+                && row.kmer_sequence == "CC"
+                && row.template_offset_0based == 0
+                && row.genomic_pos_1based == 6
+        }));
+    }
+
+    #[test]
+    fn seed_hash_template_audit_rows_expose_exact_template_sequence_and_orientation() {
+        let template = SplicingTranscriptTemplate {
+            transcript_feature_id: 73,
+            transcript_id: "tp73_tx".to_string(),
+            transcript_label: "TP73 transcript".to_string(),
+            strand: "-".to_string(),
+            sequence: b"CCTT".to_vec(),
+            genomic_positions_1based: vec![6, 5, 2, 1],
+            kmer_positions: HashMap::new(),
+        };
+
+        let rows = GentleEngine::collect_rna_seed_hash_template_audit_rows(&[template]);
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.transcript_feature_id, 73);
+        assert_eq!(row.transcript_id, "tp73_tx");
+        assert_eq!(row.strand, "-");
+        assert_eq!(row.template_sequence, "CCTT");
+        assert_eq!(row.template_length_bp, 4);
+        assert_eq!(row.template_first_genomic_pos_1based, 6);
+        assert_eq!(row.template_last_genomic_pos_1based, 1);
+        assert!(row.reverse_complemented_from_genome);
     }
 }
