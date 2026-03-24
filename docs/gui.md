@@ -283,8 +283,10 @@ Feature tree grouping:
   instead of the inline description pane.
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
-- The splicing expert window content is vertically scrollable, so very large
-  transcript sets no longer hide the `Transcript x exon matrix` section.
+- The splicing expert window opens slightly slimmer by default and its content
+  is scrollable in both directions, so wide RNA-read tables can be inspected
+  without stretching the window and very large transcript sets no longer hide
+  the `Transcript x exon matrix` section.
 - Very large `Transcript x exon` or `Exon -> exon` matrices may open collapsed
   by default to reduce idle CPU usage; expand the section header to render the
   full table.

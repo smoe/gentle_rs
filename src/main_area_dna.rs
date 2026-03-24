@@ -2775,6 +2775,16 @@ mod tests {
     }
 
     #[test]
+    fn splicing_expert_window_content_is_wider_than_default_viewport() {
+        let default_size = MainAreaDna::splicing_expert_window_default_size();
+        let min_size = MainAreaDna::splicing_expert_window_min_size();
+        let content_min_size = MainAreaDna::splicing_expert_window_content_min_size();
+        assert!(default_size.x < content_min_size.x);
+        assert!(min_size.x < content_min_size.x);
+        assert!(default_size.x >= min_size.x);
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -14148,6 +14158,18 @@ impl MainAreaDna {
         egui::ViewportId::from_hash_of(("splicing_expert_viewport", seq_id, feature_id))
     }
 
+    fn splicing_expert_window_default_size() -> Vec2 {
+        Vec2::new(1040.0, 760.0)
+    }
+
+    fn splicing_expert_window_min_size() -> Vec2 {
+        Vec2::new(760.0, 520.0)
+    }
+
+    fn splicing_expert_window_content_min_size() -> Vec2 {
+        Vec2::new(1120.0, 700.0)
+    }
+
     fn splicing_expert_window_title(view: &SplicingExpertView) -> String {
         format!("Splicing Expert - {} ({})", view.group_label, view.seq_id)
     }
@@ -14284,10 +14306,13 @@ impl MainAreaDna {
         };
         let title = Self::splicing_expert_window_title(&view);
         let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
+        let default_size = Self::splicing_expert_window_default_size();
+        let min_size = Self::splicing_expert_window_min_size();
+        let content_min_size = Self::splicing_expert_window_content_min_size();
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([1180.0, 760.0])
-            .with_min_inner_size([860.0, 520.0]);
+            .with_inner_size([default_size.x, default_size.y])
+            .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_splicing_expert_window;
@@ -14298,11 +14323,11 @@ impl MainAreaDna {
                     )))
                     .open(&mut open)
                     .resizable(true)
-                    .default_size(Vec2::new(1180.0, 760.0))
+                    .default_size(default_size)
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        egui::ScrollArea::vertical()
+                        egui::ScrollArea::both()
                             .id_salt(format!(
                                 "splicing_expert_scroll_embedded_{}_{}",
                                 view.seq_id, view.target_feature_id
@@ -14313,6 +14338,7 @@ impl MainAreaDna {
                                     ui,
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
+                                ui.set_min_size(content_min_size);
                                 self.render_splicing_expert_quick_actions(ui, &view);
                                 self.render_splicing_expert_view_ui(
                                     ui,
@@ -14328,7 +14354,7 @@ impl MainAreaDna {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .id_salt(format!(
                         "splicing_expert_scroll_viewport_{}_{}",
                         view.seq_id, view.target_feature_id
@@ -14339,6 +14365,7 @@ impl MainAreaDna {
                             ui,
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
+                        ui.set_min_size(content_min_size);
                         self.render_splicing_expert_quick_actions(ui, &view);
                         self.render_splicing_expert_view_ui(ui, &view, "splicing_window_viewport");
                     });
