@@ -1982,6 +1982,10 @@ mod tests {
 
     #[test]
     fn mcp_blast_async_status_matches_shared_shell_contract() {
+        let _guard = crate::engine_shell::BLAST_ASYNC_TEST_MUTEX
+            .lock()
+            .expect("blast async test mutex lock");
+        crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
             DEFAULT_MCP_STATE_PATH,
             "blast_async_start",
@@ -2045,5 +2049,6 @@ mod tests {
             Some(false)
         );
         assert_eq!(mcp_status["result"]["structuredContent"], expected_status);
+        crate::engine_shell::clear_blast_async_jobs_for_test();
     }
 }

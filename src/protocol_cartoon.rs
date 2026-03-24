@@ -2913,6 +2913,34 @@ mod tests {
         );
     }
 
+    fn event_by_id<'a>(spec: &'a ProtocolCartoonSpec, id: &str) -> &'a ProtocolCartoonEvent {
+        spec.events
+            .iter()
+            .find(|event| event.id == id)
+            .unwrap_or_else(|| panic!("missing event '{id}'"))
+    }
+
+    fn molecule_by_id<'a>(
+        event: &'a ProtocolCartoonEvent,
+        id: &str,
+    ) -> &'a DnaMoleculeCartoon {
+        event.molecules
+            .iter()
+            .find(|molecule| molecule.id == id)
+            .unwrap_or_else(|| panic!("missing molecule '{id}'"))
+    }
+
+    fn feature_by_id<'a>(
+        molecule: &'a DnaMoleculeCartoon,
+        id: &str,
+    ) -> &'a DnaFeatureCartoon {
+        molecule
+            .features
+            .iter()
+            .find(|feature| feature.id == id)
+            .unwrap_or_else(|| panic!("missing feature '{id}'"))
+    }
+
     #[test]
     fn dual_junction_chew_back_uses_correct_5prime_exonuclease_strands() {
         let spec =
@@ -2956,42 +2984,38 @@ mod tests {
     fn dual_junction_chew_back_extends_past_overlap_for_fill_in() {
         let spec =
             protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
-        let chew = &spec.events[1];
-        let left_arm = &chew.molecules[0];
-        let insert = &chew.molecules[1];
-        let right_arm = &chew.molecules[2];
+        let chew = event_by_id(&spec, "chew_back");
+        let extend = event_by_id(&spec, "extend");
+        let left_arm = molecule_by_id(chew, "destination_left_chewed");
+        let insert = molecule_by_id(chew, "insert_chewed");
+        let right_arm = molecule_by_id(chew, "destination_right_chewed");
+        let extended = molecule_by_id(extend, "extended_intermediate");
 
-        assert_eq!(left_arm.features[1].id, "dest_left_tail_exposed");
+        let expected_dest_left_tail_bp = feature_by_id(extended, "dest_left_tail").length_bp;
+        let expected_insert_left_tail_bp = feature_by_id(extended, "insert_left_tail").length_bp;
+        let expected_insert_right_tail_bp =
+            feature_by_id(extended, "insert_right_tail").length_bp;
+        let expected_dest_right_tail_bp = feature_by_id(extended, "dest_right_tail").length_bp;
+
+        let dest_left_tail = feature_by_id(left_arm, "dest_left_tail_exposed");
         assert_eq!(
-            (
-                left_arm.features[1].top_length_bp,
-                left_arm.features[1].bottom_length_bp
-            ),
-            (10, 0)
+            (dest_left_tail.top_length_bp, dest_left_tail.bottom_length_bp),
+            (expected_dest_left_tail_bp, 0)
         );
-        assert_eq!(insert.features[1].id, "insert_left_tail_exposed");
+        let insert_left_tail = feature_by_id(insert, "insert_left_tail_exposed");
         assert_eq!(
-            (
-                insert.features[1].top_length_bp,
-                insert.features[1].bottom_length_bp
-            ),
-            (0, 10)
+            (insert_left_tail.top_length_bp, insert_left_tail.bottom_length_bp),
+            (0, expected_insert_left_tail_bp)
         );
-        assert_eq!(insert.features[3].id, "insert_right_tail_exposed");
+        let insert_right_tail = feature_by_id(insert, "insert_right_tail_exposed");
         assert_eq!(
-            (
-                insert.features[3].top_length_bp,
-                insert.features[3].bottom_length_bp
-            ),
-            (10, 0)
+            (insert_right_tail.top_length_bp, insert_right_tail.bottom_length_bp),
+            (expected_insert_right_tail_bp, 0)
         );
-        assert_eq!(right_arm.features[1].id, "dest_right_tail_exposed");
+        let dest_right_tail = feature_by_id(right_arm, "dest_right_tail_exposed");
         assert_eq!(
-            (
-                right_arm.features[1].top_length_bp,
-                right_arm.features[1].bottom_length_bp
-            ),
-            (0, 10)
+            (dest_right_tail.top_length_bp, dest_right_tail.bottom_length_bp),
+            (0, expected_dest_right_tail_bp)
         );
     }
 
@@ -2999,38 +3023,34 @@ mod tests {
     fn dual_junction_anneal_leaves_gaps_on_both_sides_of_each_overlap() {
         let spec =
             protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::GibsonSingleInsertDualJunction);
-        let anneal = &spec.events[2].molecules[0];
-        assert_eq!(anneal.features[1].id, "dest_left_tail");
+        let anneal = molecule_by_id(event_by_id(&spec, "anneal"), "annealed_intermediate");
+        let extend = molecule_by_id(event_by_id(&spec, "extend"), "extended_intermediate");
+
+        let expected_dest_left_tail_bp = feature_by_id(extend, "dest_left_tail").length_bp;
+        let expected_insert_left_tail_bp = feature_by_id(extend, "insert_left_tail").length_bp;
+        let expected_insert_right_tail_bp =
+            feature_by_id(extend, "insert_right_tail").length_bp;
+        let expected_dest_right_tail_bp = feature_by_id(extend, "dest_right_tail").length_bp;
+
+        let dest_left_tail = feature_by_id(anneal, "dest_left_tail");
         assert_eq!(
-            (
-                anneal.features[1].top_length_bp,
-                anneal.features[1].bottom_length_bp
-            ),
-            (10, 0)
+            (dest_left_tail.top_length_bp, dest_left_tail.bottom_length_bp),
+            (expected_dest_left_tail_bp, 0)
         );
-        assert_eq!(anneal.features[3].id, "insert_left_tail");
+        let insert_left_tail = feature_by_id(anneal, "insert_left_tail");
         assert_eq!(
-            (
-                anneal.features[3].top_length_bp,
-                anneal.features[3].bottom_length_bp
-            ),
-            (0, 10)
+            (insert_left_tail.top_length_bp, insert_left_tail.bottom_length_bp),
+            (0, expected_insert_left_tail_bp)
         );
-        assert_eq!(anneal.features[5].id, "insert_right_tail");
+        let insert_right_tail = feature_by_id(anneal, "insert_right_tail");
         assert_eq!(
-            (
-                anneal.features[5].top_length_bp,
-                anneal.features[5].bottom_length_bp
-            ),
-            (10, 0)
+            (insert_right_tail.top_length_bp, insert_right_tail.bottom_length_bp),
+            (expected_insert_right_tail_bp, 0)
         );
-        assert_eq!(anneal.features[7].id, "dest_right_tail");
+        let dest_right_tail = feature_by_id(anneal, "dest_right_tail");
         assert_eq!(
-            (
-                anneal.features[7].top_length_bp,
-                anneal.features[7].bottom_length_bp
-            ),
-            (0, 10)
+            (dest_right_tail.top_length_bp, dest_right_tail.bottom_length_bp),
+            (0, expected_dest_right_tail_bp)
         );
     }
 

@@ -199,9 +199,20 @@ lazy_static! {
 }
 
 #[cfg(test)]
+pub(crate) static BLAST_ASYNC_TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
 static BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
 static BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn clear_blast_async_jobs_for_test() {
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .expect("blast async registry lock for test reset");
+    jobs.clear();
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -6303,7 +6314,7 @@ fn blast_async_default_max_concurrent_jobs() -> usize {
 fn blast_async_max_concurrent_jobs() -> usize {
     #[cfg(test)]
     {
-        let override_value = BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.load(Ordering::Relaxed);
+        let override_value = BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.load(Ordering::SeqCst);
         if override_value > 0 {
             return override_value.clamp(1, BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT);
         }
@@ -6473,7 +6484,7 @@ fn spawn_blast_async_worker(record: &mut BlastAsyncJobRecord) {
     thread::spawn(move || {
         #[cfg(test)]
         {
-            let delay_ms = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::Relaxed);
+            let delay_ms = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::SeqCst);
             if delay_ms > 0 {
                 thread::sleep(Duration::from_millis(delay_ms));
             }
