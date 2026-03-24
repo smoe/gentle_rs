@@ -247,6 +247,8 @@ what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Documentation
 
+- Installation: [`INSTALL.md`](INSTALL.md)
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Roadmap: [`docs/roadmap.md`](docs/roadmap.md)
 - Protocol: [`docs/protocol.md`](docs/protocol.md)

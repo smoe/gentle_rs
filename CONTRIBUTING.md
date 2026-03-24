@@ -2,87 +2,19 @@
 
 Thank you for your interest in contributing to GENtle.
 
-This guide is intentionally short and practical. It focuses on getting a new
-contributor from a clean macOS machine to a first local build and a minimal
-validation loop before opening a pull request.
+For installation and first local runs, start with [INSTALL.md](INSTALL.md).
 
-## macOS Setup
+## Start Here
 
-The recommended way to install local build dependencies on macOS is via
-Homebrew.
+Depending on the area you want to change, these documents are the most useful
+entry points:
 
-### 1. Install Apple's command line tools
-
-```sh
-xcode-select --install
-```
-
-### 2. Install Homebrew
-
-If Homebrew is not installed yet:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### 3. Install Rust and common build helpers
-
-```sh
-brew install rust pkg-config
-```
-
-Check that the toolchain is available:
-
-```sh
-rustc --version
-cargo --version
-```
-
-## Clone and Build
-
-Clone the repository and run a first local build check:
-
-```sh
-git clone https://github.com/smoe/gentle_rs.git
-cd gentle_rs
-cargo check -q
-```
-
-## Run GENtle
-
-Start the CLI:
-
-```sh
-cargo run --bin gentle_cli -- capabilities
-```
-
-Start the GUI:
-
-```sh
-cargo run --bin gentle
-```
-
-Important: when using `cargo run`, arguments for GENtle binaries must come
-after `--`.
-
-Example:
-
-```sh
-cargo run --bin gentle_cli -- --version
-```
-
-## Optional External Tools
-
-Some GENtle features can use external helper applications when available, such
-as:
-
-- `blastn`
-- `makeblastdb`
-- `bigWigToBedGraph`
-- `rnapkin`
-
-These tools are optional for a first build. They can be configured in the GUI
-under the external applications settings.
+- `docs/architecture.md`
+- `docs/roadmap.md`
+- `docs/protocol.md`
+- `docs/gui.md`
+- `docs/cli.md`
+- `docs/testing.md`
 
 ## Minimal Validation Loop
 
@@ -95,21 +27,36 @@ cargo run --bin gentle_examples_docs -- --check
 cargo run --bin gentle_examples_docs -- tutorial-check
 ```
 
-## Project Documentation
-
-Depending on the area you want to change, these documents are the most useful
-entry points:
-
-- `docs/architecture.md`
-- `docs/roadmap.md`
-- `docs/protocol.md`
-- `docs/gui.md`
-- `docs/cli.md`
-- `docs/testing.md`
-
 ## Contribution Notes
 
 - Keep behavior aligned across GUI, CLI, and other interfaces when possible.
 - Update documentation when user-visible behavior changes.
 - Prefer deterministic checks and reproducible examples when validating a
   change.
+
+## Agentic Engineering
+
+It is perfectly fine to use agentic engineering to contribute to GENtle.
+
+Examples of acceptable tools include:
+
+- OpenAI Codex
+- Anthropic's Claude
+- OpenCode.ai
+- kilo.ai
+
+Expectations:
+
+- You remain responsible for reviewing the generated changes.
+- Please run deterministic validation before opening a pull request.
+- Keep prompts and agent instructions focused on reproducible engineering work.
+
+## Pull Request Expectations
+
+Every pull request should include:
+
+- a short summary of the change
+- the validation commands you ran
+- the prompts used to describe or direct the development
+
+If no agentic tooling was used, say `Not used` in the prompt section.
