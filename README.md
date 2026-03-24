@@ -12,6 +12,17 @@ panels, and other imported resources can contribute directly to the same
 project state used by the GUI, CLI, and automation, so showcase figures remain
 auditable instead of being redrawn by hand.
 
+Today, that already means GENtle can:
+
+- plan and review Gibson assemblies with explicit overlaps, primer suggestions,
+  and lineage-visible outputs
+- execute PCR, advanced PCR, PCR mutagenesis, primer-pair design, and qPCR
+  assay design through one shared engine family
+- render factual protocol cartoons and lineage graphs from the same project
+  state instead of relying on hand-drawn figures
+- keep GUI, CLI, and automation routes aligned on the same deterministic
+  contracts
+
 ## Operations, Routines, and Specialists
 
 GENtle is intentionally layered so cloning logic stays deterministic without
@@ -34,8 +45,8 @@ The intended usage is:
    contracts underneath.
 
 This is why the same project can simultaneously hold raw operations, named
-routine logic, generated cartoons, and lineage/provenance without those
-becoming separate worlds.
+routine logic, specialist review state, generated cartoons, and
+lineage/provenance without those becoming separate worlds.
 
 This architecture is still evolving. Some domains already have richer
 specialists than the generic routine layer, and some routine families are much
@@ -53,7 +64,7 @@ one project state. Interactive interfaces, scripting routes, and imported
 biological context all meet in the same lineage-aware model, which then drives
 cloning workflows, retrieval, design, analysis, graphics, and provenance.
 
-## Showcases
+## What It Already Shows
 
 GENtle can not only perform cloning tasks, but also explain them from the
 same deterministic project state and render those explanations graphically.
@@ -82,8 +93,14 @@ operation, two input sequences, two primer outputs, and one assembled product
 in the lineage graph.
 
 These README Gibson figures are generated from shared engine routes, not drawn
-by hand. The conceptual hero is rendered directly by the built-in
-protocol-cartoon engine:
+by hand. Together they answer three different questions:
+
+1. What is Gibson at a glance?
+2. What exact mechanism is GENtle modeling?
+3. What concrete artifacts did the project produce?
+
+The conceptual hero is rendered directly by the built-in protocol-cartoon
+engine:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -169,9 +186,13 @@ still gain a concrete reference sequence baseline for validation when needed.
 
 ## Ongoing Development
 
-GENtle is under active development. The README should give a useful snapshot
-of what is already practical today, while the source of truth for current
-implementation status, open gaps, and execution order remains
+GENtle is already practically useful, but it is still evolving in public. Some
+areas already have deeper specialists and richer visual explanation than
+others, and some generic routine families are still catching up with the
+strongest GUI flows.
+
+The README aims to show what is genuinely working today. The source of truth
+for current implementation status, open gaps, and execution order remains
 [`docs/roadmap.md`](docs/roadmap.md).
 
 ### PCR and Primer Design Snapshot
@@ -189,6 +210,10 @@ implementation status, open gaps, and execution order remains
 | Nested PCR | Planned | future `DesignPrimerPairs` family extension | tracked in roadmap |
 | Inverse PCR | Planned | future PCR modality extension | tracked in roadmap |
 | Long-range / multiplex / translocation PCR | Planned | future PCR modality extension | tracked in roadmap |
+
+This is an area where GENtle is already operational but still deepening. The
+core PCR engine family is shipped; richer specialist UX, broader modality
+coverage, and more showcase-grade explanation layers are still being expanded.
 
 The design direction is to keep these PCR flavors on one deterministic engine
 contract family rather than split them into unrelated specialist paths. In the
