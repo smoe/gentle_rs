@@ -6364,8 +6364,7 @@ Error: `{err}`"
                 self.gibson_opening_end_0based_exclusive = end.to_string();
             }
         }
-        if self.gibson_output_id_hint.trim().is_empty()
-        {
+        if self.gibson_output_id_hint.trim().is_empty() {
             self.refresh_gibson_output_id_hint_default();
         }
     }
@@ -7183,17 +7182,23 @@ Error: `{err}`"
                 }
                 let candidate_lower = candidate_trimmed.to_ascii_lowercase();
                 let candidate_normalized = Self::normalize_chromosome_alias(candidate_trimmed);
+                let query_numeric = !query_normalized.is_empty()
+                    && query_normalized.chars().all(|ch| ch.is_ascii_digit());
+                let candidate_numeric = !candidate_normalized.is_empty()
+                    && candidate_normalized.chars().all(|ch| ch.is_ascii_digit());
+                let allow_shorter_partial = !(query_numeric && candidate_numeric);
                 let score =
                     if !query_normalized.is_empty() && candidate_normalized == query_normalized {
                         0u8
                     } else if !query_normalized.is_empty()
                         && (candidate_normalized.starts_with(&query_normalized)
-                            || query_normalized.starts_with(&candidate_normalized))
+                            || (allow_shorter_partial
+                                && query_normalized.starts_with(&candidate_normalized)))
                     {
                         1u8
                     } else if !query_lower.is_empty()
                         && (candidate_lower.contains(&query_lower)
-                            || query_lower.contains(&candidate_lower))
+                            || (allow_shorter_partial && query_lower.contains(&candidate_lower)))
                     {
                         2u8
                     } else {
@@ -11786,11 +11791,12 @@ Error: `{err}`"
                 ui.separator();
                 ui.monospace(&self.genome_retrieve_status);
                 if let Some(suggested) = self.genome_retrieve_contig_suggestions.first().cloned() {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace(format!("Suggested contig: '{suggested}'"));
                         if ui
-                            .button(format!("Apply suggested contig '{}'", suggested))
+                            .button("Apply")
                             .on_hover_text(
-                                "Copy the best matching prepared contig/chromosome into the chr field",
+                                "Apply the best matching prepared contig/chromosome to the chr field",
                             )
                             .clicked()
                         {
@@ -11800,6 +11806,13 @@ Error: `{err}`"
                                 suggested
                             );
                             self.genome_retrieve_contig_suggestions.clear();
+                        }
+                        if ui
+                            .button("Copy")
+                            .on_hover_text("Copy the suggested contig/chromosome to the clipboard")
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(suggested.clone());
                         }
                         let alternatives = self
                             .genome_retrieve_contig_suggestions
@@ -13267,8 +13280,7 @@ Error: `{err}`"
             .any(|row| destination_seq_id == row.seq_id.trim())
         {
             return Err(
-                "Destination and insert sequence ids must differ for Gibson planning"
-                    .to_string(),
+                "Destination and insert sequence ids must differ for Gibson planning".to_string(),
             );
         }
 
@@ -13472,8 +13484,7 @@ Error: `{err}`"
                     .join(" + ")
             ),
             summary: if insert_rows.len() == 1 {
-                "Destination-first single-insert Gibson preview from specialist UI"
-                    .to_string()
+                "Destination-first single-insert Gibson preview from specialist UI".to_string()
             } else {
                 format!(
                     "Destination-first multi-insert Gibson preview from specialist UI ({} inserts)",
@@ -15330,12 +15341,7 @@ Error: `{err}`"
                     for (color, row) in self.gibson_target_review_rows(&preview) {
                         ui.horizontal_wrapped(|ui| {
                             ui.colored_label(color, "-");
-                            Self::gibson_rich_text_label(
-                                ui,
-                                &row,
-                                egui::TextStyle::Small,
-                                color,
-                            );
+                            Self::gibson_rich_text_label(ui, &row, egui::TextStyle::Small, color);
                         });
                     }
                 });
@@ -29431,14 +29437,13 @@ mod tests {
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, GibsonUiInsertOrientation, GibsonUiInsertRow,
-        GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
-        HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY,
-        LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage,
+        GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
+        LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
+        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -29567,6 +29572,13 @@ mod tests {
         assert!(!suggestions.is_empty());
         assert_eq!(suggestions[0], "chr17");
         assert!(suggestions.iter().any(|name| name == "NC_000017.11"));
+    }
+
+    #[test]
+    fn suggest_chromosome_names_does_not_offer_shorter_numeric_prefix_only_match() {
+        let available = vec!["1".to_string()];
+        let suggestions = GENtleApp::suggest_chromosome_names("17", &available, 8);
+        assert!(suggestions.is_empty());
     }
 
     #[test]

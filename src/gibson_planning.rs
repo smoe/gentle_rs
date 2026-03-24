@@ -12,9 +12,9 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     protocol_cartoon::{
-        DnaEndStyle, DnaFeatureCartoon, DnaMoleculeCartoon, DnaTopologyCartoon,
-        OverhangPolarity, ProtocolCartoonAction, ProtocolCartoonEvent, ProtocolCartoonKind,
-        ProtocolCartoonSpec, ProtocolCartoonTemplateBindings, ProtocolCartoonTemplateEventBinding,
+        DnaEndStyle, DnaFeatureCartoon, DnaMoleculeCartoon, DnaTopologyCartoon, OverhangPolarity,
+        ProtocolCartoonAction, ProtocolCartoonEvent, ProtocolCartoonKind, ProtocolCartoonSpec,
+        ProtocolCartoonTemplateBindings, ProtocolCartoonTemplateEventBinding,
         ProtocolCartoonTemplateFeatureBinding, ProtocolCartoonTemplateMoleculeBinding,
     },
     restriction_enzyme::RestrictionEnzymeSite,
@@ -1176,12 +1176,7 @@ pub fn preview_gibson_assembly_plan(
         "Destination opening resolves '{}' and '{}' as the two terminal Gibson junctions.",
         resolved_opening.left_end_id, resolved_opening.right_end_id
     ));
-    push_gibson_design_review_notes(
-        &mut preview,
-        &plan.validation_policy.design_targets,
-        2,
-        1,
-    );
+    push_gibson_design_review_notes(&mut preview, &plan.validation_policy.design_targets, 2, 1);
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: 5' overlap plus 3' gene-specific priming segment. Full generic PCR controls remain outside this specialist flow.".to_string(),
     );
@@ -1267,7 +1262,10 @@ pub fn derive_gibson_execution_plan(
             })?
             .clone();
         fragment_seq_ids.push(fragment.seq_id.clone());
-        oriented_inserts.push(build_oriented_insert_for_gibson(&insert, &fragment.orientation));
+        oriented_inserts.push(build_oriented_insert_for_gibson(
+            &insert,
+            &fragment.orientation,
+        ));
     }
     if preview.primer_suggestions.len() != preview.fragments.len().saturating_mul(2) {
         return Err(EngineError {
@@ -1339,7 +1337,7 @@ pub fn derive_gibson_execution_plan(
                     "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
                     primer.primer_id
                 ),
-        })?;
+            })?;
         dna.set_name(match primer.side.as_str() {
             "left_insert_primer" => format!(
                 "Gibson left primer for fragment '{}'",
@@ -1432,7 +1430,10 @@ fn build_gibson_assembled_product(
                 });
             }
             features.extend(clone_shifted_features(destination, 0));
-            features.extend(clone_shifted_features(&oriented_inserts[0], destination.len() as i64));
+            features.extend(clone_shifted_features(
+                &oriented_inserts[0],
+                destination.len() as i64,
+            ));
         }
         "defined_site" => {
             let start = preview
@@ -1450,9 +1451,12 @@ fn build_gibson_assembled_product(
                     code: ErrorCode::Internal,
                     message:
                         "Executable Gibson defined-site preview did not retain end_0based_exclusive"
-                        .to_string(),
+                            .to_string(),
                 })? as i64;
-            let total_insert_len = oriented_inserts.iter().map(|insert| insert.len()).sum::<usize>() as i64;
+            let total_insert_len = oriented_inserts
+                .iter()
+                .map(|insert| insert.len())
+                .sum::<usize>() as i64;
             let delta = total_insert_len - (end - start);
             features.extend(destination.features().iter().filter_map(|feature| {
                 transform_destination_feature_for_defined_site(
@@ -2237,7 +2241,9 @@ fn preview_multi_insert_gibson_assembly_plan(
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: every fragment gets one left primer and one right primer with a 5' overlap plus a 3' gene-specific priming segment.".to_string(),
     );
-    preview.notes.push(GentleEngine::primer_tm_model_description());
+    preview
+        .notes
+        .push(GentleEngine::primer_tm_model_description());
 
     let representative_overlap_bp = resolved_overlaps
         .iter()
@@ -2253,11 +2259,8 @@ fn preview_multi_insert_gibson_assembly_plan(
         loaded_fragments.len(),
         resolved_overlaps.len()
     );
-    let resolved_spec = build_multi_insert_cartoon_spec(
-        &preview,
-        &ordered_fragment_ids,
-        representative_overlap_bp,
-    );
+    let resolved_spec =
+        build_multi_insert_cartoon_spec(&preview, &ordered_fragment_ids, representative_overlap_bp);
     preview.cartoon = GibsonCartoonPreview {
         protocol_id: "gibson.multi_insert_dynamic".to_string(),
         representative_overlap_bp,
@@ -2364,7 +2367,13 @@ fn validate_multi_insert_shape(
             plan.product.topology.trim()
         ));
     }
-    if plan.destination.opening.mode.trim().eq_ignore_ascii_case("existing_termini") {
+    if plan
+        .destination
+        .opening
+        .mode
+        .trim()
+        .eq_ignore_ascii_case("existing_termini")
+    {
         preview.errors.push(
             "Multi-insert Gibson currently requires a defined destination opening; 'existing_termini' remains single-fragment only."
                 .to_string(),
@@ -2456,7 +2465,10 @@ fn find_plan_junction<'a>(
 ) -> Option<&'a GibsonPlanJunction> {
     plan.junctions.iter().find(|junction| {
         junction.left_member.id.eq_ignore_ascii_case(left_member_id)
-            && junction.right_member.id.eq_ignore_ascii_case(right_member_id)
+            && junction
+                .right_member
+                .id
+                .eq_ignore_ascii_case(right_member_id)
     })
 }
 
@@ -2770,15 +2782,19 @@ fn derive_resolved_overlap(
     } else {
         choose_overlap_len_for_junction(destination_seq, opening, fragments, junction, targets)?
     };
-    let (left_member_bp, right_member_bp, overlap_sequence) =
-        match overlap_sequence_for_junction(destination_seq, opening, fragments, junction, actual_len)
-        {
-            Ok(value) => value,
-            Err(message) => {
-                preview.errors.push(message);
-                return None;
-            }
-        };
+    let (left_member_bp, right_member_bp, overlap_sequence) = match overlap_sequence_for_junction(
+        destination_seq,
+        opening,
+        fragments,
+        junction,
+        actual_len,
+    ) {
+        Ok(value) => value,
+        Err(message) => {
+            preview.errors.push(message);
+            return None;
+        }
+    };
     if actual_len < targets.overlap_bp_min || actual_len > targets.overlap_bp_max {
         preview.warnings.push(format!(
             "Junction '{}' uses {} bp overlap outside the preferred Gibson target range {}..{} bp",
@@ -3713,7 +3729,10 @@ fn build_multi_insert_cartoon_spec(
         .last()
         .cloned()
         .unwrap_or_default();
-    let left_terminal_bp = left_terminal.overlap_bp.max(representative_overlap_bp).max(1);
+    let left_terminal_bp = left_terminal
+        .overlap_bp
+        .max(representative_overlap_bp)
+        .max(1);
     let right_terminal_bp = right_terminal
         .overlap_bp
         .max(representative_overlap_bp)
@@ -3793,7 +3812,10 @@ fn build_multi_insert_cartoon_spec(
         let body_color = body_palette[(idx + 1) % body_palette.len()];
         let left_overlap_color = overlap_palette[idx % overlap_palette.len()];
         let right_overlap_color = overlap_palette[(idx + 1) % overlap_palette.len()];
-        let left_overlap_bp = left_junction.overlap_bp.max(representative_overlap_bp).max(1);
+        let left_overlap_bp = left_junction
+            .overlap_bp
+            .max(representative_overlap_bp)
+            .max(1);
         let right_overlap_bp = right_junction
             .overlap_bp
             .max(representative_overlap_bp)
@@ -3834,7 +3856,10 @@ fn build_multi_insert_cartoon_spec(
         });
         chew_back_molecules.push(DnaMoleculeCartoon {
             id: format!("{}_chewed", fragment_id),
-            label: format!("{} (chewed)", compact_cartoon_label(&fragment.seq_id, "Insert", 18)),
+            label: format!(
+                "{} (chewed)",
+                compact_cartoon_label(&fragment.seq_id, "Insert", 18)
+            ),
             topology: DnaTopologyCartoon::Linear,
             features: vec![
                 bottom_only_cartoon_feature(
@@ -4624,14 +4649,8 @@ mod tests {
         assert_eq!(preview.fragments.len(), 2);
         assert_eq!(preview.resolved_junctions.len(), 3);
         assert_eq!(preview.primer_suggestions.len(), 4);
-        assert_eq!(
-            preview.resolved_junctions[1].junction_id,
-            "junction_1_2"
-        );
-        assert_eq!(
-            preview.cartoon.protocol_id,
-            "gibson.multi_insert_dynamic"
-        );
+        assert_eq!(preview.resolved_junctions[1].junction_id, "junction_1_2");
+        assert_eq!(preview.cartoon.protocol_id, "gibson.multi_insert_dynamic");
         assert!(preview.cartoon.resolved_spec.is_some());
     }
 
@@ -4693,14 +4712,18 @@ mod tests {
             .find(|event| event.id == "anneal")
             .expect("anneal event");
         let assembled = anneal.molecules.first().expect("assembled molecule");
-        assert!(assembled
-            .features
-            .iter()
-            .any(|feature| feature.top_length_bp > 0 && feature.bottom_length_bp == 0));
-        assert!(assembled
-            .features
-            .iter()
-            .any(|feature| feature.top_length_bp == 0 && feature.bottom_length_bp > 0));
+        assert!(
+            assembled
+                .features
+                .iter()
+                .any(|feature| feature.top_length_bp > 0 && feature.bottom_length_bp == 0)
+        );
+        assert!(
+            assembled
+                .features
+                .iter()
+                .any(|feature| feature.top_length_bp == 0 && feature.bottom_length_bp > 0)
+        );
     }
 
     #[test]

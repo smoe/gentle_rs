@@ -1089,16 +1089,23 @@ impl GenomeCatalog {
                     .filter_map(|candidate| {
                         let candidate_lower = candidate.to_ascii_lowercase();
                         let candidate_normalized = normalize_chromosome_token(candidate);
+                        let query_numeric = !query_normalized.is_empty()
+                            && query_normalized.chars().all(|ch| ch.is_ascii_digit());
+                        let candidate_numeric = !candidate_normalized.is_empty()
+                            && candidate_normalized.chars().all(|ch| ch.is_ascii_digit());
+                        let allow_shorter_partial = !(query_numeric && candidate_numeric);
                         let score = if candidate_normalized == query_normalized {
                             0u8
                         } else if !query_normalized.is_empty()
                             && (candidate_normalized.starts_with(&query_normalized)
-                                || query_normalized.starts_with(&candidate_normalized))
+                                || (allow_shorter_partial
+                                    && query_normalized.starts_with(&candidate_normalized)))
                         {
                             1u8
                         } else if !query_lower.is_empty()
                             && (candidate_lower.contains(&query_lower)
-                                || query_lower.contains(&candidate_lower))
+                                || (allow_shorter_partial
+                                    && query_lower.contains(&candidate_lower)))
                         {
                             2u8
                         } else {
@@ -5020,6 +5027,50 @@ mod tests {
             .expect_err("missing contig should fail");
         assert!(err.contains("Suggested matching contigs"));
         assert!(err.contains("NC_000017.11"));
+    }
+
+    #[test]
+    fn test_get_sequence_region_missing_contig_does_not_suggest_shorter_numeric_prefix() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let err = catalog
+            .get_sequence_region("ToyGenome", "17", 1, 4)
+            .expect_err("missing contig should fail");
+        assert!(err.contains("Available contigs (1): 1"));
+        assert!(!err.contains("Suggested matching contigs"));
     }
 
     #[test]
