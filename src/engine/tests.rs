@@ -115,6 +115,32 @@ fn splicing_test_sequence() -> DNAsequence {
     dna
 }
 
+fn splicing_seed_feature_sequence() -> DNAsequence {
+    let mut dna = splicing_test_sequence();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(2, 34),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("label".into(), Some("GENE1".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("CDS"),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(2, 8),
+            gb_io::seq::Location::simple_range(12, 20),
+            gb_io::seq::Location::simple_range(26, 34),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("label".into(), Some("GENE1 CDS".to_string())),
+            ("product".into(), Some("GENE1 protein".to_string())),
+        ],
+    });
+    dna
+}
+
 fn splicing_multi_gene_test_sequence() -> DNAsequence {
     let mut bases = vec![b'A'; 120];
     let mut fill_range = |start_0: usize, end_0: usize, pattern: &[u8]| {
@@ -10407,6 +10433,42 @@ fn test_derive_splicing_references_from_window_without_seed_feature() {
         .sum::<usize>();
     assert_eq!(exon_reference.len(), expected_exon_ref_len);
     assert!(!exon_reference.get_forward_string().contains('U'));
+}
+
+#[test]
+fn test_build_splicing_expert_view_accepts_gene_seed_feature() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_seed".to_string(), splicing_seed_feature_sequence());
+    let engine = GentleEngine::from_state(state);
+
+    let view = engine
+        .build_splicing_expert_view("seq_seed", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("splicing view from gene seed");
+
+    assert_eq!(view.target_feature_id, 2);
+    assert_eq!(view.group_label, "GENE1");
+    assert_eq!(view.transcript_count, 2);
+    assert!(!view.transcripts.is_empty());
+}
+
+#[test]
+fn test_build_splicing_expert_view_accepts_cds_seed_feature() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_seed".to_string(), splicing_seed_feature_sequence());
+    let engine = GentleEngine::from_state(state);
+
+    let view = engine
+        .build_splicing_expert_view("seq_seed", 3, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("splicing view from cds seed");
+
+    assert_eq!(view.target_feature_id, 3);
+    assert_eq!(view.group_label, "GENE1");
+    assert_eq!(view.transcript_count, 2);
+    assert!(!view.unique_exons.is_empty());
 }
 
 #[test]

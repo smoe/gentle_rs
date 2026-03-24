@@ -925,7 +925,7 @@ mod tests {
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
-            IsoformArchitectureExpertView, SplicingExpertView, SplicingRange,
+            FeatureExpertView, IsoformArchitectureExpertView, SplicingExpertView, SplicingRange,
             SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
@@ -3488,8 +3488,51 @@ mod tests {
     fn splicing_map_placeholder_svg_mentions_selected_sequence() {
         let svg = MainAreaDna::render_splicing_map_placeholder_svg("tp53.seq");
         assert!(svg.contains("tp53.seq"));
-        assert!(svg.contains("No transcript-like RNA/exon feature is selected"));
+        assert!(svg.contains("No splicing-seed feature is selected"));
         assert!(svg.contains("<svg"));
+    }
+
+    #[test]
+    fn refresh_description_cache_builds_splicing_view_for_gene_seed_feature() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(2, 34),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("label".into(), Some("GENE1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        area.focus_feature(1);
+        area.refresh_description_cache();
+
+        match area.description_cache_expert_view.as_ref() {
+            Some(FeatureExpertView::Splicing(view)) => {
+                assert_eq!(view.target_feature_id, 1);
+                assert_eq!(view.group_label, "GENE1");
+                assert_eq!(view.transcript_count, 1);
+            }
+            other => panic!("expected splicing expert view for gene seed, got {other:?}"),
+        }
     }
 
     #[test]
@@ -5458,7 +5501,7 @@ impl MainAreaDna {
                         "Splicing map",
                     )
                     .on_hover_text(
-                        "Show transcript/exon splicing lanes for selected mRNA, ncRNA, transcript, or exon features",
+                        "Show transcript/exon splicing lanes for selected mRNA, ncRNA, transcript, exon, gene, or CDS features",
                     )
                     .clicked()
                 {
@@ -13396,7 +13439,7 @@ impl MainAreaDna {
                     } else {
                         ui.add_space(6.0);
                         ui.label(
-                            "Select an mRNA or exon feature in the feature tree to render splicing lanes.",
+                            "Select an mRNA, ncRNA, transcript, exon, gene, or CDS feature in the feature tree to render splicing lanes.",
                         );
                     }
                 });
@@ -19770,8 +19813,8 @@ impl MainAreaDna {
 
     fn render_splicing_map_placeholder_svg(seq_id: &str) -> String {
         let title = format!("Splicing map (read-only) | {seq_id}");
-        let subtitle = "No transcript-like RNA/exon feature is selected";
-        let hint = "Select an mRNA, ncRNA, transcript, or exon feature in the feature tree to render transcript/exon lanes.";
+        let subtitle = "No splicing-seed feature is selected";
+        let hint = "Select an mRNA, ncRNA, transcript, exon, gene, or CDS feature in the feature tree to render transcript/exon lanes.";
         format!(
             concat!(
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1200\" height=\"700\" viewBox=\"0 0 1200 700\">",
@@ -25933,7 +25976,7 @@ impl MainAreaDna {
                         expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
                     } else if matches!(
                         kind_upper.as_str(),
-                        "MRNA" | "TRANSCRIPT" | "NCRNA" | "EXON"
+                        "MRNA" | "TRANSCRIPT" | "NCRNA" | "EXON" | "GENE" | "CDS"
                     ) {
                         expert_target = Some(FeatureExpertTarget::SplicingFeature {
                             feature_id: id,
