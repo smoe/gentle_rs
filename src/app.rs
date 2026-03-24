@@ -595,6 +595,7 @@ pub struct GENtleApp {
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
     pending_app_quit: bool,
+    pending_prepared_genome_reinstall: Option<PreparedGenomeReinstallRequest>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
@@ -1219,6 +1220,14 @@ enum GenomePrepareTaskMessage {
         job_id: u64,
         result: Result<OpResult, EngineError>,
     },
+}
+
+#[derive(Debug, Clone)]
+struct PreparedGenomeReinstallRequest {
+    genome_id: String,
+    scope: GenomeDialogScope,
+    catalog_path: String,
+    cache_dir: String,
 }
 
 struct GenomeTrackImportTask {
@@ -1872,6 +1881,7 @@ impl Default for GENtleApp {
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
             pending_app_quit: false,
+            pending_prepared_genome_reinstall: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
@@ -6245,6 +6255,42 @@ Error: `{err}`"
         self.genome_cache_dir = next_cache;
         if catalog_changed || cache_changed {
             self.invalidate_genome_genes();
+        }
+    }
+
+    fn queue_prepared_genome_reinstall(
+        &mut self,
+        genome_id: impl Into<String>,
+        scope: GenomeDialogScope,
+    ) {
+        self.pending_prepared_genome_reinstall = Some(PreparedGenomeReinstallRequest {
+            genome_id: genome_id.into(),
+            scope,
+            catalog_path: self.genome_catalog_path.clone(),
+            cache_dir: self.genome_cache_dir.clone(),
+        });
+    }
+
+    fn apply_prepared_genome_reinstall_request(&mut self, request: PreparedGenomeReinstallRequest) {
+        self.sync_active_genome_scope_paths_from_fields();
+        let scope_changed = self.genome_dialog_scope != request.scope;
+        let catalog_changed = self.genome_catalog_path != request.catalog_path;
+        let cache_changed = self.genome_cache_dir != request.cache_dir;
+        let genome_changed = self.genome_id != request.genome_id;
+        self.genome_dialog_scope = request.scope;
+        self.genome_catalog_path = request.catalog_path.clone();
+        self.genome_cache_dir = request.cache_dir.clone();
+        self.set_scope_genome_paths(request.scope, request.catalog_path, request.cache_dir);
+        self.genome_id = request.genome_id;
+        if scope_changed || catalog_changed || cache_changed || genome_changed {
+            self.invalidate_genome_genes();
+        }
+    }
+
+    fn confirm_prepared_genome_reinstall(&mut self) {
+        if let Some(request) = self.pending_prepared_genome_reinstall.take() {
+            self.apply_prepared_genome_reinstall_request(request);
+            self.start_prepare_reference_genome();
         }
     }
 
@@ -11323,11 +11369,25 @@ Error: `{err}`"
         if preparable_genomes.is_empty() {
             ui.label("All genomes in this catalog are already prepared.");
         }
-        let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
-        if !self.genome_id.trim().is_empty() && !selected_preparable {
-            ui.label("Selected genome is already prepared and cannot be selected here.");
-        }
         let running = self.genome_prepare_task.is_some();
+        let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
+        let selected_known = all_genomes.iter().any(|n| n == &self.genome_id);
+        if !self.genome_id.trim().is_empty() && selected_known && !selected_preparable {
+            ui.horizontal(|ui| {
+                ui.label("Selected genome is already prepared.");
+                if ui
+                    .add_enabled(!running, egui::Button::new("Reinstall Selected..."))
+                    .on_hover_text(format!(
+                        "Re-download and rebuild the selected {}. A confirmation dialog will be shown.",
+                        scope.description()
+                    ))
+                    .clicked()
+                {
+                    self.queue_prepared_genome_reinstall(self.genome_id.clone(), scope);
+                }
+            });
+            ui.small("Reinstall keeps the same catalog/cache settings and may take some time.");
+        }
         if let Some(task) = &self.genome_prepare_task {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
@@ -11440,6 +11500,67 @@ Error: `{err}`"
                 self.show_reference_genome_prepare_dialog = false;
             }
         });
+    }
+
+    fn render_prepared_genome_reinstall_confirm_dialog(&mut self, ctx: &egui::Context) {
+        let Some(request) = self.pending_prepared_genome_reinstall.clone() else {
+            return;
+        };
+        let resolved_catalog = if request.catalog_path.trim().is_empty() {
+            request.scope.default_catalog_path().to_string()
+        } else {
+            request.catalog_path.trim().to_string()
+        };
+        let resolved_cache = if request.cache_dir.trim().is_empty() {
+            request.scope.default_cache_dir().to_string()
+        } else {
+            request.cache_dir.trim().to_string()
+        };
+        egui::Window::new("Reinstall Prepared Genome")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Reinstall prepared {} '{}'?",
+                    request.scope.description(),
+                    request.genome_id
+                ));
+                ui.small(
+                    "This re-downloads source files and rebuilds local indexes in the selected cache.",
+                );
+                ui.small("It runs in the background, but it can take some time.");
+                ui.separator();
+                ui.label(format!("catalog: {resolved_catalog}"));
+                ui.label(format!("cache_dir: {resolved_cache}"));
+                if self.genome_prepare_task.is_some() {
+                    ui.separator();
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "Another genome prepare task is already running. Finish or cancel it before starting a reinstall.",
+                    );
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.genome_prepare_task.is_none(),
+                            egui::Button::new("Reinstall"),
+                        )
+                        .on_hover_text(
+                            "Start the reinstall using the shown catalog/cache settings. This may take some time.",
+                        )
+                        .clicked()
+                    {
+                        self.confirm_prepared_genome_reinstall();
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Keep the current installation unchanged")
+                        .clicked()
+                    {
+                        self.pending_prepared_genome_reinstall = None;
+                    }
+                });
+            });
     }
 
     fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) {
@@ -12664,19 +12785,36 @@ Error: `{err}`"
                                                         .monospace()
                                                         .small(),
                                                 );
-                                                if ui
-                                                    .small_button("Retrieve")
-                                                    .on_hover_text(
-                                                        "Open retrieval dialog preselected for this prepared genome",
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    self.genome_id = inspection.genome_id.clone();
-                                                    self.invalidate_genome_genes();
-                                                    self.open_retrieve_genome_dialog_for_scope(
-                                                        self.genome_dialog_scope,
-                                                    );
-                                                }
+                                                ui.horizontal(|ui| {
+                                                    if ui
+                                                        .small_button("Retrieve")
+                                                        .on_hover_text(
+                                                            "Open retrieval dialog preselected for this prepared genome",
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        self.genome_id = inspection.genome_id.clone();
+                                                        self.invalidate_genome_genes();
+                                                        self.open_retrieve_genome_dialog_for_scope(
+                                                            self.genome_dialog_scope,
+                                                        );
+                                                    }
+                                                    if ui
+                                                        .add_enabled(
+                                                            self.genome_prepare_task.is_none(),
+                                                            egui::Button::new("Reinstall..."),
+                                                        )
+                                                        .on_hover_text(
+                                                            "Re-download and rebuild this prepared genome using the current catalog/cache settings. A confirmation dialog will be shown because it may take some time.",
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        self.queue_prepared_genome_reinstall(
+                                                            inspection.genome_id.clone(),
+                                                            scope,
+                                                        );
+                                                    }
+                                                });
                                                 ui.end_row();
                                             }
                                         });
@@ -29371,6 +29509,7 @@ impl eframe::App for GENtleApp {
             self.render_genbank_dialog(ctx);
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
+            self.render_prepared_genome_reinstall_confirm_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
             self.render_planning_dialog(ctx);
@@ -29441,9 +29580,10 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        PreparedGenomeReinstallRequest, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -31813,6 +31953,67 @@ mod tests {
         assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
         assert_eq!(app.genome_catalog_path, "custom/helper_catalog.json");
         assert_eq!(app.genome_cache_dir, "custom/helper_cache");
+    }
+
+    #[test]
+    fn queue_prepared_genome_reinstall_uses_active_scope_paths() {
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_prepare_dialog();
+        app.genome_catalog_path = "custom/helper_catalog.json".to_string();
+        app.genome_cache_dir = "custom/helper_cache".to_string();
+
+        app.queue_prepared_genome_reinstall("Yeast Helper", app.genome_dialog_scope);
+
+        let request = app
+            .pending_prepared_genome_reinstall
+            .as_ref()
+            .expect("reinstall request");
+        assert_eq!(request.genome_id, "Yeast Helper");
+        assert_eq!(request.scope, GenomeDialogScope::Helper);
+        assert_eq!(request.catalog_path, "custom/helper_catalog.json");
+        assert_eq!(request.cache_dir, "custom/helper_cache");
+    }
+
+    #[test]
+    fn apply_prepared_genome_reinstall_request_updates_scope_and_clears_cached_gene_state() {
+        let mut app = GENtleApp::default();
+        app.open_reference_genome_prepare_dialog();
+        app.genome_catalog_path = "custom/reference_catalog.json".to_string();
+        app.genome_cache_dir = "custom/reference_cache".to_string();
+        app.sync_active_genome_scope_paths_from_fields();
+        app.genome_id = "Reference A".to_string();
+        app.genome_genes_error = "stale genes".to_string();
+        app.genome_genes_loaded_key = Some("cached".to_string());
+        app.genome_selected_gene = Some(3);
+        app.genome_gene_filter_page = 7;
+        app.genome_biotype_filter
+            .insert("protein_coding".to_string(), true);
+        app.genome_retrieve_contig_suggestions = vec!["chr17".to_string()];
+
+        app.apply_prepared_genome_reinstall_request(PreparedGenomeReinstallRequest {
+            genome_id: "Helper B".to_string(),
+            scope: GenomeDialogScope::Helper,
+            catalog_path: "custom/helper_catalog.json".to_string(),
+            cache_dir: "custom/helper_cache".to_string(),
+        });
+
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert_eq!(app.genome_catalog_path, "custom/helper_catalog.json");
+        assert_eq!(app.genome_cache_dir, "custom/helper_cache");
+        assert_eq!(app.helper_genome_catalog_path, "custom/helper_catalog.json");
+        assert_eq!(app.helper_genome_cache_dir, "custom/helper_cache");
+        assert_eq!(
+            app.reference_genome_catalog_path,
+            "custom/reference_catalog.json"
+        );
+        assert_eq!(app.reference_genome_cache_dir, "custom/reference_cache");
+        assert_eq!(app.genome_id, "Helper B");
+        assert!(app.genome_genes_error.is_empty());
+        assert!(app.genome_genes_loaded_key.is_none());
+        assert!(app.genome_selected_gene.is_none());
+        assert_eq!(app.genome_gene_filter_page, 0);
+        assert!(app.genome_biotype_filter.is_empty());
+        assert!(app.genome_retrieve_contig_suggestions.is_empty());
     }
 
     #[test]

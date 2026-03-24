@@ -1701,7 +1701,8 @@ then layer voice control on top of the same command plane.
 
 Current baseline:
 
-- `Prepared References...` exists and includes the chromosome line inspector.
+- `Prepared References...` exists, includes the chromosome line inspector, and
+  offers confirmed per-row reinstall for stale/partial prepared genomes.
 - Shell/agent UI-intent routing is implemented:
   - `ui intents`
   - `ui open|focus TARGET ...`
