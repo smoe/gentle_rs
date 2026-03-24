@@ -238,7 +238,6 @@ layering above, that means:
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
 what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
-
 ## Principles
 
 - One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.

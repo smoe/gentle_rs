@@ -1975,8 +1975,9 @@ Recommended flow:
    - when extraction fails with chromosome/contig mismatch, status messages now
      include tried aliases, available-contig preview, and suggested matching
      contigs (for example accession-style names such as `NC_000017.11`)
-   - status output exposes `Apply suggested contig '...'` for one-click transfer
-     of the best prepared contig name into the `chr` field
+   - when a credible suggestion exists, status output exposes a copyable
+     `Suggested contig: '...'` line plus `Apply` / `Copy` actions for quick
+     transfer into the `chr` field or clipboard
    - use `Retrieve` directly from an inspected row
 5. Overlay signal tracks (BED, BigWig, or VCF) onto an extracted sequence:
    - open `Genome -> Import Genome Track...`

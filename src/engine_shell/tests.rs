@@ -937,7 +937,11 @@ fn execute_gibson_apply_creates_output_sequences() {
         matches!(container.kind, ContainerKind::Singleton) && container.members.len() == 1
     }));
     let latest = &engine.state().container_state.seq_to_latest_container;
-    for seq_id in ["insert_x_left_insert_primer", "insert_x_right_insert_primer", "out"] {
+    for seq_id in [
+        "insert_x_left_insert_primer",
+        "insert_x_right_insert_primer",
+        "out",
+    ] {
         let container_id = latest
             .get(seq_id)
             .unwrap_or_else(|| panic!("missing latest container for {seq_id}"));
