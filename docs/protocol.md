@@ -2034,9 +2034,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - Operations:
   - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
-  - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`, or `exon`
-    feature; transcript-template admission then follows the selected
-    splicing-scope rules around that seed.
+  - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`,
+    `misc_RNA`, `exon`, `gene`, or `CDS` feature; transcript-template
+    admission then follows the selected splicing-scope rules around that seed.
   - implemented profile: `nanopore_cdna_v1`
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:

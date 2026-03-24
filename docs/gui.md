@@ -123,8 +123,8 @@ Primary map modes (linear topology):
 - `Standard map`
   - regular linear feature-map rendering
 - `Splicing map`
-  - transcript/exon lane rendering for selected `mRNA`/`ncRNA`/`transcript`/
-    `exon`/`gene`/`CDS` features
+  - transcript/exon lane rendering for selected
+    `mRNA`/`ncRNA`/`misc_RNA`/`transcript`/`exon`/`gene`/`CDS` features
 - `Dotplot map`
   - compact launcher/compute panel in sequence windows
   - selecting `Dotplot map` opens a dedicated standalone `Dotplot` workspace
@@ -278,8 +278,9 @@ Feature tree grouping:
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
   - preset terms below the filter box are on/off toggle buttons
-- Selecting an `mRNA`/`transcript`/`ncRNA`/`exon` feature opens the splicing expert view in a
-  dedicated, resizable window instead of the inline description pane.
+- Selecting an `mRNA`/`transcript`/`ncRNA`/`misc_RNA`/`exon`/`gene`/`CDS`
+  feature opens the splicing expert view in a dedicated, resizable window
+  instead of the inline description pane.
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
 - The splicing expert window content is vertically scrollable, so very large
@@ -842,7 +843,7 @@ Controls:
 5. Splicing map (linear mode)
    - Toggles primary map rendering between standard feature-map mode and a
      read-only transcript/exon splicing-lane mode for the selected
-     `mRNA`/`ncRNA`/`transcript`/`exon`/`gene`/`CDS` feature.
+     `mRNA`/`ncRNA`/`misc_RNA`/`transcript`/`exon`/`gene`/`CDS` feature.
    - Uses the same splicing payload/geometry contract as the dedicated
      Splicing Expert window.
    - Clicking a transcript lane focuses the corresponding transcript feature in

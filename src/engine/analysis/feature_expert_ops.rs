@@ -511,8 +511,13 @@ impl GentleEngine {
         kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
     }
 
+    pub(super) fn is_splicing_noncoding_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
+        let kind = feature.kind.to_string();
+        kind.eq_ignore_ascii_case("ncRNA") || kind.eq_ignore_ascii_case("misc_RNA")
+    }
+
     pub(super) fn is_splicing_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
-        Self::is_mrna_feature(feature) || feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+        Self::is_mrna_feature(feature) || Self::is_splicing_noncoding_transcript_feature(feature)
     }
 
     pub(super) fn is_splicing_seed_feature(feature: &gb_io::seq::Feature) -> bool {
@@ -2161,7 +2166,7 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Feature '{}' in '{}' is not transcript-like RNA/exon/gene/CDS and cannot seed a splicing view",
+                    "Feature '{}' in '{}' is not an mRNA/transcript/ncRNA/misc_RNA/exon/gene/CDS feature and cannot seed a splicing view",
                     feature_id, seq_id
                 ),
             });

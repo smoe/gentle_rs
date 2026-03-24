@@ -141,6 +141,14 @@ fn splicing_seed_feature_sequence() -> DNAsequence {
     dna
 }
 
+fn splicing_misc_rna_sequence() -> DNAsequence {
+    let mut dna = splicing_test_sequence();
+    for feature in dna.features_mut().iter_mut() {
+        feature.kind = gb_io::seq::FeatureKind::from("misc_RNA");
+    }
+    dna
+}
+
 fn splicing_multi_gene_test_sequence() -> DNAsequence {
     let mut bases = vec![b'A'; 120];
     let mut fill_range = |start_0: usize, end_0: usize, pattern: &[u8]| {
@@ -1264,8 +1272,7 @@ fn test_real_primer3_preflight_is_opt_in() {
     assert!(
         report.reachable,
         "expected a reachable primer3 executable when {} is set, got {:?}",
-        EXTERNAL_PRIMER_BINARY_TEST_ENV,
-        report
+        EXTERNAL_PRIMER_BINARY_TEST_ENV, report
     );
 }
 
@@ -10488,6 +10495,24 @@ fn test_build_splicing_expert_view_accepts_cds_seed_feature() {
 }
 
 #[test]
+fn test_build_splicing_expert_view_accepts_misc_rna_seed_feature() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_misc".to_string(), splicing_misc_rna_sequence());
+    let engine = GentleEngine::from_state(state);
+
+    let view = engine
+        .build_splicing_expert_view("seq_misc", 0, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("splicing view from misc_RNA seed");
+
+    assert_eq!(view.target_feature_id, 0);
+    assert_eq!(view.group_label, "GENE1");
+    assert_eq!(view.transcript_count, 2);
+    assert!(!view.transcripts.is_empty());
+}
+
+#[test]
 fn test_align_sequences_global_sets_structured_result() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -11452,6 +11477,71 @@ fn test_interpret_rna_reads_accepts_reverse_strand_tp73_ncrna_seed() {
         .expect("stored report");
     assert_eq!(report.read_count_total, 1);
     assert_eq!(report.read_count_seed_passed, 1);
+}
+
+#[test]
+fn test_interpret_rna_reads_accepts_misc_rna_seed() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_misc".to_string(), splicing_misc_rna_sequence());
+    let mut engine = GentleEngine::from_state(state);
+
+    let splicing = engine
+        .build_splicing_expert_view("seq_misc", 0, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("build misc_RNA splicing view");
+    assert_eq!(splicing.transcript_count, 2);
+
+    let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+    let read_sequence = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_misc")
+            .expect("misc_RNA sequence present");
+        let template =
+            GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+        String::from_utf8(template.sequence).expect("template sequence")
+    };
+
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("misc_rna_reads.fa");
+    fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    engine
+        .apply(Operation::InterpretRnaReads {
+            seq_id: "seq_misc".to_string(),
+            seed_feature_id: 0,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path: input_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("seq_misc_reads".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        })
+        .expect("interpret misc_RNA reads");
+
+    let report = engine
+        .get_rna_read_report("seq_misc_reads")
+        .expect("stored report");
+    assert_eq!(report.read_count_total, 1);
+    assert_eq!(report.read_count_seed_passed, 1);
+    assert!(report.hits.iter().any(|hit| hit.passed_seed_filter));
 }
 
 #[test]
