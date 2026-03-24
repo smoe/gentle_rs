@@ -372,6 +372,11 @@ Top-level structure:
 - `warnings[]`, `errors[]`, `notes[]`
   - includes the shared Tₘ-model note used by GUI/CLI so the assumptions stay
     visible to the user
+  - notes also carry explicit design-review guidance that separates:
+    - overlap-side success/failure
+    - PCR 3' priming-side success/failure
+    so adapters can explain when the current blocker is priming rather than
+    Gibson overlap derivation
 - `cartoon`
   - built-in protocol id plus template bindings for single-insert flows
   - multi-insert previews may instead carry one fully resolved

@@ -662,10 +662,17 @@ Patterns menu:
          `5' overlap + 3' priming`
        - `Opening sketch` extends into an insert-primer construction view so
          the actual overlap segment and insert-priming segment are both shown
+       - `Target review` now separates overlap success from PCR-priming
+         success, so it is explicit when the 5' Gibson overlaps already
+         resolve cleanly and the remaining blocker is only the 3' gene-
+         specific priming window
        - shows blocking errors, warnings, and the factual Gibson cartoon
        - priming-segment failures now explain the best available insert-end
          candidate explicitly, including when the insert terminus is simply too
          short / too low-`Tm` for the requested Gibson primer window
+       - when overlap derivation succeeds but PCR priming still fails, the
+         review now suggests the two most likely design relaxations:
+         increase max priming length or lower the minimum priming `Tm`
        - visible findings use styled `Tₘ` rendering; the copyable findings box
          keeps plain `Tm` text for reliable copying
        - findings, resolved junctions, primer suggestions, and status text are

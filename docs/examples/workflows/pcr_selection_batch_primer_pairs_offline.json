@@ -26,6 +26,12 @@
         }
       },
       {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      },
+      {
         "ExtractRegion": {
           "input": "tp73_locus",
           "from": 61720,

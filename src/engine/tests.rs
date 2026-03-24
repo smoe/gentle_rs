@@ -15,6 +15,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::tempdir;
 
+const EXTERNAL_PRIMER_BINARY_TEST_ENV: &str = "GENTLE_TEST_EXTERNAL_BINARIES";
+
 fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
@@ -1223,6 +1225,94 @@ fn test_primer3_preflight_report_missing_executable() {
     assert!(!report.reachable);
     assert!(!report.version_probe_ok);
     assert!(report.error.is_some());
+}
+
+#[test]
+fn test_real_primer3_preflight_is_opt_in() {
+    if env::var_os(EXTERNAL_PRIMER_BINARY_TEST_ENV).is_none() {
+        return;
+    }
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let report = engine.primer3_preflight_report(None, None);
+    assert!(
+        report.reachable,
+        "expected a reachable primer3 executable when {} is set, got {:?}",
+        EXTERNAL_PRIMER_BINARY_TEST_ENV,
+        report
+    );
+}
+
+#[test]
+fn test_real_primer3_design_primer_pairs_is_opt_in() {
+    if env::var_os(EXTERNAL_PRIMER_BINARY_TEST_ENV).is_none() {
+        return;
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        seq(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    let result = engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 24,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                non_annealing_5prime_tail: None,
+                fixed_5prime: None,
+                fixed_3prime: None,
+                required_motifs: vec![],
+                forbidden_motifs: vec![],
+                locked_positions: vec![],
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 24,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                non_annealing_5prime_tail: None,
+                fixed_5prime: None,
+                fixed_3prime: None,
+                required_motifs: vec![],
+                forbidden_motifs: vec![],
+                locked_positions: vec![],
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(5),
+            report_id: Some("real_primer3_opt_in".to_string()),
+        })
+        .expect("real primer3 design should complete when opt-in env is set");
+    let report = engine
+        .get_primer_design_report("real_primer3_opt_in")
+        .expect("real primer3 report");
+    assert_eq!(report.backend.requested, "primer3");
+    assert_eq!(report.backend.used, "primer3");
+    assert!(!report.pairs.is_empty());
+    assert!(!result.created_seq_ids.is_empty());
 }
 
 #[test]

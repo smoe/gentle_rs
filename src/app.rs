@@ -14552,6 +14552,117 @@ Error: `{err}`"
         lines.join("\n")
     }
 
+    fn is_gibson_priming_error(row: &str) -> bool {
+        row.contains("Could not derive a Gibson priming segment")
+    }
+
+    fn is_gibson_overlap_error(row: &str) -> bool {
+        row.contains("Could not derive an overlap length")
+            || row.contains("overlap Tm")
+            || row.contains("Terminal overlap regions")
+            || row.contains("requires overlap_partition")
+            || row.contains("does not match required_overlap_bp")
+            || row.contains("not destination-derived")
+            || row.contains("Destination does not have enough flank sequence")
+    }
+
+    fn gibson_target_review_rows(
+        &self,
+        preview: &GibsonAssemblyPreview,
+    ) -> Vec<(egui::Color32, String)> {
+        let ok_color = egui::Color32::from_rgb(60, 130, 75);
+        let warn_color = egui::Color32::from_rgb(170, 120, 20);
+        let error_color = egui::Color32::from_rgb(190, 70, 70);
+        let overlap_error_count = preview
+            .errors
+            .iter()
+            .filter(|row| Self::is_gibson_overlap_error(row))
+            .count();
+        let priming_error_count = preview
+            .errors
+            .iter()
+            .filter(|row| Self::is_gibson_priming_error(row))
+            .count();
+        let expected_junction_count = preview.fragments.len().saturating_add(1);
+        let primed_fragment_count = preview
+            .primer_suggestions
+            .iter()
+            .map(|row| row.fragment_id.clone())
+            .collect::<HashSet<_>>()
+            .len();
+
+        let overlap_line = if preview.resolved_junctions.len() == expected_junction_count
+            && overlap_error_count == 0
+        {
+            (
+                ok_color,
+                format!(
+                    "Overlap target: resolved {}/{} junction overlaps cleanly.",
+                    preview.resolved_junctions.len(),
+                    expected_junction_count
+                ),
+            )
+        } else {
+            (
+                error_color,
+                format!(
+                    "Overlap target: only {}/{} junction overlaps resolve under the current settings.",
+                    preview.resolved_junctions.len(),
+                    expected_junction_count
+                ),
+            )
+        };
+
+        let priming_line = if primed_fragment_count == preview.fragments.len()
+            && priming_error_count == 0
+        {
+            (
+                ok_color,
+                format!(
+                    "PCR priming target: complete primer pairs were derived for all {}/{} insert fragments.",
+                    primed_fragment_count,
+                    preview.fragments.len()
+                ),
+            )
+        } else if preview.resolved_junctions.len() == expected_junction_count
+            && overlap_error_count == 0
+        {
+            (
+                warn_color,
+                format!(
+                    "PCR priming target: complete primer pairs were derived for {}/{} insert fragments. The current blockers are in the 3' priming window, not in the 5' Gibson overlaps.",
+                    primed_fragment_count,
+                    preview.fragments.len()
+                ),
+            )
+        } else {
+            (
+                error_color,
+                format!(
+                    "PCR priming target: complete primer pairs were derived for {}/{} insert fragments.",
+                    primed_fragment_count,
+                    preview.fragments.len()
+                ),
+            )
+        };
+
+        let mut rows = vec![overlap_line, priming_line];
+        if priming_error_count > 0
+            && preview.resolved_junctions.len() == expected_junction_count
+            && overlap_error_count == 0
+        {
+            rows.push((
+                warn_color,
+                format!(
+                    "Design hint: if biologically acceptable, try increasing max priming length above {} bp or lowering the minimum priming Tm below {} °C.",
+                    self.gibson_priming_length_max_bp.trim(),
+                    self.gibson_priming_tm_min_celsius.trim()
+                ),
+            ));
+        }
+        rows
+    }
+
     fn gibson_preview_junctions_text(preview: &GibsonAssemblyPreview) -> String {
         preview
             .resolved_junctions
@@ -15214,6 +15325,20 @@ Error: `{err}`"
                 || !preview.warnings.is_empty()
                 || !preview.notes.is_empty()
             {
+                ui.small("Target review");
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    for (color, row) in self.gibson_target_review_rows(&preview) {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(color, "-");
+                            Self::gibson_rich_text_label(
+                                ui,
+                                &row,
+                                egui::TextStyle::Small,
+                                color,
+                            );
+                        });
+                    }
+                });
                 ui.small("Preview findings");
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     Self::render_gibson_preview_findings_rich(ui, &preview);

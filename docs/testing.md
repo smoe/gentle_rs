@@ -63,6 +63,21 @@ GENTLE_TEST_ONLINE=1 cargo test workflow_examples -- --test-threads=1
 - `online`: executed only with `GENTLE_TEST_ONLINE=1`
 - `skip`: parsed/validated only
 
+Primer-design CI policy:
+
+- Always-run workflow/tutorial examples that exercise primer design should pin
+  `primer_design_backend=internal` explicitly so routine CI stays fast and does
+  not depend on a locally installed `primer3_core`.
+- Real external-binary primer-design checks are opt-in via:
+
+```bash
+GENTLE_TEST_EXTERNAL_BINARIES=1 cargo test real_primer3 -- --test-threads=1
+```
+
+- Those opt-in tests are intended to validate the actual `primer3_core`
+  integration path separately from the default deterministic internal-backend
+  CI surface.
+
 ### 3.2 Tutorial drift and runtime checks
 
 Tutorial source + generated outputs are part of the test surface:

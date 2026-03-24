@@ -92,6 +92,12 @@
         }
       },
       {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      },
+      {
         "DesignPrimerPairs": {
           "template": "tp73_luciferase_construct_preview",
           "roi_start_0based": 100,

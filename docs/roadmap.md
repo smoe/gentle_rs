@@ -101,6 +101,12 @@ order. Durable architecture constraints and decisions remain in
 - CLI state loading now treats empty/whitespace `--state` files as
   uninitialized and starts from `ProjectState::default()` instead of failing
   parse.
+- Primer-design CI split is now explicit:
+  - always-run workflow/tutorial examples pin `primer_design_backend=internal`
+    so routine CI remains deterministic and does not depend on a local
+    `primer3_core`
+  - real external-binary Primer3 smoke tests are opt-in via
+    `GENTLE_TEST_EXTERNAL_BINARIES=1`
 - Remote-resource test execution now supports explicit skip policy via
   `GENTLE_SKIP_REMOTE_TESTS=1` (overrides `GENTLE_TEST_ONLINE=1`) for
   packaging/offline environments.

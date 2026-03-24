@@ -1176,6 +1176,12 @@ pub fn preview_gibson_assembly_plan(
         "Destination opening resolves '{}' and '{}' as the two terminal Gibson junctions.",
         resolved_opening.left_end_id, resolved_opening.right_end_id
     ));
+    push_gibson_design_review_notes(
+        &mut preview,
+        &plan.validation_policy.design_targets,
+        2,
+        1,
+    );
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: 5' overlap plus 3' gene-specific priming segment. Full generic PCR controls remain outside this specialist flow.".to_string(),
     );
@@ -1892,6 +1898,94 @@ fn finalize_preview(
     Ok(preview)
 }
 
+fn is_gibson_priming_error(row: &str) -> bool {
+    row.contains("Could not derive a Gibson priming segment")
+}
+
+fn is_gibson_overlap_error(row: &str) -> bool {
+    row.contains("Could not derive an overlap length")
+        || row.contains("overlap Tm")
+        || row.contains("Terminal overlap regions")
+        || row.contains("requires overlap_partition")
+        || row.contains("does not match required_overlap_bp")
+        || row.contains("not destination-derived")
+        || row.contains("Destination does not have enough flank sequence")
+}
+
+fn push_gibson_design_review_notes(
+    preview: &mut GibsonAssemblyPreview,
+    targets: &GibsonPlanDesignTargets,
+    expected_junction_count: usize,
+    expected_fragment_count: usize,
+) {
+    let overlap_error_count = preview
+        .errors
+        .iter()
+        .filter(|row| is_gibson_overlap_error(row))
+        .count();
+    let priming_error_count = preview
+        .errors
+        .iter()
+        .filter(|row| is_gibson_priming_error(row))
+        .count();
+    let resolved_overlap_count = preview.resolved_junctions.len();
+    let primed_fragment_count = preview
+        .primer_suggestions
+        .iter()
+        .map(|row| row.fragment_id.clone())
+        .collect::<HashSet<_>>()
+        .len();
+
+    if resolved_overlap_count == expected_junction_count && overlap_error_count == 0 {
+        preview.notes.push(format!(
+            "Overlap review: resolved {}/{} junction overlaps within the current {}..{} bp search window and at or above the configured minimum overlap Tm {:.1} °C.",
+            resolved_overlap_count,
+            expected_junction_count,
+            targets.overlap_bp_min,
+            targets.overlap_bp_max,
+            targets.minimum_overlap_tm_celsius,
+        ));
+    } else {
+        preview.notes.push(format!(
+            "Overlap review: resolved {}/{} junction overlaps; the remaining blockers still include overlap-side constraints under the current {}..{} bp / minimum overlap Tm {:.1} °C targets.",
+            resolved_overlap_count,
+            expected_junction_count,
+            targets.overlap_bp_min,
+            targets.overlap_bp_max,
+            targets.minimum_overlap_tm_celsius,
+        ));
+    }
+
+    if primed_fragment_count == expected_fragment_count && priming_error_count == 0 {
+        preview.notes.push(format!(
+            "PCR priming review: derived complete primer pairs for {}/{} insert fragments within the current 3' priming window {:.1}..{:.1} °C and length window {}..{} bp.",
+            primed_fragment_count,
+            expected_fragment_count,
+            targets.priming_segment_tm_min_celsius,
+            targets.priming_segment_tm_max_celsius,
+            targets.priming_segment_min_length_bp,
+            targets.priming_segment_max_length_bp,
+        ));
+    } else {
+        preview.notes.push(format!(
+            "PCR priming review: derived complete primer pairs for {}/{} insert fragments. The current blockers are in the 3' gene-specific priming window ({:.1}..{:.1} °C, {}..{} bp), not in the 5' Gibson overlaps.",
+            primed_fragment_count,
+            expected_fragment_count,
+            targets.priming_segment_tm_min_celsius,
+            targets.priming_segment_tm_max_celsius,
+            targets.priming_segment_min_length_bp,
+            targets.priming_segment_max_length_bp,
+        ));
+        if overlap_error_count == 0 && resolved_overlap_count == expected_junction_count {
+            preview.notes.push(format!(
+                "Design hint: the overlap side already resolves cleanly. If biologically acceptable, try increasing max priming length above {} bp or lowering the minimum priming Tm below {:.1} °C.",
+                targets.priming_segment_max_length_bp,
+                targets.priming_segment_tm_min_celsius,
+            ));
+        }
+    }
+}
+
 fn preview_multi_insert_gibson_assembly_plan(
     destination: &DNAsequence,
     plan: &GibsonAssemblyPlan,
@@ -2134,6 +2228,12 @@ fn preview_multi_insert_gibson_assembly_plan(
         loaded_fragments.len(),
         resolved_overlaps.len()
     ));
+    push_gibson_design_review_notes(
+        &mut preview,
+        &plan.validation_policy.design_targets,
+        plan.assembly_order.len().saturating_sub(1),
+        loaded_fragments.len(),
+    );
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: every fragment gets one left primer and one right primer with a 5' overlap plus a 3' gene-specific priming segment.".to_string(),
     );
@@ -4353,6 +4453,12 @@ mod tests {
         assert!(joined.contains("best available 3' gene-specific priming segment"));
         assert!(joined.contains("Only 23 bp of gene-specific sequence are available"));
         assert!(joined.contains("41.6 °C"));
+        let notes = preview.notes.join("\n");
+        assert!(notes.contains("Overlap review: resolved 2/2 junction overlaps"));
+        assert!(notes.contains(
+            "The current blockers are in the 3' gene-specific priming window, not in the 5' Gibson overlaps."
+        ));
+        assert!(notes.contains("Design hint: the overlap side already resolves cleanly."));
     }
 
     #[test]
