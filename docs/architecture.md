@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-22
+Last updated: 2026-03-24
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -222,6 +222,25 @@ GENtle should follow a single-engine architecture:
 Frontends must not implement their own cloning/business logic.
 They only translate user input into engine operations and display results.
 This includes MCP tool handlers.
+
+### Optional embedded scripting adapters
+
+The Rust-embedded JavaScript and Lua adapters are compile-time optional.
+
+Rules:
+
+- default Cargo builds should optimize for GUI/CLI/MCP/docs workflows and must
+  not require JS/Lua runtime dependencies
+- release packaging builds may opt back into the embedded scripting feature set
+  (`script-interfaces`) so published release builds validate against the
+  broader adapter surface
+- embedded JS/Lua adapter modules and binaries may be feature-gated, but their
+  engine contracts must remain identical when enabled
+- Python remains a separate thin wrapper over `gentle_cli`
+  (`integrations/python/gentle_py`) and should not pull new Rust-side biology
+  logic into a dedicated Python build path
+- feature-gating adapters must never be used to fork engine behavior or create
+  adapter-only business logic
 
 ## 3. Implementation status and roadmap
 
@@ -1555,6 +1574,9 @@ Deferred-scope rules:
   accepted and implemented
 - Add thin Python adapter wrapper over deterministic CLI contracts
   (`integrations/python/gentle_py`):
+  accepted and implemented
+- Make embedded JS/Lua adapters compile-time optional while keeping Python as a
+  separate CLI wrapper:
   accepted and implemented
 - Add TFBS safety cap semantics (`default=500`, `0=unlimited`):
   accepted and implemented

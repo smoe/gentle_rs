@@ -8,8 +8,10 @@ GENtle currently provides six binaries:
 
 - `gentle`: graphical desktop app (GUI)
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
-- `gentle_js`: interactive JavaScript shell
-- `gentle_lua`: interactive Lua shell
+- `gentle_js`: interactive JavaScript shell (optional build target; requires
+  feature `js-interface`)
+- `gentle_lua`: interactive Lua shell (optional build target; requires feature
+  `lua-interface`)
 - `gentle_examples_docs`: generates adapter snippets and tutorial artifacts from canonical protocol examples
 - `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline;
   includes standardized capability discovery via `tools/list`,
@@ -286,8 +288,8 @@ From the repository root:
 
 ```bash
 cargo run --bin gentle
-cargo run --bin gentle_js
-cargo run --bin gentle_lua
+cargo run --features js-interface --bin gentle_js
+cargo run --features lua-interface --bin gentle_lua
 cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_examples_docs -- --check
 cargo run --bin gentle_examples_docs -- tutorial-check
@@ -300,8 +302,8 @@ For optimized builds:
 
 ```bash
 cargo run --release --bin gentle
-cargo run --release --bin gentle_js
-cargo run --release --bin gentle_lua
+cargo run --release --features js-interface --bin gentle_js
+cargo run --release --features lua-interface --bin gentle_lua
 cargo run --release --bin gentle_cli -- capabilities
 cargo run --release --bin gentle_examples_docs -- --check
 cargo run --release --bin gentle_examples_docs -- tutorial-check
@@ -312,6 +314,18 @@ cargo run --release --bin gentle_cli -- --version
 
 Important: with `cargo run`, arguments for GENtle binaries must come after `--`.
 Example: `cargo run --bin gentle -- --version`.
+
+JavaScript and Lua shells are compile-time optional so default `cargo check`
+and `cargo build` do not pull in their heavier runtime dependencies. The Python
+wrapper in `integrations/python/gentle_py` remains separate from Cargo
+features.
+
+Release-build policy:
+
+- default local builds stay lean unless JS/Lua support is requested explicitly
+- release packaging builds enable `--features script-interfaces`
+- for a local optimized build that matches release behavior, use
+  `cargo build --release --features script-interfaces`
 
 ## Protocol-first example source
 
@@ -369,9 +383,10 @@ Current behavior:
 ## `gentle_js` (JavaScript shell)
 
 `gentle_js` starts an interactive JavaScript REPL backed by GENtle data structures.
+This binary is available when Cargo feature `js-interface` is enabled.
 
 ```bash
-cargo run --bin gentle_js
+cargo run --features js-interface --bin gentle_js
 ```
 
 Exit methods:
@@ -629,9 +644,10 @@ Mutating tool safety:
 ## `gentle_lua` (Lua shell)
 
 `gentle_lua` starts an interactive Lua REPL backed by GENtle data structures.
+This binary is available when Cargo feature `lua-interface` is enabled.
 
 ```bash
-cargo run --bin gentle_lua
+cargo run --features lua-interface --bin gentle_lua
 ```
 
 Exit methods:

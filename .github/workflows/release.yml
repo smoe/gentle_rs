@@ -96,11 +96,11 @@ jobs:
 
       - name: Build macOS bundle
         if: runner.os == 'macOS'
-        run: cargo bundle --release --bin gentle --format ${{ matrix.bundle_format }}
+        run: cargo bundle --release --features script-interfaces --bin gentle --format ${{ matrix.bundle_format }}
 
       - name: Build Windows binary
         if: runner.os == 'Windows'
-        run: cargo build --release --bin gentle
+        run: cargo build --release --features script-interfaces --bin gentle
 
       - name: Collect installer path
         id: collect

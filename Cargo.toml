@@ -27,10 +27,12 @@ path = "src/bin/gentle.rs"
 [[bin]]
 name = "gentle_lua"
 path = "src/bin/gentle_lua.rs"
+required-features = ["lua-interface"]
 
 [[bin]]
 name = "gentle_js"
 path = "src/bin/gentle_js.rs"
+required-features = ["js-interface"]
 
 [[bin]]
 name = "gentle_cli"
@@ -51,6 +53,9 @@ name = "gentle"
 default = []
 screenshot-capture = []
 snapshot-tests = []
+js-interface = ["dep:deno_core", "dep:deno_error"]
+lua-interface = ["dep:mlua"]
+script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }
@@ -93,9 +98,9 @@ sha1 = "0.10"
 
 # For cli
 rustyline = "*"
-mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
-deno_core = "*"
-deno_error = "*"
+mlua = { version = "*", optional = true, features = ["lua54", "vendored", "serialize"] }
+deno_core = { version = "*", optional = true }
+deno_error = { version = "*", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"

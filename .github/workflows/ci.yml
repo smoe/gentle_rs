@@ -42,8 +42,22 @@ jobs:
       - name: Cargo check
         run: cargo check -q
 
+      - name: Cargo check (JavaScript adapter feature)
+        run: cargo check -q --features js-interface
+
+      - name: Cargo check (Lua adapter feature)
+        run: cargo check -q --features lua-interface
+
+      - name: Cargo check (script interface bundle)
+        run: cargo check -q --features script-interfaces
+
       - name: Cargo check (all features)
         run: cargo check --all-features -q
+
+      - name: Script adapter version smoke
+        run: |
+          cargo run --features js-interface --bin gentle_js -- --version
+          cargo run --features lua-interface --bin gentle_lua -- --version
 
       - name: Examples and tutorial schema/drift checks
         run: |

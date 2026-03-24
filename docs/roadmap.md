@@ -113,10 +113,20 @@ order. Durable architecture constraints and decisions remain in
   packaging/offline environments.
 - JS and Lua adapters expose shared operation/workflow bridges and convenience
   wrappers over engine contracts.
+- Embedded JS/Lua adapters are now compile-time optional build targets:
+  - default Cargo builds avoid `deno_core`/`mlua` unless scripting features are
+    explicitly enabled
+  - Cargo features:
+    - `js-interface`
+    - `lua-interface`
+    - `script-interfaces`
+  - `gentle_js` / `gentle_lua` binaries require their matching feature
+  - release packaging builds enable `script-interfaces` so tagged release
+    artifacts are compiled against the broader embedded scripting surface
 - Python adapter baseline is now available as a thin `gentle_cli` wrapper:
   - path: `integrations/python/gentle_py/`
   - deterministic methods for `capabilities`, `state-summary`, `op`,
-    `workflow`, and `shell`
+  `workflow`, and `shell`
   - no biology logic duplication (subprocess bridge only)
 
 ### Biology/analysis capabilities already implemented
