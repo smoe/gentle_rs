@@ -381,6 +381,8 @@ order. Durable architecture constraints and decisions remain in
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
     - `pcr.assay.qpcr`
+    - pair/qPCR renders now show explicit primer glyphs with oriented 5'/3'
+      ends; the reverse primer is rendered as a 180-degree mirrored glyph
   - next protocol-cartoon family expansion for PCR:
     - batch, nested, inverse, and richer artifact/readout variants through the
       same template/binding abstraction
