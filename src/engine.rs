@@ -33,10 +33,10 @@ use crate::{
         DEFAULT_HELPER_GENOME_CATALOG_PATH, EnsemblCatalogUpdatePreview,
         EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeGeneRecord, GenomeSourcePlan,
-        GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
-        PrepareGenomeReport, PreparedGenomeFallbackPolicy, PreparedGenomeInspection,
-        PreparedGenomeRemovalReport, blast_external_binary_preflight_report,
-        build_genbank_efetch_url, is_prepare_cancelled_error, validate_genbank_accession,
+        GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        blast_external_binary_preflight_report, build_genbank_efetch_url,
+        is_prepare_cancelled_error, validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -3448,24 +3448,85 @@ pub struct RnaReadAlignmentTsvExport {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadAlignmentEffect {
+    #[default]
+    ConfirmedAssignment,
+    ReassignedTranscript,
+    AlignedWithoutPhase1Assignment,
+}
+
+impl RnaReadAlignmentEffect {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ConfirmedAssignment => "confirmed_assignment",
+            Self::ReassignedTranscript => "reassigned_transcript",
+            Self::AlignedWithoutPhase1Assignment => "aligned_without_phase1_assignment",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappedSupportExonAttribution {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappedSupportJunctionAttribution {
+    pub donor_1based: usize,
+    pub acceptor_1based: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadAlignmentInspectionRow {
     pub rank: usize,
     pub record_index: usize,
     pub header_id: String,
+    #[serde(default)]
+    pub phase1_primary_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub exon_path: String,
+    #[serde(default)]
+    pub exon_transitions_confirmed: usize,
+    #[serde(default)]
+    pub exon_transitions_total: usize,
+    #[serde(default)]
+    pub selected_strand: String,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub alignment_effect: RnaReadAlignmentEffect,
     pub transcript_id: String,
     pub transcript_label: String,
     pub strand: String,
     pub alignment_mode: RnaReadAlignmentMode,
+    #[serde(default)]
+    pub target_start_1based: usize,
+    #[serde(default)]
+    pub target_end_1based: usize,
     pub score: isize,
     pub identity_fraction: f64,
     pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub secondary_mapping_count: usize,
     pub seed_hit_fraction: f64,
     pub weighted_seed_hit_fraction: f64,
     pub passed_seed_filter: bool,
     pub msa_eligible: bool,
     pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub mapped_exon_support: Vec<RnaReadMappedSupportExonAttribution>,
+    #[serde(default)]
+    pub mapped_junction_support: Vec<RnaReadMappedSupportJunctionAttribution>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6481,15 +6542,15 @@ impl GentleEngine {
         output_catalog_path: Option<&str>,
     ) -> Result<GenomeCatalogEntryRemovalReport, EngineError> {
         let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
-        catalog.remove_catalog_entry(genome_id, output_catalog_path).map_err(|e| {
-            EngineError {
+        catalog
+            .remove_catalog_entry(genome_id, output_catalog_path)
+            .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
                     "Could not remove genome catalog entry '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
-            }
-        })
+            })
     }
 
     pub fn remove_prepared_reference_genome(

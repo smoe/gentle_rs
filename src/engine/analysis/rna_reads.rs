@@ -385,6 +385,28 @@ impl GentleEngine {
         }
     }
 
+    fn primary_phase1_transcript_id(hit: &RnaReadInterpretationHit) -> &str {
+        if !hit.exon_path_transcript_id.trim().is_empty() {
+            hit.exon_path_transcript_id.as_str()
+        } else {
+            hit.seed_chain_transcript_id.as_str()
+        }
+    }
+
+    fn alignment_effect_for_hit(
+        hit: &RnaReadInterpretationHit,
+        mapping: &RnaReadMappingHit,
+    ) -> RnaReadAlignmentEffect {
+        let phase1_transcript_id = Self::primary_phase1_transcript_id(hit).trim();
+        if phase1_transcript_id.is_empty() {
+            RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
+        } else if phase1_transcript_id == mapping.transcript_id.trim() {
+            RnaReadAlignmentEffect::ConfirmedAssignment
+        } else {
+            RnaReadAlignmentEffect::ReassignedTranscript
+        }
+    }
+
     pub fn inspect_rna_read_alignments(
         &self,
         report_id: &str,
@@ -398,6 +420,9 @@ impl GentleEngine {
             });
         }
         let report = self.get_rna_read_report(report_id)?;
+        let splicing_view = self
+            .build_splicing_expert_view(&report.seq_id, report.seed_feature_id, report.scope)
+            .ok();
         let mut ranked_rows = report
             .hits
             .iter()
@@ -405,24 +430,45 @@ impl GentleEngine {
             .filter_map(|hit| {
                 let mapping = hit.best_mapping.as_ref()?;
                 let rank = Self::rna_read_retention_rank(hit);
+                let (mapped_exon_support, mapped_junction_support) = splicing_view
+                    .as_ref()
+                    .map(|splicing| {
+                        Self::collect_mapped_support_attribution_rows(mapping, splicing)
+                    })
+                    .unwrap_or_default();
                 Some((
                     rank,
                     RnaReadAlignmentInspectionRow {
                         rank: 0,
                         record_index: hit.record_index,
                         header_id: hit.header_id.clone(),
+                        phase1_primary_transcript_id: Self::primary_phase1_transcript_id(hit)
+                            .to_string(),
+                        seed_chain_transcript_id: hit.seed_chain_transcript_id.clone(),
+                        exon_path_transcript_id: hit.exon_path_transcript_id.clone(),
+                        exon_path: hit.exon_path.clone(),
+                        exon_transitions_confirmed: hit.exon_transitions_confirmed,
+                        exon_transitions_total: hit.exon_transitions_total,
+                        selected_strand: hit.strand_diagnostics.selected_strand.clone(),
+                        reverse_complement_applied: hit.reverse_complement_applied,
+                        alignment_effect: Self::alignment_effect_for_hit(hit, mapping),
                         transcript_id: mapping.transcript_id.clone(),
                         transcript_label: mapping.transcript_label.clone(),
                         strand: mapping.strand.clone(),
                         alignment_mode: mapping.alignment_mode,
+                        target_start_1based: mapping.target_start_1based,
+                        target_end_1based: mapping.target_end_1based,
                         score: mapping.score,
                         identity_fraction: mapping.identity_fraction,
                         query_coverage_fraction: mapping.query_coverage_fraction,
+                        secondary_mapping_count: hit.secondary_mappings.len(),
                         seed_hit_fraction: hit.seed_hit_fraction,
                         weighted_seed_hit_fraction: hit.weighted_seed_hit_fraction,
                         passed_seed_filter: hit.passed_seed_filter,
                         msa_eligible: hit.msa_eligible,
                         origin_class: hit.origin_class,
+                        mapped_exon_support,
+                        mapped_junction_support,
                     },
                 ))
             })
@@ -485,7 +531,7 @@ impl GentleEngine {
         let mut writer = BufWriter::new(file);
         writeln!(
             writer,
-            "report_id\tseq_id\trank\trecord_index\theader_id\ttranscript_id\ttranscript_label\tstrand\talignment_mode\tscore\tidentity_fraction\tquery_coverage_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class"
+            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -497,24 +543,42 @@ impl GentleEngine {
         for row in &inspection.rows {
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&inspection.report_id),
                 Self::sanitize_tsv_cell(&inspection.seq_id),
                 row.rank,
                 row.record_index,
                 Self::sanitize_tsv_cell(&row.header_id),
+                Self::sanitize_tsv_cell(&row.phase1_primary_transcript_id),
+                Self::sanitize_tsv_cell(&row.seed_chain_transcript_id),
+                Self::sanitize_tsv_cell(&row.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&row.exon_path),
+                row.exon_transitions_confirmed,
+                row.exon_transitions_total,
+                Self::sanitize_tsv_cell(&row.selected_strand),
+                row.reverse_complement_applied,
+                row.alignment_effect.as_str(),
                 Self::sanitize_tsv_cell(&row.transcript_id),
                 Self::sanitize_tsv_cell(&row.transcript_label),
                 Self::sanitize_tsv_cell(&row.strand),
                 row.alignment_mode.as_str(),
+                row.target_start_1based,
+                row.target_end_1based,
                 row.score,
                 row.identity_fraction,
                 row.query_coverage_fraction,
+                row.secondary_mapping_count,
                 row.seed_hit_fraction,
                 row.weighted_seed_hit_fraction,
                 row.passed_seed_filter,
                 row.msa_eligible,
                 row.origin_class.as_str(),
+                Self::sanitize_tsv_cell(&Self::format_mapped_exon_support_for_tsv(
+                    &row.mapped_exon_support
+                )),
+                Self::sanitize_tsv_cell(&Self::format_mapped_junction_support_for_tsv(
+                    &row.mapped_junction_support
+                )),
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -2801,46 +2865,45 @@ impl GentleEngine {
         rows.into_iter().map(|row| row.preview).collect::<Vec<_>>()
     }
 
-    fn accumulate_support_counts_for_mapping_by_genomic_span(
+    fn mapped_support_indices_for_mapping_by_genomic_span(
         mapping: &RnaReadMappingHit,
         splicing: &SplicingExpertView,
-        exon_counts: &mut [usize],
-        junction_counts: &mut [usize],
-    ) {
+    ) -> (Vec<usize>, Vec<usize>) {
         let span_start = mapping.target_start_1based.min(mapping.target_end_1based);
         let span_end = mapping.target_start_1based.max(mapping.target_end_1based);
+        let mut exon_indices = Vec::<usize>::new();
         for (idx, exon) in splicing.unique_exons.iter().enumerate() {
             if span_start <= exon.end_1based && span_end >= exon.start_1based {
-                exon_counts[idx] = exon_counts[idx].saturating_add(1);
+                exon_indices.push(idx);
             }
         }
+        let mut junction_indices = Vec::<usize>::new();
         for (idx, junction) in splicing.junctions.iter().enumerate() {
             let donor = junction.donor_1based.min(junction.acceptor_1based);
             let acceptor = junction.donor_1based.max(junction.acceptor_1based);
             if span_start <= donor && span_end >= acceptor {
-                junction_counts[idx] = junction_counts[idx].saturating_add(1);
+                junction_indices.push(idx);
             }
         }
+        (exon_indices, junction_indices)
     }
 
-    fn accumulate_support_counts_for_mapping_by_transcript_offsets(
+    fn mapped_support_indices_for_mapping_by_transcript_offsets(
         mapping: &RnaReadMappingHit,
         splicing: &SplicingExpertView,
-        exon_counts: &mut [usize],
-        junction_counts: &mut [usize],
-    ) -> bool {
+    ) -> Option<(Vec<usize>, Vec<usize>)> {
         if mapping.target_end_offset_0based_exclusive <= mapping.target_start_offset_0based {
-            return false;
+            return None;
         }
         let Some(transcript) = splicing
             .transcripts
             .iter()
             .find(|row| row.transcript_feature_id == mapping.transcript_feature_id)
         else {
-            return false;
+            return None;
         };
         if transcript.exons.is_empty() {
-            return false;
+            return None;
         }
         let exon_index = splicing
             .unique_exons
@@ -2862,6 +2925,8 @@ impl GentleEngine {
         let aligned_start = mapping.target_start_offset_0based;
         let aligned_end = mapping.target_end_offset_0based_exclusive;
         let mut template_cursor = 0usize;
+        let mut exon_indices = BTreeSet::<usize>::new();
+        let mut junction_indices = BTreeSet::<usize>::new();
         for (idx, exon) in ordered_exons.iter().enumerate() {
             let exon_start_1based = exon.start_1based.min(exon.end_1based);
             let exon_end_1based = exon.start_1based.max(exon.end_1based);
@@ -2875,7 +2940,7 @@ impl GentleEngine {
             let exon_offset_end = template_cursor.saturating_add(exon_len);
             if aligned_start < exon_offset_end && aligned_end > exon_offset_start {
                 if let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based)) {
-                    exon_counts[*exon_idx] = exon_counts[*exon_idx].saturating_add(1);
+                    exon_indices.insert(*exon_idx);
                 }
             }
             if idx + 1 < ordered_exons.len() {
@@ -2892,8 +2957,7 @@ impl GentleEngine {
                     };
                     if let Some(junction_idx) = junction_index.get(&(donor_1based, acceptor_1based))
                     {
-                        junction_counts[*junction_idx] =
-                            junction_counts[*junction_idx].saturating_add(1);
+                        junction_indices.insert(*junction_idx);
                     }
                 }
             }
@@ -2902,7 +2966,68 @@ impl GentleEngine {
                 break;
             }
         }
-        true
+        Some((
+            exon_indices.into_iter().collect::<Vec<_>>(),
+            junction_indices.into_iter().collect::<Vec<_>>(),
+        ))
+    }
+
+    fn mapped_support_indices_for_mapping(
+        mapping: &RnaReadMappingHit,
+        splicing: &SplicingExpertView,
+    ) -> (Vec<usize>, Vec<usize>) {
+        Self::mapped_support_indices_for_mapping_by_transcript_offsets(mapping, splicing)
+            .unwrap_or_else(|| {
+                Self::mapped_support_indices_for_mapping_by_genomic_span(mapping, splicing)
+            })
+    }
+
+    fn collect_mapped_support_attribution_rows(
+        mapping: &RnaReadMappingHit,
+        splicing: &SplicingExpertView,
+    ) -> (
+        Vec<RnaReadMappedSupportExonAttribution>,
+        Vec<RnaReadMappedSupportJunctionAttribution>,
+    ) {
+        let (exon_indices, junction_indices) =
+            Self::mapped_support_indices_for_mapping(mapping, splicing);
+        let mapped_exon_support = exon_indices
+            .into_iter()
+            .filter_map(|idx| {
+                let exon = splicing.unique_exons.get(idx)?;
+                Some(RnaReadMappedSupportExonAttribution {
+                    start_1based: exon.start_1based,
+                    end_1based: exon.end_1based,
+                })
+            })
+            .collect::<Vec<_>>();
+        let mapped_junction_support = junction_indices
+            .into_iter()
+            .filter_map(|idx| {
+                let junction = splicing.junctions.get(idx)?;
+                Some(RnaReadMappedSupportJunctionAttribution {
+                    donor_1based: junction.donor_1based,
+                    acceptor_1based: junction.acceptor_1based,
+                })
+            })
+            .collect::<Vec<_>>();
+        (mapped_exon_support, mapped_junction_support)
+    }
+
+    fn format_mapped_exon_support_for_tsv(rows: &[RnaReadMappedSupportExonAttribution]) -> String {
+        rows.iter()
+            .map(|row| format!("{}..{}", row.start_1based, row.end_1based))
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+
+    fn format_mapped_junction_support_for_tsv(
+        rows: &[RnaReadMappedSupportJunctionAttribution],
+    ) -> String {
+        rows.iter()
+            .map(|row| format!("{}->{}", row.donor_1based, row.acceptor_1based))
+            .collect::<Vec<_>>()
+            .join(";")
     }
 
     pub(super) fn accumulate_support_counts_for_mapping(
@@ -2911,20 +3036,18 @@ impl GentleEngine {
         exon_counts: &mut [usize],
         junction_counts: &mut [usize],
     ) {
-        if Self::accumulate_support_counts_for_mapping_by_transcript_offsets(
-            mapping,
-            splicing,
-            exon_counts,
-            junction_counts,
-        ) {
-            return;
+        let (exon_indices, junction_indices) =
+            Self::mapped_support_indices_for_mapping(mapping, splicing);
+        for idx in exon_indices {
+            if let Some(count) = exon_counts.get_mut(idx) {
+                *count = count.saturating_add(1);
+            }
         }
-        Self::accumulate_support_counts_for_mapping_by_genomic_span(
-            mapping,
-            splicing,
-            exon_counts,
-            junction_counts,
-        );
+        for idx in junction_indices {
+            if let Some(count) = junction_counts.get_mut(idx) {
+                *count = count.saturating_add(1);
+            }
+        }
     }
 
     pub(super) fn build_rna_read_support_frequencies_from_counts(

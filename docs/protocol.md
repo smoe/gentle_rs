@@ -2143,6 +2143,21 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `gentle.rna_read_alignment_inspection.v1`
     - produced by non-mutating shared-shell inspection command
       `rna-reads inspect-alignments`
+    - each row now carries:
+      - phase-1 transcript-assignment fields
+        (`phase1_primary_transcript_id`, `seed_chain_transcript_id`,
+        `exon_path_transcript_id`, `exon_path`,
+        `exon_transitions_confirmed/total`, `selected_strand`,
+        `reverse_complement_applied`)
+      - phase-2 best-mapping fields
+        (`transcript_id`, `transcript_label`, `strand`, `alignment_mode`,
+        `target_start_1based`, `target_end_1based`, `identity_fraction`,
+        `query_coverage_fraction`, `score`, `secondary_mapping_count`)
+      - deterministic comparison field `alignment_effect`
+        (`confirmed_assignment`, `reassigned_transcript`,
+        `aligned_without_phase1_assignment`)
+      - mapped-support attribution arrays for the best mapping
+        (`mapped_exon_support[]`, `mapped_junction_support[]`)
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
@@ -2177,8 +2192,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
   - export schema: `gentle.rna_read_alignment_tsv_export.v1`
-  - output: ranked alignment rows as TSV (`rank`, mapping metrics, and seed
-    metrics) with optional top-`N` truncation via `limit`.
+  - output: ranked alignment rows as TSV with:
+    - phase-1 transcript/path diagnostics
+    - phase-2 mapping metrics
+    - `alignment_effect`
+    - compact mapped exon/junction attribution columns
+    - optional top-`N` truncation via `limit`
 - Alignment-dotplot export:
   - operation:
     `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`

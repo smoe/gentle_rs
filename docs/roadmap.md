@@ -1247,6 +1247,11 @@ Status:
   - Added non-mutating alignment inspection route:
     `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]`
     returns ranked aligned-hit rows for report triage without mutating state.
+  - `Mapped cDNA` inspection in Splicing Expert is now read-first by default:
+    saved-report aligned rows expose phase-1 vs phase-2 comparison,
+    deterministic effect labels (`confirmed`, `reassigned`, `no phase-1 tx`),
+    and per-read mapped exon/junction contribution details, while the old
+    top-hit list remains a clearly labeled capped live preview.
   - Added ranked alignment TSV export for downstream tabular analysis:
     `ExportRnaReadAlignmentsTsv` /
     `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv

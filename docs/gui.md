@@ -488,17 +488,39 @@ Feature tree grouping:
     - inferred exon support reconstructed from assigned transcript paths
     - confirmed junction support from seed-supported transitions
     - isoform ranking from thresholded cDNA assignments
-  - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and `Mapped
-    cDNA isoform ranking` use phase-2 best mappings only and are the intended
-    interpretation surface once retained-read alignment has been run
-    - mapped exon/junction support now follows the aligned transcript-template
-      offsets, so alternative exons inside the genomic span are no longer
-      counted unless the mapping actually traversed them
+  - `Mapped cDNA` is now split into two subviews:
+    - `Read effects` (default)
+      - read-first inspection surface driven from the saved report /
+        `inspect-alignments` payload, not from the capped live preview
+      - default table height targets about 12 visible aligned rows before
+        scrolling
+      - one row per aligned retained read with:
+        - phase-1 transcript guess
+        - phase-2 aligned transcript
+        - deterministic effect label
+          (`confirmed`, `reassigned`, `aligned (no phase-1 tx)`)
+        - mapped exon/junction contribution counts
+      - selecting a row opens a detail pane with:
+        - phase-1 interpretation fields
+        - phase-2 mapping metrics
+        - mapped exon/junction contribution spans
+        - direct actions (`Copy highlighted FASTA`, `Materialize highlighted`,
+          `Export dotplot...`)
+    - `Aggregate support`
+      - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and
+        `Mapped cDNA isoform ranking` use phase-2 best mappings only and are
+        the aggregate interpretation surface once retained-read alignment has
+        been run
+      - mapped exon/junction support follows aligned transcript-template
+        offsets, so alternative exons inside the genomic span are no longer
+        counted unless the mapping actually traversed them
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time
-  - the top-read area is explicitly a live preview, not the whole retained
-    report; saved-report selection helpers now let you:
+  - the top-read area is explicitly a `Live preview`, not the whole retained
+    report; it remains useful during runs, but post-run read inspection should
+    use mapped `Read effects`
+  - saved-report selection helpers now let you:
     - select all reads tied at maximal seed score
     - select all reads in the rightmost non-empty score-density bin
     - keep those selections active even when some rows fall outside the

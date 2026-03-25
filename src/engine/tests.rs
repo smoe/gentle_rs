@@ -7,6 +7,7 @@ use super::*;
 use crate::genomes::BlastHit;
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -12992,6 +12993,12 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 seed_hit_fraction: 0.88,
                 weighted_seed_hit_fraction: 0.82,
                 weighted_matched_kmers: 7.4,
+                seed_chain_transcript_id: "tx_hi_id".to_string(),
+                exon_path_transcript_id: "tx_hi_id".to_string(),
+                exon_path: "1:2".to_string(),
+                exon_transitions_confirmed: 1,
+                exon_transitions_total: 1,
+                reverse_complement_applied: true,
                 passed_seed_filter: true,
                 best_mapping: Some(RnaReadMappingHit {
                     transcript_id: "tx_hi_id".to_string(),
@@ -13018,6 +13025,11 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 seed_hit_fraction: 0.33,
                 weighted_seed_hit_fraction: 0.27,
                 weighted_matched_kmers: 2.5,
+                seed_chain_transcript_id: "tx_seed_cov".to_string(),
+                exon_path_transcript_id: "tx_seed_cov".to_string(),
+                exon_path: "1-2".to_string(),
+                exon_transitions_confirmed: 0,
+                exon_transitions_total: 1,
                 passed_seed_filter: true,
                 best_mapping: Some(RnaReadMappingHit {
                     transcript_id: "tx_hi_cov".to_string(),
@@ -13062,8 +13074,18 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert_eq!(inspection.row_count, 2);
     assert_eq!(inspection.rows[0].rank, 1);
     assert_eq!(inspection.rows[0].header_id, "aligned_hi_cov");
+    assert_eq!(
+        inspection.rows[0].alignment_effect,
+        RnaReadAlignmentEffect::ReassignedTranscript
+    );
     assert_eq!(inspection.rows[1].rank, 2);
     assert_eq!(inspection.rows[1].header_id, "aligned_hi_id");
+    assert_eq!(
+        inspection.rows[1].alignment_effect,
+        RnaReadAlignmentEffect::ConfirmedAssignment
+    );
+    assert_eq!(inspection.rows[1].phase1_primary_transcript_id, "tx_hi_id");
+    assert!(inspection.rows[1].reverse_complement_applied);
 
     let td = tempdir().expect("tempdir");
     let tsv_path = td.path().join("alignment_rows.tsv");
@@ -13079,6 +13101,9 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert_eq!(tsv_export.aligned_count, 2);
     assert_eq!(tsv_export.limit, Some(1));
     let tsv_text = fs::read_to_string(&tsv_path).expect("read alignment tsv");
+    assert!(tsv_text.contains("alignment_effect"));
+    assert!(tsv_text.contains("phase1_primary_transcript_id"));
+    assert!(tsv_text.contains("mapped_exon_support"));
     assert!(tsv_text.contains("alignment_mode"));
     assert!(tsv_text.contains("aligned_hi_cov"));
 
@@ -13097,6 +13122,184 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert!(svg_text.contains("alignment dotplot"));
     assert!(svg_text.contains("rendered_points=1"));
     assert!(svg_text.contains("total_points=2"));
+}
+
+#[test]
+fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support_attribution() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let splicing = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("splicing view");
+    assert!(splicing.transcripts.len() >= 2);
+    let tx_confirm = &splicing.transcripts[0];
+    let tx_alt = &splicing.transcripts[1];
+    let tx_confirm_len = tx_confirm
+        .exons
+        .iter()
+        .map(|exon| {
+            exon.end_1based
+                .saturating_sub(exon.start_1based)
+                .saturating_add(1)
+        })
+        .sum::<usize>();
+    let tx_confirm_start = tx_confirm.exons.first().expect("first exon").start_1based;
+    let tx_confirm_end = tx_confirm.exons.last().expect("last exon").end_1based;
+
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_effects".to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "confirmed".to_string(),
+                    sequence: "ACGTACGTACGT".to_string(),
+                    read_length_bp: 12,
+                    passed_seed_filter: true,
+                    seed_chain_transcript_id: tx_confirm.transcript_id.clone(),
+                    exon_path_transcript_id: tx_confirm.transcript_id.clone(),
+                    exon_path: "1:2:3".to_string(),
+                    exon_transitions_confirmed: 2,
+                    exon_transitions_total: 2,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: tx_confirm.transcript_feature_id,
+                        transcript_id: tx_confirm.transcript_id.clone(),
+                        transcript_label: tx_confirm.label.clone(),
+                        strand: tx_confirm.strand.clone(),
+                        target_start_1based: tx_confirm_start,
+                        target_end_1based: tx_confirm_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: tx_confirm_len,
+                        identity_fraction: 0.97,
+                        query_coverage_fraction: 1.0,
+                        score: 220,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "reassigned".to_string(),
+                    sequence: "ACGTACGTACGT".to_string(),
+                    read_length_bp: 12,
+                    passed_seed_filter: true,
+                    seed_chain_transcript_id: tx_alt.transcript_id.clone(),
+                    exon_path_transcript_id: tx_alt.transcript_id.clone(),
+                    exon_path: "1-2-3".to_string(),
+                    exon_transitions_confirmed: 0,
+                    exon_transitions_total: 2,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: tx_confirm.transcript_feature_id,
+                        transcript_id: tx_confirm.transcript_id.clone(),
+                        transcript_label: tx_confirm.label.clone(),
+                        strand: tx_confirm.strand.clone(),
+                        target_start_1based: tx_confirm_start,
+                        target_end_1based: tx_confirm_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: tx_confirm_len,
+                        identity_fraction: 0.89,
+                        query_coverage_fraction: 0.92,
+                        score: 180,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "no_phase1".to_string(),
+                    sequence: "ACGTACGTACGT".to_string(),
+                    read_length_bp: 12,
+                    passed_seed_filter: true,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: tx_confirm.transcript_feature_id,
+                        transcript_id: tx_confirm.transcript_id.clone(),
+                        transcript_label: tx_confirm.label.clone(),
+                        strand: tx_confirm.strand.clone(),
+                        target_start_1based: tx_confirm_start,
+                        target_end_1based: tx_confirm_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: tx_confirm_len,
+                        identity_fraction: 0.83,
+                        query_coverage_fraction: 0.88,
+                        score: 150,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert RNA-read report");
+
+    let inspection = engine
+        .inspect_rna_read_alignments("rna_reads_effects", RnaReadHitSelection::All, 10)
+        .expect("inspect read effects");
+    assert_eq!(inspection.row_count, 3);
+    let rows_by_header = inspection
+        .rows
+        .iter()
+        .map(|row| (row.header_id.as_str(), row))
+        .collect::<HashMap<_, _>>();
+
+    let confirmed = rows_by_header.get("confirmed").expect("confirmed row");
+    assert_eq!(
+        confirmed.alignment_effect,
+        RnaReadAlignmentEffect::ConfirmedAssignment
+    );
+    assert_eq!(
+        confirmed.phase1_primary_transcript_id,
+        tx_confirm.transcript_id
+    );
+    assert_eq!(confirmed.mapped_exon_support.len(), tx_confirm.exons.len());
+    assert_eq!(
+        confirmed
+            .mapped_exon_support
+            .iter()
+            .map(|row| (row.start_1based, row.end_1based))
+            .collect::<Vec<_>>(),
+        tx_confirm
+            .exons
+            .iter()
+            .map(|exon| (exon.start_1based, exon.end_1based))
+            .collect::<Vec<_>>()
+    );
+
+    let reassigned = rows_by_header.get("reassigned").expect("reassigned row");
+    assert_eq!(
+        reassigned.alignment_effect,
+        RnaReadAlignmentEffect::ReassignedTranscript
+    );
+    assert_eq!(
+        reassigned.phase1_primary_transcript_id,
+        tx_alt.transcript_id
+    );
+
+    let no_phase1 = rows_by_header.get("no_phase1").expect("no-phase1 row");
+    assert_eq!(
+        no_phase1.alignment_effect,
+        RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
+    );
+    assert!(no_phase1.phase1_primary_transcript_id.is_empty());
 }
 
 #[test]
