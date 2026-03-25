@@ -3698,6 +3698,8 @@ fn build_multi_insert_cartoon_spec(
     const DEST_ARM_BODY_BP: usize = 88;
     const INSERT_BODY_BP: usize = 92;
     const CHEW_EXTRA_BP: usize = 8;
+    const ANNEAL_GAP_DISPLAY_BP: usize = CHEW_EXTRA_BP + 2;
+    const EXTEND_GAP_DISPLAY_BP: usize = CHEW_EXTRA_BP.saturating_sub(2);
     let body_palette = [
         "#f2c84b", "#4e8bd8", "#f08a39", "#8c6dd7", "#5aaa55", "#d66f8f",
     ];
@@ -3969,7 +3971,7 @@ fn build_multi_insert_cartoon_spec(
         annealed_features.push(top_only_cartoon_feature(
             "assembled_dest_left_tail",
             "Left-side gap to be filled",
-            CHEW_EXTRA_BP,
+            ANNEAL_GAP_DISPLAY_BP,
             body_palette[0],
         ));
         annealed_features.push(duplex_cartoon_feature(
@@ -3981,7 +3983,7 @@ fn build_multi_insert_cartoon_spec(
         annealed_features.push(bottom_only_cartoon_feature(
             format!("assembled_{}_left_tail", first_fragment.fragment_id),
             format!("{} left-side gap", first_fragment.label),
-            CHEW_EXTRA_BP,
+            ANNEAL_GAP_DISPLAY_BP,
             first_fragment.body_color,
         ));
     }
@@ -3995,7 +3997,7 @@ fn build_multi_insert_cartoon_spec(
         annealed_features.push(top_only_cartoon_feature(
             format!("assembled_{}_right_tail", fragment.fragment_id),
             format!("{} right-side gap", fragment.label),
-            CHEW_EXTRA_BP,
+            ANNEAL_GAP_DISPLAY_BP,
             fragment.body_color,
         ));
         let overlap_id = if idx + 1 < fragment_specs.len() {
@@ -4022,14 +4024,14 @@ fn build_multi_insert_cartoon_spec(
             annealed_features.push(bottom_only_cartoon_feature(
                 format!("assembled_{}_left_tail", next_fragment.fragment_id),
                 format!("{} left-side gap", next_fragment.label),
-                CHEW_EXTRA_BP,
+                ANNEAL_GAP_DISPLAY_BP,
                 next_fragment.body_color,
             ));
         } else {
             annealed_features.push(bottom_only_cartoon_feature(
                 "assembled_dest_right_tail",
                 "Right-side gap to be filled",
-                CHEW_EXTRA_BP,
+                ANNEAL_GAP_DISPLAY_BP,
                 body_palette[0],
             ));
         }
@@ -4053,7 +4055,7 @@ fn build_multi_insert_cartoon_spec(
         extended_features.push(duplex_cartoon_feature(
             "assembled_dest_left_tail",
             "Left repaired gap",
-            CHEW_EXTRA_BP,
+            EXTEND_GAP_DISPLAY_BP,
             body_palette[0],
         ));
         extended_features.push(duplex_cartoon_feature(
@@ -4065,7 +4067,7 @@ fn build_multi_insert_cartoon_spec(
         extended_features.push(duplex_cartoon_feature_with_nicks(
             format!("assembled_{}_left_tail", first_fragment.fragment_id),
             format!("{} left repaired gap", first_fragment.label),
-            CHEW_EXTRA_BP,
+            EXTEND_GAP_DISPLAY_BP,
             first_fragment.body_color,
             true,
             false,
@@ -4083,7 +4085,7 @@ fn build_multi_insert_cartoon_spec(
         extended_features.push(duplex_cartoon_feature(
             format!("assembled_{}_right_tail", fragment.fragment_id),
             format!("{} right repaired gap", fragment.label),
-            CHEW_EXTRA_BP,
+            EXTEND_GAP_DISPLAY_BP,
             fragment.body_color,
         ));
         let overlap_id = if idx + 1 < fragment_specs.len() {
@@ -4110,7 +4112,7 @@ fn build_multi_insert_cartoon_spec(
             extended_features.push(duplex_cartoon_feature_with_nicks(
                 format!("assembled_{}_left_tail", next_fragment.fragment_id),
                 format!("{} left repaired gap", next_fragment.label),
-                CHEW_EXTRA_BP,
+                EXTEND_GAP_DISPLAY_BP,
                 next_fragment.body_color,
                 true,
                 false,
@@ -4119,7 +4121,7 @@ fn build_multi_insert_cartoon_spec(
             extended_features.push(duplex_cartoon_feature_with_nicks(
                 "assembled_dest_right_tail",
                 "Right repaired gap",
-                CHEW_EXTRA_BP,
+                EXTEND_GAP_DISPLAY_BP,
                 body_palette[0],
                 true,
                 false,
@@ -4723,6 +4725,28 @@ mod tests {
                 .features
                 .iter()
                 .any(|feature| feature.top_length_bp == 0 && feature.bottom_length_bp > 0)
+        );
+
+        let extend = spec
+            .events
+            .iter()
+            .find(|event| event.id == "extend")
+            .expect("extend event");
+        let extended = extend.molecules.first().expect("extended molecule");
+
+        let anneal_left_gap = assembled
+            .features
+            .iter()
+            .find(|feature| feature.id == "assembled_dest_left_tail")
+            .expect("anneal left gap");
+        let extend_left_gap = extended
+            .features
+            .iter()
+            .find(|feature| feature.id == "assembled_dest_left_tail")
+            .expect("extend left repaired gap");
+        assert!(
+            anneal_left_gap.top_length_bp > extend_left_gap.top_length_bp,
+            "anneal gap should render wider than extend gap"
         );
     }
 
