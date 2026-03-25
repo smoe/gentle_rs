@@ -7163,10 +7163,7 @@ impl GentleEngine {
         let cached_sequence_status = if report.cached_contig_count == 0 {
             "unavailable".to_string()
         } else {
-            let longest = report
-                .cached_longest_contig
-                .as_deref()
-                .unwrap_or("unknown");
+            let longest = report.cached_longest_contig.as_deref().unwrap_or("unknown");
             let longest_bp = report.cached_longest_contig_bp.unwrap_or(0);
             let preview = if report.cached_contig_preview.is_empty() {
                 String::new()

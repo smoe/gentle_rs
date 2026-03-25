@@ -9241,10 +9241,7 @@ Error: `{err}`"
         if inspection.cached_contig_count == 0 {
             return "-".to_string();
         }
-        let longest = inspection
-            .cached_longest_contig
-            .as_deref()
-            .unwrap_or("?");
+        let longest = inspection.cached_longest_contig.as_deref().unwrap_or("?");
         let longest_bp = inspection.cached_longest_contig_bp.unwrap_or(0);
         format!(
             "{} ctgs | {} {}",
@@ -9258,10 +9255,7 @@ Error: `{err}`"
         if inspection.cached_contig_count == 0 {
             return "No cached contig summary available from the FASTA index.".to_string();
         }
-        let longest = inspection
-            .cached_longest_contig
-            .as_deref()
-            .unwrap_or("?");
+        let longest = inspection.cached_longest_contig.as_deref().unwrap_or("?");
         let longest_bp = inspection.cached_longest_contig_bp.unwrap_or(0);
         let preview = if inspection.cached_contig_preview.is_empty() {
             "-".to_string()
@@ -11123,23 +11117,14 @@ Error: `{err}`"
             .default_size(Vec2::new(760.0, 240.0))
             .min_size(Vec2::new(640.0, 220.0))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Help")
-                        .on_hover_text("Open GUI help and bring it to the front")
-                        .clicked()
-                    {
-                        self.open_help_doc(HelpDoc::Gui);
-                    }
-                    if ui
-                        .button("Close")
-                        .on_hover_text("Close this GenBank window (Cmd/Ctrl+W)")
-                        .clicked()
-                    {
-                        close_requested = true;
-                    }
-                });
-                ui.separator();
+                let close_hover =
+                    Self::specialist_window_close_hover_text("GenBank Accession Fetch");
+                if self.render_specialist_window_nav_with_close(
+                    ui,
+                    Some(("Close", close_hover.as_str())),
+                ) {
+                    close_requested = true;
+                }
                 ui.label(
                     "Fetch one GenBank accession through NCBI EFetch and import it as a project sequence.",
                 );
@@ -11179,7 +11164,8 @@ Error: `{err}`"
         self.show_genbank_dialog = open;
     }
 
-    fn render_uniprot_dialog_contents(&mut self, ui: &mut Ui) {
+    fn render_uniprot_dialog_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
         let seq_ids = self.project_sequence_ids_for_blast();
         if !seq_ids.is_empty() {
             let selected = self.uniprot_map_seq_id.trim();
@@ -11188,23 +11174,10 @@ Error: `{err}`"
             }
         }
 
-        ui.horizontal(|ui| {
-            if ui
-                .button("Help")
-                .on_hover_text("Open GUI help and bring it to the front")
-                .clicked()
-            {
-                self.open_help_doc(HelpDoc::Gui);
-            }
-            if ui
-                .button("Close")
-                .on_hover_text("Close this UniProt window (Cmd/Ctrl+W)")
-                .clicked()
-            {
-                self.show_uniprot_dialog = false;
-            }
-        });
-        ui.separator();
+        let close_hover = Self::specialist_window_close_hover_text("UniProt Mapping");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         ui.label(
             "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
         );
@@ -11379,6 +11352,7 @@ Error: `{err}`"
             ui.separator();
             ui.monospace(self.uniprot_status.clone());
         }
+        close_requested
     }
 
     fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
@@ -11394,6 +11368,7 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, Self::uniprot_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_uniprot_dialog;
+                let mut close_requested = false;
                 egui::Window::new("UniProt Mapping")
                     .open(&mut open)
                     .collapsible(false)
@@ -11401,26 +11376,34 @@ Error: `{err}`"
                     .default_size(Vec2::new(940.0, 520.0))
                     .min_size(Vec2::new(780.0, 420.0))
                     .show(ctx, |ui| {
-                        self.render_uniprot_dialog_contents(ui);
+                        close_requested = self.render_uniprot_dialog_contents(ui);
                     });
+                if close_requested {
+                    open = false;
+                }
                 self.show_uniprot_dialog = open;
                 return;
             }
 
+            let mut close_requested = false;
             egui::CentralPanel::default().show(ctx, |ui| {
-                self.render_uniprot_dialog_contents(ui);
+                close_requested = self.render_uniprot_dialog_contents(ui);
             });
 
-            if Self::viewport_close_requested_or_shortcut(ctx) {
+            if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_uniprot_dialog = false;
             }
         });
     }
 
-    fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) {
+    fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) -> bool {
         self.refresh_genome_catalog_list();
-        self.render_specialist_window_nav(ui);
         let scope = self.genome_dialog_scope;
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text(scope.prepare_title());
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         ui.label(format!(
             "Download and index a {} once.",
             scope.description()
@@ -11594,16 +11577,6 @@ Error: `{err}`"
                     PrepareGenomeDialogPrimaryAction::None => {}
                 }
             }
-            if ui
-                .button("Close")
-                .on_hover_text("Close this dialog")
-                .clicked()
-            {
-                self.dismiss_pending_prepared_genome_reinstall_for_host(
-                    PreparedGenomeReinstallDialogHost::PrepareDialog,
-                );
-                self.show_reference_genome_prepare_dialog = false;
-            }
             if self.genome_prepare_task.is_some() {
                 if ui
                     .button("Cancel Prepare")
@@ -11643,6 +11616,7 @@ Error: `{err}`"
             ui.separator();
             ui.monospace(&self.genome_prepare_status);
         }
+        close_requested
     }
 
     fn render_reference_genome_prepare_dialog(&mut self, ctx: &egui::Context) {
@@ -11659,14 +11633,21 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, Self::prepare_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_prepare_dialog;
+                let mut close_requested = false;
                 egui::Window::new(title)
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
                     .default_size(Vec2::new(760.0, 560.0))
                     .show(ctx, |ui| {
-                        self.render_reference_genome_prepare_contents(ui);
+                        close_requested = self.render_reference_genome_prepare_contents(ui);
                     });
+                if close_requested {
+                    open = false;
+                    self.dismiss_pending_prepared_genome_reinstall_for_host(
+                        PreparedGenomeReinstallDialogHost::PrepareDialog,
+                    );
+                }
                 self.render_prepared_genome_reinstall_confirm_dialog(
                     ctx,
                     PreparedGenomeReinstallDialogHost::PrepareDialog,
@@ -11680,15 +11661,16 @@ Error: `{err}`"
                 return;
             }
 
+            let mut close_requested = false;
             egui::CentralPanel::default().show(ctx, |ui| {
-                self.render_reference_genome_prepare_contents(ui);
+                close_requested = self.render_reference_genome_prepare_contents(ui);
             });
             self.render_prepared_genome_reinstall_confirm_dialog(
                 ctx,
                 PreparedGenomeReinstallDialogHost::PrepareDialog,
             );
 
-            if Self::viewport_close_requested_or_shortcut(ctx) {
+            if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.dismiss_pending_prepared_genome_reinstall_for_host(
                     PreparedGenomeReinstallDialogHost::PrepareDialog,
                 );
@@ -11767,10 +11749,16 @@ Error: `{err}`"
             });
     }
 
-    fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) {
+    fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
         ui.push_id("retrieve_genome_dialog_contents", |ui| {
             let scope = self.genome_dialog_scope;
-            self.render_specialist_window_nav(ui);
+            let close_hover = Self::specialist_window_close_hover_text(scope.retrieve_title());
+            if self
+                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+            {
+                close_requested = true;
+            }
             ui.label(format!(
                 "Retrieve region sequences from a prepared {}.",
                 scope.description()
@@ -12153,6 +12141,7 @@ Error: `{err}`"
                 }
             }
         });
+        close_requested
     }
 
     fn render_reference_genome_retrieve_dialog(&mut self, ctx: &egui::Context) {
@@ -12173,6 +12162,7 @@ Error: `{err}`"
                 self.note_viewport_focus_if_active(ctx, Self::retrieve_genome_viewport_id());
                 if class == egui::ViewportClass::Embedded {
                     let mut open = self.show_reference_genome_retrieve_dialog;
+                    let mut close_requested = false;
                     egui::Window::new(title)
                         .open(&mut open)
                         .collapsible(false)
@@ -12180,17 +12170,21 @@ Error: `{err}`"
                         .default_size(Vec2::new(980.0, 760.0))
                         .min_size(Vec2::new(860.0, 520.0))
                         .show(ctx, |ui| {
-                            self.render_reference_genome_retrieve_contents(ui);
+                            close_requested = self.render_reference_genome_retrieve_contents(ui);
                         });
+                    if close_requested {
+                        open = false;
+                    }
                     self.show_reference_genome_retrieve_dialog = open;
                     return;
                 }
 
+                let mut close_requested = false;
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    self.render_reference_genome_retrieve_contents(ui);
+                    close_requested = self.render_reference_genome_retrieve_contents(ui);
                 });
 
-                if Self::viewport_close_requested_or_shortcut(ctx) {
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     self.show_reference_genome_retrieve_dialog = false;
                 }
             },
@@ -12294,10 +12288,14 @@ Error: `{err}`"
         });
     }
 
-    fn render_reference_genome_blast_contents(&mut self, ui: &mut Ui) {
+    fn render_reference_genome_blast_contents(&mut self, ui: &mut Ui) -> bool {
         self.refresh_genome_catalog_list();
         let scope = self.genome_dialog_scope;
-        self.render_specialist_window_nav(ui);
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text(scope.blast_title());
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         let sequence_ids = self.project_sequence_ids_for_blast();
         if !sequence_ids.is_empty() && !sequence_ids.contains(&self.genome_blast_query_seq_id) {
             self.genome_blast_query_seq_id = sequence_ids[0].clone();
@@ -12734,13 +12732,6 @@ Error: `{err}`"
                 self.genome_blast_results.clear();
                 self.genome_blast_selected_result = 0;
             }
-            if ui
-                .button("Close")
-                .on_hover_text("Close this dialog")
-                .clicked()
-            {
-                self.show_reference_genome_blast_dialog = false;
-            }
         });
 
         if let Some(fraction) = self.genome_blast_progress_fraction {
@@ -12812,6 +12803,7 @@ Error: `{err}`"
                 Self::render_blast_query_result(ui, &result);
             }
         }
+        close_requested
     }
 
     fn render_reference_genome_blast_dialog(&mut self, ctx: &egui::Context) {
@@ -12828,23 +12820,28 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, Self::blast_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_blast_dialog;
+                let mut close_requested = false;
                 egui::Window::new(title)
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
                     .default_size(Vec2::new(980.0, 700.0))
                     .show(ctx, |ui| {
-                        self.render_reference_genome_blast_contents(ui);
+                        close_requested = self.render_reference_genome_blast_contents(ui);
                     });
+                if close_requested {
+                    open = false;
+                }
                 self.show_reference_genome_blast_dialog = open;
                 return;
             }
 
+            let mut close_requested = false;
             egui::CentralPanel::default().show(ctx, |ui| {
-                self.render_reference_genome_blast_contents(ui);
+                close_requested = self.render_reference_genome_blast_contents(ui);
             });
 
-            if Self::viewport_close_requested_or_shortcut(ctx) {
+            if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_reference_genome_blast_dialog = false;
             }
         });
@@ -12862,12 +12859,19 @@ Error: `{err}`"
             "Prepared Genome References"
         };
         let mut open = self.show_reference_genome_inspector_dialog;
+        let mut close_requested = false;
         egui::Window::new(title)
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
-                self.render_specialist_window_nav(ui);
+                let close_hover = Self::specialist_window_close_hover_text(title);
+                if self.render_specialist_window_nav_with_close(
+                    ui,
+                    Some(("Close", close_hover.as_str())),
+                ) {
+                    close_requested = true;
+                }
                 ui.label(format!(
                     "Inspect prepared {} installations and integrity metadata.",
                     scope.description()
@@ -13111,11 +13115,18 @@ Error: `{err}`"
                     }
                 }
             });
+        if close_requested {
+            open = false;
+        }
         self.show_reference_genome_inspector_dialog = open;
     }
 
-    fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) {
-        self.render_specialist_window_nav(ui);
+    fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Import Genome Tracks");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         let anchor_summaries = self.anchored_sequence_anchor_summaries_for_tracks();
         let anchored_seq_ids = anchor_summaries
             .iter()
@@ -13577,6 +13588,7 @@ Error: `{err}`"
             ui.separator();
             ui.monospace(&self.genome_track_status);
         }
+        close_requested
     }
 
     fn render_genome_bed_track_dialog(&mut self, ctx: &egui::Context) {
@@ -13591,21 +13603,28 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, Self::bed_track_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_genome_bed_track_dialog;
+                let mut close_requested = false;
                 egui::Window::new("Import Genome Tracks")
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
                     .default_size(Vec2::new(980.0, 620.0))
-                    .show(ctx, |ui| self.render_genome_bed_track_contents(ui));
+                    .show(ctx, |ui| {
+                        close_requested = self.render_genome_bed_track_contents(ui)
+                    });
+                if close_requested {
+                    open = false;
+                }
                 self.show_genome_bed_track_dialog = open;
                 return;
             }
 
+            let mut close_requested = false;
             egui::CentralPanel::default().show(ctx, |ui| {
-                self.render_genome_bed_track_contents(ui);
+                close_requested = self.render_genome_bed_track_contents(ui);
             });
 
-            if Self::viewport_close_requested_or_shortcut(ctx) {
+            if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_genome_bed_track_dialog = false;
             }
         });
@@ -15153,7 +15172,10 @@ Error: `{err}`"
 
     fn render_gibson_contents(&mut self, ui: &mut Ui) -> bool {
         let mut cancel_clicked = false;
-        self.render_specialist_window_nav(ui);
+        let close_hover = Self::specialist_window_close_hover_text("Gibson");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            cancel_clicked = true;
+        }
         ui.label(
             "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
         );
@@ -16065,8 +16087,12 @@ Error: `{err}`"
         }
     }
 
-    fn render_planning_contents(&mut self, ui: &mut Ui) {
-        self.render_specialist_window_nav(ui);
+    fn render_planning_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Planning");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         ui.label(
             "Planning meta-layer controls for time/cost/local-fit routine ranking and advisory sync suggestions.",
         );
@@ -16081,13 +16107,6 @@ Error: `{err}`"
             {
                 self.refresh_planning_editor_buffers_from_engine();
                 self.planning_status = "Reloaded planning buffers from engine state".to_string();
-            }
-            if ui
-                .button("Close")
-                .on_hover_text("Close planning window")
-                .clicked()
-            {
-                self.show_planning_dialog = false;
             }
         });
         ui.separator();
@@ -16396,6 +16415,7 @@ Error: `{err}`"
             ui.separator();
             ui.monospace(self.planning_status.clone());
         }
+        close_requested
     }
 
     fn render_planning_dialog(&mut self, ctx: &egui::Context) {
@@ -16410,17 +16430,24 @@ Error: `{err}`"
         ctx.show_viewport_immediate(Self::planning_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::planning_viewport_id());
             if class == egui::ViewportClass::Embedded {
+                let mut close_requested = false;
                 egui::Window::new("Planning")
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
                     .default_size(Vec2::new(980.0, 760.0))
-                    .show(ctx, |ui| self.render_planning_contents(ui));
+                    .show(ctx, |ui| {
+                        close_requested = self.render_planning_contents(ui)
+                    });
+                if close_requested {
+                    open = false;
+                }
             } else {
+                let mut close_requested = false;
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    self.render_planning_contents(ui);
+                    close_requested = self.render_planning_contents(ui);
                 });
-                if Self::viewport_close_requested_or_shortcut(ctx) {
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
             }
@@ -16431,8 +16458,12 @@ Error: `{err}`"
         self.show_planning_dialog = open;
     }
 
-    fn render_routine_assistant_contents(&mut self, ui: &mut Ui) {
-        self.render_specialist_window_nav(ui);
+    fn render_routine_assistant_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Routine Assistant");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         ui.label(
             "Apply cloning routines through one staged flow driven by shared engine commands.",
         );
@@ -16572,7 +16603,7 @@ Error: `{err}`"
             RoutineAssistantStage::Compare => {
                 let Some(routine) = selected_routine else {
                     ui.small("Select a primary routine first in stage 1.");
-                    return;
+                    return close_requested;
                 };
                 ui.strong(format!(
                     "Primary routine: {} ({})",
@@ -16749,7 +16780,7 @@ Error: `{err}`"
             RoutineAssistantStage::Parameters => {
                 let Some(routine) = selected_routine else {
                     ui.small("Select a primary routine first in stage 1.");
-                    return;
+                    return close_requested;
                 };
                 self.sync_routine_assistant_bindings_for_selected();
                 ui.strong(format!(
@@ -16991,6 +17022,7 @@ Error: `{err}`"
                 });
             }
         }
+        close_requested
     }
 
     fn render_routine_assistant_dialog(&mut self, ctx: &egui::Context) {
@@ -17009,17 +17041,24 @@ Error: `{err}`"
             |ctx, class| {
                 self.note_viewport_focus_if_active(ctx, Self::routine_assistant_viewport_id());
                 if class == egui::ViewportClass::Embedded {
+                    let mut close_requested = false;
                     egui::Window::new("Routine Assistant")
                         .open(&mut open)
                         .collapsible(false)
                         .resizable(true)
                         .default_size(Vec2::new(980.0, 720.0))
-                        .show(ctx, |ui| self.render_routine_assistant_contents(ui));
+                        .show(ctx, |ui| {
+                            close_requested = self.render_routine_assistant_contents(ui);
+                        });
+                    if close_requested {
+                        open = false;
+                    }
                 } else {
+                    let mut close_requested = false;
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        self.render_routine_assistant_contents(ui);
+                        close_requested = self.render_routine_assistant_contents(ui);
                     });
-                    if Self::viewport_close_requested_or_shortcut(ctx) {
+                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                         open = false;
                     }
                 }
@@ -17034,9 +17073,13 @@ Error: `{err}`"
         self.show_routine_assistant_dialog = open;
     }
 
-    fn render_agent_assistant_contents(&mut self, ui: &mut Ui) {
+    fn render_agent_assistant_contents(&mut self, ui: &mut Ui) -> bool {
         self.refresh_agent_system_catalog();
-        self.render_specialist_window_nav(ui);
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
         ui.label("Ask an agent system for project support, then execute suggested GENtle shell commands per reply.");
         ui.horizontal(|ui| {
             ui.label("catalog");
@@ -17432,13 +17475,6 @@ Error: `{err}`"
             {
                 self.agent_execution_log.clear();
             }
-            if ui
-                .button("Close")
-                .on_hover_text("Close this dialog")
-                .clicked()
-            {
-                self.show_agent_assistant_dialog = false;
-            }
         });
         if let Some(task) = &self.agent_task {
             ui.horizontal(|ui| {
@@ -17580,12 +17616,14 @@ Error: `{err}`"
                     }
                 });
         }
+        close_requested
     }
 
     fn render_agent_assistant_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_agent_assistant_dialog {
             return;
         }
+        let mut open = self.show_agent_assistant_dialog;
         let builder = egui::ViewportBuilder::default()
             .with_title("Agent Assistant")
             .with_inner_size([980.0, 720.0])
@@ -17596,26 +17634,34 @@ Error: `{err}`"
             |ctx, class| {
                 self.note_viewport_focus_if_active(ctx, Self::agent_assistant_viewport_id());
                 if class == egui::ViewportClass::Embedded {
-                    let mut open = self.show_agent_assistant_dialog;
+                    let mut close_requested = false;
                     egui::Window::new("Agent Assistant")
                         .open(&mut open)
                         .collapsible(false)
                         .resizable(true)
                         .default_size(Vec2::new(980.0, 720.0))
-                        .show(ctx, |ui| self.render_agent_assistant_contents(ui));
-                    self.show_agent_assistant_dialog = open;
-                    return;
-                }
+                        .show(ctx, |ui| {
+                            close_requested = self.render_agent_assistant_contents(ui);
+                        });
+                    if close_requested {
+                        open = false;
+                    }
+                } else {
+                    let mut close_requested = false;
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        close_requested = self.render_agent_assistant_contents(ui);
+                    });
 
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    self.render_agent_assistant_contents(ui);
-                });
-
-                if Self::viewport_close_requested_or_shortcut(ctx) {
-                    self.show_agent_assistant_dialog = false;
+                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                        open = false;
+                    }
                 }
             },
         );
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_agent_assistant_dialog = open;
     }
 
     fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
@@ -20015,7 +20061,20 @@ Error: `{err}`"
         self.set_active_window_viewport(viewport_id);
     }
 
+    fn specialist_window_close_hover_text(window_title: &str) -> String {
+        format!("Close this {window_title} window (Cmd/Ctrl+W)")
+    }
+
     fn render_specialist_window_nav(&mut self, ui: &mut Ui) {
+        let _ = self.render_specialist_window_nav_with_close(ui, None);
+    }
+
+    fn render_specialist_window_nav_with_close(
+        &mut self,
+        ui: &mut Ui,
+        close_button: Option<(&str, &str)>,
+    ) -> bool {
+        let mut close_requested = false;
         ui.horizontal(|ui| {
             if ui
                 .button("Help")
@@ -20031,8 +20090,14 @@ Error: `{err}`"
             {
                 self.queue_focus_viewport(ViewportId::ROOT);
             }
+            if let Some((label, hover_text)) = close_button {
+                if ui.button(label).on_hover_text(hover_text).clicked() {
+                    close_requested = true;
+                }
+            }
         });
         ui.separator();
+        close_requested
     }
 
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
@@ -30070,9 +30135,9 @@ mod tests {
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
         PrepareGenomeDialogPrimaryAction, PreparedGenomeReinstallDialogHost,
         PreparedGenomeReinstallRequest, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -33256,6 +33321,14 @@ mod tests {
         app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         app.current_project_path = None;
         assert!(app.can_close_project());
+    }
+
+    #[test]
+    fn specialist_window_close_hover_text_mentions_window_and_shortcut() {
+        assert_eq!(
+            GENtleApp::specialist_window_close_hover_text("Prepare Reference Genome"),
+            "Close this Prepare Reference Genome window (Cmd/Ctrl+W)"
+        );
     }
 
     #[test]

@@ -2292,7 +2292,12 @@ fn qpcr_assay_layout_molecule(
                 probe_window_left_margin_bp,
                 probe_window_color,
             ),
-            duplex_feature_block("probe_site", "Probe oligo", probe_site_bp, probe_window_color),
+            duplex_feature_block(
+                "probe_site",
+                "Probe oligo",
+                probe_site_bp,
+                probe_window_color,
+            ),
             duplex_feature_block(
                 "probe_window_right",
                 "Probe window",
@@ -2357,7 +2362,12 @@ fn qpcr_quantified_amplicon_molecule(
                 probe_window_left_margin_bp,
                 probe_window_color,
             ),
-            duplex_feature_block("probe_site", "Probe oligo", probe_site_bp, probe_window_color),
+            duplex_feature_block(
+                "probe_site",
+                "Probe oligo",
+                probe_site_bp,
+                probe_window_color,
+            ),
             duplex_feature_block(
                 "probe_window_right",
                 "Probe window",
@@ -4001,7 +4011,12 @@ mod tests {
                 .iter()
                 .any(|feature| feature.id == "reverse_primer_site")
         );
-        assert!(constraints.features.iter().any(|feature| feature.id == "roi"));
+        assert!(
+            constraints
+                .features
+                .iter()
+                .any(|feature| feature.id == "roi")
+        );
         assert!(
             !constraints
                 .features
@@ -4064,20 +4079,25 @@ mod tests {
     #[test]
     fn pcr_context_and_roi_panels_remain_primer_free() {
         let pair = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
-        let no_product = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
+        let no_product =
+            protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
         let qpcr = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
 
         for spec in [&pair, &no_product, &qpcr] {
             for event in [&spec.events[0], &spec.events[1]] {
                 for molecule in &event.molecules {
-                    assert!(!molecule
-                        .features
-                        .iter()
-                        .any(|feature| feature.id == "forward_primer_site"));
-                    assert!(!molecule
-                        .features
-                        .iter()
-                        .any(|feature| feature.id == "reverse_primer_site"));
+                    assert!(
+                        !molecule
+                            .features
+                            .iter()
+                            .any(|feature| feature.id == "forward_primer_site")
+                    );
+                    assert!(
+                        !molecule
+                            .features
+                            .iter()
+                            .any(|feature| feature.id == "reverse_primer_site")
+                    );
                 }
             }
         }

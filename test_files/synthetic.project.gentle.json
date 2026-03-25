@@ -1,0 +1,5811 @@
+{
+  "sequences": {
+    "gibson_synthetic_c100_a_g100_vector": {
+      "seq": {
+        "name": "GIBSON_SYNTHETIC_C100_A_G100",
+        "topology": "Circular",
+        "date": {
+          "year": 2026,
+          "month": 3,
+          "day": 22
+        },
+        "len": 201,
+        "molecule_type": "DNA",
+        "division": "SYN",
+        "definition": "Synthetic circular Gibson teaching vector: C^100 A G^100.",
+        "accession": "GENTLE_GIBSON_SYNTH_C100AG100",
+        "version": "GENTLE_GIBSON_SYNTH_C100AG100.1",
+        "source": {
+          "source": "synthetic DNA construct",
+          "organism": "synthetic DNA construct\nother sequences; artificial sequences."
+        },
+        "dblink": null,
+        "keywords": "synthetic construct; Gibson tutorial input.",
+        "references": [],
+        "comments": [],
+        "seq": [
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          65,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71,
+          71
+        ],
+        "contig": null,
+        "features": [
+          {
+            "kind": "source",
+            "location": {
+              "Range": [
+                [
+                  0,
+                  false
+                ],
+                [
+                  201,
+                  false
+                ]
+              ]
+            },
+            "qualifiers": [
+              [
+                "organism",
+                "synthetic DNA construct"
+              ],
+              [
+                "mol_type",
+                "other DNA"
+              ]
+            ]
+          },
+          {
+            "kind": "misc_feature",
+            "location": {
+              "Range": [
+                [
+                  0,
+                  false
+                ],
+                [
+                  100,
+                  false
+                ]
+              ]
+            },
+            "qualifiers": [
+              [
+                "label",
+                "polyC_left_arm"
+              ],
+              [
+                "note",
+                "Left synthetic homopolymer arm (100 C bases)"
+              ]
+            ]
+          },
+          {
+            "kind": "misc_feature",
+            "location": {
+              "Range": [
+                [
+                  100,
+                  false
+                ],
+                [
+                  101,
+                  false
+                ]
+              ]
+            },
+            "qualifiers": [
+              [
+                "label",
+                "central_separator_A"
+              ],
+              [
+                "note",
+                "Single-base separator; remove with defined opening 100..101 (0-based edges) to expose pure C and G flanks"
+              ]
+            ]
+          },
+          {
+            "kind": "misc_feature",
+            "location": {
+              "Range": [
+                [
+                  101,
+                  false
+                ],
+                [
+                  201,
+                  false
+                ]
+              ]
+            },
+            "qualifiers": [
+              [
+                "label",
+                "polyG_right_arm"
+              ],
+              [
+                "note",
+                "Right synthetic homopolymer arm (100 G bases)"
+              ]
+            ]
+          }
+        ]
+      },
+      "overhang": {
+        "forward_3": [],
+        "forward_5": [],
+        "reverse_3": [],
+        "reverse_5": []
+      },
+      "restriction_enzymes": [
+        {
+          "name": "BspMI",
+          "sequence": "ACCTGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoNI",
+          "sequence": "CCTNNNNNAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "BalI",
+          "sequence": "TGGCCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "AsuII",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "BamHI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AvaI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SmaI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XmaI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoRI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "TthI",
+          "sequence": "GACNNNGTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "AatII",
+          "sequence": "GACGTC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "PstI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Eco31",
+          "sequence": "GGTCTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AlwNI",
+          "sequence": "CAGNNNCTG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "PflMI",
+          "sequence": "CCANNNNNTGG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "MluI",
+          "sequence": "ACGCGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BstEII",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "ApaI",
+          "sequence": "GGGCCC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BanII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BssHII",
+          "sequence": "GCGCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoRV",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HpaI",
+          "sequence": "GTTAAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "BbeI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Eco78",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NarI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "SauI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DsaI",
+          "sequence": "CCRYGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AatI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AbrI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AccEBI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AccI",
+          "sequence": "GTMKAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AccII",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AccIII",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AcyI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AeuI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AflI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AflII",
+          "sequence": "CTTAAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AflIII",
+          "sequence": "ACRYGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AhaI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AhaII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AhaIII",
+          "sequence": "TTTAAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AitI",
+          "sequence": "AGCGCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AliAJI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AliI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AluI",
+          "sequence": "AGCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "AlwI",
+          "sequence": "GGATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "AlwXI",
+          "sequence": "GCAGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AocI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AocII",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AorI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AosI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AosII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "ApaLI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "ApyI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AquI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AseI",
+          "sequence": "ATTAAT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AseII",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "Asp700",
+          "sequence": "GAANNNNTTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Asp718",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AspAI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "AspHI",
+          "sequence": "GWGCWC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AstWI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AsuI",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AsuIII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AtuBI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AvaII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "AvaIII",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AviII",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AvrII",
+          "sequence": "CCTAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AxyI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Bac36",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BamNxI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BanI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BanIII",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BavI",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BbiII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BbvI",
+          "sequence": "GCAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BbvII",
+          "sequence": "GAAGAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Bce243I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BceRI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BclI",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BcmI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BcnI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BepI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BglI",
+          "sequence": "GCCNNNNNGGC",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "BglII",
+          "sequence": "AGATCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BinI",
+          "sequence": "GGATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BluI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bme216I",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BscI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BsmI",
+          "sequence": "GAATGC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "Bsp105I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bsp106I",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "Bsp12",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Bsp211I",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Bsp63I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Bsp67I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BspAI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BspBI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "BspBII",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BspHI",
+          "sequence": "TCATGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BspMII",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BspNI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BspRI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BspXI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BspXII",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BsrI",
+          "sequence": "ACTGG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "BstBI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BstFI",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstGII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BstI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstNI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "BstPI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "BstSI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstUI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BstXI",
+          "sequence": "CCANNNNNNTGG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BstYI",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bsu36",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BsuRI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BvuI",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CauI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CauII",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "CcrI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CelII",
+          "sequence": "GCTNAGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CeqI",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "CflI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CfoI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "Cfr10",
+          "sequence": "RCCGGY",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Cfr13",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Cfr6I",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Cfr9I",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CfrA4I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CfrI",
+          "sequence": "YGGCCR",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CfuI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "ClaI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "CltI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "CpfI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CscI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "CthII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "CviAI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CviBI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CviJI",
+          "sequence": "RGCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "CviQI",
+          "sequence": "GTAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "CvnI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "DdeI",
+          "sequence": "CTNAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DpnI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "DraI",
+          "sequence": "TTTAAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "DraII",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DraIII",
+          "sequence": "CACNNNGTG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "DsaII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "EaeI",
+          "sequence": "YGGCCR",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EagI",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "EagMI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcaI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "EclJI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "Eco105",
+          "sequence": "TACGTA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco14",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco22",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Eco32",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco47",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Eco47-3",
+          "sequence": "AGCGCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "Eco52",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco57",
+          "sequence": "CTGAAG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "Eco72I",
+          "sequence": "CACGTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco8",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco81",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcoO109",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcoO65I",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "EcoRII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "EcoT14I",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "EcoT22I",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "EcoVIII",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "ErpI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EspI",
+          "sequence": "GCTNAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "FbrI",
+          "sequence": "GCNGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "FdiI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "FdiII",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Fnu4H",
+          "sequence": "GCNGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "FnuAI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "FnuCI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "FnuDI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "FnuDII",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "FnuDIII",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "FnuEI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "FokI",
+          "sequence": "GGATG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "FspI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "FspII",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "FspMSI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "GalI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GceGLI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GceI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GdiI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "GdiII",
+          "sequence": "CGGCCR",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "GsuI",
+          "sequence": "CTGGAG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "HacI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HaeI",
+          "sequence": "WGGCCW",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HaeII",
+          "sequence": "RGCGCY",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "HaeIII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HapII",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgaI",
+          "sequence": "GACGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "HgiAI",
+          "sequence": "GWGCWC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "HgiBI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiCI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiCII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiCIII",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiDI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiDII",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiEI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiGI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiHI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiHII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiHIII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiJI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiJII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "HhaI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "HhaII",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HincII",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HindII",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "HindIII",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "HinfI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "HinJCI",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "HinP1I",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HinPI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "HpaII",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "HphI",
+          "sequence": "GGTGA",
+          "note": null,
+          "cut": 2,
+          "overlap": -1
+        },
+        {
+          "name": "HsuI",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "KoxI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "KoxII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "KpnI",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Ksp63",
+          "sequence": "CTCTTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "LspI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MaeI",
+          "sequence": "CTAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "MaeII",
+          "sequence": "ACGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "MaeIII",
+          "sequence": "GTNAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "MboI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MboII",
+          "sequence": "GAAGA",
+          "note": null,
+          "cut": 2,
+          "overlap": -1
+        },
+        {
+          "name": "MflI",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MlaI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MltI",
+          "sequence": "AGCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "MmeI",
+          "sequence": "TCCRAC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "MnlI",
+          "sequence": "CCTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "MnoI",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MroI",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MseI",
+          "sequence": "TTAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "Msp67I",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "MspI",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MstI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "MstII",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "MvaI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "MvnI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NaeI",
+          "sequence": "GCCGGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NblI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "NciI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "NcoI",
+          "sequence": "CCATGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NdaI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "NdeI",
+          "sequence": "CATATG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "NdeII",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NgoPII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NgoPIII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "NheI",
+          "sequence": "GCTAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NlaII",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NlaIII",
+          "sequence": "CATG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NlaIV",
+          "sequence": "GGNNCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NmeCI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NopI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NotI",
+          "sequence": "GCGGCCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NphI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NruI",
+          "sequence": "TCGCGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NsiCI",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NsiI",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NspBII",
+          "sequence": "CMGCKG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NspHI",
+          "sequence": "RCATGY",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NspI",
+          "sequence": "RCATGY",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "NspII",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "NspIII",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspIV",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "NspMACI",
+          "sequence": "AGATCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspSAI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspSAII",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "NspSAIV",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspV",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "NunII",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "PaeAI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "PaeI",
+          "sequence": "GCATGC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "PaeR7",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PalI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "PanI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PleI",
+          "sequence": "GAGTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "Pma44I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "PmaCI",
+          "sequence": "CACGTG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "PovI",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PpuMI",
+          "sequence": "RGGWCCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "PspI",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "PssI",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "PvuI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "PvuII",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "RsaI",
+          "sequence": "GTAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "RshI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "RspI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "RspXI",
+          "sequence": "TCATGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "RsrI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "RsrII",
+          "sequence": "CGGWCCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "SacI",
+          "sequence": "GAGCTC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "SacII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "SalI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SalPI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Sau3239",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Sau3A",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Sau96",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "SauBMKI",
+          "sequence": "GCCGGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Sbo13",
+          "sequence": "TCGCGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "ScaI",
+          "sequence": "AGTACT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SciI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SciNI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "ScrFI",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "SduI",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SecI",
+          "sequence": "CCNNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SexI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SfaI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "SfaNI",
+          "sequence": "GCATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SfiI",
+          "sequence": "GGCCNNNNNGGCC",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "SflI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SinI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "SlaI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SnaBI",
+          "sequence": "TACGTA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SnoI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SpeI",
+          "sequence": "ACTAGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SphI",
+          "sequence": "GCATGC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "SplI",
+          "sequence": "CGTACG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SsoI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SsoII",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "SspI",
+          "sequence": "AATATT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SstI",
+          "sequence": "GAGCTC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SstII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "SthI",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "StuI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "StyI",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SuaI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "TaqI",
+          "sequence": "TCGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "TaqXI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "ThaI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "TthHB",
+          "sequence": "TCGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "TthII",
+          "sequence": "CAARCA",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "VneI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "VspI",
+          "sequence": "ATTAAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "XbaI",
+          "sequence": "TCTAGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XcaI",
+          "sequence": "GTATAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XciI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "XcyI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "XhoI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XhoII",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XmaIII",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XmnI",
+          "sequence": "GAANNNNTTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XorII",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "XpaI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "YenI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "ZanI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BpiI",
+          "sequence": "GAAGACNNNNNN",
+          "note": null,
+          "cut": 6,
+          "overlap": 4
+        },
+        {
+          "name": "Mva1269I",
+          "sequence": "GAATGCN",
+          "note": null,
+          "cut": 7,
+          "overlap": -2
+        },
+        {
+          "name": "XagI",
+          "sequence": "CCTNNNNNAGG",
+          "note": null,
+          "cut": 5,
+          "overlap": 1
+        }
+      ],
+      "restriction_enzyme_sites": [
+        {
+          "offset": 198,
+          "enzyme": {
+            "name": "ApaI",
+            "sequence": "GGGCCC",
+            "note": null,
+            "cut": 5,
+            "overlap": -4
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "Bsp211I",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "BspRI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "BsuRI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "CltI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "DsaII",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "FnuDI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "HaeIII",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 1,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "NgoPII",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "PalI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "SfaI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        },
+        {
+          "offset": 199,
+          "enzyme": {
+            "name": "SuaI",
+            "sequence": "GGCC",
+            "note": null,
+            "cut": 0,
+            "overlap": 0
+          },
+          "forward_strand": true
+        }
+      ],
+      "restriction_enzyme_groups": [
+        [
+          {
+            "pos": 199,
+            "cut_size": 0,
+            "number_of_cuts": 1,
+            "from": 199,
+            "to": 203
+          },
+          [
+            "Bsp211I",
+            "BspRI",
+            "BsuRI",
+            "CltI",
+            "DsaII",
+            "FnuDI",
+            "NgoPII",
+            "PalI",
+            "SfaI",
+            "SuaI"
+          ]
+        ],
+        [
+          {
+            "pos": 200,
+            "cut_size": 1,
+            "number_of_cuts": 1,
+            "from": 199,
+            "to": 203
+          },
+          [
+            "HaeIII"
+          ]
+        ],
+        [
+          {
+            "pos": 203,
+            "cut_size": 5,
+            "number_of_cuts": 1,
+            "from": 198,
+            "to": 204
+          },
+          [
+            "ApaI"
+          ]
+        ]
+      ],
+      "max_restriction_enzyme_sites": 2,
+      "open_reading_frames": [],
+      "methylation_sites": {
+        "sites": [
+          99
+        ],
+        "last_mode": {
+          "dcm": true,
+          "dam": true
+        }
+      },
+      "methylation_mode": {
+        "dcm": true,
+        "dam": true
+      },
+      "gc_content": {
+        "regions": [
+          {
+            "from": 0,
+            "to": 100,
+            "gc": 1.0
+          },
+          {
+            "from": 100,
+            "to": 200,
+            "gc": 0.99
+          },
+          {
+            "from": 200,
+            "to": 201,
+            "gc": 1.0
+          }
+        ]
+      }
+    },
+    "gibson_synthetic_poly_a_insert": {
+      "seq": {
+        "name": "gibson_synthetic_poly_a_insert",
+        "topology": "Linear",
+        "date": null,
+        "len": 23,
+        "molecule_type": "dsDNA",
+        "division": "",
+        "definition": null,
+        "accession": null,
+        "version": null,
+        "source": null,
+        "dblink": null,
+        "keywords": null,
+        "references": [],
+        "comments": [
+          "synthetic linear insert for Gibson sanity-checking"
+        ],
+        "seq": [
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65,
+          65
+        ],
+        "contig": null,
+        "features": []
+      },
+      "overhang": {
+        "forward_3": [],
+        "forward_5": [],
+        "reverse_3": [],
+        "reverse_5": []
+      },
+      "restriction_enzymes": [
+        {
+          "name": "BspMI",
+          "sequence": "ACCTGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoNI",
+          "sequence": "CCTNNNNNAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "BalI",
+          "sequence": "TGGCCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "AsuII",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "BamHI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AvaI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SmaI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XmaI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoRI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "TthI",
+          "sequence": "GACNNNGTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "AatII",
+          "sequence": "GACGTC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "PstI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Eco31",
+          "sequence": "GGTCTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AlwNI",
+          "sequence": "CAGNNNCTG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "PflMI",
+          "sequence": "CCANNNNNTGG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "MluI",
+          "sequence": "ACGCGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BstEII",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "ApaI",
+          "sequence": "GGGCCC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BanII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BssHII",
+          "sequence": "GCGCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EcoRV",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HpaI",
+          "sequence": "GTTAAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "BbeI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Eco78",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NarI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "SauI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DsaI",
+          "sequence": "CCRYGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AatI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AbrI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AccEBI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AccI",
+          "sequence": "GTMKAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AccII",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AccIII",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AcyI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AeuI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AflI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AflII",
+          "sequence": "CTTAAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AflIII",
+          "sequence": "ACRYGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AhaI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AhaII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AhaIII",
+          "sequence": "TTTAAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AitI",
+          "sequence": "AGCGCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AliAJI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AliI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AluI",
+          "sequence": "AGCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "AlwI",
+          "sequence": "GGATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "AlwXI",
+          "sequence": "GCAGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AocI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AocII",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AorI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AosI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AosII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "ApaLI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "ApyI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AquI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "AseI",
+          "sequence": "ATTAAT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "AseII",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "Asp700",
+          "sequence": "GAANNNNTTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Asp718",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AspAI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "AspHI",
+          "sequence": "GWGCWC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AstWI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AsuI",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "AsuIII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "AtuBI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "AvaII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "AvaIII",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "AviII",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "AvrII",
+          "sequence": "CCTAGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "AxyI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Bac36",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BamNxI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BanI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BanIII",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BavI",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BbiII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BbvI",
+          "sequence": "GCAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BbvII",
+          "sequence": "GAAGAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Bce243I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BceRI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BclI",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BcmI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BcnI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BepI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BglI",
+          "sequence": "GCCNNNNNGGC",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "BglII",
+          "sequence": "AGATCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BinI",
+          "sequence": "GGATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BluI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bme216I",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BscI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BsmI",
+          "sequence": "GAATGC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "Bsp105I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bsp106I",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "Bsp12",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Bsp211I",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Bsp63I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Bsp67I",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BspAI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BspBI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "BspBII",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BspHI",
+          "sequence": "TCATGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BspMII",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "BspNI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BspRI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BspXI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BspXII",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BsrI",
+          "sequence": "ACTGG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "BstBI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "BstFI",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstGII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BstI",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstNI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "BstPI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "BstSI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "BstUI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BstXI",
+          "sequence": "CCANNNNNNTGG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "BstYI",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Bsu36",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "BsuRI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "BvuI",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CauI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CauII",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "CcrI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CelII",
+          "sequence": "GCTNAGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CeqI",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "CflI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CfoI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "Cfr10",
+          "sequence": "RCCGGY",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Cfr13",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Cfr6I",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Cfr9I",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CfrA4I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "CfrI",
+          "sequence": "YGGCCR",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CfuI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "ClaI",
+          "sequence": "ATCGAT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "CltI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "CpfI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CscI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "CthII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "CviAI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "CviBI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "CviJI",
+          "sequence": "RGCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "CviQI",
+          "sequence": "GTAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "CvnI",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "DdeI",
+          "sequence": "CTNAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DpnI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "DraI",
+          "sequence": "TTTAAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "DraII",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "DraIII",
+          "sequence": "CACNNNGTG",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "DsaII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "EaeI",
+          "sequence": "YGGCCR",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "EagI",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "EagMI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcaI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "EclJI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "Eco105",
+          "sequence": "TACGTA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco14",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco22",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Eco32",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco47",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "Eco47-3",
+          "sequence": "AGCGCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "Eco52",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco57",
+          "sequence": "CTGAAG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "Eco72I",
+          "sequence": "CACGTG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Eco8",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Eco81",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcoO109",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EcoO65I",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "EcoRII",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "EcoT14I",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "EcoT22I",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "EcoVIII",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "ErpI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "EspI",
+          "sequence": "GCTNAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "FbrI",
+          "sequence": "GCNGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "FdiI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "FdiII",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Fnu4H",
+          "sequence": "GCNGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "FnuAI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "FnuCI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "FnuDI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "FnuDII",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "FnuDIII",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "FnuEI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "FokI",
+          "sequence": "GGATG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "FspI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "FspII",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "FspMSI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "GalI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GceGLI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GceI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "GdiI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "GdiII",
+          "sequence": "CGGCCR",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "GsuI",
+          "sequence": "CTGGAG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "HacI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HaeI",
+          "sequence": "WGGCCW",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HaeII",
+          "sequence": "RGCGCY",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "HaeIII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HapII",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgaI",
+          "sequence": "GACGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "HgiAI",
+          "sequence": "GWGCWC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "HgiBI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiCI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiCII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiCIII",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiDI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiDII",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiEI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiGI",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiHI",
+          "sequence": "GGYRCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "HgiHII",
+          "sequence": "GRCGYC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HgiHIII",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiJI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HgiJII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "HhaI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "HhaII",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "HincII",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "HindII",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "HindIII",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "HinfI",
+          "sequence": "GANTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "HinJCI",
+          "sequence": "GTYRAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "HinP1I",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "HinPI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "HpaII",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "HphI",
+          "sequence": "GGTGA",
+          "note": null,
+          "cut": 2,
+          "overlap": -1
+        },
+        {
+          "name": "HsuI",
+          "sequence": "AAGCTT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "KoxI",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "KoxII",
+          "sequence": "GRGCYC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "KpnI",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "Ksp63",
+          "sequence": "CTCTTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "LspI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MaeI",
+          "sequence": "CTAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "MaeII",
+          "sequence": "ACGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "MaeIII",
+          "sequence": "GTNAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "MboI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MboII",
+          "sequence": "GAAGA",
+          "note": null,
+          "cut": 2,
+          "overlap": -1
+        },
+        {
+          "name": "MflI",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MlaI",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MltI",
+          "sequence": "AGCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "MmeI",
+          "sequence": "TCCRAC",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "MnlI",
+          "sequence": "CCTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "MnoI",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MroI",
+          "sequence": "TCCGGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "MseI",
+          "sequence": "TTAA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "Msp67I",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "MspI",
+          "sequence": "CCGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "MstI",
+          "sequence": "TGCGCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "MstII",
+          "sequence": "CCTNAGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "MvaI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "MvnI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NaeI",
+          "sequence": "GCCGGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NblI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "NciI",
+          "sequence": "CCSGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "NcoI",
+          "sequence": "CCATGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NdaI",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "NdeI",
+          "sequence": "CATATG",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "NdeII",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NgoPII",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NgoPIII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "NheI",
+          "sequence": "GCTAGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NlaII",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NlaIII",
+          "sequence": "CATG",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NlaIV",
+          "sequence": "GGNNCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NmeCI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NopI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NotI",
+          "sequence": "GCGGCCGC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "NphI",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NruI",
+          "sequence": "TCGCGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NsiCI",
+          "sequence": "GATATC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "NsiI",
+          "sequence": "ATGCAT",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NspBII",
+          "sequence": "CMGCKG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "NspHI",
+          "sequence": "RCATGY",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "NspI",
+          "sequence": "RCATGY",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "NspII",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "NspIII",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspIV",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "NspMACI",
+          "sequence": "AGATCT",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspSAI",
+          "sequence": "CYCGRG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspSAII",
+          "sequence": "GGTNACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 5
+        },
+        {
+          "name": "NspSAIV",
+          "sequence": "GGATCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "NspV",
+          "sequence": "TTCGAA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "NunII",
+          "sequence": "GGCGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "PaeAI",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "PaeI",
+          "sequence": "GCATGC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "PaeR7",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PalI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "PanI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PleI",
+          "sequence": "GAGTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "Pma44I",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "PmaCI",
+          "sequence": "CACGTG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "PovI",
+          "sequence": "TGATCA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "PpuMI",
+          "sequence": "RGGWCCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "PspI",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "PssI",
+          "sequence": "RGGNCCY",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "PvuI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "PvuII",
+          "sequence": "CAGCTG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "RsaI",
+          "sequence": "GTAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "RshI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "RspI",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "RspXI",
+          "sequence": "TCATGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "RsrI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "RsrII",
+          "sequence": "CGGWCCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "SacI",
+          "sequence": "GAGCTC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "SacII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "SalI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SalPI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "Sau3239",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "Sau3A",
+          "sequence": "GATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "Sau96",
+          "sequence": "GGNCC",
+          "note": null,
+          "cut": 1,
+          "overlap": 3
+        },
+        {
+          "name": "SauBMKI",
+          "sequence": "GCCGGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "Sbo13",
+          "sequence": "TCGCGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "ScaI",
+          "sequence": "AGTACT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SciI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SciNI",
+          "sequence": "GCGC",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "ScrFI",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 1
+        },
+        {
+          "name": "SduI",
+          "sequence": "GDGCHC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SecI",
+          "sequence": "CCNNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SexI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SfaI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "SfaNI",
+          "sequence": "GCATC",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SfiI",
+          "sequence": "GGCCNNNNNGGCC",
+          "note": null,
+          "cut": 4,
+          "overlap": -3
+        },
+        {
+          "name": "SflI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SinI",
+          "sequence": "GGWCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 3
+        },
+        {
+          "name": "SlaI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SnaBI",
+          "sequence": "TACGTA",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SnoI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SpeI",
+          "sequence": "ACTAGT",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SphI",
+          "sequence": "GCATGC",
+          "note": null,
+          "cut": 5,
+          "overlap": -4
+        },
+        {
+          "name": "SplI",
+          "sequence": "CGTACG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SsoI",
+          "sequence": "GAATTC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "SsoII",
+          "sequence": "CCNGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 5
+        },
+        {
+          "name": "SspI",
+          "sequence": "AATATT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "SstI",
+          "sequence": "GAGCTC",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "SstII",
+          "sequence": "CCGCGG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "SthI",
+          "sequence": "GGTACC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "StuI",
+          "sequence": "AGGCCT",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "StyI",
+          "sequence": "CCWWGG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "SuaI",
+          "sequence": "GGCC",
+          "note": null,
+          "cut": 0,
+          "overlap": 0
+        },
+        {
+          "name": "TaqI",
+          "sequence": "TCGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 2
+        },
+        {
+          "name": "TaqXI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "ThaI",
+          "sequence": "CGCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "TthHB",
+          "sequence": "TCGA",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "TthII",
+          "sequence": "CAARCA",
+          "note": null,
+          "cut": 3,
+          "overlap": -2
+        },
+        {
+          "name": "VneI",
+          "sequence": "GTGCAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "VspI",
+          "sequence": "ATTAAT",
+          "note": null,
+          "cut": 0,
+          "overlap": 2
+        },
+        {
+          "name": "XbaI",
+          "sequence": "TCTAGA",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XcaI",
+          "sequence": "GTATAC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XciI",
+          "sequence": "GTCGAC",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "XcyI",
+          "sequence": "CCCGGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "XhoI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XhoII",
+          "sequence": "RGATCY",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XmaIII",
+          "sequence": "CGGCCG",
+          "note": null,
+          "cut": 1,
+          "overlap": 4
+        },
+        {
+          "name": "XmnI",
+          "sequence": "GAANNNNTTC",
+          "note": null,
+          "cut": 1,
+          "overlap": 0
+        },
+        {
+          "name": "XorII",
+          "sequence": "CGATCG",
+          "note": null,
+          "cut": 2,
+          "overlap": -2
+        },
+        {
+          "name": "XpaI",
+          "sequence": "CTCGAG",
+          "note": null,
+          "cut": 0,
+          "overlap": 4
+        },
+        {
+          "name": "YenI",
+          "sequence": "CTGCAG",
+          "note": null,
+          "cut": 4,
+          "overlap": -4
+        },
+        {
+          "name": "ZanI",
+          "sequence": "CCWGG",
+          "note": null,
+          "cut": 0,
+          "overlap": 1
+        },
+        {
+          "name": "BpiI",
+          "sequence": "GAAGACNNNNNN",
+          "note": null,
+          "cut": 6,
+          "overlap": 4
+        },
+        {
+          "name": "Mva1269I",
+          "sequence": "GAATGCN",
+          "note": null,
+          "cut": 7,
+          "overlap": -2
+        },
+        {
+          "name": "XagI",
+          "sequence": "CCTNNNNNAGG",
+          "note": null,
+          "cut": 5,
+          "overlap": 1
+        }
+      ],
+      "restriction_enzyme_sites": [],
+      "restriction_enzyme_groups": [],
+      "max_restriction_enzyme_sites": 2,
+      "open_reading_frames": [],
+      "methylation_sites": {
+        "sites": [],
+        "last_mode": {
+          "dcm": true,
+          "dam": true
+        }
+      },
+      "methylation_mode": {
+        "dcm": true,
+        "dam": true
+      },
+      "gc_content": {
+        "regions": [
+          {
+            "from": 0,
+            "to": 23,
+            "gc": 0.0
+          }
+        ]
+      }
+    }
+  },
+  "metadata": {
+    "gui.lineage_graph.workspace": {
+      "main_split_fraction": 0.65625,
+      "container_arrangement_split_fraction": 0.5799999833106995,
+      "zoom": 1.0,
+      "graph_area_height": 290.390625,
+      "container_area_height": 152.109375,
+      "scroll_offset": [
+        0.0,
+        0.0
+      ],
+      "compact_labels": true,
+      "node_offsets": {},
+      "node_groups": []
+    }
+  },
+  "display": {
+    "show_sequence_panel": true,
+    "sequence_panel_max_text_length_bp": 200000,
+    "auto_hide_sequence_panel_when_linear_bases_visible": false,
+    "show_map_panel": true,
+    "show_features": true,
+    "show_cds_features": true,
+    "show_gene_features": true,
+    "show_mrna_features": true,
+    "show_tfbs": false,
+    "regulatory_tracks_near_baseline": false,
+    "regulatory_feature_max_view_span_bp": 50000,
+    "tfbs_display_use_llr_bits": true,
+    "tfbs_display_min_llr_bits": 0.0,
+    "tfbs_display_use_llr_quantile": true,
+    "tfbs_display_min_llr_quantile": 0.95,
+    "tfbs_display_use_true_log_odds_bits": false,
+    "tfbs_display_min_true_log_odds_bits": 0.0,
+    "tfbs_display_use_true_log_odds_quantile": false,
+    "tfbs_display_min_true_log_odds_quantile": 0.95,
+    "vcf_display_show_snp": true,
+    "vcf_display_show_ins": true,
+    "vcf_display_show_del": true,
+    "vcf_display_show_sv": true,
+    "vcf_display_show_other": true,
+    "vcf_display_pass_only": false,
+    "vcf_display_use_min_qual": false,
+    "vcf_display_min_qual": 0.0,
+    "vcf_display_use_max_qual": false,
+    "vcf_display_max_qual": 0.0,
+    "vcf_display_required_info_keys": [],
+    "show_restriction_enzymes": true,
+    "show_gc_contents": false,
+    "gc_content_bin_size_bp": 100,
+    "show_open_reading_frames": false,
+    "show_methylation_sites": false,
+    "linear_view_start_bp": 41679,
+    "linear_view_span_bp": 326,
+    "linear_view_vertical_offset_px": 0.0,
+    "linear_sequence_base_text_max_view_span_bp": 500,
+    "linear_sequence_helical_letters_enabled": true,
+    "linear_sequence_helical_max_view_span_bp": 2000,
+    "linear_sequence_condensed_max_view_span_bp": 1500,
+    "linear_sequence_letter_layout_mode": "auto_adaptive",
+    "linear_sequence_helical_phase_offset_bp": 0,
+    "linear_show_double_strand_bases": true,
+    "linear_helical_parallel_strands": true,
+    "linear_hide_backbone_when_sequence_bases_visible": true,
+    "linear_reverse_strand_use_upside_down_letters": true,
+    "reverse_strand_visual_opacity": 0.55,
+    "feature_details_font_size": 9.0,
+    "linear_external_feature_label_font_size": 11.0,
+    "linear_external_feature_label_background_opacity": 0.9
+  },
+  "lineage": {
+    "nodes": {
+      "n-2": {
+        "node_id": "n-2",
+        "seq_id": "gibson_synthetic_poly_a_insert",
+        "created_by_op": "op-2",
+        "origin": "ImportedSynthetic",
+        "created_at_unix_ms": 1774210955014
+      },
+      "n-1": {
+        "node_id": "n-1",
+        "seq_id": "gibson_synthetic_c100_a_g100_vector",
+        "created_by_op": "op-1",
+        "origin": "ImportedUnknown",
+        "created_at_unix_ms": 1774210934374
+      }
+    },
+    "seq_to_node": {
+      "gibson_synthetic_poly_a_insert": "n-2",
+      "gibson_synthetic_c100_a_g100_vector": "n-1"
+    },
+    "edges": [],
+    "macro_instances": [],
+    "next_node_counter": 2,
+    "next_macro_instance_counter": 0
+  },
+  "parameters": {
+    "max_fragments_per_container": 80000,
+    "require_verified_genome_anchor_for_extension": false,
+    "genome_anchor_prepared_fallback_policy": "single_compatible",
+    "primer_design_backend": "auto",
+    "primer3_executable": "primer3_core"
+  },
+  "container_state": {
+    "containers": {
+      "container-2": {
+        "container_id": "container-2",
+        "kind": "Singleton",
+        "name": "Imported sequence",
+        "members": [
+          "gibson_synthetic_poly_a_insert"
+        ],
+        "created_by_op": "op-2",
+        "created_at_unix_ms": 1774210955014
+      },
+      "container-1": {
+        "container_id": "container-1",
+        "kind": "Singleton",
+        "name": "Imported sequence",
+        "members": [
+          "gibson_synthetic_c100_a_g100_vector"
+        ],
+        "created_by_op": "op-1",
+        "created_at_unix_ms": 1774210934374
+      }
+    },
+    "arrangements": {},
+    "seq_to_latest_container": {
+      "gibson_synthetic_c100_a_g100_vector": "container-1",
+      "gibson_synthetic_poly_a_insert": "container-2"
+    },
+    "next_container_counter": 2,
+    "next_arrangement_counter": 0
+  }
+}

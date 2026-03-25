@@ -1873,6 +1873,9 @@ Scope behavior:
 
 - Reference and Helper dialogs now keep independent `catalog`/`cache_dir`
   setups.
+- Standalone specialist windows use the shared top-row navigation
+  (`Help`, `Main`, `Close`) so they can always open help, raise the main
+  project window, or close directly from the first row.
 - Switching between `Reference` and `Helper` menu entries restores that
   scope's last-used setup.
 - BLAST runs against the indices in the active scope's `cache_dir`
