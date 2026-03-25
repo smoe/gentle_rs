@@ -83,7 +83,10 @@ cutpoint (`941..941`) used in the Gibson specialist walkthrough.
 `gibson_single_insert_lineage.svg` and `gibson_single_insert_lineage.png` are
 the corresponding project-level lineage graph exports after applying that
 single-insert Gibson plan. They show one Gibson operation with two inputs and
-three concrete outputs (left primer, right primer, assembled product).
+three concrete outputs (left primer, right primer, assembled product). This is
+the same visible DALG/lineage graph users can export in the GUI with
+`File -> Export DALG SVG...` or the graph-canvas context menu item
+`Save Graph as SVG...`; it is not a screenshot.
 
 Regenerate the lineage assets from the repository root with:
 

@@ -90,7 +90,10 @@ ligase sealing.
 
 And the same state remains inspectable as provenance: one `Gibson cloning`
 operation, two input sequences, two primer outputs, and one assembled product
-in the lineage graph.
+in the lineage graph. This figure is not a screenshot; it is the SVG export of
+the same lineage graph that becomes available in the GUI after Gibson apply,
+via `File -> Export DALG SVG...` or the graph-canvas context menu entry
+`Save Graph as SVG...`.
 
 These README Gibson figures are generated from shared engine routes, not drawn
 by hand. Together they answer three different questions:
@@ -120,8 +123,8 @@ cargo run --quiet --bin gentle_cli -- \
 ```
 
 The lineage figure comes from the same tutorial baseline plus one deterministic
-Gibson apply + lineage export path. Exact regeneration commands for all three
-Gibson figures live in [`docs/figures/README.md`](docs/figures/README.md).
+Gibson apply + GUI/CLI-shared lineage export path. Exact regeneration commands
+for all three Gibson figures live in [`docs/figures/README.md`](docs/figures/README.md).
 
 The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose
