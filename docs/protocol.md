@@ -2180,12 +2180,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads show-report REPORT_ID`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
-  - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
+  - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
-  - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]`
+  - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
   - shell output convenience fields:
     - `rna-reads list-reports` includes `summary_rows[]` with concise

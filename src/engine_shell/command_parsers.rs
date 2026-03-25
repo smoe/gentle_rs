@@ -2906,13 +2906,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "export-hits-fasta" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads export-hits-fasta requires REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+                    "rna-reads export-hits-fasta requires REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k]"
                         .to_string(),
                 );
             }
             let report_id = tokens[2].clone();
             let path = tokens[3].clone();
             let mut selection = RnaReadHitSelection::Aligned;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -2925,6 +2926,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         selection = parse_rna_read_hit_selection(&raw)?;
                     }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-hits-fasta",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads export-hits-fasta"
@@ -2936,6 +2946,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             })
         }
         "export-sample-sheet" => {
@@ -3096,7 +3107,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "export-alignments-tsv" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads export-alignments-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+                    "rna-reads export-alignments-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k]"
                         .to_string(),
                 );
             }
@@ -3104,6 +3115,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let path = tokens[3].clone();
             let mut selection = RnaReadHitSelection::Aligned;
             let mut limit: Option<usize> = None;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3129,6 +3141,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             )
                         })?);
                     }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-alignments-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads export-alignments-tsv"
@@ -3141,6 +3162,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 path,
                 selection,
                 limit,
+                selected_record_indices,
             })
         }
         "export-alignment-dotplot-svg" => {

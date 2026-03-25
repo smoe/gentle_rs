@@ -8412,12 +8412,17 @@ fn parse_rna_reads_commands() {
         ShellCommand::RnaReadsExportReport { report_id, path } if report_id == "tp73_reads" && path == "out.json"
     ));
 
-    let export_hits =
-        parse_shell_line("rna-reads export-hits-fasta tp73_reads hits.fa --selection aligned")
-            .expect("parse rna-reads export-hits-fasta");
+    let export_hits = parse_shell_line(
+        "rna-reads export-hits-fasta tp73_reads hits.fa --selection aligned --record-indices 4,9",
+    )
+    .expect("parse rna-reads export-hits-fasta");
     assert!(matches!(
         export_hits,
-        ShellCommand::RnaReadsExportHitsFasta { report_id, path, selection } if report_id == "tp73_reads" && path == "hits.fa" && selection == RnaReadHitSelection::Aligned
+        ShellCommand::RnaReadsExportHitsFasta { report_id, path, selection, selected_record_indices }
+            if report_id == "tp73_reads"
+                && path == "hits.fa"
+                && selection == RnaReadHitSelection::Aligned
+                && selected_record_indices == vec![4, 9]
     ));
 
     let export_sheet = parse_shell_line(
@@ -8469,7 +8474,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_alignments_tsv = parse_shell_line(
-        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200",
+        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200 --record-indices 7,8",
     )
     .expect("parse rna-reads export-alignments-tsv");
     assert!(matches!(
@@ -8478,11 +8483,13 @@ fn parse_rna_reads_commands() {
             report_id,
             path,
             selection,
-            limit
+            limit,
+            selected_record_indices
         } if report_id == "tp73_reads"
             && path == "alignments.tsv"
             && selection == RnaReadHitSelection::Aligned
             && limit == Some(200)
+            && selected_record_indices == vec![7, 8]
     ));
 
     let export_alignment_dotplot = parse_shell_line(
@@ -8944,6 +8951,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id,
             path: exported_hits.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![0],
         },
     )
     .expect("export rna-read hits");
@@ -9032,6 +9040,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             path: exported_alignments_tsv.display().to_string(),
             selection: RnaReadHitSelection::Aligned,
             limit: Some(50),
+            selected_record_indices: vec![0],
         },
     )
     .expect("export rna-read alignments tsv");
@@ -9039,9 +9048,16 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         export_alignments_result.output["selection"].as_str(),
         Some("aligned")
     );
+    assert_eq!(
+        export_alignments_result.output["selected_record_indices"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
     let alignments_text = fs::read_to_string(exported_alignments_tsv).expect("read alignments tsv");
     assert!(alignments_text.contains("alignment_mode"));
     assert!(alignments_text.contains("identity_fraction"));
+    assert!(alignments_text.contains("selected_record_indices=0"));
 
     let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
     let export_alignment_dotplot_result = execute_shell_command(

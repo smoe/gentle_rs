@@ -1231,6 +1231,7 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
         selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsExportSampleSheet {
         path: String,
@@ -1258,6 +1259,7 @@ pub enum ShellCommand {
         path: String,
         selection: RnaReadHitSelection,
         limit: Option<usize>,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsExportAlignmentDotplotSvg {
         report_id: String,
@@ -5982,11 +5984,13 @@ impl ShellCommand {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => format!(
-                "export RNA-read hits from '{}' to '{}' (selection={})",
+                "export RNA-read hits from '{}' to '{}' (selection={}, selected_record_indices={})",
                 report_id,
                 path,
-                selection.as_str()
+                selection.as_str(),
+                selected_record_indices.len()
             ),
             Self::RnaReadsExportSampleSheet {
                 path,
@@ -6039,14 +6043,16 @@ impl ShellCommand {
                 path,
                 selection,
                 limit,
+                selected_record_indices,
             } => format!(
-                "export RNA-read alignments TSV from '{}' to '{}' (selection={}, limit={})",
+                "export RNA-read alignments TSV from '{}' to '{}' (selection={}, limit={}, selected_record_indices={})",
                 report_id,
                 path,
                 selection.as_str(),
                 limit
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "all".to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                selected_record_indices.len()
             ),
             Self::RnaReadsExportAlignmentDotplotSvg {
                 report_id,
@@ -15018,9 +15024,10 @@ pub fn execute_shell_command_with_options(
             report_id,
             path,
             selection,
+            selected_record_indices,
         } => {
             let written = engine
-                .export_rna_read_hits_fasta(report_id, path, *selection, &[])
+                .export_rna_read_hits_fasta(report_id, path, *selection, selected_record_indices)
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15029,6 +15036,7 @@ pub fn execute_shell_command_with_options(
                     "report_id": report_id,
                     "path": path,
                     "selection": selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
                     "written_records": written,
                 }),
             }
@@ -15121,9 +15129,16 @@ pub fn execute_shell_command_with_options(
             path,
             selection,
             limit,
+            selected_record_indices,
         } => {
             let export = engine
-                .export_rna_read_alignments_tsv(report_id, path, *selection, *limit, &[])
+                .export_rna_read_alignments_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    *limit,
+                    selected_record_indices,
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15132,6 +15147,7 @@ pub fn execute_shell_command_with_options(
                     "report_id": export.report_id,
                     "path": export.path,
                     "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
                     "row_count": export.row_count,
                     "aligned_count": export.aligned_count,
                     "limit": export.limit,
