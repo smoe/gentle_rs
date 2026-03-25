@@ -526,6 +526,23 @@ enum RnaReadMappedCdnaSubview {
     AggregateSupport,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RnaReadAlignmentEffectFilter {
+    AllAligned,
+    ConfirmedOnly,
+    ReassignedOnly,
+    NoPhase1Only,
+    SelectedOnly,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RnaReadAlignmentEffectSortKey {
+    Rank,
+    Identity,
+    Coverage,
+    Score,
+}
+
 #[derive(Clone, Debug, Default)]
 struct RnaReadAlignmentEffectSummary {
     aligned_rows: usize,
@@ -3264,6 +3281,21 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_alignment_effect_controls_default_to_all_rank_no_search() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        assert_eq!(
+            area.rna_read_alignment_effect_filter,
+            super::RnaReadAlignmentEffectFilter::AllAligned
+        );
+        assert_eq!(
+            area.rna_read_alignment_effect_sort_key,
+            super::RnaReadAlignmentEffectSortKey::Rank
+        );
+        assert!(area.rna_read_alignment_effect_search.is_empty());
+    }
+
+    #[test]
     fn summarize_rna_read_alignment_effects_counts_each_category() {
         let report = RnaReadInterpretationReport {
             report_id: "rna_effects".to_string(),
@@ -3320,6 +3352,114 @@ mod tests {
         assert_eq!(summary.reassigned_transcripts, 1);
         assert_eq!(summary.aligned_without_phase1_assignment, 1);
         assert_eq!(summary.seed_passed_but_unaligned, 1);
+    }
+
+    #[test]
+    fn collect_visible_rna_read_alignment_effect_rows_filters_sorts_and_searches() {
+        let inspection = RnaReadAlignmentInspection {
+            rows: vec![
+                RnaReadAlignmentInspectionRow {
+                    record_index: 0,
+                    rank: 3,
+                    header_id: "read_confirmed".to_string(),
+                    phase1_primary_transcript_id: "TXA".to_string(),
+                    transcript_id: "TXA".to_string(),
+                    transcript_label: "TXA".to_string(),
+                    identity_fraction: 0.81,
+                    query_coverage_fraction: 0.91,
+                    score: 120,
+                    alignment_effect: RnaReadAlignmentEffect::ConfirmedAssignment,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+                RnaReadAlignmentInspectionRow {
+                    record_index: 1,
+                    rank: 1,
+                    header_id: "read_reassigned".to_string(),
+                    phase1_primary_transcript_id: "TX_seed".to_string(),
+                    transcript_id: "TXB".to_string(),
+                    transcript_label: "TP53-201".to_string(),
+                    identity_fraction: 0.95,
+                    query_coverage_fraction: 0.62,
+                    score: 310,
+                    alignment_effect: RnaReadAlignmentEffect::ReassignedTranscript,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+                RnaReadAlignmentInspectionRow {
+                    record_index: 2,
+                    rank: 2,
+                    header_id: "orphan_aligned".to_string(),
+                    transcript_id: "TXC".to_string(),
+                    transcript_label: "GFOD3P".to_string(),
+                    identity_fraction: 0.89,
+                    query_coverage_fraction: 0.99,
+                    score: 205,
+                    alignment_effect: RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+            ],
+            ..RnaReadAlignmentInspection::default()
+        };
+        let selected = BTreeSet::from([2usize]);
+
+        let by_score = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            super::RnaReadAlignmentEffectFilter::AllAligned,
+            "",
+            &selected,
+            super::RnaReadAlignmentEffectSortKey::Score,
+        );
+        assert_eq!(
+            by_score
+                .iter()
+                .map(|row| row.record_index)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 0]
+        );
+
+        let confirmed_only = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            super::RnaReadAlignmentEffectFilter::ConfirmedOnly,
+            "",
+            &selected,
+            super::RnaReadAlignmentEffectSortKey::Rank,
+        );
+        assert_eq!(
+            confirmed_only
+                .iter()
+                .map(|row| row.record_index)
+                .collect::<Vec<_>>(),
+            vec![0]
+        );
+
+        let selected_only = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            super::RnaReadAlignmentEffectFilter::SelectedOnly,
+            "",
+            &selected,
+            super::RnaReadAlignmentEffectSortKey::Rank,
+        );
+        assert_eq!(
+            selected_only
+                .iter()
+                .map(|row| row.record_index)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+
+        let transcript_search = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            super::RnaReadAlignmentEffectFilter::AllAligned,
+            "tp53",
+            &selected,
+            super::RnaReadAlignmentEffectSortKey::Rank,
+        );
+        assert_eq!(
+            transcript_search
+                .iter()
+                .map(|row| row.record_index)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
     }
 
     #[test]
@@ -4402,6 +4542,9 @@ pub struct MainAreaDna {
     rna_read_progress: Option<RnaReadInterpretProgress>,
     rna_read_statistics_tab: RnaReadEvidenceSourceTab,
     rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview,
+    rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter,
+    rna_read_alignment_effect_sort_key: RnaReadAlignmentEffectSortKey,
+    rna_read_alignment_effect_search: String,
     rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
     rna_seed_template_audit_preview: Vec<RnaSeedHashTemplateAuditEntry>,
     rna_seed_highlight_record_index: Option<usize>,
@@ -4741,6 +4884,9 @@ impl MainAreaDna {
             rna_read_progress: None,
             rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
             rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview::ReadEffects,
+            rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter::AllAligned,
+            rna_read_alignment_effect_sort_key: RnaReadAlignmentEffectSortKey::Rank,
+            rna_read_alignment_effect_search: String::new(),
             rna_seed_catalog_preview: vec![],
             rna_seed_template_audit_preview: vec![],
             rna_seed_highlight_record_index: None,
@@ -16464,6 +16610,155 @@ impl MainAreaDna {
         }
     }
 
+    fn rna_read_alignment_effect_filter_label(
+        filter: RnaReadAlignmentEffectFilter,
+    ) -> &'static str {
+        match filter {
+            RnaReadAlignmentEffectFilter::AllAligned => "all aligned",
+            RnaReadAlignmentEffectFilter::ConfirmedOnly => "confirmed only",
+            RnaReadAlignmentEffectFilter::ReassignedOnly => "reassigned only",
+            RnaReadAlignmentEffectFilter::NoPhase1Only => "no phase-1 tx",
+            RnaReadAlignmentEffectFilter::SelectedOnly => "selected only",
+        }
+    }
+
+    fn rna_read_alignment_effect_sort_key_label(
+        sort_key: RnaReadAlignmentEffectSortKey,
+    ) -> &'static str {
+        match sort_key {
+            RnaReadAlignmentEffectSortKey::Rank => "rank",
+            RnaReadAlignmentEffectSortKey::Identity => "identity",
+            RnaReadAlignmentEffectSortKey::Coverage => "coverage",
+            RnaReadAlignmentEffectSortKey::Score => "score",
+        }
+    }
+
+    fn rna_read_alignment_effect_matches_filter(
+        row: &RnaReadAlignmentInspectionRow,
+        filter: RnaReadAlignmentEffectFilter,
+        selected_record_indices: &BTreeSet<usize>,
+    ) -> bool {
+        match filter {
+            RnaReadAlignmentEffectFilter::AllAligned => true,
+            RnaReadAlignmentEffectFilter::ConfirmedOnly => {
+                row.alignment_effect == RnaReadAlignmentEffect::ConfirmedAssignment
+            }
+            RnaReadAlignmentEffectFilter::ReassignedOnly => {
+                row.alignment_effect == RnaReadAlignmentEffect::ReassignedTranscript
+            }
+            RnaReadAlignmentEffectFilter::NoPhase1Only => {
+                row.alignment_effect == RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
+            }
+            RnaReadAlignmentEffectFilter::SelectedOnly => {
+                selected_record_indices.contains(&row.record_index)
+            }
+        }
+    }
+
+    fn rna_read_alignment_effect_matches_search(
+        row: &RnaReadAlignmentInspectionRow,
+        search: &str,
+    ) -> bool {
+        let needle = search.trim().to_ascii_lowercase();
+        if needle.is_empty() {
+            return true;
+        }
+        let effect_label = Self::rna_read_alignment_effect_label(row.alignment_effect);
+        let record_index_label = format!("#{}", row.record_index + 1);
+        let rank_label = row.rank.to_string();
+        [
+            row.header_id.as_str(),
+            row.phase1_primary_transcript_id.as_str(),
+            row.seed_chain_transcript_id.as_str(),
+            row.exon_path_transcript_id.as_str(),
+            row.exon_path.as_str(),
+            row.transcript_id.as_str(),
+            row.transcript_label.as_str(),
+            row.strand.as_str(),
+            row.selected_strand.as_str(),
+            row.origin_class.as_str(),
+            effect_label,
+            record_index_label.as_str(),
+            rank_label.as_str(),
+        ]
+        .iter()
+        .any(|field| field.to_ascii_lowercase().contains(&needle))
+    }
+
+    fn compare_rna_read_alignment_effect_rows(
+        left: &RnaReadAlignmentInspectionRow,
+        right: &RnaReadAlignmentInspectionRow,
+        sort_key: RnaReadAlignmentEffectSortKey,
+    ) -> Ordering {
+        match sort_key {
+            RnaReadAlignmentEffectSortKey::Rank => left
+                .rank
+                .cmp(&right.rank)
+                .then_with(|| left.record_index.cmp(&right.record_index)),
+            RnaReadAlignmentEffectSortKey::Identity => right
+                .identity_fraction
+                .partial_cmp(&left.identity_fraction)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    right
+                        .query_coverage_fraction
+                        .partial_cmp(&left.query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| right.score.cmp(&left.score))
+                .then_with(|| left.rank.cmp(&right.rank)),
+            RnaReadAlignmentEffectSortKey::Coverage => right
+                .query_coverage_fraction
+                .partial_cmp(&left.query_coverage_fraction)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    right
+                        .identity_fraction
+                        .partial_cmp(&left.identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| right.score.cmp(&left.score))
+                .then_with(|| left.rank.cmp(&right.rank)),
+            RnaReadAlignmentEffectSortKey::Score => right
+                .score
+                .cmp(&left.score)
+                .then_with(|| {
+                    right
+                        .identity_fraction
+                        .partial_cmp(&left.identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right
+                        .query_coverage_fraction
+                        .partial_cmp(&left.query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| left.rank.cmp(&right.rank)),
+        }
+    }
+
+    fn collect_visible_rna_read_alignment_effect_rows<'a>(
+        inspection: &'a RnaReadAlignmentInspection,
+        filter: RnaReadAlignmentEffectFilter,
+        search: &str,
+        selected_record_indices: &BTreeSet<usize>,
+        sort_key: RnaReadAlignmentEffectSortKey,
+    ) -> Vec<&'a RnaReadAlignmentInspectionRow> {
+        let mut rows = inspection
+            .rows
+            .iter()
+            .filter(|row| {
+                Self::rna_read_alignment_effect_matches_filter(row, filter, selected_record_indices)
+                    && Self::rna_read_alignment_effect_matches_search(row, search)
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            Self::compare_rna_read_alignment_effect_rows(left, right, sort_key)
+        });
+        rows
+    }
+
     fn compact_rna_read_transcript_label(transcript_id: &str, transcript_label: &str) -> String {
         let id = transcript_id.trim();
         let label = transcript_label.trim();
@@ -18944,6 +19239,17 @@ impl MainAreaDna {
             .iter()
             .map(|hit| (hit.record_index, hit))
             .collect::<HashMap<_, _>>();
+        let displayed_rows = Self::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            self.rna_read_alignment_effect_filter,
+            &self.rna_read_alignment_effect_search,
+            &self.rna_seed_selected_record_indices,
+            self.rna_read_alignment_effect_sort_key,
+        );
+        let displayed_record_indices = displayed_rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>();
         ui.horizontal_wrapped(|ui| {
             ui.small(format!("Aligned rows: {}", summary.aligned_rows));
             ui.separator();
@@ -18959,6 +19265,70 @@ impl MainAreaDna {
             ui.small(format!(
                 "Seed-passed but unaligned: {}",
                 summary.seed_passed_but_unaligned
+            ));
+        });
+
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Filter:");
+            egui::ComboBox::from_id_salt(format!(
+                "rna_alignment_effect_filter_{}",
+                report.report_id
+            ))
+            .selected_text(Self::rna_read_alignment_effect_filter_label(
+                self.rna_read_alignment_effect_filter,
+            ))
+            .show_ui(ui, |ui| {
+                for filter in [
+                    RnaReadAlignmentEffectFilter::AllAligned,
+                    RnaReadAlignmentEffectFilter::ConfirmedOnly,
+                    RnaReadAlignmentEffectFilter::ReassignedOnly,
+                    RnaReadAlignmentEffectFilter::NoPhase1Only,
+                    RnaReadAlignmentEffectFilter::SelectedOnly,
+                ] {
+                    ui.selectable_value(
+                        &mut self.rna_read_alignment_effect_filter,
+                        filter,
+                        Self::rna_read_alignment_effect_filter_label(filter),
+                    );
+                }
+            });
+            ui.separator();
+            ui.small("Sort:");
+            egui::ComboBox::from_id_salt(format!("rna_alignment_effect_sort_{}", report.report_id))
+                .selected_text(Self::rna_read_alignment_effect_sort_key_label(
+                    self.rna_read_alignment_effect_sort_key,
+                ))
+                .show_ui(ui, |ui| {
+                    for sort_key in [
+                        RnaReadAlignmentEffectSortKey::Rank,
+                        RnaReadAlignmentEffectSortKey::Identity,
+                        RnaReadAlignmentEffectSortKey::Coverage,
+                        RnaReadAlignmentEffectSortKey::Score,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rna_read_alignment_effect_sort_key,
+                            sort_key,
+                            Self::rna_read_alignment_effect_sort_key_label(sort_key),
+                        );
+                    }
+                });
+            ui.separator();
+            ui.small("Search:");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.rna_read_alignment_effect_search)
+                    .desired_width(220.0)
+                    .hint_text("read, tx, effect, #index"),
+            );
+            if !self.rna_read_alignment_effect_search.trim().is_empty()
+                && ui.small_button("Clear").clicked()
+            {
+                self.rna_read_alignment_effect_search.clear();
+            }
+            ui.separator();
+            ui.small(format!(
+                "Showing {} of {} aligned rows",
+                displayed_rows.len(),
+                inspection.rows.len()
             ));
         });
 
@@ -18982,6 +19352,15 @@ impl MainAreaDna {
                             .collect::<BTreeSet<_>>();
                     self.op_status = format!(
                         "Selected {} saved-report read(s) from the rightmost non-empty score bin",
+                        self.rna_seed_selected_record_indices.len()
+                    );
+                    ui.close();
+                }
+                if ui.button("Select displayed rows").clicked() {
+                    self.rna_seed_selected_record_indices =
+                        displayed_record_indices.iter().copied().collect::<BTreeSet<_>>();
+                    self.op_status = format!(
+                        "Selected {} aligned read(s) from the current visible subset",
                         self.rna_seed_selected_record_indices.len()
                     );
                     ui.close();
@@ -19092,7 +19471,7 @@ impl MainAreaDna {
                         ui.small("Exons");
                         ui.small("Jx");
                         ui.end_row();
-                        for row in &inspection.rows {
+                        for row in &displayed_rows {
                             let mut include_for_copy = self
                                 .rna_seed_selected_record_indices
                                 .contains(&row.record_index);
@@ -19151,6 +19530,16 @@ impl MainAreaDna {
                     });
             });
 
+        if displayed_rows.is_empty() {
+            ui.small(
+                egui::RichText::new(
+                    "No aligned rows match the current filter/search. Clear the controls or select a broader subset.",
+                )
+                .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+            return;
+        }
+
         ui.separator();
         let Some(selected_record_index) = self.rna_seed_highlight_record_index else {
             ui.small(
@@ -19158,12 +19547,14 @@ impl MainAreaDna {
             );
             return;
         };
-        let Some(selected_row) = inspection
-            .rows
+        let Some(selected_row) = displayed_rows
             .iter()
+            .copied()
             .find(|row| row.record_index == selected_record_index)
         else {
-            ui.small("The currently highlighted read is not among the aligned rows shown above.");
+            ui.small(
+                "The currently highlighted read is outside the visible subset. Select a visible row or widen the filter/search.",
+            );
             return;
         };
         let Some(selected_hit) = hits_by_record_index.get(&selected_record_index).copied() else {

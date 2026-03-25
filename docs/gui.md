@@ -494,6 +494,18 @@ Feature tree grouping:
         `inspect-alignments` payload, not from the capped live preview
       - default table height targets about 12 visible aligned rows before
         scrolling
+      - filter controls let you focus on:
+        - all aligned rows
+        - `confirmed` rows only
+        - `reassigned` rows only
+        - rows aligned without a phase-1 transcript assignment
+        - checkbox-selected rows only
+      - sort controls support `rank`, `identity`, `coverage`, and `score`
+      - search matches read ids, transcript ids/labels, effect labels, and
+        `#record_index` labels
+      - `Selection tools -> Select displayed rows` promotes the currently
+        visible filtered subset into the checkbox selection set for follow-up
+        alignment, FASTA copy, materialization, or dotplot export
       - one row per aligned retained read with:
         - phase-1 transcript guess
         - phase-2 aligned transcript
