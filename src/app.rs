@@ -51,7 +51,8 @@ use crate::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
         GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan,
-        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress,
+        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
+        PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
         PreparedGenomeInspection,
     },
     gibson_planning::{
@@ -549,6 +550,42 @@ impl GenomePrepareLaunchMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrepareGenomeUiStepStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+struct PrepareGenomeUiStepState {
+    step_id: PrepareGenomeStepId,
+    label: String,
+    operation_summary: String,
+    determinate_hint: bool,
+    status: PrepareGenomeUiStepStatus,
+    progress_fraction: Option<f32>,
+    detail: String,
+    raw_phase: Option<String>,
+}
+
+impl PrepareGenomeUiStepState {
+    fn from_plan_step(step: PrepareGenomePlanStep) -> Self {
+        Self {
+            step_id: step.step_id,
+            label: step.label,
+            operation_summary: step.operation_summary,
+            determinate_hint: step.determinate_hint,
+            status: PrepareGenomeUiStepStatus::Pending,
+            progress_fraction: None,
+            detail: String::new(),
+            raw_phase: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PreparedGenomeReinstallDialogHost {
     Root,
     PrepareDialog,
@@ -670,6 +707,7 @@ pub struct GENtleApp {
     genome_catalog_error: String,
     genome_prepare_task: Option<GenomePrepareTask>,
     genome_prepare_progress: Option<PrepareGenomeProgress>,
+    genome_prepare_steps: Vec<PrepareGenomeUiStepState>,
     genome_prepare_status: String,
     genome_prepare_timeout_secs: String,
     genome_gene_filter: String,
@@ -1958,6 +1996,7 @@ impl Default for GENtleApp {
             genome_catalog_error: String::new(),
             genome_prepare_task: None,
             genome_prepare_progress: None,
+            genome_prepare_steps: vec![],
             genome_prepare_status: String::new(),
             genome_prepare_timeout_secs: default_prepare_timeout_secs_string(),
             genome_gene_filter: String::new(),
@@ -9383,6 +9422,265 @@ Error: `{err}`"
         }
     }
 
+    fn prepare_plan_for_mode(
+        &self,
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        mode: GenomePrepareLaunchMode,
+    ) -> Result<PrepareGenomePlan, EngineError> {
+        match mode {
+            GenomePrepareLaunchMode::Prepare => {
+                GentleEngine::prepare_reference_genome_plan(genome_id, catalog_path, cache_dir)
+            }
+            GenomePrepareLaunchMode::ReindexCachedFiles => {
+                GentleEngine::reindex_reference_genome_plan(genome_id, catalog_path, cache_dir)
+            }
+            GenomePrepareLaunchMode::RefreshFromSources => {
+                GentleEngine::reinstall_reference_genome_plan(genome_id, catalog_path, cache_dir)
+            }
+        }
+    }
+
+    fn reset_prepare_step_state_from_plan(&mut self, plan: Option<PrepareGenomePlan>) {
+        self.genome_prepare_steps = plan
+            .map(|plan| {
+                plan.steps
+                    .into_iter()
+                    .map(PrepareGenomeUiStepState::from_plan_step)
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+
+    fn clear_prepare_step_state(&mut self) {
+        if self.genome_prepare_task.is_none() {
+            self.genome_prepare_steps.clear();
+            self.genome_prepare_progress = None;
+        }
+    }
+
+    fn prepare_progress_fraction(progress: &PrepareGenomeProgress) -> Option<f32> {
+        progress
+            .percent
+            .map(|p| (p as f32 / 100.0).clamp(0.0, 1.0))
+            .or_else(|| {
+                progress.bytes_total.and_then(|total| {
+                    if total == 0 {
+                        None
+                    } else {
+                        Some((progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0))
+                    }
+                })
+            })
+    }
+
+    fn apply_prepare_progress_to_steps(&mut self, progress: &PrepareGenomeProgress) {
+        let Some(step_id) = progress.step_id else {
+            return;
+        };
+        let Some(current_index) = self
+            .genome_prepare_steps
+            .iter()
+            .position(|step| step.step_id == step_id)
+        else {
+            return;
+        };
+
+        for step in self.genome_prepare_steps.iter_mut().take(current_index) {
+            if matches!(
+                step.status,
+                PrepareGenomeUiStepStatus::Pending | PrepareGenomeUiStepStatus::Running
+            ) {
+                step.status = PrepareGenomeUiStepStatus::Completed;
+                step.progress_fraction = Some(1.0);
+                if step.detail.is_empty() {
+                    step.detail = step.operation_summary.clone();
+                }
+            }
+        }
+
+        let step = &mut self.genome_prepare_steps[current_index];
+        step.raw_phase = Some(progress.phase.clone());
+        step.detail = progress.item.clone();
+        step.progress_fraction = Self::prepare_progress_fraction(progress);
+
+        let completed = progress.phase == "ready"
+            || Self::prepare_progress_fraction(progress)
+                .map(|fraction| (fraction - 1.0).abs() < f32::EPSILON)
+                .unwrap_or(false);
+        if completed {
+            step.status = PrepareGenomeUiStepStatus::Completed;
+            step.progress_fraction = Some(1.0);
+        } else {
+            step.status = PrepareGenomeUiStepStatus::Running;
+        }
+    }
+
+    fn finalize_prepare_steps_success(&mut self) {
+        for step in &mut self.genome_prepare_steps {
+            step.status = PrepareGenomeUiStepStatus::Completed;
+            step.progress_fraction = Some(1.0);
+            if step.detail.is_empty() {
+                step.detail = step.operation_summary.clone();
+            }
+        }
+    }
+
+    fn finalize_prepare_steps_failure(&mut self, cancelled: bool) {
+        if let Some(step) = self
+            .genome_prepare_steps
+            .iter_mut()
+            .rev()
+            .find(|step| step.status == PrepareGenomeUiStepStatus::Running)
+        {
+            step.status = if cancelled {
+                PrepareGenomeUiStepStatus::Cancelled
+            } else {
+                PrepareGenomeUiStepStatus::Failed
+            };
+            if step.progress_fraction.is_none() {
+                step.progress_fraction = Some(0.0);
+            }
+        }
+    }
+
+    fn prepare_step_summary(&self) -> Option<(String, usize, usize, f32)> {
+        let total_steps = self.genome_prepare_steps.len();
+        if total_steps == 0 {
+            return None;
+        }
+        let completed_steps = self
+            .genome_prepare_steps
+            .iter()
+            .filter(|step| step.status == PrepareGenomeUiStepStatus::Completed)
+            .count();
+        let running_step = self
+            .genome_prepare_steps
+            .iter()
+            .find(|step| step.status == PrepareGenomeUiStepStatus::Running);
+        let current_label = running_step
+            .map(|step| step.label.clone())
+            .or_else(|| {
+                self.genome_prepare_progress
+                    .as_ref()
+                    .and_then(|progress| progress.step_label.clone())
+            })
+            .or_else(|| {
+                self.genome_prepare_steps
+                    .iter()
+                    .rev()
+                    .find(|step| !matches!(step.status, PrepareGenomeUiStepStatus::Pending))
+                    .map(|step| step.label.clone())
+            })
+            .unwrap_or_else(|| "Queued".to_string());
+        let running_fraction = running_step
+            .and_then(|step| step.progress_fraction)
+            .unwrap_or(0.0);
+        let overall = ((completed_steps as f32) + running_fraction) / total_steps as f32;
+        Some((
+            current_label,
+            completed_steps,
+            total_steps,
+            overall.clamp(0.0, 1.0),
+        ))
+    }
+
+    fn prepare_step_state_status_label(status: PrepareGenomeUiStepStatus) -> &'static str {
+        match status {
+            PrepareGenomeUiStepStatus::Pending => "[ ] pending",
+            PrepareGenomeUiStepStatus::Running => "[>] running",
+            PrepareGenomeUiStepStatus::Completed => "[x] completed",
+            PrepareGenomeUiStepStatus::Failed => "[!] failed",
+            PrepareGenomeUiStepStatus::Cancelled => "[-] cancelled",
+        }
+    }
+
+    fn prepare_step_state_color(status: PrepareGenomeUiStepStatus) -> egui::Color32 {
+        match status {
+            PrepareGenomeUiStepStatus::Pending => egui::Color32::from_gray(130),
+            PrepareGenomeUiStepStatus::Running => egui::Color32::from_rgb(50, 110, 180),
+            PrepareGenomeUiStepStatus::Completed => egui::Color32::from_rgb(50, 135, 70),
+            PrepareGenomeUiStepStatus::Failed => egui::Color32::from_rgb(190, 70, 70),
+            PrepareGenomeUiStepStatus::Cancelled => egui::Color32::from_rgb(170, 120, 50),
+        }
+    }
+
+    fn animated_prepare_step_fraction(ui: &Ui) -> f32 {
+        let time = ui.ctx().input(|input| input.time) as f32;
+        (0.2 + ((time * 2.0).sin() + 1.0) * 0.3).clamp(0.15, 0.85)
+    }
+
+    fn render_prepare_step_checklist(&self, ui: &mut Ui) {
+        if self.genome_prepare_steps.is_empty() {
+            return;
+        }
+        ui.separator();
+        ui.strong("Planned steps");
+        for step in &self.genome_prepare_steps {
+            ui.add_space(4.0);
+            let color = Self::prepare_step_state_color(step.status);
+            let indeterminate_active = step.status == PrepareGenomeUiStepStatus::Running
+                && (!step.determinate_hint || step.progress_fraction.is_none());
+            ui.horizontal(|ui| {
+                if indeterminate_active {
+                    ui.add(egui::Spinner::new());
+                    ui.colored_label(color, Self::prepare_step_state_status_label(step.status));
+                } else {
+                    ui.colored_label(color, Self::prepare_step_state_status_label(step.status));
+                }
+                ui.label(egui::RichText::new(&step.label).strong());
+            });
+            let detail = if !step.detail.trim().is_empty() {
+                step.detail.as_str()
+            } else {
+                step.operation_summary.as_str()
+            };
+            ui.horizontal(|ui| {
+                ui.add_space(18.0);
+                ui.label(
+                    egui::RichText::new(detail)
+                        .small()
+                        .color(egui::Color32::from_gray(120)),
+                );
+            });
+            let fraction = match step.status {
+                PrepareGenomeUiStepStatus::Pending => 0.0,
+                PrepareGenomeUiStepStatus::Running => step
+                    .progress_fraction
+                    .unwrap_or_else(|| Self::animated_prepare_step_fraction(ui)),
+                PrepareGenomeUiStepStatus::Completed => 1.0,
+                PrepareGenomeUiStepStatus::Failed | PrepareGenomeUiStepStatus::Cancelled => {
+                    step.progress_fraction.unwrap_or(0.0)
+                }
+            };
+            let bar_text = match step.status {
+                PrepareGenomeUiStepStatus::Pending => "Pending",
+                PrepareGenomeUiStepStatus::Running if indeterminate_active => "Running",
+                PrepareGenomeUiStepStatus::Running => "In progress",
+                PrepareGenomeUiStepStatus::Completed => "Done",
+                PrepareGenomeUiStepStatus::Failed => "Failed",
+                PrepareGenomeUiStepStatus::Cancelled => "Cancelled",
+            };
+            ui.horizontal(|ui| {
+                ui.add_space(18.0);
+                let mut bar = egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).text(bar_text);
+                if matches!(
+                    step.status,
+                    PrepareGenomeUiStepStatus::Running
+                        | PrepareGenomeUiStepStatus::Completed
+                        | PrepareGenomeUiStepStatus::Failed
+                        | PrepareGenomeUiStepStatus::Cancelled
+                ) && step.progress_fraction.is_some()
+                    && (step.determinate_hint || step.status != PrepareGenomeUiStepStatus::Running)
+                {
+                    bar = bar.show_percentage();
+                }
+                ui.add(bar);
+            });
+        }
+    }
+
     fn start_prepare_reference_genome(&mut self) {
         self.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
     }
@@ -9441,11 +9739,20 @@ Error: `{err}`"
             Self::summarize_binary_probe(&binary_preflight.makeblastdb, true);
         let catalog_path = self.genome_catalog_path_opt();
         let cache_dir = self.genome_cache_dir_opt();
+        let prepare_plan = self
+            .prepare_plan_for_mode(
+                &genome_id,
+                catalog_path.as_deref(),
+                cache_dir.as_deref(),
+                mode,
+            )
+            .ok();
         let cancel_requested = Arc::new(AtomicBool::new(false));
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
         let action_title = mode.progress_label();
         let action_summary = mode.job_summary();
+        self.reset_prepare_step_state_from_plan(prepare_plan);
         self.genome_prepare_progress = Some(PrepareGenomeProgress {
             genome_id: genome_id.clone(),
             phase: "queued".to_string(),
@@ -9453,6 +9760,8 @@ Error: `{err}`"
             bytes_done: 0,
             bytes_total: None,
             percent: Some(0.0),
+            step_id: None,
+            step_label: None,
         });
         self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
             format!(
@@ -9570,9 +9879,11 @@ Error: `{err}`"
         ctx.request_repaint_after(Duration::from_millis(100));
         let mut done: Option<(u64, Result<OpResult, EngineError>)> = None;
         let mut stale_job_ids: Vec<u64> = vec![];
+        let mut progress_messages: Vec<(u64, PrepareGenomeProgress, bool, &'static str)> = vec![];
         if let Some(task) = &self.genome_prepare_task {
             let active_job_id = task.job_id;
             let action_title = task.mode.progress_label();
+            let cancel_requested = task.cancel_requested.clone();
             const MAX_MESSAGES_PER_TICK: usize = 128;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
@@ -9583,19 +9894,12 @@ Error: `{err}`"
                             }
                             continue;
                         }
-                        self.genome_prepare_progress = Some(progress.clone());
-                        let canceling = task.cancel_requested.load(Ordering::Relaxed);
-                        self.genome_prepare_status = format!(
-                            "{action_title} genome '{}': {} ({}){}",
-                            progress.genome_id,
-                            progress.phase,
-                            progress.item,
-                            if canceling {
-                                " (cancellation requested)"
-                            } else {
-                                ""
-                            }
-                        );
+                        progress_messages.push((
+                            job_id,
+                            progress,
+                            cancel_requested.load(Ordering::Relaxed),
+                            action_title,
+                        ));
                     }
                     Ok(GenomePrepareTaskMessage::Done { job_id, result }) => {
                         if job_id != active_job_id {
@@ -9621,6 +9925,21 @@ Error: `{err}`"
                 }
             }
         }
+        for (_job_id, progress, canceling, action_title) in progress_messages {
+            self.genome_prepare_progress = Some(progress.clone());
+            self.apply_prepare_progress_to_steps(&progress);
+            self.genome_prepare_status = format!(
+                "{action_title} genome '{}': {} ({}){}",
+                progress.genome_id,
+                progress.phase,
+                progress.item,
+                if canceling {
+                    " (cancellation requested)"
+                } else {
+                    ""
+                }
+            );
+        }
         for stale_job_id in stale_job_ids {
             self.push_job_event(
                 BackgroundJobKind::PrepareGenome,
@@ -9630,21 +9949,22 @@ Error: `{err}`"
             );
         }
         if let Some((job_id, outcome)) = done {
-            let (elapsed, cancellation_requested, timeout_seconds, mode) =
-                self.genome_prepare_task
-                    .as_ref()
-                    .map(|task| {
-                        (
-                            task.started.elapsed().as_secs_f64(),
-                            task.cancel_requested.load(Ordering::Relaxed),
-                            task.timeout_seconds,
-                            task.mode,
-                        )
-                    })
-                    .unwrap_or((0.0, false, None, GenomePrepareLaunchMode::Prepare));
+            let (elapsed, cancellation_requested, timeout_seconds, mode) = self
+                .genome_prepare_task
+                .as_ref()
+                .map(|task| {
+                    (
+                        task.started.elapsed().as_secs_f64(),
+                        task.cancel_requested.load(Ordering::Relaxed),
+                        task.timeout_seconds,
+                        task.mode,
+                    )
+                })
+                .unwrap_or((0.0, false, None, GenomePrepareLaunchMode::Prepare));
             self.genome_prepare_task = None;
             match outcome {
                 Ok(result) => {
+                    self.finalize_prepare_steps_success();
                     let prefix = mode.result_prefix(cancellation_requested);
                     self.genome_prepare_status = format!(
                         "{}\nelapsed: {:.1}s",
@@ -9665,6 +9985,7 @@ Error: `{err}`"
                     );
                 }
                 Err(e) => {
+                    self.finalize_prepare_steps_failure(cancellation_requested);
                     self.genome_prepare_status = Self::format_prepare_failure_status(
                         &e.message,
                         elapsed,
@@ -11649,30 +11970,25 @@ Error: `{err}`"
                 }
             }
         });
+        if !self.genome_prepare_steps.is_empty() {
+            self.render_prepare_step_checklist(ui);
+        } else if let Some(progress) = &self.genome_prepare_progress {
+            let fraction = Self::prepare_progress_fraction(progress).unwrap_or(0.0);
+            let mut bar = egui::ProgressBar::new(fraction)
+                .text(format!("{}: {}", progress.phase, progress.item));
+            if progress.percent.is_some() || progress.bytes_total.is_some() {
+                bar = bar.show_percentage();
+            }
+            ui.add(bar);
+        }
         if let Some(progress) = &self.genome_prepare_progress {
-            let fraction = progress
-                .percent
-                .map(|p| (p / 100.0) as f32)
-                .or_else(|| {
-                    progress.bytes_total.and_then(|total| {
-                        if total == 0 {
-                            None
-                        } else {
-                            Some((progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0))
-                        }
-                    })
-                })
-                .unwrap_or(0.0);
-            ui.add(
-                egui::ProgressBar::new(fraction)
-                    .show_percentage()
-                    .text(format!("{}: {}", progress.phase, progress.item)),
-            );
             let bytes_total = progress
                 .bytes_total
                 .map(|b| b.to_string())
                 .unwrap_or_else(|| "?".to_string());
-            ui.label(format!("bytes: {} / {}", progress.bytes_done, bytes_total));
+            if progress.bytes_done > 0 || progress.bytes_total.is_some() {
+                ui.small(format!("bytes: {} / {}", progress.bytes_done, bytes_total));
+            }
         }
         if !self.genome_prepare_status.is_empty() {
             ui.separator();
@@ -11719,6 +12035,7 @@ Error: `{err}`"
                     self.dismiss_pending_prepared_genome_reinstall_for_host(
                         PreparedGenomeReinstallDialogHost::PrepareDialog,
                     );
+                    self.clear_prepare_step_state();
                 }
                 return;
             }
@@ -11737,6 +12054,7 @@ Error: `{err}`"
                     PreparedGenomeReinstallDialogHost::PrepareDialog,
                 );
                 self.show_reference_genome_prepare_dialog = false;
+                self.clear_prepare_step_state();
             }
         });
     }
@@ -28081,24 +28399,44 @@ Error: `{err}`"
                 ui.strong("Prepare Genome");
                 let mut cancel_prepare_clicked = false;
                 if self.genome_prepare_task.is_some() {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        if let Some(progress) = &self.genome_prepare_progress {
+                    if let Some(task) = &self.genome_prepare_task {
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Spinner::new());
+                            let genome_label = self
+                                .genome_prepare_progress
+                                .as_ref()
+                                .map(|progress| progress.genome_id.clone())
+                                .unwrap_or_else(|| self.genome_id.clone());
                             ui.label(format!(
-                                "{}: {} ({})",
-                                progress.genome_id, progress.phase, progress.item
+                                "{} '{}' ({:.1}s)",
+                                task.mode.progress_label(),
+                                genome_label,
+                                task.started.elapsed().as_secs_f32()
                             ));
-                        } else {
-                            ui.label("Running...");
-                        }
-                        if ui
-                            .button("Cancel")
-                            .on_hover_text("Request cancellation of genome prepare job")
-                            .clicked()
-                        {
-                            cancel_prepare_clicked = true;
-                        }
-                    });
+                            if ui
+                                .button("Cancel")
+                                .on_hover_text("Request cancellation of genome prepare job")
+                                .clicked()
+                            {
+                                cancel_prepare_clicked = true;
+                            }
+                        });
+                    }
+                    if let Some((current_step, completed_steps, total_steps, overall)) =
+                        self.prepare_step_summary()
+                    {
+                        ui.small(format!(
+                            "Current step: {} ({}/{})",
+                            current_step, completed_steps, total_steps
+                        ));
+                        ui.add(
+                            egui::ProgressBar::new(overall)
+                                .show_percentage()
+                                .text(format!("{}/{} steps", completed_steps, total_steps)),
+                        );
+                    } else if let Some(progress) = &self.genome_prepare_progress {
+                        ui.small(format!("Current phase: {} ({})", progress.phase, progress.item));
+                    }
                 } else {
                     ui.horizontal(|ui| {
                         ui.small("Idle");
@@ -30246,18 +30584,17 @@ mod tests {
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
-        GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask,
-        GenomePrepareTaskMessage, GenomeTrackImportTask, GenomeTrackImportTaskMessage,
-        GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc,
-        HelpSearchMatch, HelpTutorialDocEntry,
+        GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage,
+        GenomeTrackImportTask, GenomeTrackImportTaskMessage, GibsonUiInsertOrientation,
+        GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PrepareGenomeDialogPrimaryAction, PreparedGenomeReinstallDialogHost,
-        PreparedGenomeReinstallRequest, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage,
+        PrepareGenomeDialogPrimaryAction, PrepareGenomeUiStepStatus,
+        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -30268,6 +30605,9 @@ mod tests {
             RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             SequenceOrigin,
+        },
+        genomes::{
+            PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
         },
         gibson_planning::{
             GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion, GibsonPrimerSegment,
@@ -30288,6 +30628,56 @@ mod tests {
         time::{Duration, Instant},
     };
     use tempfile::tempdir;
+
+    fn make_prepare_plan(step_ids: &[PrepareGenomeStepId]) -> PrepareGenomePlan {
+        PrepareGenomePlan {
+            genome_id: "ToyGenome".to_string(),
+            steps: step_ids
+                .iter()
+                .copied()
+                .map(|step_id| PrepareGenomePlanStep {
+                    step_id,
+                    label: step_id.label().to_string(),
+                    operation_summary: format!("Plan {}", step_id.label()),
+                    determinate_hint: step_id != PrepareGenomeStepId::BlastIndex,
+                })
+                .collect(),
+        }
+    }
+
+    fn write_toy_prepare_catalog(root: &std::path::Path) -> (String, String) {
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").expect("write fasta");
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .expect("write annotation");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                fasta.display(),
+                ann.display(),
+                cache_dir.display()
+            ),
+        )
+        .expect("write catalog");
+        (
+            catalog_path.display().to_string(),
+            cache_dir.display().to_string(),
+        )
+    }
 
     fn make_test_app_with_open_windows(seq_ids: &[&str]) -> GENtleApp {
         let mut state = ProjectState::default();
@@ -33782,6 +34172,136 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             .expect("queued progress should be visible immediately");
         assert_eq!(progress.phase, "queued");
         assert_eq!(progress.genome_id, "ToyGenome");
+    }
+
+    #[test]
+    fn start_prepare_reference_genome_with_mode_initializes_prepare_steps_immediately() {
+        let _env_guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let td = tempdir().expect("tempdir");
+        let (catalog_path, cache_dir) = write_toy_prepare_catalog(td.path());
+        let mut app = GENtleApp::default();
+        app.genome_id = "ToyGenome".to_string();
+        app.genome_catalog_path = catalog_path;
+        app.genome_cache_dir = cache_dir;
+
+        app.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
+
+        assert_eq!(app.genome_prepare_steps.len(), 5);
+        assert_eq!(
+            app.genome_prepare_steps
+                .iter()
+                .map(|step| step.step_id)
+                .collect::<Vec<_>>(),
+            vec![
+                PrepareGenomeStepId::Sequence,
+                PrepareGenomeStepId::Annotation,
+                PrepareGenomeStepId::FastaIndex,
+                PrepareGenomeStepId::GeneIndex,
+                PrepareGenomeStepId::BlastIndex,
+            ]
+        );
+    }
+
+    #[test]
+    fn apply_prepare_progress_updates_only_matching_step() {
+        let mut app = GENtleApp::default();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::Annotation,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+
+        app.apply_prepare_progress_to_steps(&PrepareGenomeProgress {
+            genome_id: "ToyGenome".to_string(),
+            phase: "download_annotation".to_string(),
+            item: "annotation.gtf".to_string(),
+            bytes_done: 50,
+            bytes_total: Some(100),
+            percent: Some(50.0),
+            step_id: Some(PrepareGenomeStepId::Annotation),
+            step_label: Some("Annotation".to_string()),
+        });
+
+        assert_eq!(
+            app.genome_prepare_steps[0].status,
+            PrepareGenomeUiStepStatus::Completed
+        );
+        assert_eq!(
+            app.genome_prepare_steps[1].status,
+            PrepareGenomeUiStepStatus::Running
+        );
+        assert_eq!(app.genome_prepare_steps[1].progress_fraction, Some(0.5));
+        assert_eq!(
+            app.genome_prepare_steps[2].status,
+            PrepareGenomeUiStepStatus::Pending
+        );
+    }
+
+    #[test]
+    fn finalize_prepare_steps_success_marks_all_steps_complete() {
+        let mut app = GENtleApp::default();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::Annotation,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+
+        app.finalize_prepare_steps_success();
+
+        assert!(
+            app.genome_prepare_steps
+                .iter()
+                .all(|step| step.status == PrepareGenomeUiStepStatus::Completed)
+        );
+    }
+
+    #[test]
+    fn finalize_prepare_steps_failure_marks_running_step_and_preserves_checklist() {
+        let mut app = GENtleApp::default();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+        app.genome_prepare_steps[0].status = PrepareGenomeUiStepStatus::Completed;
+        app.genome_prepare_steps[0].progress_fraction = Some(1.0);
+        app.genome_prepare_steps[1].status = PrepareGenomeUiStepStatus::Running;
+
+        app.finalize_prepare_steps_failure(true);
+
+        assert_eq!(app.genome_prepare_steps.len(), 2);
+        assert_eq!(
+            app.genome_prepare_steps[0].status,
+            PrepareGenomeUiStepStatus::Completed
+        );
+        assert_eq!(
+            app.genome_prepare_steps[1].status,
+            PrepareGenomeUiStepStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn prepare_step_summary_reports_completed_count_and_overall_fraction() {
+        let mut app = GENtleApp::default();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::Annotation,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+        app.genome_prepare_steps[0].status = PrepareGenomeUiStepStatus::Completed;
+        app.genome_prepare_steps[0].progress_fraction = Some(1.0);
+        app.genome_prepare_steps[1].status = PrepareGenomeUiStepStatus::Running;
+        app.genome_prepare_steps[1].progress_fraction = Some(0.5);
+
+        let (current_step, completed_steps, total_steps, overall) =
+            app.prepare_step_summary().expect("summary");
+
+        assert_eq!(current_step, "Annotation");
+        assert_eq!(completed_steps, 1);
+        assert_eq!(total_steps, 3);
+        assert!((overall - 0.5).abs() < 0.001, "overall was {overall}");
     }
 
     #[test]

@@ -1907,7 +1907,16 @@ Recommended flow:
    - when `Reindex Selected...` is launched from the floating prepare window,
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
-   - this runs in background, shows live progress immediately, and builds local FASTA, gene, and BLAST indexes
+   - this runs in background and now shows the full ordered prepare plan up front
+   - each conceptual process gets its own row and progress bar:
+     sequence, annotation, FASTA index, gene index, BLAST index
+   - completed rows stay checked until you close the prepare window or start a
+     new prepare/reindex/refresh run
+   - long-running indeterminate work such as BLAST indexing stays visible as an
+     active checklist row instead of looking idle
+   - the Background Jobs window keeps a compact prepare summary only:
+     mode, current step, completed step count, and one overall progress bar
+   - the raw text status block remains below the checklist for full diagnostic detail
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
    - a running prepare task can be cancelled via `Cancel Prepare`

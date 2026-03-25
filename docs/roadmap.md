@@ -201,6 +201,10 @@ order. Durable architecture constraints and decisions remain in
   reindex keeps cached local sequence/annotation files, progress appears
   immediately when launched, and deleting cached downloads for a full refresh
   requires an explicit confirmation choice.
+- Prepare/reindex/refresh dialogs now expose a structured step checklist
+  up front (per-step bars, completed checkmarks, compact jobs-panel summary)
+  instead of a single raw phase bar, so long-running indexing work stays
+  visible and auditable.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI

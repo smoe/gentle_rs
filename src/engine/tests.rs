@@ -10742,10 +10742,9 @@ fn test_parse_fasta_records_with_offsets_supports_concatenated_gzip_input() {
         ],
     );
 
-    let records = GentleEngine::parse_fasta_records_with_offsets(
-        fasta_gz.to_str().expect("utf-8 path"),
-    )
-    .expect("parse concatenated gzip FASTA");
+    let records =
+        GentleEngine::parse_fasta_records_with_offsets(fasta_gz.to_str().expect("utf-8 path"))
+            .expect("parse concatenated gzip FASTA");
     assert_eq!(records.len(), 3);
     assert_eq!(records[0].header_id, "read_1");
     assert_eq!(records[0].sequence, b"ATGT".to_vec());

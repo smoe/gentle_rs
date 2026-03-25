@@ -31,8 +31,8 @@ use crate::{
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedGenomeFallbackPolicy, PreparedGenomeInspection,
+        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
+        PrepareGenomeReport, PreparedGenomeFallbackPolicy, PreparedGenomeInspection,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         is_prepare_cancelled_error, validate_genbank_accession,
     },
@@ -7031,6 +7031,43 @@ impl GentleEngine {
         )
     }
 
+    fn prepare_reference_genome_plan_with_options(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        mode: PrepareReferenceGenomeMode,
+    ) -> Result<PrepareGenomePlan, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        let result = match mode {
+            PrepareReferenceGenomeMode::PrepareOrReuse => catalog.prepare_genome_plan(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            ),
+            PrepareReferenceGenomeMode::ReindexCachedFiles => catalog.reindex_genome_plan(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            ),
+            PrepareReferenceGenomeMode::RefreshFromSources => catalog.reinstall_genome_plan(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            ),
+        };
+        result.map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: match mode {
+                PrepareReferenceGenomeMode::PrepareOrReuse => {
+                    format!("Could not plan genome preparation for '{genome_id}': {e}")
+                }
+                PrepareReferenceGenomeMode::ReindexCachedFiles => {
+                    format!("Could not plan genome reindex for '{genome_id}': {e}")
+                }
+                PrepareReferenceGenomeMode::RefreshFromSources => {
+                    format!("Could not plan genome refresh for '{genome_id}': {e}")
+                }
+            },
+        })
+    }
+
     fn prepare_reference_genome_once_with_options(
         genome_id: &str,
         catalog_path: Option<&str>,
@@ -7058,11 +7095,12 @@ impl GentleEngine {
             PrepareReferenceGenomeMode::RefreshFromSources => "refresh",
         };
         let result = match mode {
-            PrepareReferenceGenomeMode::PrepareOrReuse => catalog.prepare_genome_once_with_progress(
-                genome_id,
-                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
-                &mut guarded_progress,
-            ),
+            PrepareReferenceGenomeMode::PrepareOrReuse => catalog
+                .prepare_genome_once_with_progress(
+                    genome_id,
+                    cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                    &mut guarded_progress,
+                ),
             PrepareReferenceGenomeMode::ReindexCachedFiles => catalog
                 .reindex_genome_once_with_progress(
                     genome_id,
@@ -7091,6 +7129,45 @@ impl GentleEngine {
                 format!("Could not {action_label} genome '{genome_id}': {e}")
             },
         })
+    }
+
+    pub fn prepare_reference_genome_plan(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrepareGenomePlan, EngineError> {
+        Self::prepare_reference_genome_plan_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            PrepareReferenceGenomeMode::PrepareOrReuse,
+        )
+    }
+
+    pub fn reindex_reference_genome_plan(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrepareGenomePlan, EngineError> {
+        Self::prepare_reference_genome_plan_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            PrepareReferenceGenomeMode::ReindexCachedFiles,
+        )
+    }
+
+    pub fn reinstall_reference_genome_plan(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrepareGenomePlan, EngineError> {
+        Self::prepare_reference_genome_plan_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            PrepareReferenceGenomeMode::RefreshFromSources,
+        )
     }
 
     pub fn prepare_reference_genome_once(

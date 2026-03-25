@@ -258,6 +258,47 @@ enum PrepareGenomeMode {
     RefreshFromSources,
 }
 
+/// Stable conceptual prepare/reindex step identifiers shared with adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrepareGenomeStepId {
+    ResetIndexes,
+    Sequence,
+    Annotation,
+    FastaIndex,
+    GeneIndex,
+    BlastIndex,
+}
+
+impl PrepareGenomeStepId {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ResetIndexes => "Reset Cached Indexes",
+            Self::Sequence => "Sequence",
+            Self::Annotation => "Annotation",
+            Self::FastaIndex => "FASTA Index",
+            Self::GeneIndex => "Gene Index",
+            Self::BlastIndex => "BLAST Index",
+        }
+    }
+}
+
+/// Ordered conceptual plan for prepare/reindex/refresh UI flows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrepareGenomePlan {
+    pub genome_id: String,
+    pub steps: Vec<PrepareGenomePlanStep>,
+}
+
+/// One conceptual step in a genome prepare plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrepareGenomePlanStep {
+    pub step_id: PrepareGenomeStepId,
+    pub label: String,
+    pub operation_summary: String,
+    pub determinate_hint: bool,
+}
+
 /// Result of resolving a requested genome id to a prepared install.
 ///
 /// When the exact requested id is not prepared, a compatible prepared assembly
@@ -341,6 +382,10 @@ pub struct PrepareGenomeProgress {
     pub bytes_done: u64,
     pub bytes_total: Option<u64>,
     pub percent: Option<f64>,
+    #[serde(default)]
+    pub step_id: Option<PrepareGenomeStepId>,
+    #[serde(default)]
+    pub step_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -700,6 +745,45 @@ impl GenomeCatalog {
         self.reinstall_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
     }
 
+    /// Resolve the conceptual plan for a prepare-or-reuse run.
+    pub fn prepare_genome_plan(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareGenomePlan, String> {
+        self.prepare_genome_plan_with_mode(
+            genome_id,
+            cache_dir_override,
+            PrepareGenomeMode::PrepareOrReuse,
+        )
+    }
+
+    /// Resolve the conceptual plan for a cached-files-only reindex run.
+    pub fn reindex_genome_plan(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareGenomePlan, String> {
+        self.prepare_genome_plan_with_mode(
+            genome_id,
+            cache_dir_override,
+            PrepareGenomeMode::ReindexCachedFiles,
+        )
+    }
+
+    /// Resolve the conceptual plan for a source-refresh run.
+    pub fn reinstall_genome_plan(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareGenomePlan, String> {
+        self.prepare_genome_plan_with_mode(
+            genome_id,
+            cache_dir_override,
+            PrepareGenomeMode::RefreshFromSources,
+        )
+    }
+
     /// Prepare sequence+annotation+indexes while reporting progress.
     ///
     /// The callback is cooperative: returning `false` requests cancellation.
@@ -749,6 +833,153 @@ impl GenomeCatalog {
             PrepareGenomeMode::RefreshFromSources,
             on_progress,
         )
+    }
+
+    fn prepare_genome_plan_with_mode(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+        mode: PrepareGenomeMode,
+    ) -> Result<PrepareGenomePlan, String> {
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        let sequence_resolution = self.resolve_source_with_type(
+            genome_id,
+            "sequence",
+            entry.sequence_local.as_ref(),
+            entry.sequence_remote.as_ref(),
+            entry,
+        )?;
+        let annotation_resolution = self.resolve_source_with_type(
+            genome_id,
+            "annotation",
+            entry.annotations_local.as_ref(),
+            entry.annotations_remote.as_ref(),
+            entry,
+        )?;
+        let sequence_source = sequence_resolution.source.clone();
+        let annotation_source = annotation_resolution.source.clone();
+        let reindex_from_cached_files = matches!(mode, PrepareGenomeMode::ReindexCachedFiles);
+        let mut force_refresh_from_sources = matches!(mode, PrepareGenomeMode::RefreshFromSources);
+        let existing_manifest = if manifest_path.exists() {
+            Some(Self::load_manifest(&manifest_path)?)
+        } else {
+            None
+        };
+
+        if let Some(manifest) = existing_manifest.as_ref() {
+            let sources_drifted = !sources_equivalent(&manifest.sequence_source, &sequence_source)
+                || !sources_equivalent(&manifest.annotation_source, &annotation_source);
+            if sources_drifted && !reindex_from_cached_files {
+                force_refresh_from_sources = true;
+            }
+            if !force_refresh_from_sources {
+                Self::validate_manifest_files(manifest)?;
+            }
+        } else if reindex_from_cached_files {
+            return Err(format!(
+                "Genome '{}' is not prepared locally; prepare it once before reindexing cached files",
+                genome_id
+            ));
+        }
+
+        let existing_paths = if force_refresh_from_sources {
+            None
+        } else {
+            existing_manifest.as_ref()
+        };
+        let sequence_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.sequence_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa"));
+        let annotation_ext = infer_annotation_extension(&annotation_source);
+        let annotation_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.annotation_path))
+            .unwrap_or_else(|| install_dir.join(format!("annotation.{annotation_ext}")));
+        let fasta_index_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.fasta_index_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa.fai"));
+        let gene_index_path = existing_paths
+            .and_then(|manifest| manifest.gene_index_path.as_ref().map(PathBuf::from))
+            .unwrap_or_else(|| install_dir.join("genes.json"));
+        let blast_prefix_path = existing_paths
+            .and_then(|manifest| manifest.blast_db_prefix.as_deref().map(PathBuf::from))
+            .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+
+        let sequence_reused = reindex_from_cached_files
+            || (!force_refresh_from_sources && non_empty_regular_file_exists(&sequence_path));
+        let annotation_reused = reindex_from_cached_files
+            || (!force_refresh_from_sources && non_empty_regular_file_exists(&annotation_path));
+        let fasta_index_reused = existing_paths.is_some()
+            && !reindex_from_cached_files
+            && non_empty_regular_file_exists(&fasta_index_path);
+        let gene_index_reused = existing_paths.is_some()
+            && !reindex_from_cached_files
+            && non_empty_regular_file_exists(&gene_index_path);
+        let blast_index_reused = existing_paths.is_some()
+            && !reindex_from_cached_files
+            && is_blast_index_ready(&collect_blast_index_files(&blast_prefix_path));
+
+        let mut steps: Vec<PrepareGenomePlanStep> = vec![];
+        if reindex_from_cached_files {
+            steps.push(build_prepare_genome_plan_step(
+                PrepareGenomeStepId::ResetIndexes,
+                "Remove cached FASTA, gene, and BLAST indexes before rebuilding them",
+                false,
+            ));
+        }
+        steps.push(build_prepare_genome_plan_step(
+            PrepareGenomeStepId::Sequence,
+            if sequence_reused {
+                "Reuse the cached local sequence file"
+            } else {
+                "Download or copy the sequence source into the prepared cache"
+            },
+            true,
+        ));
+        steps.push(build_prepare_genome_plan_step(
+            PrepareGenomeStepId::Annotation,
+            if annotation_reused {
+                "Reuse the cached local annotation file"
+            } else {
+                "Download or copy the annotation source into the prepared cache"
+            },
+            true,
+        ));
+        steps.push(build_prepare_genome_plan_step(
+            PrepareGenomeStepId::FastaIndex,
+            if fasta_index_reused {
+                "Reuse the existing FASTA index"
+            } else if reindex_from_cached_files {
+                "Rebuild the FASTA index from cached sequence data"
+            } else {
+                "Build the FASTA index from the prepared sequence"
+            },
+            true,
+        ));
+        steps.push(build_prepare_genome_plan_step(
+            PrepareGenomeStepId::GeneIndex,
+            if gene_index_reused {
+                "Reuse the existing gene index"
+            } else {
+                "Build the gene index from the prepared annotation"
+            },
+            true,
+        ));
+        steps.push(build_prepare_genome_plan_step(
+            PrepareGenomeStepId::BlastIndex,
+            if blast_index_reused {
+                "Verify the existing BLAST index and rebuild it if needed"
+            } else {
+                "Build the BLAST index for sequence search"
+            },
+            false,
+        ));
+
+        Ok(PrepareGenomePlan {
+            genome_id: genome_id.to_string(),
+            steps,
+        })
     }
 
     fn prepare_genome_once_with_progress_options(
@@ -823,146 +1054,197 @@ impl GenomeCatalog {
             if reindex_from_cached_files || force_refresh_from_sources {
                 // Fall through to the rebuild path below.
             } else {
-            let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
-            let mut warnings: Vec<String> = vec![];
-            if let Some(warning) = cached_source_drift_warning.clone() {
-                warnings.push(warning);
-            }
-            let mut annotation_parse_report: Option<AnnotationParseReport> = None;
-            let gene_index_path = manifest
-                .gene_index_path
-                .as_ref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| install_dir.join("genes.json"));
-            if !gene_index_path.exists() {
-                let report = build_gene_index_file(
-                    Path::new(&manifest.annotation_path),
-                    &gene_index_path,
-                    |done, total| {
-                        on_progress(PrepareGenomeProgress {
-                            genome_id: genome_id.to_string(),
-                            phase: "index_genes".to_string(),
-                            item: canonical_or_display(Path::new(&manifest.annotation_path)),
-                            bytes_done: done,
-                            bytes_total: total,
-                            percent: total.and_then(|t| {
-                                if t == 0 {
-                                    None
-                                } else {
-                                    Some((done as f64 / t as f64) * 100.0)
-                                }
-                            }),
-                        })
-                    },
+                let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
+                let mut warnings: Vec<String> = vec![];
+                if let Some(warning) = cached_source_drift_warning.clone() {
+                    warnings.push(warning);
+                }
+                let mut annotation_parse_report: Option<AnnotationParseReport> = None;
+                let gene_index_path = manifest
+                    .gene_index_path
+                    .as_ref()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| install_dir.join("genes.json"));
+                let sequence_bytes = fs::metadata(&manifest.sequence_path)
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(
+                        genome_id,
+                        "reuse_sequence",
+                        manifest.sequence_path.clone(),
+                        sequence_bytes,
+                        Some(sequence_bytes),
+                        Some(100.0),
+                    ),
                 )?;
-                warnings.extend(summarize_annotation_parse_warnings(&report));
-                annotation_parse_report = Some(report);
-                manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
-            }
-            let fasta_index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
-            let gene_records = load_gene_index_file(&gene_index_path)?;
-            validate_annotation_gene_contigs_against_fasta_index(
-                genome_id,
-                &fasta_index,
-                &gene_records,
-                Path::new(&manifest.sequence_path),
-                Path::new(&manifest.fasta_index_path),
-                &gene_index_path,
-            )?;
-            let blast_prefix_path = manifest
-                .blast_db_prefix
-                .as_deref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
-            forward_prepare_progress(
-                on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "index_blast".to_string(),
-                    item: canonical_or_display(&blast_prefix_path),
-                    bytes_done: 0,
-                    bytes_total: None,
-                    percent: None,
-                },
-            )?;
-            let blast_outcome =
-                ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
-            if !blast_outcome.warnings.is_empty() {
-                warnings.extend(blast_outcome.warnings.clone());
-            }
-            forward_prepare_progress(
-                on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "index_blast".to_string(),
-                    item: canonical_or_display(&blast_prefix_path),
-                    bytes_done: if blast_outcome.ready { 1 } else { 0 },
-                    bytes_total: Some(1),
-                    percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
-                },
-            )?;
-            let mut manifest_changed = checksum_changed;
-            let blast_prefix = canonical_or_display(&blast_prefix_path);
-            if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
-                manifest.blast_db_prefix = Some(blast_prefix.clone());
-                manifest_changed = true;
-            }
-            if manifest.blast_index_executable != blast_outcome.executable {
-                manifest.blast_index_executable = blast_outcome.executable.clone();
-                manifest_changed = true;
-            }
-            if blast_outcome.ready {
-                if manifest.blast_indexed_at_unix_ms.is_none() {
-                    manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                let annotation_bytes = fs::metadata(&manifest.annotation_path)
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(
+                        genome_id,
+                        "reuse_annotation",
+                        manifest.annotation_path.clone(),
+                        annotation_bytes,
+                        Some(annotation_bytes),
+                        Some(100.0),
+                    ),
+                )?;
+                let fasta_index_bytes = fs::metadata(&manifest.fasta_index_path)
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(
+                        genome_id,
+                        "index_fasta",
+                        manifest.fasta_index_path.clone(),
+                        fasta_index_bytes,
+                        Some(fasta_index_bytes),
+                        Some(100.0),
+                    ),
+                )?;
+                if !gene_index_path.exists() {
+                    let report = build_gene_index_file(
+                        Path::new(&manifest.annotation_path),
+                        &gene_index_path,
+                        |done, total| {
+                            on_progress(prepare_genome_progress(
+                                genome_id,
+                                "index_genes",
+                                canonical_or_display(Path::new(&manifest.annotation_path)),
+                                done,
+                                total,
+                                total.and_then(|t| {
+                                    if t == 0 {
+                                        None
+                                    } else {
+                                        Some((done as f64 / t as f64) * 100.0)
+                                    }
+                                }),
+                            ))
+                        },
+                    )?;
+                    warnings.extend(summarize_annotation_parse_warnings(&report));
+                    annotation_parse_report = Some(report);
+                    manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
+                } else {
+                    let gene_index_bytes = fs::metadata(&gene_index_path)
+                        .map(|meta| meta.len())
+                        .unwrap_or(0);
+                    forward_prepare_progress(
+                        on_progress,
+                        prepare_genome_progress(
+                            genome_id,
+                            "reuse_gene_index",
+                            canonical_or_display(&gene_index_path),
+                            gene_index_bytes,
+                            Some(gene_index_bytes),
+                            Some(100.0),
+                        ),
+                    )?;
+                }
+                let fasta_index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
+                let gene_records = load_gene_index_file(&gene_index_path)?;
+                validate_annotation_gene_contigs_against_fasta_index(
+                    genome_id,
+                    &fasta_index,
+                    &gene_records,
+                    Path::new(&manifest.sequence_path),
+                    Path::new(&manifest.fasta_index_path),
+                    &gene_index_path,
+                )?;
+                let blast_prefix_path = manifest
+                    .blast_db_prefix
+                    .as_deref()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(
+                        genome_id,
+                        "index_blast",
+                        canonical_or_display(&blast_prefix_path),
+                        0,
+                        None,
+                        None,
+                    ),
+                )?;
+                let blast_outcome =
+                    ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
+                if !blast_outcome.warnings.is_empty() {
+                    warnings.extend(blast_outcome.warnings.clone());
+                }
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(
+                        genome_id,
+                        "index_blast",
+                        canonical_or_display(&blast_prefix_path),
+                        if blast_outcome.ready { 1 } else { 0 },
+                        Some(1),
+                        Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+                    ),
+                )?;
+                let mut manifest_changed = checksum_changed;
+                let blast_prefix = canonical_or_display(&blast_prefix_path);
+                if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
+                    manifest.blast_db_prefix = Some(blast_prefix.clone());
                     manifest_changed = true;
                 }
-            } else if manifest.blast_indexed_at_unix_ms.is_some() {
-                manifest.blast_indexed_at_unix_ms = None;
-                manifest_changed = true;
-            }
-            if manifest_changed {
-                Self::write_manifest(&manifest_path, &manifest)?;
-            }
-            forward_prepare_progress(
-                on_progress,
-                PrepareGenomeProgress {
+                if manifest.blast_index_executable != blast_outcome.executable {
+                    manifest.blast_index_executable = blast_outcome.executable.clone();
+                    manifest_changed = true;
+                }
+                if blast_outcome.ready {
+                    if manifest.blast_indexed_at_unix_ms.is_none() {
+                        manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                        manifest_changed = true;
+                    }
+                } else if manifest.blast_indexed_at_unix_ms.is_some() {
+                    manifest.blast_indexed_at_unix_ms = None;
+                    manifest_changed = true;
+                }
+                if manifest_changed {
+                    Self::write_manifest(&manifest_path, &manifest)?;
+                }
+                forward_prepare_progress(
+                    on_progress,
+                    prepare_genome_progress(genome_id, "ready", "manifest", 0, None, Some(100.0)),
+                )?;
+                let sequence_source_type =
+                    manifest.sequence_source_type.clone().unwrap_or_else(|| {
+                        classify_source_type_label(&manifest.sequence_source).to_string()
+                    });
+                let annotation_source_type =
+                    manifest.annotation_source_type.clone().unwrap_or_else(|| {
+                        classify_source_type_label(&manifest.annotation_source).to_string()
+                    });
+                let cache_summary = summarize_fasta_index(&fasta_index);
+                return Ok(PrepareGenomeReport {
                     genome_id: genome_id.to_string(),
-                    phase: "ready".to_string(),
-                    item: "manifest".to_string(),
-                    bytes_done: 0,
-                    bytes_total: None,
-                    percent: Some(100.0),
-                },
-            )?;
-            let sequence_source_type = manifest.sequence_source_type.clone().unwrap_or_else(|| {
-                classify_source_type_label(&manifest.sequence_source).to_string()
-            });
-            let annotation_source_type =
-                manifest.annotation_source_type.clone().unwrap_or_else(|| {
-                    classify_source_type_label(&manifest.annotation_source).to_string()
+                    reused_existing: true,
+                    sequence_path: manifest.sequence_path,
+                    annotation_path: manifest.annotation_path,
+                    fasta_index_path: manifest.fasta_index_path,
+                    sequence_source: Some(manifest.sequence_source.clone()),
+                    annotation_source: Some(manifest.annotation_source.clone()),
+                    sequence_source_type: Some(sequence_source_type),
+                    annotation_source_type: Some(annotation_source_type),
+                    blast_db_prefix: manifest.blast_db_prefix.clone(),
+                    blast_index_ready: blast_outcome.ready,
+                    blast_index_executable: blast_outcome.executable,
+                    cached_contig_count: cache_summary.contig_count,
+                    cached_total_span_bp: cache_summary.total_span_bp,
+                    cached_longest_contig: cache_summary.longest_contig,
+                    cached_longest_contig_bp: cache_summary.longest_contig_bp,
+                    cached_contig_preview: cache_summary.contig_preview,
+                    warnings,
+                    annotation_parse_report,
                 });
-            let cache_summary = summarize_fasta_index(&fasta_index);
-            return Ok(PrepareGenomeReport {
-                genome_id: genome_id.to_string(),
-                reused_existing: true,
-                sequence_path: manifest.sequence_path,
-                annotation_path: manifest.annotation_path,
-                fasta_index_path: manifest.fasta_index_path,
-                sequence_source: Some(manifest.sequence_source.clone()),
-                annotation_source: Some(manifest.annotation_source.clone()),
-                sequence_source_type: Some(sequence_source_type),
-                annotation_source_type: Some(annotation_source_type),
-                blast_db_prefix: manifest.blast_db_prefix.clone(),
-                blast_index_ready: blast_outcome.ready,
-                blast_index_executable: blast_outcome.executable,
-                cached_contig_count: cache_summary.contig_count,
-                cached_total_span_bp: cache_summary.total_span_bp,
-                cached_longest_contig: cache_summary.longest_contig,
-                cached_longest_contig_bp: cache_summary.longest_contig_bp,
-                cached_contig_preview: cache_summary.contig_preview,
-                warnings,
-                annotation_parse_report,
-            });
             }
         }
 
@@ -991,9 +1273,7 @@ impl GenomeCatalog {
             existing_manifest
                 .as_ref()
                 .and_then(|manifest| manifest.sequence_source_type.clone())
-                .unwrap_or_else(|| {
-                    source_type_label(sequence_resolution.source_type).to_string()
-                })
+                .unwrap_or_else(|| source_type_label(sequence_resolution.source_type).to_string())
         } else {
             source_type_label(sequence_resolution.source_type).to_string()
         };
@@ -1001,9 +1281,7 @@ impl GenomeCatalog {
             existing_manifest
                 .as_ref()
                 .and_then(|manifest| manifest.annotation_source_type.clone())
-                .unwrap_or_else(|| {
-                    source_type_label(annotation_resolution.source_type).to_string()
-                })
+                .unwrap_or_else(|| source_type_label(annotation_resolution.source_type).to_string())
         } else {
             source_type_label(annotation_resolution.source_type).to_string()
         };
@@ -1027,14 +1305,14 @@ impl GenomeCatalog {
         if reindex_from_cached_files {
             forward_prepare_progress(
                 on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "reset_indexes".to_string(),
-                    item: install_dir.display().to_string(),
-                    bytes_done: 0,
-                    bytes_total: None,
-                    percent: Some(0.0),
-                },
+                prepare_genome_progress(
+                    genome_id,
+                    "reset_indexes",
+                    install_dir.display().to_string(),
+                    0,
+                    None,
+                    Some(0.0),
+                ),
             )?;
             reset_prepared_genome_index_artifacts(
                 &fasta_index_path,
@@ -1056,14 +1334,14 @@ impl GenomeCatalog {
                 .unwrap_or(0);
             forward_prepare_progress(
                 on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "reuse_sequence".to_string(),
-                    item: canonical_or_display(&sequence_path),
-                    bytes_done: bytes,
-                    bytes_total: Some(bytes),
-                    percent: Some(100.0),
-                },
+                prepare_genome_progress(
+                    genome_id,
+                    "reuse_sequence",
+                    canonical_or_display(&sequence_path),
+                    bytes,
+                    Some(bytes),
+                    Some(100.0),
+                ),
             )?;
         } else if !force_refresh_from_sources && non_empty_regular_file_exists(&sequence_path) {
             let bytes = fs::metadata(&sequence_path)
@@ -1071,31 +1349,31 @@ impl GenomeCatalog {
                 .unwrap_or(0);
             forward_prepare_progress(
                 on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "reuse_sequence".to_string(),
-                    item: canonical_or_display(&sequence_path),
-                    bytes_done: bytes,
-                    bytes_total: Some(bytes),
-                    percent: Some(100.0),
-                },
+                prepare_genome_progress(
+                    genome_id,
+                    "reuse_sequence",
+                    canonical_or_display(&sequence_path),
+                    bytes,
+                    Some(bytes),
+                    Some(100.0),
+                ),
             )?;
         } else {
             materialize_source_with_progress(&sequence_source, &sequence_path, |done, total| {
-                on_progress(PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "download_sequence".to_string(),
-                    item: sequence_source.clone(),
-                    bytes_done: done,
-                    bytes_total: total,
-                    percent: total.and_then(|t| {
+                on_progress(prepare_genome_progress(
+                    genome_id,
+                    "download_sequence",
+                    sequence_source.clone(),
+                    done,
+                    total,
+                    total.and_then(|t| {
                         if t == 0 {
                             None
                         } else {
                             Some((done as f64 / t as f64) * 100.0)
                         }
                     }),
-                })
+                ))
             })?;
         }
         if reindex_from_cached_files {
@@ -1111,14 +1389,14 @@ impl GenomeCatalog {
                 .unwrap_or(0);
             forward_prepare_progress(
                 on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "reuse_annotation".to_string(),
-                    item: canonical_or_display(&annotation_path),
-                    bytes_done: bytes,
-                    bytes_total: Some(bytes),
-                    percent: Some(100.0),
-                },
+                prepare_genome_progress(
+                    genome_id,
+                    "reuse_annotation",
+                    canonical_or_display(&annotation_path),
+                    bytes,
+                    Some(bytes),
+                    Some(100.0),
+                ),
             )?;
         } else if !force_refresh_from_sources && non_empty_regular_file_exists(&annotation_path) {
             let bytes = fs::metadata(&annotation_path)
@@ -1126,95 +1404,94 @@ impl GenomeCatalog {
                 .unwrap_or(0);
             forward_prepare_progress(
                 on_progress,
-                PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "reuse_annotation".to_string(),
-                    item: canonical_or_display(&annotation_path),
-                    bytes_done: bytes,
-                    bytes_total: Some(bytes),
-                    percent: Some(100.0),
-                },
+                prepare_genome_progress(
+                    genome_id,
+                    "reuse_annotation",
+                    canonical_or_display(&annotation_path),
+                    bytes,
+                    Some(bytes),
+                    Some(100.0),
+                ),
             )?;
         } else {
             materialize_source_with_progress(
                 &annotation_source,
                 &annotation_path,
                 |done, total| {
-                    on_progress(PrepareGenomeProgress {
-                        genome_id: genome_id.to_string(),
-                        phase: "download_annotation".to_string(),
-                        item: annotation_source.clone(),
-                        bytes_done: done,
-                        bytes_total: total,
-                        percent: total.and_then(|t| {
+                    on_progress(prepare_genome_progress(
+                        genome_id,
+                        "download_annotation",
+                        annotation_source.clone(),
+                        done,
+                        total,
+                        total.and_then(|t| {
                             if t == 0 {
                                 None
                             } else {
                                 Some((done as f64 / t as f64) * 100.0)
                             }
                         }),
-                    })
+                    ))
                 },
             )?;
         }
         build_fasta_index_with_progress(&sequence_path, &fasta_index_path, |done, total| {
-            on_progress(PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_fasta".to_string(),
-                item: canonical_or_display(&sequence_path),
-                bytes_done: done,
-                bytes_total: total,
-                percent: total.and_then(|t| {
+            on_progress(prepare_genome_progress(
+                genome_id,
+                "index_fasta",
+                canonical_or_display(&sequence_path),
+                done,
+                total,
+                total.and_then(|t| {
                     if t == 0 {
                         None
                     } else {
                         Some((done as f64 / t as f64) * 100.0)
                     }
                 }),
-            })
+            ))
         })?;
-        let annotation_parse_report =
-            if !reindex_from_cached_files
-                && !force_refresh_from_sources
-                && non_empty_regular_file_exists(&gene_index_path)
-            {
-                let bytes = fs::metadata(&gene_index_path)
-                    .map(|meta| meta.len())
-                    .unwrap_or(0);
-                forward_prepare_progress(
-                    on_progress,
-                    PrepareGenomeProgress {
-                        genome_id: genome_id.to_string(),
-                        phase: "reuse_gene_index".to_string(),
-                        item: canonical_or_display(&gene_index_path),
-                        bytes_done: bytes,
-                        bytes_total: Some(bytes),
-                        percent: Some(100.0),
-                    },
-                )?;
-                None
-            } else {
-                Some(build_gene_index_file(
-                    &annotation_path,
-                    &gene_index_path,
-                    |done, total| {
-                        on_progress(PrepareGenomeProgress {
-                            genome_id: genome_id.to_string(),
-                            phase: "index_genes".to_string(),
-                            item: canonical_or_display(&annotation_path),
-                            bytes_done: done,
-                            bytes_total: total,
-                            percent: total.and_then(|t| {
-                                if t == 0 {
-                                    None
-                                } else {
-                                    Some((done as f64 / t as f64) * 100.0)
-                                }
-                            }),
-                        })
-                    },
-                )?)
-            };
+        let annotation_parse_report = if !reindex_from_cached_files
+            && !force_refresh_from_sources
+            && non_empty_regular_file_exists(&gene_index_path)
+        {
+            let bytes = fs::metadata(&gene_index_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            forward_prepare_progress(
+                on_progress,
+                prepare_genome_progress(
+                    genome_id,
+                    "reuse_gene_index",
+                    canonical_or_display(&gene_index_path),
+                    bytes,
+                    Some(bytes),
+                    Some(100.0),
+                ),
+            )?;
+            None
+        } else {
+            Some(build_gene_index_file(
+                &annotation_path,
+                &gene_index_path,
+                |done, total| {
+                    on_progress(prepare_genome_progress(
+                        genome_id,
+                        "index_genes",
+                        canonical_or_display(&annotation_path),
+                        done,
+                        total,
+                        total.and_then(|t| {
+                            if t == 0 {
+                                None
+                            } else {
+                                Some((done as f64 / t as f64) * 100.0)
+                            }
+                        }),
+                    ))
+                },
+            )?)
+        };
         let fasta_index = load_fasta_index(&fasta_index_path)?;
         let gene_records = load_gene_index_file(&gene_index_path)?;
         validate_annotation_gene_contigs_against_fasta_index(
@@ -1227,26 +1504,26 @@ impl GenomeCatalog {
         )?;
         forward_prepare_progress(
             on_progress,
-            PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_blast".to_string(),
-                item: canonical_or_display(&blast_prefix_path),
-                bytes_done: 0,
-                bytes_total: None,
-                percent: None,
-            },
+            prepare_genome_progress(
+                genome_id,
+                "index_blast",
+                canonical_or_display(&blast_prefix_path),
+                0,
+                None,
+                None,
+            ),
         )?;
         let blast_outcome = ensure_blast_index(&sequence_path, &blast_prefix_path);
         forward_prepare_progress(
             on_progress,
-            PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_blast".to_string(),
-                item: canonical_or_display(&blast_prefix_path),
-                bytes_done: if blast_outcome.ready { 1 } else { 0 },
-                bytes_total: Some(1),
-                percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
-            },
+            prepare_genome_progress(
+                genome_id,
+                "index_blast",
+                canonical_or_display(&blast_prefix_path),
+                if blast_outcome.ready { 1 } else { 0 },
+                Some(1),
+                Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+            ),
         )?;
 
         let manifest = GenomeInstallManifest {
@@ -1270,14 +1547,7 @@ impl GenomeCatalog {
 
         forward_prepare_progress(
             on_progress,
-            PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "ready".to_string(),
-                item: "manifest".to_string(),
-                bytes_done: 0,
-                bytes_total: None,
-                percent: Some(100.0),
-            },
+            prepare_genome_progress(genome_id, "ready", "manifest", 0, None, Some(100.0)),
         )?;
 
         let mut warnings = blast_outcome.warnings;
@@ -2411,6 +2681,52 @@ pub fn is_blast_cancelled_error(message: &str) -> bool {
 
 fn blast_cancelled_error(context: &str) -> String {
     format!("{BLAST_CANCELLED_BY_CALLER}: {context}")
+}
+
+pub fn prepare_genome_step_id_for_phase(phase: &str) -> Option<PrepareGenomeStepId> {
+    match phase {
+        "download_sequence" | "reuse_sequence" => Some(PrepareGenomeStepId::Sequence),
+        "download_annotation" | "reuse_annotation" => Some(PrepareGenomeStepId::Annotation),
+        "index_fasta" => Some(PrepareGenomeStepId::FastaIndex),
+        "index_genes" | "reuse_gene_index" => Some(PrepareGenomeStepId::GeneIndex),
+        "index_blast" => Some(PrepareGenomeStepId::BlastIndex),
+        "reset_indexes" => Some(PrepareGenomeStepId::ResetIndexes),
+        _ => None,
+    }
+}
+
+fn build_prepare_genome_plan_step(
+    step_id: PrepareGenomeStepId,
+    operation_summary: impl Into<String>,
+    determinate_hint: bool,
+) -> PrepareGenomePlanStep {
+    PrepareGenomePlanStep {
+        step_id,
+        label: step_id.label().to_string(),
+        operation_summary: operation_summary.into(),
+        determinate_hint,
+    }
+}
+
+fn prepare_genome_progress(
+    genome_id: &str,
+    phase: &str,
+    item: impl Into<String>,
+    bytes_done: u64,
+    bytes_total: Option<u64>,
+    percent: Option<f64>,
+) -> PrepareGenomeProgress {
+    let step_id = prepare_genome_step_id_for_phase(phase);
+    PrepareGenomeProgress {
+        genome_id: genome_id.to_string(),
+        phase: phase.to_string(),
+        item: item.into(),
+        bytes_done,
+        bytes_total,
+        percent,
+        step_id,
+        step_label: step_id.map(|id| id.label().to_string()),
+    }
 }
 
 fn forward_prepare_progress(
@@ -5123,6 +5439,30 @@ mod tests {
         format!("file://{}", path.display())
     }
 
+    fn write_toy_prepare_catalog(
+        root: &Path,
+        sequence_source: &Path,
+        annotation_source: &Path,
+        cache_dir: &Path,
+    ) -> GenomeCatalog {
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            sequence_source.display(),
+            annotation_source.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).expect("write catalog");
+        GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).expect("load catalog")
+    }
+
     #[cfg(unix)]
     fn write_executable_script(path: &Path, body: &str) {
         fs::write(path, body).expect("write executable script");
@@ -5900,6 +6240,179 @@ mod tests {
     }
 
     #[test]
+    fn test_prepare_plan_fresh_install_orders_download_and_index_steps() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+
+        let plan = catalog.prepare_genome_plan("ToyGenome", None).unwrap();
+
+        assert_eq!(
+            plan.steps
+                .iter()
+                .map(|step| step.step_id)
+                .collect::<Vec<_>>(),
+            vec![
+                PrepareGenomeStepId::Sequence,
+                PrepareGenomeStepId::Annotation,
+                PrepareGenomeStepId::FastaIndex,
+                PrepareGenomeStepId::GeneIndex,
+                PrepareGenomeStepId::BlastIndex,
+            ]
+        );
+        assert!(plan.steps[0].operation_summary.contains("Download"));
+        assert!(plan.steps[1].operation_summary.contains("Download"));
+    }
+
+    #[test]
+    fn test_prepare_plan_marks_reuse_steps_from_existing_manifest() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let plan = catalog.prepare_genome_plan("ToyGenome", None).unwrap();
+
+        assert!(plan.steps[0].operation_summary.contains("Reuse"));
+        assert!(plan.steps[1].operation_summary.contains("Reuse"));
+        assert!(plan.steps[2].operation_summary.contains("Reuse"));
+        assert!(plan.steps[3].operation_summary.contains("Reuse"));
+    }
+
+    #[test]
+    fn test_reindex_plan_includes_reset_and_excludes_download_steps() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let plan = catalog.reindex_genome_plan("ToyGenome", None).unwrap();
+
+        assert_eq!(plan.steps[0].step_id, PrepareGenomeStepId::ResetIndexes);
+        assert!(
+            !plan
+                .steps
+                .iter()
+                .any(|step| step.operation_summary.contains("Download"))
+        );
+    }
+
+    #[test]
+    fn test_refresh_plan_forces_download_steps() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let plan = catalog.reinstall_genome_plan("ToyGenome", None).unwrap();
+
+        assert!(plan.steps[0].operation_summary.contains("Download"));
+        assert!(plan.steps[1].operation_summary.contains("Download"));
+        assert!(
+            !plan
+                .steps
+                .iter()
+                .any(|step| step.operation_summary.contains("Reuse"))
+        );
+    }
+
+    #[test]
+    fn test_prepare_progress_reports_stable_step_ids() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        let cache_dir = root.join("cache");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        let catalog = write_toy_prepare_catalog(root, &fasta, &ann, &cache_dir);
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let mut rows: Vec<(String, Option<PrepareGenomeStepId>)> = vec![];
+        catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                rows.push((progress.phase, progress.step_id));
+                true
+            })
+            .unwrap();
+
+        assert!(rows.iter().any(|(phase, step_id)| {
+            phase == "download_sequence" && *step_id == Some(PrepareGenomeStepId::Sequence)
+        }));
+        assert!(rows.iter().any(|(phase, step_id)| {
+            phase == "download_annotation" && *step_id == Some(PrepareGenomeStepId::Annotation)
+        }));
+        assert!(rows.iter().any(|(phase, step_id)| {
+            phase == "index_fasta" && *step_id == Some(PrepareGenomeStepId::FastaIndex)
+        }));
+        assert!(rows.iter().any(|(phase, step_id)| {
+            phase == "index_genes" && *step_id == Some(PrepareGenomeStepId::GeneIndex)
+        }));
+        assert!(rows.iter().any(|(phase, step_id)| {
+            phase == "index_blast" && *step_id == Some(PrepareGenomeStepId::BlastIndex)
+        }));
+        assert!(
+            rows.iter()
+                .any(|(phase, step_id)| phase == "ready" && step_id.is_none())
+        );
+    }
+
+    #[test]
     fn test_prepare_rebuilds_cache_when_catalog_sources_change() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -6173,7 +6686,9 @@ mod tests {
         let first = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(!first.reused_existing);
         assert_eq!(
-            catalog.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            catalog
+                .get_sequence_region("ToyGenome", "chr1", 1, 4)
+                .unwrap(),
             "ACGT"
         );
 
@@ -6205,11 +6720,15 @@ mod tests {
         assert!(!phases.iter().any(|phase| phase == "reuse_gene_index"));
 
         assert_eq!(
-            catalog.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            catalog
+                .get_sequence_region("ToyGenome", "chr1", 1, 4)
+                .unwrap(),
             "ACGT"
         );
         assert!(
-            catalog.get_sequence_region("ToyGenome", "chr17", 1, 4).is_err(),
+            catalog
+                .get_sequence_region("ToyGenome", "chr17", 1, 4)
+                .is_err(),
             "reindex should not have pulled in the changed source FASTA"
         );
         let genes = catalog.list_gene_regions("ToyGenome", None).unwrap();
@@ -6256,7 +6775,9 @@ mod tests {
         let first = catalog_v1.prepare_genome_once("ToyGenome").unwrap();
         assert!(!first.reused_existing);
         assert_eq!(
-            catalog_v1.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            catalog_v1
+                .get_sequence_region("ToyGenome", "chr1", 1, 4)
+                .unwrap(),
             "ACGT"
         );
 
@@ -6319,15 +6840,21 @@ mod tests {
             report.annotation_source
         );
         assert!(report.warnings.iter().any(|warning| {
-            warning.contains("reindex used the cached local files without deleting or re-downloading them")
+            warning.contains(
+                "reindex used the cached local files without deleting or re-downloading them",
+            )
         }));
 
         assert_eq!(
-            catalog_v2.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            catalog_v2
+                .get_sequence_region("ToyGenome", "chr1", 1, 4)
+                .unwrap(),
             "ACGT"
         );
         assert!(
-            catalog_v2.get_sequence_region("ToyGenome", "chr17", 1, 4).is_err(),
+            catalog_v2
+                .get_sequence_region("ToyGenome", "chr17", 1, 4)
+                .is_err(),
             "reindex should keep using the cached local files when the catalog sources drift"
         );
         let genes = catalog_v2.list_gene_regions("ToyGenome", None).unwrap();
