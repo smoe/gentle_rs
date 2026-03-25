@@ -1510,6 +1510,54 @@ pub struct PrimerDesignPairRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerInsertionIntent {
+    pub requested_forward_3prime_end_0based_exclusive: usize,
+    pub requested_reverse_3prime_start_0based: usize,
+    pub forward_extension_5prime: String,
+    pub reverse_extension_5prime: String,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub max_anchor_shift_bp: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerInsertionPairCompensation {
+    pub rank: usize,
+    pub forward_anchor_shift_bp: isize,
+    pub reverse_anchor_shift_bp: isize,
+    pub within_shift_budget: bool,
+    pub compensable: bool,
+    pub forward_compensation_5prime: String,
+    pub reverse_compensation_5prime: String,
+    pub compensated_forward_5prime_tail: String,
+    pub compensated_reverse_5prime_tail: String,
+    pub compensated_forward_sequence: String,
+    pub compensated_reverse_sequence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerInsertionContextReport {
+    pub requested_forward_3prime_end_0based_exclusive: usize,
+    pub requested_reverse_3prime_start_0based: usize,
+    pub forward_extension_5prime: String,
+    pub reverse_extension_5prime: String,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub max_anchor_shift_bp: usize,
+    pub uncompensable_pair_count: usize,
+    pub out_of_shift_budget_pair_count: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerInsertionPairCompensation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignRejectionSummary {
     pub out_of_window: usize,
@@ -1545,6 +1593,8 @@ pub struct PrimerDesignReport {
     pub rejection_summary: PrimerDesignRejectionSummary,
     #[serde(default)]
     pub backend: PrimerDesignBackendInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insertion_context: Option<PrimerInsertionContextReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4406,6 +4456,21 @@ pub enum Operation {
         max_pairs: Option<usize>,
         report_id: Option<String>,
     },
+    DesignInsertionPrimerPairs {
+        template: SeqId,
+        insertion: PrimerInsertionIntent,
+        #[serde(default)]
+        forward: PrimerDesignSideConstraint,
+        #[serde(default)]
+        reverse: PrimerDesignSideConstraint,
+        #[serde(default)]
+        pair_constraints: PrimerDesignPairConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: Option<f64>,
+        max_pairs: Option<usize>,
+        report_id: Option<String>,
+    },
     DesignQpcrAssays {
         template: SeqId,
         roi_start_0based: usize,
@@ -6239,6 +6304,7 @@ impl GentleEngine {
                 "PcrAdvanced".to_string(),
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
+                "DesignInsertionPrimerPairs".to_string(),
                 "DesignQpcrAssays".to_string(),
                 "DeriveTranscriptSequences".to_string(),
                 "ComputeDotplot".to_string(),

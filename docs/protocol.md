@@ -1463,7 +1463,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Inputs:
   - `protocol` (built-in ids now include `gibson.two_fragment`,
     `gibson.single_insert_dual_junction`, `pcr.assay.pair`,
-    `pcr.assay.pair.no_product`, and `pcr.assay.qpcr`)
+    `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, and
+    `pcr.assay.qpcr`)
   - `path` (output SVG)
 - Behavior:
   - renders a deterministic protocol-cartoon strip through one engine route,
@@ -1539,7 +1540,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 - Inputs:
   - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`
-    or `pcr.assay.pair` / `pcr.assay.qpcr`)
+    or `pcr.assay.pair` / `pcr.assay.pair.with_tail` / `pcr.assay.qpcr`)
   - `path` (output JSON file)
 - Behavior:
   - materializes the canonical built-in template
@@ -1628,6 +1629,9 @@ Protocol-cartoon family growth direction (planned):
     reverse primer glyphs with 5'/3' orientation
   - `pcr.assay.pair.no_product`: same family with an explicit report-only
     terminal state when no accepted primer pair yields a product
+  - `pcr.assay.pair.with_tail`: insertion-first strip with requested extension
+    sequences + insertion anchors, anchor-adjacent primer windows, and carried-
+    through inserted terminal tails in the final amplicon
 - Implemented qPCR baseline in the same `pcr.assay.*` family:
   - `pcr.assay.qpcr`: same base strip enriched with one internal probe window
     plus explicit forward/reverse primer glyphs, a retained probe marker, and
@@ -1909,6 +1913,73 @@ Operation progress/cancellation semantics:
     - primer sequence-constraint failure
     - pair constraint failure
     - amplicon-size or ROI-coverage failure
+  - mutating artifact materialization per accepted pair:
+    - one forward-primer sequence (`..._fwd`)
+    - one reverse-primer sequence (`..._rev`)
+    - one predicted amplicon sequence (`..._amplicon`) built from:
+      full forward primer + template interior + reverse-primer reverse-complement
+      (including non-annealing 5' tails)
+    - one per-pair pool container containing all three artifacts
+  - optional insertion-anchored context:
+    - `insertion_context` (present when `DesignInsertionPrimerPairs` is used)
+    - records requested forward/reverse anchor positions, extension sequences,
+      window constraints, shift budget, and per-pair compensation rows
+      (`forward_anchor_shift_bp`, `reverse_anchor_shift_bp`,
+      compensation segments, and compensated primer/tail strings)
+
+`DesignInsertionPrimerPairs` contract (implemented MVP):
+
+- Purpose:
+  - insertion-first wrapper around deterministic pair-primer design when the
+    user already knows insert extensions and requested insertion anchors.
+- Operation payload shape:
+
+```json
+{
+  "DesignInsertionPrimerPairs": {
+    "template": "seq_id",
+    "insertion": {
+      "requested_forward_3prime_end_0based_exclusive": 620,
+      "requested_reverse_3prime_start_0based": 700,
+      "forward_extension_5prime": "GAATTC",
+      "reverse_extension_5prime": "CTCGAG",
+      "forward_window_start_0based": 560,
+      "forward_window_end_0based_exclusive": 650,
+      "reverse_window_start_0based": 660,
+      "reverse_window_end_0based_exclusive": 760,
+      "max_anchor_shift_bp": 12
+    },
+    "forward": {
+      "min_length": 20,
+      "max_length": 30
+    },
+    "reverse": {
+      "min_length": 20,
+      "max_length": 30
+    },
+    "pair_constraints": {
+      "require_roi_flanking": false
+    },
+    "min_amplicon_bp": 120,
+    "max_amplicon_bp": 1200,
+    "max_tm_delta_c": 2.0,
+    "max_pairs": 200,
+    "report_id": "tp73_insert_v1"
+  }
+}
+```
+
+- MVP behavior:
+  - the insertion block is normalized first (IUPAC extension validation +
+    anchor/window bounds checks)
+  - forward/reverse primer windows are enforced from insertion windows
+  - forward/reverse non-annealing tails are set from insertion extensions
+  - primer design backend selection remains identical to `DesignPrimerPairs`
+    (`auto|internal|primer3`)
+  - resulting report is the same primer-report schema with populated
+    `insertion_context` rows for shift/compensation inspection
+  - no dedicated GUI form yet; operation is available through `op`/workflow
+    payloads.
 
 `DesignQpcrAssays` contract (implemented baseline):
 

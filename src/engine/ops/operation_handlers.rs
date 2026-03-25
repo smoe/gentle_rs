@@ -969,6 +969,660 @@ impl GentleEngine {
         Ok(seq_id)
     }
 
+    fn normalize_primer_insertion_intent(
+        insertion: &PrimerInsertionIntent,
+        template_len: usize,
+    ) -> Result<PrimerInsertionIntent, EngineError> {
+        if template_len == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Insertion intent requires a non-empty template sequence".to_string(),
+            });
+        }
+        if insertion.forward_window_start_0based >= insertion.forward_window_end_0based_exclusive
+            || insertion.forward_window_end_0based_exclusive > template_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "insertion.forward window {}..{} is invalid for template length {}",
+                    insertion.forward_window_start_0based,
+                    insertion.forward_window_end_0based_exclusive,
+                    template_len
+                ),
+            });
+        }
+        if insertion.reverse_window_start_0based >= insertion.reverse_window_end_0based_exclusive
+            || insertion.reverse_window_end_0based_exclusive > template_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "insertion.reverse window {}..{} is invalid for template length {}",
+                    insertion.reverse_window_start_0based,
+                    insertion.reverse_window_end_0based_exclusive,
+                    template_len
+                ),
+            });
+        }
+        if insertion.requested_forward_3prime_end_0based_exclusive == 0
+            || insertion.requested_forward_3prime_end_0based_exclusive > template_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "insertion.requested_forward_3prime_end_0based_exclusive ({}) must be in 1..={}",
+                    insertion.requested_forward_3prime_end_0based_exclusive, template_len
+                ),
+            });
+        }
+        if insertion.requested_reverse_3prime_start_0based >= template_len {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "insertion.requested_reverse_3prime_start_0based ({}) must be < {}",
+                    insertion.requested_reverse_3prime_start_0based, template_len
+                ),
+            });
+        }
+        if insertion.requested_forward_3prime_end_0based_exclusive
+            > insertion.requested_reverse_3prime_start_0based
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Insertion anchor geometry is invalid: requested forward 3' end must be <= requested reverse 3' start".to_string(),
+            });
+        }
+        let mut normalized = insertion.clone();
+        normalized.forward_extension_5prime =
+            Self::normalize_iupac_text(&normalized.forward_extension_5prime)?;
+        normalized.reverse_extension_5prime =
+            Self::normalize_iupac_text(&normalized.reverse_extension_5prime)?;
+        normalized.max_anchor_shift_bp = Some(normalized.max_anchor_shift_bp.unwrap_or(12));
+        Ok(normalized)
+    }
+
+    fn derive_insertion_intent_roi_bounds(
+        insertion: &PrimerInsertionIntent,
+        template_len: usize,
+    ) -> (usize, usize) {
+        let left = insertion.requested_forward_3prime_end_0based_exclusive;
+        let right = insertion.requested_reverse_3prime_start_0based;
+        if left < right {
+            (left, right)
+        } else if left < template_len {
+            (left, (left + 1).min(template_len))
+        } else {
+            (template_len.saturating_sub(1), template_len)
+        }
+    }
+
+    fn build_primer_insertion_context_report(
+        template_seq: &str,
+        insertion: &PrimerInsertionIntent,
+        pairs: &[PrimerDesignPairRecord],
+    ) -> PrimerInsertionContextReport {
+        let max_shift_bp = insertion.max_anchor_shift_bp.unwrap_or(12);
+        let mut rows: Vec<PrimerInsertionPairCompensation> = Vec::with_capacity(pairs.len());
+        let mut uncompensable_pair_count = 0usize;
+        let mut out_of_shift_budget_pair_count = 0usize;
+        for (pair_index, pair) in pairs.iter().enumerate() {
+            let rank = if pair.rank == 0 {
+                pair_index + 1
+            } else {
+                pair.rank
+            };
+            let actual_forward_end = pair.forward.end_0based_exclusive;
+            let actual_reverse_start = pair.reverse.start_0based;
+            let forward_shift_bp = insertion.requested_forward_3prime_end_0based_exclusive as isize
+                - actual_forward_end as isize;
+            let reverse_shift_bp = actual_reverse_start as isize
+                - insertion.requested_reverse_3prime_start_0based as isize;
+            let within_shift_budget = forward_shift_bp.unsigned_abs() <= max_shift_bp
+                && reverse_shift_bp.unsigned_abs() <= max_shift_bp;
+            let compensable = forward_shift_bp >= 0 && reverse_shift_bp >= 0;
+            if !compensable {
+                uncompensable_pair_count = uncompensable_pair_count.saturating_add(1);
+            }
+            if !within_shift_budget {
+                out_of_shift_budget_pair_count = out_of_shift_budget_pair_count.saturating_add(1);
+            }
+
+            let forward_compensation_5prime = if forward_shift_bp > 0 {
+                template_seq
+                    [actual_forward_end..insertion.requested_forward_3prime_end_0based_exclusive]
+                    .to_string()
+            } else {
+                String::new()
+            };
+            let reverse_compensation_5prime = if reverse_shift_bp > 0 {
+                Self::reverse_complement(
+                    &template_seq
+                        [insertion.requested_reverse_3prime_start_0based..actual_reverse_start],
+                )
+            } else {
+                String::new()
+            };
+
+            let compensated_forward_5prime_tail = format!(
+                "{}{}",
+                insertion.forward_extension_5prime, forward_compensation_5prime
+            );
+            let compensated_reverse_5prime_tail = format!(
+                "{}{}",
+                insertion.reverse_extension_5prime, reverse_compensation_5prime
+            );
+
+            let forward_seq = pair.forward.sequence.to_ascii_uppercase();
+            let reverse_seq = pair.reverse.sequence.to_ascii_uppercase();
+            let forward_anneal_len = pair.forward.anneal_length_bp.min(forward_seq.len());
+            let reverse_anneal_len = pair.reverse.anneal_length_bp.min(reverse_seq.len());
+            let forward_anneal =
+                forward_seq[forward_seq.len().saturating_sub(forward_anneal_len)..].to_string();
+            let reverse_anneal =
+                reverse_seq[reverse_seq.len().saturating_sub(reverse_anneal_len)..].to_string();
+
+            rows.push(PrimerInsertionPairCompensation {
+                rank,
+                forward_anchor_shift_bp: forward_shift_bp,
+                reverse_anchor_shift_bp: reverse_shift_bp,
+                within_shift_budget,
+                compensable,
+                forward_compensation_5prime,
+                reverse_compensation_5prime,
+                compensated_forward_5prime_tail: compensated_forward_5prime_tail.clone(),
+                compensated_reverse_5prime_tail: compensated_reverse_5prime_tail.clone(),
+                compensated_forward_sequence: format!(
+                    "{compensated_forward_5prime_tail}{forward_anneal}"
+                ),
+                compensated_reverse_sequence: format!(
+                    "{compensated_reverse_5prime_tail}{reverse_anneal}"
+                ),
+            });
+        }
+        PrimerInsertionContextReport {
+            requested_forward_3prime_end_0based_exclusive: insertion
+                .requested_forward_3prime_end_0based_exclusive,
+            requested_reverse_3prime_start_0based: insertion.requested_reverse_3prime_start_0based,
+            forward_extension_5prime: insertion.forward_extension_5prime.clone(),
+            reverse_extension_5prime: insertion.reverse_extension_5prime.clone(),
+            forward_window_start_0based: insertion.forward_window_start_0based,
+            forward_window_end_0based_exclusive: insertion.forward_window_end_0based_exclusive,
+            reverse_window_start_0based: insertion.reverse_window_start_0based,
+            reverse_window_end_0based_exclusive: insertion.reverse_window_end_0based_exclusive,
+            max_anchor_shift_bp: max_shift_bp,
+            uncompensable_pair_count,
+            out_of_shift_budget_pair_count,
+            pairs: rows,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_design_primer_pairs(
+        &mut self,
+        result: &mut OpResult,
+        parent_seq_ids: &mut Vec<SeqId>,
+        template: SeqId,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: PrimerDesignSideConstraint,
+        reverse: PrimerDesignSideConstraint,
+        pair_constraints: PrimerDesignPairConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: Option<f64>,
+        max_pairs: Option<usize>,
+        report_id: Option<String>,
+        insertion_intent: Option<PrimerInsertionIntent>,
+    ) -> Result<(), EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(&template)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{template}' not found"),
+            })?
+            .clone();
+        if dna.is_circular() {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: "DesignPrimerPairs currently supports linear templates only".to_string(),
+            });
+        }
+
+        let template_seq = dna.get_forward_string().to_ascii_uppercase();
+        let template_bytes = template_seq.as_bytes();
+        if template_bytes.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignPrimerPairs requires a non-empty template sequence".to_string(),
+            });
+        }
+        if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignPrimerPairs ROI {}..{} is invalid for template length {}",
+                    roi_start_0based,
+                    roi_end_0based,
+                    template_bytes.len()
+                ),
+            });
+        }
+        if min_amplicon_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignPrimerPairs min_amplicon_bp must be >= 1".to_string(),
+            });
+        }
+        if min_amplicon_bp > max_amplicon_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignPrimerPairs min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                ),
+            });
+        }
+        let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+        if max_tm_delta_c < 0.0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignPrimerPairs max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
+                ),
+            });
+        }
+        let max_pairs = max_pairs.unwrap_or(200);
+        if max_pairs == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignPrimerPairs max_pairs must be >= 1".to_string(),
+            });
+        }
+
+        Self::validate_primer_design_side_constraints("forward", &forward)?;
+        Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+        let forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&forward)?;
+        let reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&reverse)?;
+        let pair_constraints_normalized =
+            Self::normalize_primer_pair_constraints(&pair_constraints)?;
+        for (label, side) in [("forward", &forward), ("reverse", &reverse)] {
+            if let Some(location) = side.location_0based {
+                if location >= template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.location_0based ({location}) is outside template length {}",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+            if let Some(start) = side.start_0based {
+                if start >= template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.start_0based ({start}) is outside template length {}",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+            if let Some(end) = side.end_0based {
+                if end == 0 || end > template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.end_0based ({end}) must be in 1..={} for this template",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+        }
+        if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
+            if start >= template_bytes.len() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+                });
+            }
+        }
+        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
+            if end == 0 || end > template_bytes.len() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                        template_bytes.len()
+                    ),
+                });
+            }
+        }
+
+        let requested_backend = self.state.parameters.primer_design_backend;
+        let primer3_executable = {
+            let raw = self.state.parameters.primer3_executable.trim();
+            if raw.is_empty() { "primer3_core" } else { raw }
+        };
+        let mut backend = PrimerDesignBackendInfo {
+            requested: requested_backend.as_str().to_string(),
+            ..PrimerDesignBackendInfo::default()
+        };
+        let (pairs, rejection_summary) = match requested_backend {
+            PrimerDesignBackend::Internal => {
+                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                Self::design_primer_pairs_internal(
+                    template_bytes,
+                    roi_start_0based,
+                    roi_end_0based,
+                    &forward,
+                    &forward_sequence_constraints,
+                    &reverse,
+                    &reverse_sequence_constraints,
+                    &pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_pairs,
+                )
+            }
+            PrimerDesignBackend::Primer3 => {
+                let (pairs, rejection_summary, version, explain, request_boulder_io) =
+                    Self::design_primer_pairs_primer3(
+                        &template_seq,
+                        roi_start_0based,
+                        roi_end_0based,
+                        &forward,
+                        &forward_sequence_constraints,
+                        &reverse,
+                        &reverse_sequence_constraints,
+                        &pair_constraints_normalized,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_pairs,
+                        primer3_executable,
+                    )?;
+                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                backend.primer3_executable = Some(primer3_executable.to_string());
+                backend.primer3_version = version;
+                backend.primer3_explain = explain;
+                backend.primer3_request_boulder_io = Some(request_boulder_io);
+                (pairs, rejection_summary)
+            }
+            PrimerDesignBackend::Auto => {
+                match Self::design_primer_pairs_primer3(
+                    &template_seq,
+                    roi_start_0based,
+                    roi_end_0based,
+                    &forward,
+                    &forward_sequence_constraints,
+                    &reverse,
+                    &reverse_sequence_constraints,
+                    &pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_pairs,
+                    primer3_executable,
+                ) {
+                    Ok((pairs, rejection_summary, version, explain, request_boulder_io)) => {
+                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.primer3_version = version;
+                        backend.primer3_explain = explain;
+                        backend.primer3_request_boulder_io = Some(request_boulder_io);
+                        (pairs, rejection_summary)
+                    }
+                    Err(err) => {
+                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.fallback_reason = Some(err.message.clone());
+                        result.warnings.push(format!(
+                            "Primer3 backend unavailable in auto mode: {}. Falling back to internal primer design backend.",
+                            err.message
+                        ));
+                        Self::design_primer_pairs_internal(
+                            template_bytes,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &forward_sequence_constraints,
+                            &reverse,
+                            &reverse_sequence_constraints,
+                            &pair_constraints_normalized,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            max_pairs,
+                        )
+                    }
+                }
+            }
+        };
+
+        let insertion_context = insertion_intent.as_ref().map(|insertion| {
+            Self::build_primer_insertion_context_report(&template_seq, insertion, &pairs)
+        });
+        let report_id = Self::render_primer_design_report_id(report_id, &template);
+        let report = PrimerDesignReport {
+            schema: PRIMER_DESIGN_REPORT_SCHEMA.to_string(),
+            report_id: report_id.clone(),
+            template: template.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            reverse,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            pair_count: pairs.len(),
+            pairs,
+            rejection_summary,
+            backend,
+            insertion_context,
+        };
+        if report.rejection_summary.pair_evaluation_limit_skipped > 0 {
+            result.warnings.push(format!(
+                "Internal primer-pair search reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
+                report.rejection_summary.pair_evaluation_limit_skipped
+            ));
+        }
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .reports
+            .insert(report.report_id.clone(), report.clone())
+            .is_some();
+        self.write_primer_design_store(store)?;
+        result.messages.push(format!(
+            "{} primer-design report '{}' for template '{}' (pairs={})",
+            if replaced { "Updated" } else { "Created" },
+            report.report_id,
+            report.template,
+            report.pair_count
+        ));
+        if let Some(context) = report.insertion_context.as_ref() {
+            result.messages.push(format!(
+                "Insertion intent annotated for report '{}': requested anchors fwd_end={} rev_start={} with max shift {} bp",
+                report.report_id,
+                context.requested_forward_3prime_end_0based_exclusive,
+                context.requested_reverse_3prime_start_0based,
+                context.max_anchor_shift_bp
+            ));
+            if context.uncompensable_pair_count > 0 {
+                result.warnings.push(format!(
+                    "{} pair(s) in report '{}' require non-compensable downstream anchor shifts; review insertion compensation rows",
+                    context.uncompensable_pair_count,
+                    report.report_id
+                ));
+            }
+            if context.out_of_shift_budget_pair_count > 0 {
+                result.warnings.push(format!(
+                    "{} pair(s) in report '{}' exceed max_anchor_shift_bp={}; review insertion compensation rows",
+                    context.out_of_shift_budget_pair_count,
+                    report.report_id,
+                    context.max_anchor_shift_bp
+                ));
+            }
+        }
+        if !report.pairs.is_empty() {
+            parent_seq_ids.push(template.clone());
+            let report_token = Self::normalize_id_token(&report.report_id);
+            let mut pair_container_ids: Vec<String> = Vec::with_capacity(report.pairs.len());
+            let mut amplicon_seq_count = 0usize;
+            for (pair_index, pair) in report.pairs.iter().enumerate() {
+                let pair_rank = if pair.rank == 0 {
+                    pair_index + 1
+                } else {
+                    pair.rank
+                };
+                let pair_token = format!("r{pair_rank:02}");
+                let base = format!("{report_token}_{pair_token}");
+                let forward_seq_id = self.unique_seq_id(&format!("{base}_fwd"));
+                let reverse_seq_id = self.unique_seq_id(&format!("{base}_rev"));
+                let amplicon_seq_id = self.unique_seq_id(&format!("{base}_amplicon"));
+
+                let mut forward_primer = DNAsequence::from_sequence(&pair.forward.sequence).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not materialize forward primer sequence for report '{}' pair {}: {e}",
+                        report.report_id, pair_rank
+                    ),
+                })?;
+                forward_primer.set_circular(false);
+                forward_primer.set_name(forward_seq_id.clone());
+                Self::prepare_sequence(&mut forward_primer);
+                self.state
+                    .sequences
+                    .insert(forward_seq_id.clone(), forward_primer);
+                self.add_lineage_node(
+                    &forward_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(forward_seq_id.clone());
+
+                let mut reverse_primer = DNAsequence::from_sequence(&pair.reverse.sequence).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not materialize reverse primer sequence for report '{}' pair {}: {e}",
+                        report.report_id, pair_rank
+                    ),
+                })?;
+                reverse_primer.set_circular(false);
+                reverse_primer.set_name(reverse_seq_id.clone());
+                Self::prepare_sequence(&mut reverse_primer);
+                self.state
+                    .sequences
+                    .insert(reverse_seq_id.clone(), reverse_primer);
+                self.add_lineage_node(
+                    &reverse_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(reverse_seq_id.clone());
+
+                let amplicon_sequence = Self::build_tailed_amplicon_sequence_from_primer_pair(
+                    &template_seq,
+                    pair,
+                )
+                .map_err(|e| EngineError {
+                    code: e.code,
+                    message: format!(
+                        "Could not derive predicted amplicon sequence for report '{}' pair {}: {}",
+                        report.report_id, pair_rank, e.message
+                    ),
+                })?;
+                let mut amplicon =
+                    DNAsequence::from_sequence(&amplicon_sequence).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not materialize amplicon sequence for report '{}' pair {}: {e}",
+                            report.report_id, pair_rank
+                        ),
+                    })?;
+                amplicon.set_circular(false);
+                amplicon.set_name(amplicon_seq_id.clone());
+                Self::prepare_sequence(&mut amplicon);
+                self.state
+                    .sequences
+                    .insert(amplicon_seq_id.clone(), amplicon);
+                self.add_lineage_node(
+                    &amplicon_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(amplicon_seq_id.clone());
+                amplicon_seq_count = amplicon_seq_count.saturating_add(1);
+
+                let pair_members = vec![
+                    forward_seq_id.clone(),
+                    reverse_seq_id.clone(),
+                    amplicon_seq_id.clone(),
+                ];
+                if let Some(container_id) = self.add_container(
+                    &pair_members,
+                    ContainerKind::Pool,
+                    Some(format!("Primer pair {} {}", report.report_id, pair_token)),
+                    Some(&result.op_id),
+                ) {
+                    pair_container_ids.push(container_id.clone());
+                    result.messages.push(format!(
+                        "Created primer-pair container '{}' for {} ({}, {}, {})",
+                        container_id, pair_token, forward_seq_id, reverse_seq_id, amplicon_seq_id
+                    ));
+                }
+            }
+            result.messages.push(format!(
+                "Materialized {} primer sequence(s), {} predicted amplicon sequence(s), and {} primer-pair container(s) for report '{}'",
+                report.pairs.len().saturating_mul(2),
+                amplicon_seq_count,
+                pair_container_ids.len(),
+                report.report_id
+            ));
+        }
+        if let Some(top_pair) = report.pairs.first() {
+            let advisories = Self::primer_pair_heuristic_advisories(top_pair);
+            if !advisories.is_empty() {
+                result.warnings.push(format!(
+                    "Top primer pair in report '{}' has heuristic advisories: {}",
+                    report.report_id,
+                    advisories.join("; ")
+                ));
+            }
+        }
+        if report.pair_count == 0 {
+            result.warnings.push(format!(
+                "No primer pairs satisfied constraints for report '{}'",
+                report.report_id
+            ));
+            if let Some(explain) = report.backend.primer3_explain.as_deref() {
+                result.warnings.push(format!(
+                    "Primer3 explain for report '{}': {}",
+                    report.report_id, explain
+                ));
+            }
+            if report.backend.primer3_request_boulder_io.is_some() {
+                result.warnings.push(format!(
+                    "Primer3 request payload was captured for report '{}' and can be exported for local reruns",
+                    report.report_id
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -4321,254 +4975,10 @@ impl GentleEngine {
                 max_pairs,
                 report_id,
             } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .clone();
-                if dna.is_circular() {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: "DesignPrimerPairs currently supports linear templates only"
-                            .to_string(),
-                    });
-                }
-
-                let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                let template_bytes = template_seq.as_bytes();
-                if template_bytes.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignPrimerPairs requires a non-empty template sequence"
-                            .to_string(),
-                    });
-                }
-                if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignPrimerPairs ROI {}..{} is invalid for template length {}",
-                            roi_start_0based,
-                            roi_end_0based,
-                            template_bytes.len()
-                        ),
-                    });
-                }
-                if min_amplicon_bp == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignPrimerPairs min_amplicon_bp must be >= 1".to_string(),
-                    });
-                }
-                if min_amplicon_bp > max_amplicon_bp {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignPrimerPairs min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
-                        ),
-                    });
-                }
-                let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
-                if max_tm_delta_c < 0.0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignPrimerPairs max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
-                        ),
-                    });
-                }
-                let max_pairs = max_pairs.unwrap_or(200);
-                if max_pairs == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignPrimerPairs max_pairs must be >= 1".to_string(),
-                    });
-                }
-
-                Self::validate_primer_design_side_constraints("forward", &forward)?;
-                Self::validate_primer_design_side_constraints("reverse", &reverse)?;
-                let forward_sequence_constraints =
-                    Self::normalize_primer_side_sequence_constraints(&forward)?;
-                let reverse_sequence_constraints =
-                    Self::normalize_primer_side_sequence_constraints(&reverse)?;
-                let pair_constraints_normalized =
-                    Self::normalize_primer_pair_constraints(&pair_constraints)?;
-                for (label, side) in [("forward", &forward), ("reverse", &reverse)] {
-                    if let Some(location) = side.location_0based {
-                        if location >= template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "{label}.location_0based ({location}) is outside template length {}",
-                                    template_bytes.len()
-                                ),
-                            });
-                        }
-                    }
-                    if let Some(start) = side.start_0based {
-                        if start >= template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "{label}.start_0based ({start}) is outside template length {}",
-                                    template_bytes.len()
-                                ),
-                            });
-                        }
-                    }
-                    if let Some(end) = side.end_0based {
-                        if end == 0 || end > template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "{label}.end_0based ({end}) must be in 1..={} for this template",
-                                    template_bytes.len()
-                                ),
-                            });
-                        }
-                    }
-                }
-                if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
-                    if start >= template_bytes.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
-                                template_bytes.len()
-                            ),
-                        });
-                    }
-                }
-                if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
-                    if end == 0 || end > template_bytes.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
-                                template_bytes.len()
-                            ),
-                        });
-                    }
-                }
-
-                let requested_backend = self.state.parameters.primer_design_backend;
-                let primer3_executable = {
-                    let raw = self.state.parameters.primer3_executable.trim();
-                    if raw.is_empty() { "primer3_core" } else { raw }
-                };
-                let mut backend = PrimerDesignBackendInfo {
-                    requested: requested_backend.as_str().to_string(),
-                    ..PrimerDesignBackendInfo::default()
-                };
-                let (pairs, rejection_summary) = match requested_backend {
-                    PrimerDesignBackend::Internal => {
-                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                        Self::design_primer_pairs_internal(
-                            template_bytes,
-                            roi_start_0based,
-                            roi_end_0based,
-                            &forward,
-                            &forward_sequence_constraints,
-                            &reverse,
-                            &reverse_sequence_constraints,
-                            &pair_constraints_normalized,
-                            min_amplicon_bp,
-                            max_amplicon_bp,
-                            max_tm_delta_c,
-                            max_pairs,
-                        )
-                    }
-                    PrimerDesignBackend::Primer3 => {
-                        let (pairs, rejection_summary, version, explain, request_boulder_io) =
-                            Self::design_primer_pairs_primer3(
-                                &template_seq,
-                                roi_start_0based,
-                                roi_end_0based,
-                                &forward,
-                                &forward_sequence_constraints,
-                                &reverse,
-                                &reverse_sequence_constraints,
-                                &pair_constraints_normalized,
-                                min_amplicon_bp,
-                                max_amplicon_bp,
-                                max_tm_delta_c,
-                                max_pairs,
-                                primer3_executable,
-                            )?;
-                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                        backend.primer3_executable = Some(primer3_executable.to_string());
-                        backend.primer3_version = version;
-                        backend.primer3_explain = explain;
-                        backend.primer3_request_boulder_io = Some(request_boulder_io);
-                        (pairs, rejection_summary)
-                    }
-                    PrimerDesignBackend::Auto => {
-                        match Self::design_primer_pairs_primer3(
-                            &template_seq,
-                            roi_start_0based,
-                            roi_end_0based,
-                            &forward,
-                            &forward_sequence_constraints,
-                            &reverse,
-                            &reverse_sequence_constraints,
-                            &pair_constraints_normalized,
-                            min_amplicon_bp,
-                            max_amplicon_bp,
-                            max_tm_delta_c,
-                            max_pairs,
-                            primer3_executable,
-                        ) {
-                            Ok((
-                                pairs,
-                                rejection_summary,
-                                version,
-                                explain,
-                                request_boulder_io,
-                            )) => {
-                                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                                backend.primer3_executable = Some(primer3_executable.to_string());
-                                backend.primer3_version = version;
-                                backend.primer3_explain = explain;
-                                backend.primer3_request_boulder_io = Some(request_boulder_io);
-                                (pairs, rejection_summary)
-                            }
-                            Err(err) => {
-                                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                                backend.primer3_executable = Some(primer3_executable.to_string());
-                                backend.fallback_reason = Some(err.message.clone());
-                                result.warnings.push(format!(
-                                    "Primer3 backend unavailable in auto mode: {}. Falling back to internal primer design backend.",
-                                    err.message
-                                ));
-                                Self::design_primer_pairs_internal(
-                                    template_bytes,
-                                    roi_start_0based,
-                                    roi_end_0based,
-                                    &forward,
-                                    &forward_sequence_constraints,
-                                    &reverse,
-                                    &reverse_sequence_constraints,
-                                    &pair_constraints_normalized,
-                                    min_amplicon_bp,
-                                    max_amplicon_bp,
-                                    max_tm_delta_c,
-                                    max_pairs,
-                                )
-                            }
-                        }
-                    }
-                };
-
-                let report_id = Self::render_primer_design_report_id(report_id, &template);
-                let report = PrimerDesignReport {
-                    schema: PRIMER_DESIGN_REPORT_SCHEMA.to_string(),
-                    report_id: report_id.clone(),
-                    template: template.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
+                self.execute_design_primer_pairs(
+                    &mut result,
+                    &mut parent_seq_ids,
+                    template,
                     roi_start_0based,
                     roi_end_0based,
                     forward,
@@ -4578,137 +4988,61 @@ impl GentleEngine {
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
-                    pair_count: pairs.len(),
-                    pairs,
-                    rejection_summary,
-                    backend,
-                };
-                if report.rejection_summary.pair_evaluation_limit_skipped > 0 {
-                    result.warnings.push(format!(
-                        "Internal primer-pair search reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
-                        report.rejection_summary.pair_evaluation_limit_skipped
-                    ));
-                }
-                let mut store = self.read_primer_design_store();
-                let replaced = store
-                    .reports
-                    .insert(report.report_id.clone(), report.clone())
-                    .is_some();
-                self.write_primer_design_store(store)?;
-                result.messages.push(format!(
-                    "{} primer-design report '{}' for template '{}' (pairs={})",
-                    if replaced { "Updated" } else { "Created" },
-                    report.report_id,
-                    report.template,
-                    report.pair_count
-                ));
-                if !report.pairs.is_empty() {
-                    parent_seq_ids.push(template.clone());
-                    let report_token = Self::normalize_id_token(&report.report_id);
-                    let mut pair_container_ids: Vec<String> =
-                        Vec::with_capacity(report.pairs.len());
-                    for (pair_index, pair) in report.pairs.iter().enumerate() {
-                        let pair_rank = if pair.rank == 0 {
-                            pair_index + 1
-                        } else {
-                            pair.rank
-                        };
-                        let pair_token = format!("r{pair_rank:02}");
-                        let base = format!("{report_token}_{pair_token}");
-                        let forward_seq_id = self.unique_seq_id(&format!("{base}_fwd"));
-                        let reverse_seq_id = self.unique_seq_id(&format!("{base}_rev"));
+                    report_id,
+                    None,
+                )?;
+            }
+            Operation::DesignInsertionPrimerPairs {
+                template,
+                insertion,
+                mut forward,
+                mut reverse,
+                pair_constraints,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_pairs,
+                report_id,
+            } => {
+                let template_len = self
+                    .state
+                    .sequences
+                    .get(&template)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{template}' not found"),
+                    })?
+                    .get_forward_string()
+                    .len();
+                let insertion = Self::normalize_primer_insertion_intent(&insertion, template_len)?;
+                let (roi_start_0based, roi_end_0based) =
+                    Self::derive_insertion_intent_roi_bounds(&insertion, template_len);
 
-                        let mut forward_primer = DNAsequence::from_sequence(&pair.forward.sequence)
-                            .map_err(|e| EngineError {
-                                code: ErrorCode::Internal,
-                                message: format!(
-                                    "Could not materialize forward primer sequence for report '{}' pair {}: {e}",
-                                    report.report_id, pair_rank
-                                ),
-                            })?;
-                        forward_primer.set_circular(false);
-                        forward_primer.set_name(forward_seq_id.clone());
-                        Self::prepare_sequence(&mut forward_primer);
-                        self.state
-                            .sequences
-                            .insert(forward_seq_id.clone(), forward_primer);
-                        self.add_lineage_node(
-                            &forward_seq_id,
-                            SequenceOrigin::Derived,
-                            Some(&result.op_id),
-                        );
-                        result.created_seq_ids.push(forward_seq_id.clone());
+                forward.start_0based = Some(insertion.forward_window_start_0based);
+                forward.end_0based = Some(insertion.forward_window_end_0based_exclusive);
+                forward.non_annealing_5prime_tail =
+                    Some(insertion.forward_extension_5prime.clone());
+                reverse.start_0based = Some(insertion.reverse_window_start_0based);
+                reverse.end_0based = Some(insertion.reverse_window_end_0based_exclusive);
+                reverse.non_annealing_5prime_tail =
+                    Some(insertion.reverse_extension_5prime.clone());
 
-                        let mut reverse_primer = DNAsequence::from_sequence(&pair.reverse.sequence)
-                            .map_err(|e| EngineError {
-                                code: ErrorCode::Internal,
-                                message: format!(
-                                    "Could not materialize reverse primer sequence for report '{}' pair {}: {e}",
-                                    report.report_id, pair_rank
-                                ),
-                            })?;
-                        reverse_primer.set_circular(false);
-                        reverse_primer.set_name(reverse_seq_id.clone());
-                        Self::prepare_sequence(&mut reverse_primer);
-                        self.state
-                            .sequences
-                            .insert(reverse_seq_id.clone(), reverse_primer);
-                        self.add_lineage_node(
-                            &reverse_seq_id,
-                            SequenceOrigin::Derived,
-                            Some(&result.op_id),
-                        );
-                        result.created_seq_ids.push(reverse_seq_id.clone());
-
-                        let pair_members = vec![forward_seq_id.clone(), reverse_seq_id.clone()];
-                        if let Some(container_id) = self.add_container(
-                            &pair_members,
-                            ContainerKind::Pool,
-                            Some(format!("Primer pair {} {}", report.report_id, pair_token)),
-                            Some(&result.op_id),
-                        ) {
-                            pair_container_ids.push(container_id.clone());
-                            result.messages.push(format!(
-                                "Created primer-pair container '{}' for {} ({}, {})",
-                                container_id, pair_token, forward_seq_id, reverse_seq_id
-                            ));
-                        }
-                    }
-                    result.messages.push(format!(
-                        "Materialized {} primer sequence(s) and {} primer-pair container(s) for report '{}'",
-                        report.pairs.len().saturating_mul(2),
-                        pair_container_ids.len(),
-                        report.report_id
-                    ));
-                }
-                if let Some(top_pair) = report.pairs.first() {
-                    let advisories = Self::primer_pair_heuristic_advisories(top_pair);
-                    if !advisories.is_empty() {
-                        result.warnings.push(format!(
-                            "Top primer pair in report '{}' has heuristic advisories: {}",
-                            report.report_id,
-                            advisories.join("; ")
-                        ));
-                    }
-                }
-                if report.pair_count == 0 {
-                    result.warnings.push(format!(
-                        "No primer pairs satisfied constraints for report '{}'",
-                        report.report_id
-                    ));
-                    if let Some(explain) = report.backend.primer3_explain.as_deref() {
-                        result.warnings.push(format!(
-                            "Primer3 explain for report '{}': {}",
-                            report.report_id, explain
-                        ));
-                    }
-                    if report.backend.primer3_request_boulder_io.is_some() {
-                        result.warnings.push(format!(
-                            "Primer3 request payload was captured for report '{}' and can be exported for local reruns",
-                            report.report_id
-                        ));
-                    }
-                }
+                self.execute_design_primer_pairs(
+                    &mut result,
+                    &mut parent_seq_ids,
+                    template,
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    reverse,
+                    pair_constraints,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_pairs,
+                    report_id,
+                    Some(insertion),
+                )?;
             }
             Operation::DesignQpcrAssays {
                 template,

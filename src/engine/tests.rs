@@ -878,7 +878,13 @@ fn test_design_primer_pairs_persists_report() {
     assert!(!report.pairs.is_empty());
     assert_eq!(
         result.created_seq_ids.len(),
-        report.pair_count.saturating_mul(2)
+        report.pair_count.saturating_mul(3)
+    );
+    assert!(
+        result
+            .created_seq_ids
+            .iter()
+            .any(|seq_id| seq_id.ends_with("_amplicon"))
     );
     assert!(
         result
@@ -929,7 +935,7 @@ fn test_design_primer_pairs_persists_report() {
             Some(result.op_id.as_str())
         );
         assert!(matches!(container.kind, ContainerKind::Pool));
-        assert_eq!(container.members.len(), 2);
+        assert_eq!(container.members.len(), 3);
         assert!(
             container
                 .name
@@ -1642,7 +1648,7 @@ fn test_non_annealing_5prime_tail_is_included_but_tm_gc_use_anneal_segment() {
 
     forward.non_annealing_5prime_tail = Some("GAATTC".to_string());
     reverse.non_annealing_5prime_tail = Some("CTCGAG".to_string());
-    engine
+    let with_tail_result = engine
         .apply(Operation::DesignPrimerPairs {
             template: "tpl".to_string(),
             roi_start_0based: 40,
@@ -1695,6 +1701,138 @@ fn test_non_annealing_5prime_tail_is_included_but_tm_gc_use_anneal_segment() {
             < f64::EPSILON,
         "reverse anneal GC should stay unchanged when adding non-annealing tail"
     );
+    let amplicon_seq_id = with_tail_result
+        .created_seq_ids
+        .iter()
+        .find(|seq_id| seq_id.ends_with("_amplicon"))
+        .expect("tail run should materialize one predicted amplicon")
+        .clone();
+    let amplicon = engine
+        .state()
+        .sequences
+        .get(&amplicon_seq_id)
+        .expect("predicted amplicon sequence should exist");
+    let amplicon_seq = amplicon.get_forward_string().to_ascii_uppercase();
+    assert!(amplicon_seq.starts_with("GAATTC"));
+    let reverse_tail_rc = GentleEngine::reverse_complement("CTCGAG");
+    assert!(amplicon_seq.ends_with(&reverse_tail_rc));
+}
+
+#[test]
+fn test_design_insertion_primer_pairs_records_anchor_shift_compensation() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+    let base_forward = PrimerDesignSideConstraint {
+        min_length: 20,
+        max_length: 20,
+        location_0based: Some(5),
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        ..Default::default()
+    };
+    let base_reverse = PrimerDesignSideConstraint {
+        min_length: 20,
+        max_length: 20,
+        location_0based: Some(90),
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        ..Default::default()
+    };
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: base_forward.clone(),
+            reverse: base_reverse.clone(),
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("insert_base".to_string()),
+        })
+        .expect("baseline primer design");
+    let base_report = engine
+        .get_primer_design_report("insert_base")
+        .expect("baseline report");
+    assert_eq!(base_report.pair_count, 1);
+    let base_pair = &base_report.pairs[0];
+
+    let requested_forward_end = base_pair.forward.end_0based_exclusive + 3;
+    let requested_reverse_start = base_pair.reverse.start_0based.saturating_sub(4);
+    let insertion = PrimerInsertionIntent {
+        requested_forward_3prime_end_0based_exclusive: requested_forward_end,
+        requested_reverse_3prime_start_0based: requested_reverse_start,
+        forward_extension_5prime: "GAATTC".to_string(),
+        reverse_extension_5prime: "CTCGAG".to_string(),
+        forward_window_start_0based: 0,
+        forward_window_end_0based_exclusive: 70,
+        reverse_window_start_0based: 70,
+        reverse_window_end_0based_exclusive: template_seq.len(),
+        max_anchor_shift_bp: Some(12),
+    };
+    engine
+        .apply(Operation::DesignInsertionPrimerPairs {
+            template: "tpl".to_string(),
+            insertion,
+            forward: base_forward,
+            reverse: base_reverse,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("insert_mode".to_string()),
+        })
+        .expect("insertion primer design");
+
+    let report = engine
+        .get_primer_design_report("insert_mode")
+        .expect("insertion report");
+    let insertion_context = report
+        .insertion_context
+        .as_ref()
+        .expect("insertion context should be present");
+    assert_eq!(
+        insertion_context.requested_forward_3prime_end_0based_exclusive,
+        requested_forward_end
+    );
+    assert_eq!(
+        insertion_context.requested_reverse_3prime_start_0based,
+        requested_reverse_start
+    );
+    assert_eq!(insertion_context.max_anchor_shift_bp, 12);
+    assert_eq!(insertion_context.uncompensable_pair_count, 0);
+    assert_eq!(insertion_context.out_of_shift_budget_pair_count, 0);
+    let row = &insertion_context.pairs[0];
+    assert_eq!(row.forward_anchor_shift_bp, 3);
+    assert_eq!(row.reverse_anchor_shift_bp, 4);
+    assert!(row.within_shift_budget);
+    assert!(row.compensable);
+    assert_eq!(
+        row.forward_compensation_5prime,
+        template_seq[base_pair.forward.end_0based_exclusive..requested_forward_end].to_string()
+    );
+    assert_eq!(
+        row.reverse_compensation_5prime,
+        GentleEngine::reverse_complement(
+            &template_seq[requested_reverse_start..base_pair.reverse.start_0based]
+        )
+    );
+    assert!(row.compensated_forward_5prime_tail.starts_with("GAATTC"));
+    assert!(row.compensated_reverse_5prime_tail.starts_with("CTCGAG"));
 }
 
 #[test]

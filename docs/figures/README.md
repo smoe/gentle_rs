@@ -61,6 +61,23 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/pcr_pair_no_product_protocol_cartoon.svg
 ```
 
+`pcr_pair_with_tail_protocol_cartoon.svg` is the deterministic tailed-PCR strip
+for `pcr.assay.pair.with_tail`. It is insertion-first:
+
+- panel 1: extension sequences + requested insertion anchors
+- panel 2: anchor-adjacent primer windows
+- panel 3: tailed primer placement with shift-compensation semantics
+- panel 4: amplified product carrying inserted extensions
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-svg \
+  pcr.assay.pair.with_tail \
+  docs/figures/pcr_pair_with_tail_protocol_cartoon.svg
+```
+
 `qpcr_assay_protocol_cartoon.svg` is the deterministic probe-bearing qPCR strip
 for `pcr.assay.qpcr`. It reuses the same PCR family layout while adding an
 explicit third probe window (separate from ROI semantics), keeps panel 2

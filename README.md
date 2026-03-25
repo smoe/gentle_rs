@@ -134,6 +134,24 @@ The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose
 between overlapping alias names.
 
+### Overlap-Extension PCR Substitution Mechanism
+
+![GENtle overlap-extension substitution PCR mechanism](docs/figures/pcr_overlap_extension_substitution_fig1_style.svg)
+
+This hero strip shows the six-step overlap-extension substitution flow:
+template+insert setup, chimeric primer assignment (`a`..`f`), three first-step
+PCR products (`AB`, `CD`, `EF`), denaturation, overlap annealing with
+strand-specific gaps, and polymerase fill to one continuous duplex product.
+
+The figure is rendered from the deterministic template route:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/oe_substitution_figure1_template.json \
+  docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
+```
+
 ### TP53/P53 Isoform Architecture
 
 ![GENtle TP53/p53 isoform architecture](docs/figures/tp53_isoform_architecture.svg)
@@ -221,9 +239,10 @@ Build note:
 | Degenerate / randomized primer-library PCR | Shipped inside advanced PCR | `PcrAdvanced` | shared-shell/CLI operation payload |
 | PCR mutagenesis | Shipped | `PcrMutagenesis` | GUI `PCR Mut`, shared-shell/CLI operation payload |
 | Primer-pair design for one ROI | Shipped | `DesignPrimerPairs` | Engine Ops, CLI/shared-shell report routes |
+| Insertion-first anchored pair design | Shipped (engine contract) | `DesignInsertionPrimerPairs` | CLI/shared-shell `op`/workflow payloads (GUI form pending) |
 | Selection-first batch primer-pair design | Shipped | repeated `DesignPrimerPairs` | DNA-window PCR queue + Engine Ops batch results |
 | qPCR assay design | Shipped | `DesignQpcrAssays` | Engine Ops, CLI/shared-shell qPCR report routes |
-| PCR protocol cartoons | Shipped baseline | `RenderProtocolCartoonSvg` | `pcr.assay.pair`, `pcr.assay.pair.no_product`, `pcr.assay.qpcr` |
+| PCR protocol cartoons | Shipped baseline | `RenderProtocolCartoonSvg` | `pcr.assay.pair`, `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, `pcr.assay.qpcr` |
 | Nested PCR | Planned | future `DesignPrimerPairs` family extension | tracked in roadmap |
 | Inverse PCR | Planned | future PCR modality extension | tracked in roadmap |
 | Long-range / multiplex / translocation PCR | Planned | future PCR modality extension | tracked in roadmap |
@@ -240,7 +259,8 @@ layering above, that means:
   `PcrMutagenesis`, `DesignPrimerPairs`, and `DesignQpcrAssays`
 - PCR deep-dive GUI work lives in specialists and DNA-window tools
 - PCR explanation lives in shared protocol-cartoon outputs such as
-  `pcr.assay.pair`, `pcr.assay.pair.no_product`, and `pcr.assay.qpcr`
+  `pcr.assay.pair`, `pcr.assay.pair.no_product`,
+  `pcr.assay.pair.with_tail`, and `pcr.assay.qpcr`
 
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For

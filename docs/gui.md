@@ -1801,6 +1801,27 @@ Buttons:
 Both operations persist reports into project metadata (same report store used by
 CLI/shared-shell `primers ...` commands).
 
+`Design Primer Pairs` materializes lineage-visible sequence artifacts for each
+accepted pair:
+
+- one forward primer sequence (`..._fwd`)
+- one reverse primer sequence (`..._rev`)
+- one predicted amplicon sequence (`..._amplicon`), including configured
+  non-annealing 5' tails
+- one per-pair pool container containing all three artifacts
+
+Insertion-first anchored-tail mode (MVP status):
+
+- engine contract is available as `DesignInsertionPrimerPairs` (same persisted
+  primer report schema plus `insertion_context` compensation rows)
+- dedicated GUI form is not wired yet
+- current GUI workaround:
+  - set forward/reverse `5' tail (non-annealing)` to extension sequences
+  - set forward/reverse `start/end` to anchor-adjacent primer windows
+  - run `Design Primer Pairs`
+  - use shell/CLI `op` payload when you need explicit `insertion_context`
+    shift-compensation reporting in the stored report
+
 Heuristic guidance surfaced in reports/warnings:
 
 - primer ranking prefers `20..30 bp` side lengths and similar primer Tm

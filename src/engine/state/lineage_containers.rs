@@ -244,10 +244,14 @@ impl GentleEngine {
         if result.created_seq_ids.is_empty() {
             return;
         }
-        // DesignPrimerPairs materializes one explicit container per primer pair
-        // inside the operation handler; skip generic aggregate container creation
-        // so seq_to_latest_container keeps pointing to the pair-scoped container.
-        if matches!(op, Operation::DesignPrimerPairs { .. }) {
+        // Primer-pair design operations materialize one explicit container per
+        // accepted pair inside the operation handler; skip generic aggregate
+        // container creation so seq_to_latest_container keeps pointing to the
+        // pair-scoped container.
+        if matches!(
+            op,
+            Operation::DesignPrimerPairs { .. } | Operation::DesignInsertionPrimerPairs { .. }
+        ) {
             return;
         }
         // Gibson outputs represent distinct wet-lab artifacts (two primer vials

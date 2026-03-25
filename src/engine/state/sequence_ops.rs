@@ -694,6 +694,9 @@ impl GentleEngine {
             | Operation::DesignPrimerPairs {
                 template: input, ..
             }
+            | Operation::DesignInsertionPrimerPairs {
+                template: input, ..
+            }
             | Operation::DesignQpcrAssays {
                 template: input, ..
             }
@@ -2940,6 +2943,54 @@ impl GentleEngine {
                 reverse_three_prime_gc_clamp: reverse_metrics.three_prime_gc_clamp,
             },
         })
+    }
+
+    pub(super) fn build_tailed_amplicon_sequence_from_primer_pair(
+        template_seq: &str,
+        pair: &PrimerDesignPairRecord,
+    ) -> Result<String, EngineError> {
+        let template_len = template_seq.len();
+        if pair.forward.anneal_length_bp == 0 || pair.reverse.anneal_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Primer pair records must carry non-zero anneal lengths".to_string(),
+            });
+        }
+        if pair.forward.start_0based >= template_len
+            || pair.reverse.start_0based > template_len
+            || pair.forward.end_0based_exclusive > template_len
+            || pair.reverse.end_0based_exclusive > template_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer pair coordinates are outside template bounds (template_len={template_len})"
+                ),
+            });
+        }
+        let forward_anneal_end = pair
+            .forward
+            .start_0based
+            .checked_add(pair.forward.anneal_length_bp)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Forward anneal geometry overflows template coordinates".to_string(),
+            })?;
+        if forward_anneal_end > pair.reverse.start_0based {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer pair anneal geometry is inconsistent: forward_anneal_end={} exceeds reverse_start={}",
+                    forward_anneal_end, pair.reverse.start_0based
+                ),
+            });
+        }
+        let interior = &template_seq[forward_anneal_end..pair.reverse.start_0based];
+        let reverse_full_rc = Self::reverse_complement(&pair.reverse.sequence);
+        Ok(format!(
+            "{}{}{}",
+            pair.forward.sequence, interior, reverse_full_rc
+        ))
     }
 
     pub(super) fn primer_pair_matches_constraints(

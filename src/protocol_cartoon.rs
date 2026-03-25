@@ -19,6 +19,8 @@ pub enum ProtocolCartoonKind {
     PcrAssayPair,
     #[serde(rename = "pcr.assay.pair.no_product")]
     PcrAssayPairNoProduct,
+    #[serde(rename = "pcr.assay.pair.with_tail")]
+    PcrAssayPairWithTail,
     #[serde(rename = "pcr.assay.qpcr")]
     PcrAssayQpcr,
 }
@@ -31,6 +33,7 @@ impl ProtocolCartoonKind {
             Self::GibsonSingleInsertDualJunction => "gibson.single_insert_dual_junction",
             Self::PcrAssayPair => "pcr.assay.pair",
             Self::PcrAssayPairNoProduct => "pcr.assay.pair.no_product",
+            Self::PcrAssayPairWithTail => "pcr.assay.pair.with_tail",
             Self::PcrAssayQpcr => "pcr.assay.qpcr",
         }
     }
@@ -44,6 +47,7 @@ impl ProtocolCartoonKind {
             }
             Self::PcrAssayPair => "PCR Assay (pair-primer baseline)",
             Self::PcrAssayPairNoProduct => "PCR Assay (report-only no-product)",
+            Self::PcrAssayPairWithTail => "PCR Assay (insertion-first tailed pair-PCR)",
             Self::PcrAssayQpcr => "qPCR Assay (probe-bearing baseline)",
         }
     }
@@ -62,6 +66,9 @@ impl ProtocolCartoonKind {
             }
             Self::PcrAssayPairNoProduct => {
                 "Pair-PCR report-only strip showing a selected ROI and failed/no-product assay outcome without literal primer glyphs"
+            }
+            Self::PcrAssayPairWithTail => {
+                "Insertion-first pair-PCR strip with anchored 5' extensions and carried-in product tails"
             }
             Self::PcrAssayQpcr => {
                 "Mechanism-first qPCR strip: template context, ROI, probe-bearing assay setup, amplification, and quantitative readout"
@@ -89,6 +96,11 @@ impl ProtocolCartoonKind {
             | "pcr.assay.pair.report_only"
             | "pcr.assay.report_only"
             | "pcr_pair_no_product" => Some(Self::PcrAssayPairNoProduct),
+            "pcr.assay.pair.with_tail"
+            | "pcr.assay.pair.tailed"
+            | "pcr.assay.tailed"
+            | "pcr.tailed"
+            | "tailed_pcr" => Some(Self::PcrAssayPairWithTail),
             "pcr.assay.qpcr" | "pcr.qpcr" | "qpcr" | "q-pcr" => Some(Self::PcrAssayQpcr),
             _ => None,
         }
@@ -101,6 +113,7 @@ impl ProtocolCartoonKind {
             Self::GibsonSingleInsertDualJunction,
             Self::PcrAssayPair,
             Self::PcrAssayPairNoProduct,
+            Self::PcrAssayPairWithTail,
             Self::PcrAssayQpcr,
         ]
     }
@@ -970,6 +983,7 @@ pub fn protocol_cartoon_template_for_kind(kind: &ProtocolCartoonKind) -> Protoco
         }
         ProtocolCartoonKind::PcrAssayPair => pcr_assay_pair_template(),
         ProtocolCartoonKind::PcrAssayPairNoProduct => pcr_assay_pair_no_product_template(),
+        ProtocolCartoonKind::PcrAssayPairWithTail => pcr_assay_pair_with_tail_template(),
         ProtocolCartoonKind::PcrAssayQpcr => pcr_assay_qpcr_template(),
     }
 }
@@ -2045,6 +2059,10 @@ fn pcr_assay_pair_no_product_template() -> ProtocolCartoonTemplate {
     protocol_cartoon_template_from_spec(pcr_assay_pair_no_product_spec())
 }
 
+fn pcr_assay_pair_with_tail_template() -> ProtocolCartoonTemplate {
+    protocol_cartoon_template_from_spec(pcr_assay_pair_with_tail_spec())
+}
+
 fn pcr_assay_qpcr_template() -> ProtocolCartoonTemplate {
     protocol_cartoon_template_from_spec(pcr_assay_qpcr_spec())
 }
@@ -2215,6 +2233,198 @@ fn pcr_roi_bounded_amplicon_molecule(
                 "Reverse primer",
                 primer_site_bp,
                 reverse_primer_color,
+            ),
+        ],
+        DnaEndStyle::Blunt,
+        DnaEndStyle::Blunt,
+    )
+}
+
+fn pcr_insertion_intent_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    extension_bp: usize,
+    anchor_bp: usize,
+    insert_payload_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    forward_anchor_color: &str,
+    insert_color: &str,
+    reverse_anchor_color: &str,
+    forward_tail_color: &str,
+    reverse_tail_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            top_only_feature_block(
+                "forward_extension_intent",
+                "Forward extension",
+                extension_bp,
+                forward_tail_color,
+            ),
+            duplex_feature_block(
+                "forward_insertion_anchor",
+                "Forward insertion anchor",
+                anchor_bp,
+                forward_anchor_color,
+            ),
+            duplex_feature_block(
+                "insert_payload_intent",
+                "Planned insert payload",
+                insert_payload_bp,
+                insert_color,
+            ),
+            duplex_feature_block(
+                "reverse_insertion_anchor",
+                "Reverse insertion anchor",
+                anchor_bp,
+                reverse_anchor_color,
+            ),
+            bottom_only_feature_block(
+                "reverse_extension_intent",
+                "Reverse extension",
+                extension_bp,
+                reverse_tail_color,
+            ),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
+    )
+}
+
+fn pcr_primers_with_non_annealing_tails_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    forward_window_margin_bp: usize,
+    forward_tail_bp: usize,
+    primer_site_bp: usize,
+    roi_bp: usize,
+    reverse_tail_bp: usize,
+    reverse_window_margin_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    forward_window_color: &str,
+    forward_tail_color: &str,
+    roi_color: &str,
+    reverse_window_color: &str,
+    reverse_tail_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            duplex_feature_block(
+                "forward_window_margin",
+                "Forward window margin",
+                forward_window_margin_bp,
+                forward_window_color,
+            ),
+            top_only_feature_block(
+                "forward_tail_5prime",
+                "Forward 5' tail",
+                forward_tail_bp,
+                forward_tail_color,
+            ),
+            duplex_feature_block(
+                "forward_primer_site",
+                "Forward primer",
+                primer_site_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block("amplicon_roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "reverse_primer_site",
+                "Reverse primer",
+                primer_site_bp,
+                reverse_window_color,
+            ),
+            bottom_only_feature_block(
+                "reverse_tail_5prime",
+                "Reverse 5' tail",
+                reverse_tail_bp,
+                reverse_tail_color,
+            ),
+            duplex_feature_block(
+                "reverse_window_margin",
+                "Reverse window margin",
+                reverse_window_margin_bp,
+                reverse_window_color,
+            ),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
+    )
+}
+
+fn pcr_tailed_amplicon_molecule(
+    id: &str,
+    label: &str,
+    forward_tail_bp: usize,
+    primer_site_bp: usize,
+    roi_bp: usize,
+    reverse_tail_bp: usize,
+    forward_tail_color: &str,
+    forward_primer_color: &str,
+    roi_color: &str,
+    reverse_primer_color: &str,
+    reverse_tail_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "forward_tail_inserted",
+                "Inserted forward 5' tail",
+                forward_tail_bp,
+                forward_tail_color,
+            ),
+            duplex_feature_block(
+                "forward_primer_site",
+                "Forward primer",
+                primer_site_bp,
+                forward_primer_color,
+            ),
+            duplex_feature_block("amplicon_roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "reverse_primer_site",
+                "Reverse primer",
+                primer_site_bp,
+                reverse_primer_color,
+            ),
+            duplex_feature_block(
+                "reverse_tail_inserted",
+                "Inserted reverse 5' tail",
+                reverse_tail_bp,
+                reverse_tail_color,
             ),
         ],
         DnaEndStyle::Blunt,
@@ -2512,6 +2722,124 @@ fn pcr_assay_pair_spec() -> ProtocolCartoonSpec {
                     forward_window_color,
                     roi_color,
                     reverse_window_color,
+                )],
+            ),
+        ],
+    }
+}
+
+fn pcr_assay_pair_with_tail_spec() -> ProtocolCartoonSpec {
+    const TEMPLATE_LEFT_BP: usize = 66;
+    const FORWARD_WINDOW_BP: usize = 36;
+    const FORWARD_TAIL_BP: usize = 10;
+    const ANCHOR_BP: usize = 8;
+    const PRIMER_SITE_BP: usize = 18;
+    const ROI_BP: usize = 120;
+    const REVERSE_WINDOW_BP: usize = 36;
+    const REVERSE_TAIL_BP: usize = 10;
+    const TEMPLATE_RIGHT_BP: usize = 66;
+    const WINDOW_MARGIN_BP: usize = 8;
+
+    let template_color = "#c9b37e";
+    let roi_color = "#2a9d8f";
+    let forward_window_color = "#d1495b";
+    let reverse_window_color = "#3d6fb6";
+    let forward_tail_color = "#f4a261";
+    let reverse_tail_color = "#5fa8d3";
+
+    ProtocolCartoonSpec {
+        id: ProtocolCartoonKind::PcrAssayPairWithTail.id().to_string(),
+        title: "GENtle Protocol Cartoon: PCR Assay (insertion-first tailed pair-PCR)"
+            .to_string(),
+        summary: "Four-step insertion-first pair-PCR strip: insertion intent, anchor-adjacent primer windows, tailed-primer placement with shift compensation semantics, and inserted-product outcome.".to_string(),
+        events: vec![
+            event_block(
+                "insertion_intent",
+                "Insertion Intent",
+                "Specify forward/reverse extension sequences and their insertion anchors.\nGreen = planned inserted payload between anchors.",
+                ProtocolCartoonAction::Context,
+                vec![pcr_insertion_intent_molecule(
+                    "insertion_intent_layout",
+                    "Template + insertion intent",
+                    TEMPLATE_LEFT_BP,
+                    FORWARD_TAIL_BP,
+                    ANCHOR_BP,
+                    ROI_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
+                    roi_color,
+                    reverse_window_color,
+                    forward_tail_color,
+                    reverse_tail_color,
+                )],
+            ),
+            event_block(
+                "primer_constraints",
+                "Primer Windows",
+                "Red = upstream primer window at the forward anchor.\nBlue = downstream primer window at the reverse anchor.\nWindows are defined adjacent to requested insertion anchors.",
+                ProtocolCartoonAction::Custom {
+                    label: "Constraints".to_string(),
+                },
+                vec![pcr_constraint_windows_molecule(
+                    "template_with_windows",
+                    "Template with ROI + primer windows",
+                    TEMPLATE_LEFT_BP,
+                    FORWARD_WINDOW_BP,
+                    ROI_BP,
+                    REVERSE_WINDOW_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
+                    roi_color,
+                    reverse_window_color,
+                )],
+            ),
+            event_block(
+                "primers_tails",
+                "Primers + Shift Compensation",
+                "Primers anneal inside their windows.\nIf exact anchor placement fails, shifted template bases are carried into 5' extensions.",
+                ProtocolCartoonAction::Custom {
+                    label: "Primers".to_string(),
+                },
+                vec![pcr_primers_with_non_annealing_tails_molecule(
+                    "tailed_primer_layout",
+                    "Tailed primer placement in windows",
+                    TEMPLATE_LEFT_BP,
+                    WINDOW_MARGIN_BP,
+                    FORWARD_TAIL_BP,
+                    PRIMER_SITE_BP,
+                    ROI_BP,
+                    REVERSE_TAIL_BP,
+                    WINDOW_MARGIN_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
+                    forward_tail_color,
+                    roi_color,
+                    reverse_window_color,
+                    reverse_tail_color,
+                )],
+            ),
+            event_block(
+                "product",
+                "Product",
+                "PCR product carries both 5' extensions as inserted terminal sequence around the planned payload.",
+                ProtocolCartoonAction::Custom {
+                    label: "Product".to_string(),
+                },
+                vec![pcr_tailed_amplicon_molecule(
+                    "tailed_amplicon",
+                    "Amplicon with inserted 5' tails",
+                    FORWARD_TAIL_BP,
+                    PRIMER_SITE_BP,
+                    ROI_BP,
+                    REVERSE_TAIL_BP,
+                    forward_tail_color,
+                    forward_window_color,
+                    roi_color,
+                    reverse_window_color,
+                    reverse_tail_color,
                 )],
             ),
         ],
@@ -3778,6 +4106,10 @@ mod tests {
             Some(ProtocolCartoonKind::PcrAssayPairNoProduct)
         );
         assert_eq!(
+            ProtocolCartoonKind::parse_id("pcr.tailed"),
+            Some(ProtocolCartoonKind::PcrAssayPairWithTail)
+        );
+        assert_eq!(
             ProtocolCartoonKind::parse_id("qpcr"),
             Some(ProtocolCartoonKind::PcrAssayQpcr)
         );
@@ -3787,15 +4119,17 @@ mod tests {
     #[test]
     fn catalog_rows_are_deterministic() {
         let rows = protocol_cartoon_catalog_rows();
-        assert_eq!(rows.len(), 5);
+        assert_eq!(rows.len(), 6);
         assert_eq!(rows[0].id, "gibson.two_fragment");
         assert_eq!(rows[1].id, "gibson.single_insert_dual_junction");
         assert_eq!(rows[2].id, "pcr.assay.pair");
         assert_eq!(rows[3].id, "pcr.assay.pair.no_product");
-        assert_eq!(rows[4].id, "pcr.assay.qpcr");
+        assert_eq!(rows[4].id, "pcr.assay.pair.with_tail");
+        assert_eq!(rows[5].id, "pcr.assay.qpcr");
         assert!(rows[0].title.contains("Gibson"));
         assert!(rows[2].title.contains("PCR"));
-        assert!(rows[4].title.contains("qPCR"));
+        assert!(rows[4].title.contains("tail"));
+        assert!(rows[5].title.contains("qPCR"));
     }
 
     #[test]
@@ -3809,6 +4143,15 @@ mod tests {
         assert_eq!(pcr_template.schema, "gentle.protocol_cartoon_template.v1");
         assert_eq!(pcr_template.id, "pcr.assay.pair");
         assert!(!pcr_template.events.is_empty());
+
+        let tailed_template =
+            protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrAssayPairWithTail);
+        assert_eq!(
+            tailed_template.schema,
+            "gentle.protocol_cartoon_template.v1"
+        );
+        assert_eq!(tailed_template.id, "pcr.assay.pair.with_tail");
+        assert!(!tailed_template.events.is_empty());
 
         let qpcr_template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
         assert_eq!(qpcr_template.schema, "gentle.protocol_cartoon_template.v1");
@@ -4104,13 +4447,49 @@ mod tests {
     }
 
     #[test]
+    fn pcr_tailed_spec_carries_tails_into_product() {
+        let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairWithTail);
+        let tailed_layout = &spec.events[2].molecules[0];
+        let product = &spec.events[3].molecules[0];
+
+        let forward_tail = feature_by_id(tailed_layout, "forward_tail_5prime");
+        assert_eq!(
+            (forward_tail.top_length_bp, forward_tail.bottom_length_bp),
+            (10, 0)
+        );
+        let reverse_tail = feature_by_id(tailed_layout, "reverse_tail_5prime");
+        assert_eq!(
+            (reverse_tail.top_length_bp, reverse_tail.bottom_length_bp),
+            (0, 10)
+        );
+
+        let inserted_forward = feature_by_id(product, "forward_tail_inserted");
+        assert_eq!(
+            (
+                inserted_forward.top_length_bp,
+                inserted_forward.bottom_length_bp
+            ),
+            (10, 10)
+        );
+        let inserted_reverse = feature_by_id(product, "reverse_tail_inserted");
+        assert_eq!(
+            (
+                inserted_reverse.top_length_bp,
+                inserted_reverse.bottom_length_bp
+            ),
+            (10, 10)
+        );
+    }
+
+    #[test]
     fn pcr_context_and_roi_panels_remain_primer_free() {
         let pair = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        let with_tail = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairWithTail);
         let no_product =
             protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
         let qpcr = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
 
-        for spec in [&pair, &no_product, &qpcr] {
+        for spec in [&pair, &with_tail, &no_product, &qpcr] {
             for event in [&spec.events[0], &spec.events[1]] {
                 for molecule in &event.molecules {
                     assert!(
@@ -4345,6 +4724,19 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Report Only"));
         assert!(svg.contains("Template + ROI retained"));
+    }
+
+    #[test]
+    fn render_pcr_tailed_svg_contains_expected_labels() {
+        let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayPairWithTail);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("insertion-first tailed pair-PCR"));
+        assert!(svg.contains("Insertion Intent"));
+        assert!(svg.contains("Primer Windows"));
+        assert!(svg.contains("Primers + Shift Compensation"));
+        assert!(svg.contains("Amplicon with inserted 5&apos; tails"));
+        assert!(svg.contains("data-primer-glyph=\"F\""));
+        assert!(svg.contains("data-primer-glyph=\"R\""));
     }
 
     #[test]

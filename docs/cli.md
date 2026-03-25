@@ -795,6 +795,7 @@ cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
 cargo run --bin gentle_cli -- protocol-cartoon list
 cargo run --bin gentle_cli -- protocol-cartoon render-svg gibson.two_fragment gibson.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon render-svg pcr.assay.pair pcr_pair.protocol.svg
+cargo run --bin gentle_cli -- protocol-cartoon render-svg pcr.assay.pair.with_tail pcr_pair_with_tail.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon render-svg pcr.assay.qpcr qpcr.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon render-template-svg docs/examples/protocol_cartoon/demo_template.json demo.protocol.svg
 cargo run --bin gentle_cli -- protocol-cartoon template-validate docs/examples/protocol_cartoon/demo_template.json
@@ -829,6 +830,7 @@ cargo run --bin gentle_cli -- agents ask local_llama_compat --prompt "summarize 
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
+cargo run --bin gentle_cli -- op '{"DesignInsertionPrimerPairs":{"template":"toy_chr1_1001_1600","insertion":{"requested_forward_3prime_end_0based_exclusive":220,"requested_reverse_3prime_start_0based":300,"forward_extension_5prime":"GAATTC","reverse_extension_5prime":"CTCGAG","forward_window_start_0based":170,"forward_window_end_0based_exclusive":245,"reverse_window_start_0based":275,"reverse_window_end_0based_exclusive":360,"max_anchor_shift_bp":12},"forward":{"min_length":20,"max_length":30},"reverse":{"min_length":20,"max_length":30},"pair_constraints":{"require_roi_flanking":false},"min_amplicon_bp":120,"max_amplicon_bp":1200,"max_tm_delta_c":2.0,"max_pairs":50,"report_id":"insertion_demo_v1"}}'
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
 cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.json
@@ -1247,7 +1249,8 @@ Rendering export commands:
   - Calls engine operation `RenderProtocolCartoonSvg`.
   - Built-in protocol IDs currently include `gibson.two_fragment`,
     `gibson.single_insert_dual_junction`, `pcr.assay.pair`,
-    `pcr.assay.pair.no_product`, and `pcr.assay.qpcr`.
+    `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, and
+    `pcr.assay.qpcr`.
 - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
   - Calls engine operation `RenderProtocolCartoonTemplateSvg`.
   - Loads template JSON schema `gentle.protocol_cartoon_template.v1` and resolves

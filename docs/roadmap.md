@@ -359,6 +359,7 @@ order. Durable architecture constraints and decisions remain in
     - `gibson.single_insert_dual_junction`
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
+    - `pcr.assay.pair.with_tail`
     - `pcr.assay.qpcr`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence
@@ -395,9 +396,12 @@ order. Durable architecture constraints and decisions remain in
   - PCR-assay family baseline is now shipped through `pcr.assay.*`:
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
+    - `pcr.assay.pair.with_tail`
     - `pcr.assay.qpcr`
     - pair/qPCR renders now show explicit primer glyphs with oriented 5'/3'
-      ends; the reverse primer is rendered as a 180-degree mirrored glyph
+      end labels
+    - tailed pair-PCR renders now show non-annealing 5' primer tails and
+      their deterministic carry-through into the product lane
   - next protocol-cartoon family expansion for PCR:
     - batch, nested, inverse, and richer artifact/readout variants through the
       same template/binding abstraction
@@ -440,6 +444,10 @@ order. Durable architecture constraints and decisions remain in
 - Primer-design report baseline:
   - engine operation `DesignPrimerPairs` now persists deterministic report
     payloads (`gentle.primer_design_report.v1`) in project metadata
+  - engine operation `DesignInsertionPrimerPairs` now provides an
+    insertion-first wrapper over pair design (requested anchors + extension
+    sequences + anchor-adjacent windows) while persisting the same report
+    schema with optional `insertion_context` compensation rows
   - engine operation `DesignQpcrAssays` now persists deterministic qPCR report
     payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
     records in project metadata
@@ -517,11 +525,14 @@ order. Durable architecture constraints and decisions remain in
     Primer3 is unavailable
   - `DesignPrimerPairs` is now lineage/graph-inspectable as a mutating
     operation:
-    - each accepted pair materializes two derived primer sequences
-      (`..._fwd` / `..._rev`)
-    - one dedicated container is created per primer pair (forward + reverse)
+    - each accepted pair materializes three derived sequences:
+      - `..._fwd`
+      - `..._rev`
+      - `..._amplicon` (predicted product, including configured 5' tails)
+    - one dedicated container is created per primer pair
+      (forward + reverse + predicted amplicon)
     - lineage edges are emitted from the template to each created primer
-      sequence with the operation id
+      or amplicon sequence with the operation id
     - generic aggregate container auto-creation is skipped for this operation
       so `seq_to_latest_container` stays pair-scoped
   - pair-ranking/scoring now includes explicit primer-quality heuristics:
