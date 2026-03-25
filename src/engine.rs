@@ -7024,11 +7024,12 @@ impl GentleEngine {
         )
     }
 
-    pub fn prepare_reference_genome_once(
+    fn prepare_reference_genome_once_with_options(
         genome_id: &str,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
         timeout_seconds: Option<u64>,
+        force_refresh_from_sources: bool,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, EngineError> {
         let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
@@ -7044,27 +7045,73 @@ impl GentleEngine {
             }
             on_progress(progress)
         };
-        catalog
-            .prepare_genome_once_with_progress(
+        let action_label = if force_refresh_from_sources {
+            "reinstall"
+        } else {
+            "preparation"
+        };
+        let result = if force_refresh_from_sources {
+            catalog.reinstall_genome_once_with_progress(
                 genome_id,
                 cache_dir.map(str::trim).filter(|v| !v.is_empty()),
                 &mut guarded_progress,
             )
-            .map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: if is_prepare_cancelled_error(&e) {
-                    if timed_out {
-                        format!(
-                            "Genome preparation timed out for '{genome_id}' after {} second(s)",
-                            timeout_seconds.unwrap_or(0)
-                        )
-                    } else {
-                        format!("Genome preparation cancelled for '{genome_id}'")
-                    }
+        } else {
+            catalog.prepare_genome_once_with_progress(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                &mut guarded_progress,
+            )
+        };
+        result.map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: if is_prepare_cancelled_error(&e) {
+                if timed_out {
+                    format!(
+                        "Genome {action_label} timed out for '{genome_id}' after {} second(s)",
+                        timeout_seconds.unwrap_or(0)
+                    )
                 } else {
-                    format!("Could not prepare genome '{genome_id}': {e}")
-                },
-            })
+                    format!("Genome {action_label} cancelled for '{genome_id}'")
+                }
+            } else {
+                format!("Could not {action_label} genome '{genome_id}': {e}")
+            },
+        })
+    }
+
+    pub fn prepare_reference_genome_once(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, EngineError> {
+        Self::prepare_reference_genome_once_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            timeout_seconds,
+            false,
+            on_progress,
+        )
+    }
+
+    pub fn reinstall_reference_genome_once(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, EngineError> {
+        Self::prepare_reference_genome_once_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            timeout_seconds,
+            true,
+            on_progress,
+        )
     }
 
     pub fn prepare_helper_genome_once(

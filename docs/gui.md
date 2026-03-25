@@ -1890,8 +1890,8 @@ Recommended flow:
    - the dropdown shows all catalog genomes; already prepared entries are tagged
      and selecting one switches the main action to `Reinstall Selected...`
    - click `Prepare Genome` for new installs or `Reinstall Selected...` for an
-     already prepared genome; GENtle asks for confirmation because reinstall can
-     take some time
+     already prepared genome; reinstall forces a fresh source download/index
+     rebuild, and GENtle asks for confirmation because it can take some time
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
@@ -1981,7 +1981,8 @@ Recommended flow:
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
    - use `Reinstall...` on a prepared row to refresh a stale or partial install;
-     GENtle asks for confirmation because reinstall can take some time
+     reinstall forces a fresh source download/index rebuild, and GENtle asks
+     for confirmation because it can take some time
    - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
      prepared genome as proportional line lengths
    - when extraction fails with chromosome/contig mismatch, status messages now

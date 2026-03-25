@@ -630,6 +630,17 @@ impl GenomeCatalog {
         self.prepare_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
     }
 
+    /// Reinstall sequence+annotation+indexes from sources, replacing any stale
+    /// prepared files already present in the install dir.
+    pub fn reinstall_genome_once(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareGenomeReport, String> {
+        let mut noop = |_p: PrepareGenomeProgress| true;
+        self.reinstall_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
+    }
+
     /// Prepare sequence+annotation+indexes while reporting progress.
     ///
     /// The callback is cooperative: returning `false` requests cancellation.
@@ -639,14 +650,41 @@ impl GenomeCatalog {
         cache_dir_override: Option<&str>,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, String> {
+        self.prepare_genome_once_with_progress_options(
+            genome_id,
+            cache_dir_override,
+            false,
+            on_progress,
+        )
+    }
+
+    /// Reinstall sequence+annotation+indexes while reporting progress.
+    ///
+    /// This forces a fresh source materialization and index rebuild instead of
+    /// reusing prepared files already present in the install dir.
+    pub fn reinstall_genome_once_with_progress(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, String> {
+        self.prepare_genome_once_with_progress_options(
+            genome_id,
+            cache_dir_override,
+            true,
+            on_progress,
+        )
+    }
+
+    fn prepare_genome_once_with_progress_options(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+        force_refresh_requested: bool,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, String> {
         let entry = self.entry(genome_id)?;
         let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
-        fs::create_dir_all(&install_dir).map_err(|e| {
-            format!(
-                "Could not create genome cache dir '{}': {e}",
-                install_dir.display()
-            )
-        })?;
         let manifest_path = install_dir.join("manifest.json");
         let sequence_resolution = self.resolve_source_with_type(
             genome_id,
@@ -664,7 +702,7 @@ impl GenomeCatalog {
         )?;
         let sequence_source = sequence_resolution.source.clone();
         let annotation_source = annotation_resolution.source.clone();
-        let mut force_refresh_from_sources = false;
+        let mut force_refresh_from_sources = force_refresh_requested;
 
         if manifest_path.exists() {
             let manifest = Self::load_manifest(&manifest_path)?;
@@ -672,16 +710,20 @@ impl GenomeCatalog {
                 || !sources_equivalent(&manifest.annotation_source, &annotation_source)
             {
                 force_refresh_from_sources = true;
-                fs::remove_file(&manifest_path).map_err(|e| {
-                    format!(
-                        "Could not reset stale genome manifest '{}' after source change: {e}",
-                        manifest_path.display()
-                    )
-                })?;
-            } else {
+            } else if !force_refresh_from_sources {
                 Self::validate_manifest_files(&manifest)?;
             }
         }
+
+        if force_refresh_from_sources {
+            reset_genome_install_dir(&install_dir)?;
+        }
+        fs::create_dir_all(&install_dir).map_err(|e| {
+            format!(
+                "Could not create genome cache dir '{}': {e}",
+                install_dir.display()
+            )
+        })?;
 
         if manifest_path.exists() {
             let mut manifest = Self::load_manifest(&manifest_path)?;
@@ -3269,6 +3311,18 @@ fn default_blast_db_prefix(install_dir: &Path) -> PathBuf {
     install_dir.join("blastdb").join("genome")
 }
 
+fn reset_genome_install_dir(install_dir: &Path) -> Result<(), String> {
+    if !install_dir.exists() {
+        return Ok(());
+    }
+    fs::remove_dir_all(install_dir).map_err(|e| {
+        format!(
+            "Could not remove stale genome install dir '{}': {e}",
+            install_dir.display()
+        )
+    })
+}
+
 fn is_blast_index_suffix(suffix: &str) -> bool {
     matches!(
         suffix,
@@ -5435,6 +5489,87 @@ mod tests {
             report.annotation_parse_report.is_none(),
             "existing gene index should avoid reparsing annotation"
         );
+    }
+
+    #[test]
+    fn test_reinstall_replaces_stale_install_dir_contents_from_sources() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let source_fasta = root.join("source.fa");
+        let source_ann = root.join("source.gtf");
+        fs::write(&source_fasta, ">chr1\nACGTACGT\n>chr17\nTTTTCCCC\n").unwrap();
+        fs::write(
+            &source_ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+                "chr17\tsrc\tgene\t1\t8\t.\t-\t.\tgene_id \"GENE17\"; gene_name \"SEVENTEEN\";\n"
+            ),
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let install_dir = cache_dir.join("toygenome");
+        let blast_dir = install_dir.join("blastdb");
+        fs::create_dir_all(&blast_dir).unwrap();
+        fs::write(install_dir.join("sequence.fa"), ">chr1\nAAAA\n").unwrap();
+        fs::write(
+            install_dir.join("annotation.gtf"),
+            "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"STALE\"; gene_name \"STALE\";\n",
+        )
+        .unwrap();
+        fs::write(install_dir.join("genes.json"), "[]").unwrap();
+        fs::write(blast_dir.join("genome.nhr"), "stale").unwrap();
+        fs::write(blast_dir.join("genome.nin"), "stale").unwrap();
+        fs::write(blast_dir.join("genome.nsq"), "stale").unwrap();
+
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            source_fasta.display(),
+            source_ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let mut phases: Vec<String> = vec![];
+        let report = catalog
+            .reinstall_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                phases.push(progress.phase);
+                true
+            })
+            .unwrap();
+
+        assert!(!report.reused_existing);
+        assert!(phases.iter().any(|phase| phase == "download_sequence"));
+        assert!(phases.iter().any(|phase| phase == "download_annotation"));
+        assert!(phases.iter().any(|phase| phase == "index_genes"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_sequence"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_annotation"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_gene_index"));
+
+        let chr17 = catalog
+            .get_sequence_region_with_cache("ToyGenome", "17", 1, 4, None)
+            .expect("chr17 should be available after reinstall");
+        assert_eq!(chr17, "TTTT");
+
+        assert!(!blast_dir.join("genome.nhr").exists());
+        let installed_annotation =
+            fs::read_to_string(cache_dir.join("toygenome").join("annotation.gtf"))
+                .expect("installed annotation");
+        assert!(installed_annotation.contains("GENE17"));
     }
 
     #[test]

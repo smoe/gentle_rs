@@ -1218,6 +1218,7 @@ struct GenomePrepareTask {
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     timeout_seconds: Option<u64>,
+    force_refresh_from_sources: bool,
     receiver: mpsc::Receiver<GenomePrepareTaskMessage>,
 }
 
@@ -6298,7 +6299,7 @@ Error: `{err}`"
     fn confirm_prepared_genome_reinstall(&mut self) {
         if let Some(request) = self.pending_prepared_genome_reinstall.take() {
             self.apply_prepared_genome_reinstall_request(request);
-            self.start_prepare_reference_genome();
+            self.start_prepare_reference_genome_with_options(true);
         }
     }
 
@@ -9269,6 +9270,10 @@ Error: `{err}`"
     }
 
     fn start_prepare_reference_genome(&mut self) {
+        self.start_prepare_reference_genome_with_options(false);
+    }
+
+    fn start_prepare_reference_genome_with_options(&mut self, force_refresh_from_sources: bool) {
         if self.genome_prepare_task.is_some() {
             self.genome_prepare_status = "Genome preparation is already running".to_string();
             return;
@@ -9297,15 +9302,25 @@ Error: `{err}`"
         let cancel_requested = Arc::new(AtomicBool::new(false));
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        let action_title = if force_refresh_from_sources {
+            "Reinstalling"
+        } else {
+            "Preparing"
+        };
+        let action_summary = if force_refresh_from_sources {
+            "Reinstall genome started"
+        } else {
+            "Prepare genome started"
+        };
         self.genome_prepare_progress = None;
         self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
             format!(
-                "Preparing genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.\npreflight makeblastdb: {}",
+                "{action_title} genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.\npreflight makeblastdb: {}",
                 timeout, makeblastdb_preflight
             )
         } else {
             format!(
-                "Preparing genome '{genome_id}' in background. You can keep using the UI.\npreflight makeblastdb: {}",
+                "{action_title} genome '{genome_id}' in background. You can keep using the UI.\npreflight makeblastdb: {}",
                 makeblastdb_preflight
             )
         };
@@ -9314,7 +9329,7 @@ Error: `{err}`"
             BackgroundJobEventPhase::Started,
             Some(job_id),
             format!(
-                "Prepare genome started: {} (makeblastdb preflight: {})",
+                "{action_summary}: {} (makeblastdb preflight: {})",
                 genome_id, makeblastdb_preflight
             ),
         );
@@ -9323,6 +9338,7 @@ Error: `{err}`"
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
             timeout_seconds,
+            force_refresh_from_sources,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -9359,13 +9375,23 @@ Error: `{err}`"
                 }
                 true
             };
-            let outcome = GentleEngine::prepare_reference_genome_once(
-                &genome_id,
-                catalog_path.as_deref(),
-                cache_dir.as_deref(),
-                timeout_seconds,
-                &mut progress_forwarder,
-            )
+            let outcome = (if force_refresh_from_sources {
+                GentleEngine::reinstall_reference_genome_once(
+                    &genome_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    timeout_seconds,
+                    &mut progress_forwarder,
+                )
+            } else {
+                GentleEngine::prepare_reference_genome_once(
+                    &genome_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    timeout_seconds,
+                    &mut progress_forwarder,
+                )
+            })
             .map(|report| OpResult {
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
@@ -9395,6 +9421,11 @@ Error: `{err}`"
         let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_prepare_task {
             let active_job_id = task.job_id;
+            let action_title = if task.force_refresh_from_sources {
+                "Reinstalling"
+            } else {
+                "Preparing"
+            };
             const MAX_MESSAGES_PER_TICK: usize = 128;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
@@ -9408,7 +9439,7 @@ Error: `{err}`"
                         self.genome_prepare_progress = Some(progress.clone());
                         let canceling = task.cancel_requested.load(Ordering::Relaxed);
                         self.genome_prepare_status = format!(
-                            "Preparing genome '{}': {} ({}){}",
+                            "{action_title} genome '{}': {} ({}){}",
                             progress.genome_id,
                             progress.phase,
                             progress.item,
@@ -9452,24 +9483,33 @@ Error: `{err}`"
             );
         }
         if let Some((job_id, outcome)) = done {
-            let (elapsed, cancellation_requested, timeout_seconds) = self
-                .genome_prepare_task
-                .as_ref()
-                .map(|task| {
-                    (
-                        task.started.elapsed().as_secs_f64(),
-                        task.cancel_requested.load(Ordering::Relaxed),
-                        task.timeout_seconds,
-                    )
-                })
-                .unwrap_or((0.0, false, None));
+            let (elapsed, cancellation_requested, timeout_seconds, force_refresh_from_sources) =
+                self.genome_prepare_task
+                    .as_ref()
+                    .map(|task| {
+                        (
+                            task.started.elapsed().as_secs_f64(),
+                            task.cancel_requested.load(Ordering::Relaxed),
+                            task.timeout_seconds,
+                            task.force_refresh_from_sources,
+                        )
+                    })
+                    .unwrap_or((0.0, false, None, false));
             self.genome_prepare_task = None;
             match outcome {
                 Ok(result) => {
                     let prefix = if cancellation_requested {
-                        "Prepare genome finished after cancellation request"
+                        if force_refresh_from_sources {
+                            "Reinstall genome finished after cancellation request"
+                        } else {
+                            "Prepare genome finished after cancellation request"
+                        }
                     } else {
-                        "Prepare genome: ok"
+                        if force_refresh_from_sources {
+                            "Reinstall genome: ok"
+                        } else {
+                            "Prepare genome: ok"
+                        }
                     };
                     self.genome_prepare_status = format!(
                         "{}\nelapsed: {:.1}s",
@@ -9500,7 +9540,16 @@ Error: `{err}`"
                         BackgroundJobKind::PrepareGenome,
                         BackgroundJobEventPhase::Failed,
                         Some(job_id),
-                        format!("Prepare genome ended in {:.1}s: {}", elapsed, e.message),
+                        format!(
+                            "{} genome ended in {:.1}s: {}",
+                            if force_refresh_from_sources {
+                                "Reinstall"
+                            } else {
+                                "Prepare"
+                            },
+                            elapsed,
+                            e.message
+                        ),
                     );
                 }
             }
@@ -33315,6 +33364,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: None,
+            force_refresh_from_sources: false,
             receiver: rx,
         });
 
@@ -33382,6 +33432,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: None,
+            force_refresh_from_sources: false,
             receiver: rx,
         });
 
@@ -33426,6 +33477,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(true)),
             timeout_seconds: Some(600),
+            force_refresh_from_sources: false,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
@@ -33457,6 +33509,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now() - Duration::from_secs(3),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: Some(1),
+            force_refresh_from_sources: false,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
@@ -33488,6 +33541,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(true)),
             timeout_seconds: None,
+            force_refresh_from_sources: false,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
