@@ -488,6 +488,18 @@ Feature tree grouping:
     - inferred exon support reconstructed from assigned transcript paths
     - confirmed junction support from seed-supported transitions
     - isoform ranking from thresholded cDNA assignments
+  - the Nanopore cDNA panel now shows the currently active RNA-read parameter
+    summaries even before export:
+    - hashing summary (`k-mer`, `hash stride`)
+    - RNA-read dotplot summary (`word`, `step`, `mismatches`, `tile`)
+  - RNA-read tuning is available directly in the same panel:
+    - `Dense 7-mer similarity preset` lowers hashing and dotplot strictness
+      together for weak-similarity investigation
+    - editable RNA-read dotplot knobs under advanced settings drive the exact
+      settings used by `Export dotplot...` and `Export dotplots for selected
+      reads...`
+    - `Open Dotplot workspace` opens the full shared dotplot editor without
+      leaving the splicing context
   - `Mapped cDNA` is now split into two subviews:
     - `Read effects` (default)
       - read-first inspection surface driven from the saved report /
@@ -497,12 +509,19 @@ Feature tree grouping:
       - filter controls let you focus on:
         - all aligned rows
         - `confirmed` rows only
+        - `disagreement only` for non-confirmed rows (`reassigned` plus
+          `aligned (no phase-1 tx)`)
         - `reassigned` rows only
         - rows aligned without a phase-1 transcript assignment
         - checkbox-selected rows only
       - sort controls support `rank`, `identity`, `coverage`, and `score`
       - search matches read ids, transcript ids/labels, effect labels, and
         `#record_index` labels
+      - quick-view buttons provide one-click shortcuts for:
+        - `Show disagreements`
+        - `Show max-score outliers`
+        - `Show rightmost score bin`
+        - `Reset view`
       - `Selection tools -> Select displayed rows` promotes the currently
         visible filtered subset into the checkbox selection set for follow-up
         alignment, FASTA copy, materialization, or dotplot export
@@ -523,6 +542,8 @@ Feature tree grouping:
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are
         the aggregate interpretation surface once retained-read alignment has
         been run
+      - each mapped aggregate row now has an `Audit` button that jumps back to
+        the exact aligned reads contributing to that statistic
       - mapped exon/junction support follows aligned transcript-template
         offsets, so alternative exons inside the genomic span are no longer
         counted unless the mapping actually traversed them

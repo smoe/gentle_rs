@@ -530,6 +530,7 @@ enum RnaReadMappedCdnaSubview {
 enum RnaReadAlignmentEffectFilter {
     AllAligned,
     ConfirmedOnly,
+    DisagreementOnly,
     ReassignedOnly,
     NoPhase1Only,
     SelectedOnly,
@@ -3261,6 +3262,20 @@ mod tests {
     }
 
     #[test]
+    fn apply_rna_read_dense_similarity_preset_sets_hash_and_dotplot_knobs() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.apply_rna_read_dense_similarity_preset();
+        assert_eq!(area.rna_reads_ui.kmer_len, "7");
+        assert_eq!(area.rna_reads_ui.seed_stride_bp, "1");
+        assert_eq!(area.dotplot_ui.word_size, "7");
+        assert_eq!(area.dotplot_ui.step_bp, "1");
+        assert_eq!(area.dotplot_ui.max_mismatches, "1");
+        assert!(area.dotplot_ui.tile_bp.is_empty());
+        assert!(area.rna_reads_ui.show_advanced);
+    }
+
+    #[test]
     fn rna_read_statistics_tab_defaults_to_thresholded_cdna() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -3431,6 +3446,21 @@ mod tests {
             vec![0]
         );
 
+        let disagreements = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            super::RnaReadAlignmentEffectFilter::DisagreementOnly,
+            "",
+            &selected,
+            super::RnaReadAlignmentEffectSortKey::Score,
+        );
+        assert_eq!(
+            disagreements
+                .iter()
+                .map(|row| row.record_index)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+
         let selected_only = MainAreaDna::collect_visible_rna_read_alignment_effect_rows(
             &inspection,
             super::RnaReadAlignmentEffectFilter::SelectedOnly,
@@ -3460,6 +3490,56 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1]
         );
+    }
+
+    #[test]
+    fn collect_rna_read_mapped_support_contributors_tracks_record_indices() {
+        let inspection = RnaReadAlignmentInspection {
+            rows: vec![
+                RnaReadAlignmentInspectionRow {
+                    record_index: 0,
+                    transcript_id: "TXA".to_string(),
+                    mapped_exon_support: vec![crate::engine::RnaReadMappedSupportExonAttribution {
+                        start_1based: 10,
+                        end_1based: 20,
+                    }],
+                    mapped_junction_support: vec![
+                        crate::engine::RnaReadMappedSupportJunctionAttribution {
+                            donor_1based: 20,
+                            acceptor_1based: 30,
+                        },
+                    ],
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+                RnaReadAlignmentInspectionRow {
+                    record_index: 2,
+                    transcript_id: "TXA".to_string(),
+                    mapped_exon_support: vec![crate::engine::RnaReadMappedSupportExonAttribution {
+                        start_1based: 10,
+                        end_1based: 20,
+                    }],
+                    mapped_junction_support: vec![
+                        crate::engine::RnaReadMappedSupportJunctionAttribution {
+                            donor_1based: 20,
+                            acceptor_1based: 30,
+                        },
+                    ],
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+            ],
+            ..RnaReadAlignmentInspection::default()
+        };
+
+        let exon = MainAreaDna::collect_rna_read_mapped_exon_contributors(&inspection);
+        let junction = MainAreaDna::collect_rna_read_mapped_junction_contributors(&inspection);
+        let isoform = MainAreaDna::collect_rna_read_mapped_isoform_contributors(&inspection);
+
+        assert_eq!(exon.get(&(10, 20)).cloned().unwrap_or_default(), vec![0, 2]);
+        assert_eq!(
+            junction.get(&(20, 30)).cloned().unwrap_or_default(),
+            vec![0, 2]
+        );
+        assert_eq!(isoform.get("TXA").cloned().unwrap_or_default(), vec![0, 2]);
     }
 
     #[test]
@@ -15288,6 +15368,59 @@ impl MainAreaDna {
                         .size(9.0)
                         .color(egui::Color32::from_rgb(100, 116, 139)),
                     );
+                    ui.horizontal_wrapped(|ui| {
+                        ui.small(
+                            egui::RichText::new(self.rna_read_hash_parameter_summary())
+                                .color(egui::Color32::from_rgb(71, 85, 105)),
+                        );
+                        ui.separator();
+                        ui.small(
+                            egui::RichText::new(self.rna_read_dotplot_parameter_summary())
+                                .color(egui::Color32::from_rgb(71, 85, 105)),
+                        );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .small_button("Dense 7-mer similarity preset")
+                            .on_hover_text(
+                                "Set RNA-read hashing to k=7/stride=1 and RNA-read dotplots to word=7/step=1/max mismatches=1, which is useful when exact longer seeds miss weak but still biologically interesting similarity.",
+                            )
+                            .clicked()
+                        {
+                            self.apply_rna_read_dense_similarity_preset();
+                            persist_ui_state = true;
+                        }
+                        if ui
+                            .small_button("Reset dotplot defaults")
+                            .on_hover_text(
+                                "Restore the shared dotplot defaults used for new dotplot workspaces.",
+                            )
+                            .clicked()
+                        {
+                            self.reset_rna_read_dotplot_parameters_to_defaults();
+                            persist_ui_state = true;
+                        }
+                        if !self.rna_reads_ui.show_advanced
+                            && ui
+                                .small_button("Show tuning knobs")
+                                .on_hover_text(
+                                    "Reveal the editable hashing and RNA-read dotplot parameters below.",
+                                )
+                                .clicked()
+                        {
+                            self.rna_reads_ui.show_advanced = true;
+                            persist_ui_state = true;
+                        }
+                        if ui
+                            .small_button("Open Dotplot workspace")
+                            .on_hover_text(
+                                "Open the full dotplot workspace. RNA-read dotplot exports reuse the same word/step/mismatch/tile settings shown here.",
+                            )
+                            .clicked()
+                        {
+                            self.open_dotplot_window();
+                        }
+                    });
                     if self.rna_reads_ui.show_advanced {
                         ui.small(
                             egui::RichText::new(
@@ -15474,6 +15607,64 @@ impl MainAreaDna {
                                     .changed();
                             }
                         });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("dotplot word").on_hover_text(
+                                "Word size used when exporting RNA-read sequence dotplots from the read-effects/detail panel.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.dotplot_ui.word_size)
+                                        .desired_width(46.0),
+                                )
+                                .on_hover_text(
+                                    "Smaller values are more sensitive; larger values are stricter.",
+                                )
+                                .changed();
+                            ui.label("dotplot step").on_hover_text(
+                                "Sampling stride used by RNA-read dotplot export. Smaller values draw denser dotplots.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.dotplot_ui.step_bp)
+                                        .desired_width(46.0),
+                                )
+                                .on_hover_text(
+                                    "Default 1 = every possible start; larger values make the dotplot sparser and faster.",
+                                )
+                                .changed();
+                            ui.label("dotplot mismatches").on_hover_text(
+                                "Allowed mismatches per exported dotplot word. Raising this can rescue weak similarity that would otherwise produce empty plots.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.dotplot_ui.max_mismatches,
+                                    )
+                                    .desired_width(52.0),
+                                )
+                                .on_hover_text(
+                                    "0 = exact words only; 1 often helps for noisy cDNA-vs-genome comparisons.",
+                                )
+                                .changed();
+                            ui.label("dotplot tile").on_hover_text(
+                                "Optional tiling chunk size for exported RNA-read dotplots. Leave empty to avoid tiling.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.dotplot_ui.tile_bp)
+                                        .desired_width(56.0),
+                                )
+                                .on_hover_text(
+                                    "Usually left empty for RNA-read dotplots unless the compared spans become very large.",
+                                )
+                                .changed();
+                        });
+                        ui.small(
+                            egui::RichText::new(
+                                "These dotplot knobs are the exact settings used by `Export dotplot...` and `Export dotplots for selected reads...` in the read-effects panel.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
                         ui.horizontal_wrapped(|ui| {
                             ui.label("align band").on_hover_text(
                                 "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
@@ -16233,6 +16424,47 @@ impl MainAreaDna {
         self.op_status = "Applied TP73 specificity preset for RNA-read seed filtering".to_string();
     }
 
+    fn apply_rna_read_dense_similarity_preset(&mut self) {
+        self.rna_reads_ui.kmer_len = "7".to_string();
+        self.rna_reads_ui.seed_stride_bp = "1".to_string();
+        self.dotplot_ui.word_size = "7".to_string();
+        self.dotplot_ui.step_bp = "1".to_string();
+        self.dotplot_ui.max_mismatches = "1".to_string();
+        self.dotplot_ui.tile_bp.clear();
+        self.rna_reads_ui.show_advanced = true;
+        self.op_status =
+            "Applied dense 7-mer similarity preset for RNA-read hashing and dotplots".to_string();
+    }
+
+    fn reset_rna_read_dotplot_parameters_to_defaults(&mut self) {
+        let defaults = DotplotOpsUiState::default();
+        self.dotplot_ui.word_size = defaults.word_size;
+        self.dotplot_ui.step_bp = defaults.step_bp;
+        self.dotplot_ui.max_mismatches = defaults.max_mismatches;
+        self.dotplot_ui.tile_bp = defaults.tile_bp;
+        self.op_status =
+            "Reset RNA-read dotplot parameters to the shared dotplot defaults".to_string();
+    }
+
+    fn rna_read_hash_parameter_summary(&self) -> String {
+        format!(
+            "Hashing now: k={} stride={} (full-read hashing; short/long window fields are compatibility no-ops)",
+            self.rna_reads_ui.kmer_len.trim(),
+            self.rna_reads_ui.seed_stride_bp.trim()
+        )
+    }
+
+    fn rna_read_dotplot_parameter_summary(&self) -> String {
+        let tile = self.dotplot_ui.tile_bp.trim();
+        format!(
+            "RNA-read dotplots now: word={} step={} mismatches={} tile={}",
+            self.dotplot_ui.word_size.trim(),
+            self.dotplot_ui.step_bp.trim(),
+            self.dotplot_ui.max_mismatches.trim(),
+            if tile.is_empty() { "off" } else { tile }
+        )
+    }
+
     fn splicing_scope_description(
         scope: SplicingScopePreset,
     ) -> (&'static str, &'static str, &'static str) {
@@ -16616,6 +16848,7 @@ impl MainAreaDna {
         match filter {
             RnaReadAlignmentEffectFilter::AllAligned => "all aligned",
             RnaReadAlignmentEffectFilter::ConfirmedOnly => "confirmed only",
+            RnaReadAlignmentEffectFilter::DisagreementOnly => "disagreement only",
             RnaReadAlignmentEffectFilter::ReassignedOnly => "reassigned only",
             RnaReadAlignmentEffectFilter::NoPhase1Only => "no phase-1 tx",
             RnaReadAlignmentEffectFilter::SelectedOnly => "selected only",
@@ -16642,6 +16875,9 @@ impl MainAreaDna {
             RnaReadAlignmentEffectFilter::AllAligned => true,
             RnaReadAlignmentEffectFilter::ConfirmedOnly => {
                 row.alignment_effect == RnaReadAlignmentEffect::ConfirmedAssignment
+            }
+            RnaReadAlignmentEffectFilter::DisagreementOnly => {
+                row.alignment_effect != RnaReadAlignmentEffect::ConfirmedAssignment
             }
             RnaReadAlignmentEffectFilter::ReassignedOnly => {
                 row.alignment_effect == RnaReadAlignmentEffect::ReassignedTranscript
@@ -16757,6 +16993,104 @@ impl MainAreaDna {
             Self::compare_rna_read_alignment_effect_rows(left, right, sort_key)
         });
         rows
+    }
+
+    fn focus_rna_read_alignment_effect_record_indices(
+        &mut self,
+        record_indices: Vec<usize>,
+        source_label: &str,
+    ) {
+        self.rna_read_statistics_tab = RnaReadEvidenceSourceTab::MappedCdna;
+        self.rna_read_mapped_cdna_subview = RnaReadMappedCdnaSubview::ReadEffects;
+        self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
+        self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
+        self.rna_read_alignment_effect_search.clear();
+        self.rna_seed_selected_record_indices = record_indices.iter().copied().collect();
+        self.rna_seed_highlight_record_index = record_indices.first().copied();
+        self.op_status = format!(
+            "Focused read effects on {} contributing read(s) from {source_label}",
+            self.rna_seed_selected_record_indices.len()
+        );
+    }
+
+    fn collect_rna_read_mapped_exon_contributors(
+        inspection: &RnaReadAlignmentInspection,
+    ) -> HashMap<(usize, usize), Vec<usize>> {
+        let mut contributors = HashMap::<(usize, usize), Vec<usize>>::new();
+        for row in &inspection.rows {
+            for exon in &row.mapped_exon_support {
+                let entry = contributors
+                    .entry((exon.start_1based, exon.end_1based))
+                    .or_default();
+                if !entry.contains(&row.record_index) {
+                    entry.push(row.record_index);
+                }
+            }
+        }
+        contributors
+    }
+
+    fn collect_rna_read_mapped_junction_contributors(
+        inspection: &RnaReadAlignmentInspection,
+    ) -> HashMap<(usize, usize), Vec<usize>> {
+        let mut contributors = HashMap::<(usize, usize), Vec<usize>>::new();
+        for row in &inspection.rows {
+            for junction in &row.mapped_junction_support {
+                let entry = contributors
+                    .entry((junction.donor_1based, junction.acceptor_1based))
+                    .or_default();
+                if !entry.contains(&row.record_index) {
+                    entry.push(row.record_index);
+                }
+            }
+        }
+        contributors
+    }
+
+    fn collect_rna_read_mapped_isoform_contributors(
+        inspection: &RnaReadAlignmentInspection,
+    ) -> HashMap<String, Vec<usize>> {
+        let mut contributors = HashMap::<String, Vec<usize>>::new();
+        for row in &inspection.rows {
+            let transcript_id = row.transcript_id.trim();
+            if transcript_id.is_empty() {
+                continue;
+            }
+            let entry = contributors.entry(transcript_id.to_string()).or_default();
+            if !entry.contains(&row.record_index) {
+                entry.push(row.record_index);
+            }
+        }
+        contributors
+    }
+
+    fn format_rna_read_contributor_hover_text(
+        inspection: &RnaReadAlignmentInspection,
+        record_indices: &[usize],
+    ) -> String {
+        let row_by_record_index = inspection
+            .rows
+            .iter()
+            .map(|row| (row.record_index, row))
+            .collect::<HashMap<_, _>>();
+        record_indices
+            .iter()
+            .filter_map(|record_index| {
+                row_by_record_index.get(record_index).map(|row| {
+                    format!(
+                        "#{} {} | {} | {}",
+                        row.record_index + 1,
+                        row.header_id,
+                        Self::rna_read_alignment_effect_label(row.alignment_effect),
+                        Self::compact_rna_read_transcript_label(
+                            &row.transcript_id,
+                            &row.transcript_label,
+                        )
+                    )
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn compact_rna_read_transcript_label(transcript_id: &str, transcript_label: &str) -> String {
@@ -19202,7 +19536,11 @@ impl MainAreaDna {
                 self.render_rna_read_mapped_read_effects(ui, view, progress, saved_report.as_ref());
             }
             RnaReadMappedCdnaSubview::AggregateSupport => {
-                self.render_rna_read_mapped_aggregate_support_tables(ui, progress);
+                self.render_rna_read_mapped_aggregate_support_tables(
+                    ui,
+                    progress,
+                    saved_report.as_ref(),
+                );
             }
         }
     }
@@ -19239,17 +19577,6 @@ impl MainAreaDna {
             .iter()
             .map(|hit| (hit.record_index, hit))
             .collect::<HashMap<_, _>>();
-        let displayed_rows = Self::collect_visible_rna_read_alignment_effect_rows(
-            &inspection,
-            self.rna_read_alignment_effect_filter,
-            &self.rna_read_alignment_effect_search,
-            &self.rna_seed_selected_record_indices,
-            self.rna_read_alignment_effect_sort_key,
-        );
-        let displayed_record_indices = displayed_rows
-            .iter()
-            .map(|row| row.record_index)
-            .collect::<Vec<_>>();
         ui.horizontal_wrapped(|ui| {
             ui.small(format!("Aligned rows: {}", summary.aligned_rows));
             ui.separator();
@@ -19268,6 +19595,100 @@ impl MainAreaDna {
             ));
         });
 
+        let mut focus_disagreements = false;
+        let mut focus_max_score_outliers = false;
+        let mut focus_rightmost_bin = false;
+        let mut reset_read_effect_view = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Quick views:");
+            if ui
+                .small_button("Show disagreements")
+                .on_hover_text(
+                    "Focus non-confirmed aligned reads: transcript reassignments plus rows aligned without a phase-1 transcript assignment.",
+                )
+                .clicked()
+            {
+                focus_disagreements = true;
+            }
+            if ui
+                .small_button("Show max-score outliers")
+                .on_hover_text(
+                    "Select only saved-report reads tied at the maximal phase-1 seed score, then show that subset in the read-effects table.",
+                )
+                .clicked()
+            {
+                focus_max_score_outliers = true;
+            }
+            if ui
+                .small_button("Show rightmost score bin")
+                .on_hover_text(
+                    "Select the broader outlier subset from the rightmost non-empty score-density bin, then focus the table on that subset.",
+                )
+                .clicked()
+            {
+                focus_rightmost_bin = true;
+            }
+            if ui
+                .small_button("Reset view")
+                .on_hover_text(
+                    "Return to the full aligned-read view with rank ordering and no search filter.",
+                )
+                .clicked()
+            {
+                reset_read_effect_view = true;
+            }
+        });
+
+        if reset_read_effect_view {
+            self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::AllAligned;
+            self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Rank;
+            self.rna_read_alignment_effect_search.clear();
+        }
+        if focus_disagreements {
+            self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::DisagreementOnly;
+            self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
+            self.rna_read_alignment_effect_search.clear();
+            let disagreement_rows = Self::collect_visible_rna_read_alignment_effect_rows(
+                &inspection,
+                self.rna_read_alignment_effect_filter,
+                &self.rna_read_alignment_effect_search,
+                &self.rna_seed_selected_record_indices,
+                self.rna_read_alignment_effect_sort_key,
+            );
+            self.rna_seed_highlight_record_index =
+                disagreement_rows.first().map(|row| row.record_index);
+            self.op_status = format!(
+                "Focused read effects on {} non-confirmed aligned row(s)",
+                disagreement_rows.len()
+            );
+        }
+        if focus_max_score_outliers || focus_rightmost_bin {
+            let selected_record_indices = if focus_max_score_outliers {
+                Self::select_rna_read_report_max_score_record_indices(report)
+            } else {
+                Self::select_rna_read_report_rightmost_score_bin_record_indices(report)
+            };
+            self.rna_seed_selected_record_indices = selected_record_indices
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>();
+            self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
+            self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
+            self.rna_read_alignment_effect_search.clear();
+            self.rna_seed_highlight_record_index = selected_record_indices.first().copied();
+            self.op_status = if focus_max_score_outliers {
+                format!(
+                    "Focused read effects on {} maximal-score outlier read(s)",
+                    self.rna_seed_selected_record_indices.len()
+                )
+            } else {
+                format!(
+                    "Focused read effects on {} rightmost-bin outlier read(s)",
+                    self.rna_seed_selected_record_indices.len()
+                )
+            };
+        }
+
         ui.horizontal_wrapped(|ui| {
             ui.small("Filter:");
             egui::ComboBox::from_id_salt(format!(
@@ -19281,6 +19702,7 @@ impl MainAreaDna {
                 for filter in [
                     RnaReadAlignmentEffectFilter::AllAligned,
                     RnaReadAlignmentEffectFilter::ConfirmedOnly,
+                    RnaReadAlignmentEffectFilter::DisagreementOnly,
                     RnaReadAlignmentEffectFilter::ReassignedOnly,
                     RnaReadAlignmentEffectFilter::NoPhase1Only,
                     RnaReadAlignmentEffectFilter::SelectedOnly,
@@ -19324,13 +19746,23 @@ impl MainAreaDna {
             {
                 self.rna_read_alignment_effect_search.clear();
             }
-            ui.separator();
-            ui.small(format!(
-                "Showing {} of {} aligned rows",
-                displayed_rows.len(),
-                inspection.rows.len()
-            ));
         });
+        let displayed_rows = Self::collect_visible_rna_read_alignment_effect_rows(
+            &inspection,
+            self.rna_read_alignment_effect_filter,
+            &self.rna_read_alignment_effect_search,
+            &self.rna_seed_selected_record_indices,
+            self.rna_read_alignment_effect_sort_key,
+        );
+        let displayed_record_indices = displayed_rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>();
+        ui.small(format!(
+            "Showing {} of {} aligned rows",
+            displayed_rows.len(),
+            inspection.rows.len()
+        ));
 
         ui.horizontal_wrapped(|ui| {
             ui.menu_button("Selection tools", |ui| {
@@ -20116,9 +20548,10 @@ impl MainAreaDna {
     }
 
     fn render_rna_read_mapped_aggregate_support_tables(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         progress: &RnaReadInterpretProgress,
+        report: Option<&RnaReadInterpretationReport>,
     ) {
         ui.small(
             "Mapped cDNA uses phase-2 best mappings only; these rows are the evidence to use for exon/junction/isoform interpretation after alignment.",
@@ -20137,6 +20570,37 @@ impl MainAreaDna {
             "Aligned reads contributing to mapped support: {}",
             progress.aligned
         ));
+        let inspection = report.and_then(|report| {
+            self.current_saved_rna_read_alignment_inspection(report.hits.len())
+                .ok()
+        });
+        let exon_contributors = inspection
+            .as_ref()
+            .map(Self::collect_rna_read_mapped_exon_contributors)
+            .unwrap_or_default();
+        let junction_contributors = inspection
+            .as_ref()
+            .map(Self::collect_rna_read_mapped_junction_contributors)
+            .unwrap_or_default();
+        let isoform_contributors = inspection
+            .as_ref()
+            .map(Self::collect_rna_read_mapped_isoform_contributors)
+            .unwrap_or_default();
+        if inspection.is_some() {
+            ui.small(
+                egui::RichText::new(
+                    "Use the Audit buttons to jump from an aggregate row back to the exact aligned reads that contributed to it.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        } else {
+            ui.small(
+                egui::RichText::new(
+                    "Load a saved report to audit each aggregate row back to its contributing aligned reads.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
 
         ui.collapsing("Mapped cDNA exon support", |ui| {
             if progress.mapped_exon_support_frequencies.is_empty() {
@@ -20148,18 +20612,45 @@ impl MainAreaDna {
                 .show(ui, |ui| {
                     egui::Grid::new(format!("rna_mapped_exon_support_grid_{}", progress.seq_id))
                         .striped(true)
-                        .num_columns(4)
+                        .num_columns(5)
                         .show(ui, |ui| {
                             ui.small("Exon span");
                             ui.small("Reads");
                             ui.small("Aligned %");
                             ui.small("Fraction");
+                            ui.small("Audit");
                             ui.end_row();
                             for row in &progress.mapped_exon_support_frequencies {
+                                let contributors = exon_contributors
+                                    .get(&(row.start_1based, row.end_1based))
+                                    .cloned()
+                                    .unwrap_or_default();
                                 ui.monospace(format!("{}..{}", row.start_1based, row.end_1based));
                                 ui.monospace(row.support_read_count.to_string());
                                 ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
                                 ui.monospace(format!("{:.4}", row.support_fraction));
+                                let mut response = ui.add_enabled(
+                                    !contributors.is_empty(),
+                                    egui::Button::new(format!("Audit ({})", contributors.len())),
+                                );
+                                if let Some(inspection) = inspection.as_ref() {
+                                    let hover = Self::format_rna_read_contributor_hover_text(
+                                        inspection,
+                                        &contributors,
+                                    );
+                                    if !hover.is_empty() {
+                                        response = response.on_hover_text(hover);
+                                    }
+                                }
+                                if response.clicked() {
+                                    self.focus_rna_read_alignment_effect_record_indices(
+                                        contributors,
+                                        &format!(
+                                            "mapped exon {}..{}",
+                                            row.start_1based, row.end_1based
+                                        ),
+                                    );
+                                }
                                 ui.end_row();
                             }
                         });
@@ -20179,20 +20670,47 @@ impl MainAreaDna {
                         progress.seq_id
                     ))
                     .striped(true)
-                    .num_columns(5)
+                    .num_columns(6)
                     .show(ui, |ui| {
                         ui.small("Donor");
                         ui.small("Acceptor");
                         ui.small("Reads");
                         ui.small("Aligned %");
                         ui.small("Fraction");
+                        ui.small("Audit");
                         ui.end_row();
                         for row in &progress.mapped_junction_support_frequencies {
+                            let contributors = junction_contributors
+                                .get(&(row.donor_1based, row.acceptor_1based))
+                                .cloned()
+                                .unwrap_or_default();
                             ui.monospace(row.donor_1based.to_string());
                             ui.monospace(row.acceptor_1based.to_string());
                             ui.monospace(row.support_read_count.to_string());
                             ui.monospace(format!("{:.2}%", row.support_fraction * 100.0));
                             ui.monospace(format!("{:.4}", row.support_fraction));
+                            let mut response = ui.add_enabled(
+                                !contributors.is_empty(),
+                                egui::Button::new(format!("Audit ({})", contributors.len())),
+                            );
+                            if let Some(inspection) = inspection.as_ref() {
+                                let hover = Self::format_rna_read_contributor_hover_text(
+                                    inspection,
+                                    &contributors,
+                                );
+                                if !hover.is_empty() {
+                                    response = response.on_hover_text(hover);
+                                }
+                            }
+                            if response.clicked() {
+                                self.focus_rna_read_alignment_effect_record_indices(
+                                    contributors,
+                                    &format!(
+                                        "mapped junction {}->{}",
+                                        row.donor_1based, row.acceptor_1based
+                                    ),
+                                );
+                            }
                             ui.end_row();
                         }
                     });
@@ -20223,7 +20741,7 @@ impl MainAreaDna {
                         progress.seq_id
                     ))
                     .striped(true)
-                    .num_columns(8)
+                    .num_columns(9)
                     .show(ui, |ui| {
                         ui.small("Transcript");
                         ui.small("Strand");
@@ -20233,8 +20751,13 @@ impl MainAreaDna {
                         ui.small("Mean cov%");
                         ui.small("Best score");
                         ui.small("Secondary");
+                        ui.small("Audit");
                         ui.end_row();
                         for row in &progress.mapped_isoform_support_rows {
+                            let contributors = isoform_contributors
+                                .get(&row.transcript_id)
+                                .cloned()
+                                .unwrap_or_default();
                             let is_auto_pick = row.transcript_id == auto_pick.transcript_id;
                             let row_color = if is_auto_pick {
                                 egui::Color32::from_rgb(22, 101, 52)
@@ -20255,6 +20778,25 @@ impl MainAreaDna {
                             ));
                             ui.monospace(row.best_alignment_score.to_string());
                             ui.monospace(row.secondary_mapping_total.to_string());
+                            let mut response = ui.add_enabled(
+                                !contributors.is_empty(),
+                                egui::Button::new(format!("Audit ({})", contributors.len())),
+                            );
+                            if let Some(inspection) = inspection.as_ref() {
+                                let hover = Self::format_rna_read_contributor_hover_text(
+                                    inspection,
+                                    &contributors,
+                                );
+                                if !hover.is_empty() {
+                                    response = response.on_hover_text(hover);
+                                }
+                            }
+                            if response.clicked() {
+                                self.focus_rna_read_alignment_effect_record_indices(
+                                    contributors,
+                                    &format!("mapped isoform {}", row.transcript_id),
+                                );
+                            }
                             ui.end_row();
                         }
                     });
