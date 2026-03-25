@@ -498,6 +498,13 @@ impl GenomeDialogScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrepareGenomeDialogPrimaryAction {
+    None,
+    Prepare,
+    Reinstall,
+}
+
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
@@ -8853,6 +8860,23 @@ Error: `{err}`"
         Ok(names)
     }
 
+    fn prepare_dialog_primary_action(
+        genome_id: &str,
+        all_genomes: &[String],
+        preparable_set: &HashSet<String>,
+    ) -> PrepareGenomeDialogPrimaryAction {
+        let trimmed = genome_id.trim();
+        if trimmed.is_empty() {
+            PrepareGenomeDialogPrimaryAction::None
+        } else if preparable_set.contains(trimmed) {
+            PrepareGenomeDialogPrimaryAction::Prepare
+        } else if all_genomes.iter().any(|name| name == trimmed) {
+            PrepareGenomeDialogPrimaryAction::Reinstall
+        } else {
+            PrepareGenomeDialogPrimaryAction::None
+        }
+    }
+
     fn prepared_genomes_for_retrieve_dialog(&self) -> Result<Vec<String>, String> {
         let catalog_path = self.genome_catalog_path_resolved();
         let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
@@ -11339,16 +11363,14 @@ Error: `{err}`"
                     } else {
                         format!("{genome_name} (already prepared)")
                     };
-                    ui.add_enabled_ui(is_preparable, |ui| {
-                        if ui
-                            .selectable_label(self.genome_id == *genome_name, item_label)
-                            .clicked()
-                        {
-                            self.genome_id = genome_name.clone();
-                            selection_changed = true;
-                            ui.close();
-                        }
-                    });
+                    if ui
+                        .selectable_label(self.genome_id == *genome_name, item_label)
+                        .clicked()
+                    {
+                        self.genome_id = genome_name.clone();
+                        selection_changed = true;
+                        ui.close();
+                    }
                 }
             });
         if selection_changed {
@@ -11370,23 +11392,17 @@ Error: `{err}`"
             ui.label("All genomes in this catalog are already prepared.");
         }
         let running = self.genome_prepare_task.is_some();
-        let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
-        let selected_known = all_genomes.iter().any(|n| n == &self.genome_id);
-        if !self.genome_id.trim().is_empty() && selected_known && !selected_preparable {
-            ui.horizontal(|ui| {
-                ui.label("Selected genome is already prepared.");
-                if ui
-                    .add_enabled(!running, egui::Button::new("Reinstall Selected..."))
-                    .on_hover_text(format!(
-                        "Re-download and rebuild the selected {}. A confirmation dialog will be shown.",
-                        scope.description()
-                    ))
-                    .clicked()
-                {
-                    self.queue_prepared_genome_reinstall(self.genome_id.clone(), scope);
-                }
-            });
+        let primary_action =
+            Self::prepare_dialog_primary_action(&self.genome_id, &all_genomes, &preparable_set);
+        if matches!(primary_action, PrepareGenomeDialogPrimaryAction::Reinstall) {
+            ui.label(
+                "Selected genome is already prepared. Use the main action below to reinstall it.",
+            );
             ui.small("Reinstall keeps the same catalog/cache settings and may take some time.");
+        } else if !self.genome_id.trim().is_empty()
+            && matches!(primary_action, PrepareGenomeDialogPrimaryAction::None)
+        {
+            ui.label("Selected genome is not present in this catalog.");
         }
         if let Some(task) = &self.genome_prepare_task {
             ui.horizontal(|ui| {
@@ -11405,18 +11421,41 @@ Error: `{err}`"
             });
         }
         ui.horizontal(|ui| {
+            let (primary_label, primary_hover) = match primary_action {
+                PrepareGenomeDialogPrimaryAction::Prepare => (
+                    "Prepare Genome",
+                    format!("Download and index the selected {}", scope.description()),
+                ),
+                PrepareGenomeDialogPrimaryAction::Reinstall => (
+                    "Reinstall Selected...",
+                    format!(
+                        "Re-download and rebuild the selected {}. A confirmation dialog will be shown.",
+                        scope.description()
+                    ),
+                ),
+                PrepareGenomeDialogPrimaryAction::None => (
+                    "Prepare Genome",
+                    format!("Select a {} from this catalog first", scope.description()),
+                ),
+            };
             if ui
                 .add_enabled(
-                    !running && selected_preparable,
-                    egui::Button::new("Prepare Genome"),
+                    !running
+                        && !matches!(primary_action, PrepareGenomeDialogPrimaryAction::None),
+                    egui::Button::new(primary_label),
                 )
-                .on_hover_text(format!(
-                    "Download and index the selected {}",
-                    scope.description()
-                ))
+                .on_hover_text(primary_hover)
                 .clicked()
             {
-                self.start_prepare_reference_genome();
+                match primary_action {
+                    PrepareGenomeDialogPrimaryAction::Prepare => {
+                        self.start_prepare_reference_genome();
+                    }
+                    PrepareGenomeDialogPrimaryAction::Reinstall => {
+                        self.queue_prepared_genome_reinstall(self.genome_id.clone(), scope);
+                    }
+                    PrepareGenomeDialogPrimaryAction::None => {}
+                }
             }
             if ui
                 .button("Close")
@@ -29580,10 +29619,10 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PreparedGenomeReinstallRequest, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage,
+        PrepareGenomeDialogPrimaryAction, PreparedGenomeReinstallRequest, ProjectAction,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -32014,6 +32053,25 @@ mod tests {
         assert_eq!(app.genome_gene_filter_page, 0);
         assert!(app.genome_biotype_filter.is_empty());
         assert!(app.genome_retrieve_contig_suggestions.is_empty());
+    }
+
+    #[test]
+    fn prepare_dialog_primary_action_allows_selecting_installed_genomes_for_reinstall() {
+        let all_genomes = vec!["Alpha".to_string(), "Beta".to_string()];
+        let preparable_set = HashSet::from(["Alpha".to_string()]);
+
+        assert_eq!(
+            GENtleApp::prepare_dialog_primary_action("Alpha", &all_genomes, &preparable_set),
+            PrepareGenomeDialogPrimaryAction::Prepare
+        );
+        assert_eq!(
+            GENtleApp::prepare_dialog_primary_action("Beta", &all_genomes, &preparable_set),
+            PrepareGenomeDialogPrimaryAction::Reinstall
+        );
+        assert_eq!(
+            GENtleApp::prepare_dialog_primary_action("Gamma", &all_genomes, &preparable_set),
+            PrepareGenomeDialogPrimaryAction::None
+        );
     }
 
     #[test]

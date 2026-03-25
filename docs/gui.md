@@ -1880,10 +1880,11 @@ Recommended flow:
    - select `genome` from dropdown values loaded from catalog JSON
    - source summary line shows source types and, when available, nucleotide
      length and molecular mass metadata
-   - only genomes that are not yet prepared in the selected cache are shown
-   - click `Prepare Genome`
-   - if the current `genome` is already prepared, use `Reinstall Selected...`;
-     GENtle asks for confirmation because reinstall can take some time
+   - the dropdown shows all catalog genomes; already prepared entries are tagged
+     and selecting one switches the main action to `Reinstall Selected...`
+   - click `Prepare Genome` for new installs or `Reinstall Selected...` for an
+     already prepared genome; GENtle asks for confirmation because reinstall can
+     take some time
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
