@@ -28,12 +28,12 @@ Today, that already means GENtle can:
 GENtle is intentionally layered so cloning logic stays deterministic without
 forcing every user to work at the same level of abstraction.
 
-| Layer | What it is for | Typical examples | Where you meet it |
-| --- | --- | --- | --- |
-| Engine operations | One deterministic state transition or report step | `Digest`, `Ligation`, `Pcr`, `DesignPrimerPairs`, `DesignQpcrAssays`, `ExtractGenomeRegion` | GUI Engine Ops, shared shell, CLI JSON/workflow execution |
-| Routines | Named, typed workflow patterns with explainability and preflight | `gibson.two_fragment_overlap_preview`, `golden_gate.type_iis_single_insert`, `gateway.bp_single_insert`, `restriction.digest_ligate_extract_sticky` | `Patterns -> Routine Assistant...`, `routines list/explain/compare`, `macros template-run --validate-only` |
-| Specialists | Guided task-specific windows built on the same engine and routine ideas | `Patterns -> Gibson...`, DNA-window PCR tools, Routine Assistant | GUI-first planning and review flows |
-| Explanation artifacts | Factual outputs generated from the same project state | protocol cartoons, lineage graph, exported reports | README figures, SVG/PNG exports, Help/tutorial flows |
+| Layer | Quick read |
+| --- | --- |
+| **Operations** | Atomic deterministic state transitions such as `Digest`, `Ligation`, `Pcr`, `DesignPrimerPairs`, `DesignQpcrAssays`, and `ExtractGenomeRegion`.<br><sub>Meet them in GUI Engine Ops, the shared shell, and CLI JSON/workflow execution.</sub> |
+| **Routines** | Named, typed workflow patterns with explainability and preflight, like `gibson.two_fragment_overlap_preview`, `golden_gate.type_iis_single_insert`, `gateway.bp_single_insert`, and `restriction.digest_ligate_extract_sticky`.<br><sub>Meet them in `Patterns -> Routine Assistant...`, `routines list/explain/compare`, and `macros template-run --validate-only`.</sub> |
+| **Specialists** | Guided task-specific windows built on the same engine and routine ideas, such as `Patterns -> Gibson...`, the DNA-window PCR tools, and the Routine Assistant.<br><sub>Best when you want planning and review help without dropping to raw operation payloads.</sub> |
+| **Explanation artifacts** | Factual outputs generated from the same project state, including protocol cartoons, the lineage graph, and exported reports.<br><sub>These are the SVG/PNG figures and reports surfaced in the README, exports, Help, and tutorials.</sub> |
 
 The intended usage is:
 
