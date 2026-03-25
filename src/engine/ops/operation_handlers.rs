@@ -33,6 +33,28 @@ impl GentleEngine {
         ]
     }
 
+    fn dotplot_sampling_overlap_summary(window_len: usize, step_bp: usize) -> String {
+        let safe_step = step_bp.max(1);
+        let overlap_bp = window_len.saturating_sub(safe_step);
+        let windows_per_base = (window_len.saturating_add(safe_step).saturating_sub(1)) / safe_step;
+        if safe_step == 1 {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in {windows_per_base} consecutive ordered windows (dense sliding)"
+            )
+        } else if safe_step < window_len {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in up to {windows_per_base} consecutive ordered windows (subsampled sliding)"
+            )
+        } else if safe_step == window_len {
+            "adjacent windows do not overlap; each interior base participates in at most 1 ordered window (edge-touching sampling)".to_string()
+        } else {
+            format!(
+                "adjacent windows do not overlap and can leave up to {} bp unsampled between starts; each interior base participates in at most 1 ordered window (sparse sampling)",
+                safe_step - window_len
+            )
+        }
+    }
+
     fn build_dotplot_svg_document_for_export(
         view: &DotplotView,
         flex_track: Option<&FlexibilityTrack>,
@@ -230,6 +252,13 @@ impl GentleEngine {
             density_threshold,
             intensity_gain
         );
+        let sampling_line = format!(
+            "{} | rendered_cells={} sampled_points={} sample_stride={}",
+            Self::dotplot_sampling_overlap_summary(view.word_size.max(1), view.step_bp.max(1)),
+            visible_cells.len(),
+            view.points.len().div_ceil(sample_stride),
+            sample_stride
+        );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",
             dotplot_left,
@@ -237,12 +266,10 @@ impl GentleEngine {
             Self::dotplot_svg_xml_escape(&header)
         ));
         svg.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">rendered_cells={} sampled_points={} sample_stride={}</text>",
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>",
             dotplot_left,
             outer_margin + 31.0,
-            visible_cells.len(),
-            view.points.len().div_ceil(sample_stride),
-            sample_stride
+            Self::dotplot_svg_xml_escape(&sampling_line)
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">x: {}</text>",

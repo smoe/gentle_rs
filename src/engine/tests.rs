@@ -4601,6 +4601,8 @@ fn test_render_dotplot_svg_operation() {
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("<svg"));
     assert!(text.contains("Dotplot workspace export"));
+    assert!(text.contains("overlap by 3 bp"));
+    assert!(text.contains("4 consecutive ordered windows"));
 }
 
 #[test]

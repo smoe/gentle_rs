@@ -1362,8 +1362,30 @@ mod tests {
         assert!(svg.contains("Dotplot workspace export: toy_plot"));
         assert!(svg.contains("mode=self_forward"));
         assert!(svg.contains("threshold=0.10 gain=1.50"));
+        assert!(svg.contains("overlap by 6 bp"));
+        assert!(svg.contains("7 consecutive ordered windows"));
         assert!(svg.contains("GENtle dotplot SVG export"));
         assert!(svg.contains("<rect "));
+    }
+
+    #[test]
+    fn rna_read_dotplot_svg_default_filename_mentions_parameters() {
+        let hit = RnaReadInterpretationHit {
+            record_index: 6,
+            header_id: "read alpha".to_string(),
+            ..RnaReadInterpretationHit::default()
+        };
+        let file_name = MainAreaDna::default_rna_read_sequence_dotplot_svg_file_name(
+            "cdna_report",
+            &hit,
+            9,
+            1,
+            1,
+            None,
+        );
+        assert!(file_name.ends_with(".svg"));
+        assert!(file_name.contains("r7"));
+        assert!(file_name.contains("_w9_s1_mm1_tileauto"));
     }
 
     #[test]
@@ -17432,17 +17454,51 @@ impl MainAreaDna {
         }
     }
 
+    fn dotplot_parameter_tag(
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
+    ) -> String {
+        let tile = tile_bp
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        format!("w{word_size}_s{step_bp}_mm{max_mismatches}_tile{tile}")
+    }
+
+    fn resolve_rna_read_sequence_dotplot_word_and_step(
+        query_len: usize,
+        reference_span_bp: usize,
+        requested_word_size: usize,
+        requested_step_bp: usize,
+    ) -> (usize, usize) {
+        let word_size = requested_word_size.min(query_len.min(reference_span_bp)).max(1);
+        let step_bp = Self::recommend_pair_dotplot_step(
+            query_len,
+            reference_span_bp,
+            word_size,
+            requested_step_bp,
+        );
+        (word_size, step_bp)
+    }
+
     fn default_rna_read_sequence_dotplot_svg_file_name(
         report_id: &str,
         hit: &RnaReadInterpretationHit,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
     ) -> String {
         let report_token = Self::sanitize_export_name_component(report_id, "report");
         let header_token = Self::sanitize_export_name_component(&hit.header_id, "read");
+        let params = Self::dotplot_parameter_tag(word_size, step_bp, max_mismatches, tile_bp);
         format!(
-            "rna_read_dotplot_{}_r{}_{}.svg",
+            "rna_read_dotplot_{}_r{}_{}_{}.svg",
             report_token,
             hit.record_index + 1,
-            header_token
+            header_token,
+            params
         )
     }
 
@@ -17540,13 +17596,10 @@ impl MainAreaDna {
             if query_len == 0 {
                 continue;
             }
-            let word_size = requested_word_size
-                .min(query_len.min(reference_span_bp))
-                .max(1);
-            let step_bp = Self::recommend_pair_dotplot_step(
+            let (word_size, step_bp) = Self::resolve_rna_read_sequence_dotplot_word_and_step(
                 query_len,
                 reference_span_bp,
-                word_size,
+                requested_word_size,
                 requested_step_bp,
             );
             let dotplot_id = format!(
@@ -17626,8 +17679,41 @@ impl MainAreaDna {
             );
             return;
         };
-        let default_name =
-            Self::default_rna_read_sequence_dotplot_svg_file_name(&report.report_id, hit);
+        let reference_span_bp = view
+            .region_end_1based
+            .saturating_sub(view.region_start_1based.saturating_sub(1))
+            .max(1);
+        let requested_word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
+                .unwrap_or(7);
+        let requested_step_bp =
+            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
+                .unwrap_or(1);
+        let max_mismatches = Self::parse_optional_usize_text(
+            &self.dotplot_ui.max_mismatches,
+            "dotplot max_mismatches",
+        )
+        .ok()
+        .flatten()
+        .unwrap_or(0);
+        let tile_bp = Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp")
+            .ok()
+            .flatten()
+            .filter(|value| *value > 0);
+        let (word_size, step_bp) = Self::resolve_rna_read_sequence_dotplot_word_and_step(
+            hit.sequence.len(),
+            reference_span_bp,
+            requested_word_size,
+            requested_step_bp,
+        );
+        let default_name = Self::default_rna_read_sequence_dotplot_svg_file_name(
+            &report.report_id,
+            hit,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+        );
         let Some(path) = rfd::FileDialog::new()
             .set_file_name(&default_name)
             .add_filter("SVG", &["svg"])
@@ -17652,12 +17738,43 @@ impl MainAreaDna {
         let Some(folder) = rfd::FileDialog::new().pick_folder() else {
             return;
         };
+        let reference_span_bp = view
+            .region_end_1based
+            .saturating_sub(view.region_start_1based.saturating_sub(1))
+            .max(1);
+        let requested_word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
+                .unwrap_or(7);
+        let requested_step_bp =
+            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
+                .unwrap_or(1);
+        let max_mismatches = Self::parse_optional_usize_text(
+            &self.dotplot_ui.max_mismatches,
+            "dotplot max_mismatches",
+        )
+        .ok()
+        .flatten()
+        .unwrap_or(0);
+        let tile_bp = Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp")
+            .ok()
+            .flatten()
+            .filter(|value| *value > 0);
         let output_paths = hits
             .iter()
             .map(|hit| {
+                let (word_size, step_bp) = Self::resolve_rna_read_sequence_dotplot_word_and_step(
+                    hit.sequence.len(),
+                    reference_span_bp,
+                    requested_word_size,
+                    requested_step_bp,
+                );
                 folder.join(Self::default_rna_read_sequence_dotplot_svg_file_name(
                     &report.report_id,
                     hit,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
                 ))
             })
             .collect::<Vec<_>>();
@@ -22295,8 +22412,10 @@ impl MainAreaDna {
             .tile_bp
             .map(|tile| tile.to_string())
             .unwrap_or_else(|| "auto".to_string());
+        let overlap_summary =
+            Self::describe_ordered_window_overlap(view.word_size.max(1), view.step_bp.max(1));
         let parameter_line = format!(
-            "mode={} | q={}..{} | r={}..{} | word={} step={} mismatches={} tile={} | threshold={:.2} gain={:.2} | points={} sampled_stride={}",
+            "mode={} | q={}..{} | r={}..{} | word={} step={} mismatches={} tile={} | {} | threshold={:.2} gain={:.2} | points={} sampled_stride={}",
             view.mode.as_str(),
             view.span_start_0based.saturating_add(1),
             view.span_end_0based,
@@ -22306,6 +22425,7 @@ impl MainAreaDna {
             view.step_bp,
             view.max_mismatches,
             tile_label,
+            overlap_summary,
             density_threshold,
             intensity_gain,
             view.point_count,

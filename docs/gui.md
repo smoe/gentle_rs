@@ -500,6 +500,9 @@ Feature tree grouping:
       reads...`
     - `Open Dotplot workspace` opens the full shared dotplot editor without
       leaving the splicing context
+    - exported RNA-read sequence dotplots now carry `w/s/mm/tile` tags in the
+      default filename, and the saved SVG header repeats the actual overlap and
+      ordered-window density
   - `Mapped cDNA` is now split into two subviews:
     - `Read effects` (default)
       - read-first inspection surface driven from the saved report /
