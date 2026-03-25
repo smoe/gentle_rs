@@ -7,8 +7,46 @@ use svg::node::element::{Circle, Line, Polygon, Rectangle, Text};
 
 const W: f32 = 1600.0;
 const MIN_H: f32 = 180.0;
+const MIN_W: f32 = 960.0;
 const TOP_CONTENT_Y: f32 = 120.0;
+const LEFT_CONTENT_X: f32 = 110.0;
+const RIGHT_PADDING: f32 = 340.0;
 const BOTTOM_PADDING: f32 = 72.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineageSvgNodeKind {
+    Sequence,
+    Pool,
+    Arrangement,
+    Macro,
+    Analysis,
+    OperationHub,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineageSvgNode {
+    pub node_id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub kind: LineageSvgNodeKind,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineageSvgEdge {
+    pub from_node_id: String,
+    pub to_node_id: String,
+    pub label: String,
+}
+
+fn lineage_canvas_width(pos_by_node: &HashMap<String, (f32, f32)>) -> f32 {
+    let max_content_x = pos_by_node
+        .values()
+        .map(|(x, _)| *x)
+        .fold(LEFT_CONTENT_X, f32::max);
+    (max_content_x + RIGHT_PADDING).max(MIN_W)
+}
 
 fn lineage_canvas_height(pos_by_node: &HashMap<String, (f32, f32)>) -> f32 {
     let max_content_y = pos_by_node
@@ -16,6 +54,187 @@ fn lineage_canvas_height(pos_by_node: &HashMap<String, (f32, f32)>) -> f32 {
         .map(|(_, y)| *y)
         .fold(TOP_CONTENT_Y, f32::max);
     (max_content_y + BOTTOM_PADDING).max(MIN_H)
+}
+
+pub fn export_projected_lineage_svg(
+    title: &str,
+    nodes: &[LineageSvgNode],
+    edges: &[LineageSvgEdge],
+) -> String {
+    let pos_by_node: HashMap<String, (f32, f32)> = nodes
+        .iter()
+        .map(|node| (node.node_id.clone(), (node.x, node.y)))
+        .collect();
+    let canvas_width = lineage_canvas_width(&pos_by_node);
+    let canvas_height = lineage_canvas_height(&pos_by_node);
+
+    let mut doc = Document::new()
+        .set("viewBox", (0, 0, canvas_width, canvas_height))
+        .set("width", canvas_width)
+        .set("height", canvas_height)
+        .set("style", "background:#ffffff");
+
+    doc = doc.add(
+        Text::new(title.to_string())
+            .set("x", 24)
+            .set("y", 34)
+            .set("font-family", "Helvetica, Arial, sans-serif")
+            .set("font-size", 24)
+            .set("fill", "#202020"),
+    );
+
+    for edge in edges {
+        let Some((fx, fy)) = pos_by_node.get(&edge.from_node_id).copied() else {
+            continue;
+        };
+        let Some((tx, ty)) = pos_by_node.get(&edge.to_node_id).copied() else {
+            continue;
+        };
+        doc = doc.add(
+            Line::new()
+                .set("x1", fx)
+                .set("y1", fy)
+                .set("x2", tx)
+                .set("y2", ty)
+                .set("stroke", "#8a8a8a")
+                .set("stroke-width", 1.2),
+        );
+        if !edge.label.trim().is_empty() {
+            let mx = (fx + tx) * 0.5;
+            let my = (fy + ty) * 0.5 - 6.0;
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", mx - 52.0)
+                        .set("y", my - 12.0)
+                        .set("width", 104)
+                        .set("height", 16)
+                        .set("fill", "#f5f5f5")
+                        .set("stroke", "#e0e0e0")
+                        .set("rx", 2),
+                )
+                .add(
+                    Text::new(edge.label.clone())
+                        .set("x", mx)
+                        .set("y", my)
+                        .set("text-anchor", "middle")
+                        .set("dominant-baseline", "middle")
+                        .set("font-family", "Helvetica, Arial, sans-serif")
+                        .set("font-size", 10)
+                        .set("fill", "#222222"),
+                );
+        }
+    }
+
+    for node in nodes {
+        let x = node.x;
+        let y = node.y;
+        match node.kind {
+            LineageSvgNodeKind::Sequence => {
+                doc = doc.add(
+                    Circle::new()
+                        .set("cx", x)
+                        .set("cy", y)
+                        .set("r", 16)
+                        .set("fill", "#5a8cd2")
+                        .set("stroke", "#3b6aaa")
+                        .set("stroke-width", 1),
+                );
+            }
+            LineageSvgNodeKind::Pool => {
+                let points = format!(
+                    "{},{} {},{} {},{} {},{}",
+                    x,
+                    y - 18.0,
+                    x + 18.0,
+                    y,
+                    x,
+                    y + 18.0,
+                    x - 18.0,
+                    y
+                );
+                doc = doc.add(
+                    Polygon::new()
+                        .set("points", points)
+                        .set("fill", "#b47846")
+                        .set("stroke", "#a05f2b")
+                        .set("stroke-width", 1),
+                );
+            }
+            LineageSvgNodeKind::Arrangement => {
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x - 36.0)
+                        .set("y", y - 14.0)
+                        .set("width", 72)
+                        .set("height", 28)
+                        .set("rx", 5)
+                        .set("fill", "#6c9a7a")
+                        .set("stroke", "#537563")
+                        .set("stroke-width", 1),
+                );
+            }
+            LineageSvgNodeKind::Macro => {
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x - 40.0)
+                        .set("y", y - 15.0)
+                        .set("width", 80)
+                        .set("height", 30)
+                        .set("rx", 4)
+                        .set("fill", "#62626c")
+                        .set("stroke", "#4f4f58")
+                        .set("stroke-width", 1),
+                );
+            }
+            LineageSvgNodeKind::Analysis => {
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x - 31.0)
+                        .set("y", y - 14.0)
+                        .set("width", 62)
+                        .set("height", 28)
+                        .set("rx", 4)
+                        .set("fill", "#8c62ac")
+                        .set("stroke", "#704a8d")
+                        .set("stroke-width", 1),
+                );
+            }
+            LineageSvgNodeKind::OperationHub => {
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x - 37.0)
+                        .set("y", y - 15.0)
+                        .set("width", 74)
+                        .set("height", 30)
+                        .set("rx", 4)
+                        .set("fill", "#3e8e7c")
+                        .set("stroke", "#2d6f61")
+                        .set("stroke-width", 1),
+                );
+            }
+        }
+
+        doc = doc
+            .add(
+                Text::new(node.title.clone())
+                    .set("x", x + 24.0)
+                    .set("y", y - 2.0)
+                    .set("font-family", "Helvetica, Arial, sans-serif")
+                    .set("font-size", 12)
+                    .set("fill", "#101010"),
+            )
+            .add(
+                Text::new(node.subtitle.clone())
+                    .set("x", x + 24.0)
+                    .set("y", y + 12.0)
+                    .set("font-family", "Helvetica, Arial, sans-serif")
+                    .set("font-size", 10)
+                    .set("fill", "#222222"),
+            );
+    }
+
+    doc.to_string()
 }
 
 pub fn export_lineage_svg(state: &ProjectState) -> String {

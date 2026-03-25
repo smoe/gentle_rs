@@ -667,6 +667,13 @@ order. Durable architecture constraints and decisions remain in
     input/output edges (sequence/container-resolved where applicable)
   - dotplot/flexibility analysis artifacts are rendered as dedicated analysis
     nodes linked from source sequence nodes
+  - lineage SVG export from the main GUI now reuses the same grouped +
+    Gibson-hub projection model shown in the graph view, so saved DALG output
+    matches the visible `Gibson cloning` operation node instead of the older
+    raw multi-edge serialization
+  - graph-canvas context menu now includes `Save Graph as SVG...`
+  - `Save Project...` / lineage-SVG save dialogs now default filenames from the
+    current project name/path rather than fixed placeholders
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:

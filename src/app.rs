@@ -62,6 +62,9 @@ use crate::{
         GibsonPlanValidationPolicy, suggest_gibson_destination_openings,
     },
     icons::APP_ICON,
+    lineage_export::{
+        LineageSvgEdge, LineageSvgNode, LineageSvgNodeKind, export_projected_lineage_svg,
+    },
     protocol_cartoon::{
         ProtocolCartoonKind, protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
         resolve_protocol_cartoon_template_with_bindings,
@@ -5965,7 +5968,7 @@ Error: `{err}`"
 
     fn prompt_save_project(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("project.gentle.json")
+            .set_file_name(&self.default_project_save_file_name())
             .add_filter("GENtle project", &["json"])
             .save_file()
         {
@@ -5978,20 +5981,18 @@ Error: `{err}`"
     }
 
     fn prompt_export_lineage_svg(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("lineage.svg")
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&self.default_lineage_svg_file_name())
             .add_filter("SVG", &["svg"])
             .save_file()
-        {
-            let path = path.display().to_string();
-            let result = self
-                .engine
-                .write()
-                .unwrap()
-                .apply(Operation::RenderLineageSvg { path: path.clone() });
-            if let Err(e) = result {
-                eprintln!("Could not export lineage SVG to '{}': {}", path, e.message);
-            }
+        else {
+            self.app_status = "Lineage SVG export canceled".to_string();
+            return;
+        };
+        let path = path.display().to_string();
+        match self.export_visible_lineage_svg_to_path(&path) {
+            Ok(status) => self.app_status = status,
+            Err(err) => self.app_status = err,
         }
     }
 
@@ -19257,7 +19258,7 @@ Error: `{err}`"
         }
 
         if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("project.gentle.json")
+            .set_file_name(&self.default_project_save_file_name())
             .add_filter("GENtle project", &["json"])
             .save_file()
         {
@@ -19389,6 +19390,32 @@ Error: `{err}`"
                 .unwrap_or_else(|| path.clone()),
             None => "Untitled Project".to_string(),
         }
+    }
+
+    fn current_project_file_stem(&self) -> String {
+        let display_name = self.current_project_name();
+        let trimmed = display_name.trim();
+        let raw_stem = trimmed
+            .strip_suffix(".gentle.json")
+            .or_else(|| trimmed.strip_suffix(".json"))
+            .unwrap_or(trimmed);
+        Self::sanitize_file_stem(raw_stem, "project")
+    }
+
+    fn default_project_save_file_name(&self) -> String {
+        if let Some(path) = self.current_project_path.as_ref()
+            && let Some(file_name) = Path::new(path).file_name().and_then(|name| name.to_str())
+        {
+            let trimmed = file_name.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        format!("{}.gentle.json", self.current_project_file_stem())
+    }
+
+    fn default_lineage_svg_file_name(&self) -> String {
+        format!("{}.lineage.svg", self.current_project_file_stem())
     }
 
     fn load_lineage_graph_workspace_from_state(&mut self) {
@@ -22239,6 +22266,231 @@ Error: `{err}`"
         (out_rows, out_edges, out_op_label_by_id)
     }
 
+    fn current_visible_lineage_graph_for_export(
+        &mut self,
+    ) -> (
+        Vec<LineageRow>,
+        Vec<(String, String, String)>,
+        HashMap<String, String>,
+    ) {
+        self.refresh_lineage_cache_if_needed();
+
+        let mut graph_rows = self.lineage_rows.clone();
+        let mut graph_edges = self.lineage_edges.clone();
+        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
+        let seq_node_by_seq_id: HashMap<String, String> = self
+            .lineage_rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence)
+            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .collect();
+        let container_members_by_id: HashMap<String, Vec<String>> = self
+            .lineage_containers
+            .iter()
+            .map(|row| (row.container_id.clone(), row.members.clone()))
+            .collect();
+        for arrangement in &self.lineage_arrangements {
+            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
+            let mut source_node_ids: Vec<String> = vec![];
+            let mut seen_sources: HashSet<String> = HashSet::new();
+            for container_id in &arrangement.lane_container_ids {
+                if let Some(members) = container_members_by_id.get(container_id) {
+                    for seq_id in members {
+                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
+                            && seen_sources.insert(source_node_id.clone())
+                        {
+                            source_node_ids.push(source_node_id.clone());
+                            graph_edges.push((
+                                source_node_id,
+                                arrangement_node_id.clone(),
+                                arrangement.created_by_op.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            graph_op_label_by_id
+                .entry(arrangement.created_by_op.clone())
+                .or_insert_with(|| "Arrange serial lanes".to_string());
+            graph_rows.push(LineageRow {
+                kind: LineageNodeKind::Arrangement,
+                node_id: arrangement_node_id,
+                seq_id: arrangement.arrangement_id.clone(),
+                display_name: if arrangement.name.trim().is_empty() {
+                    arrangement.arrangement_id.clone()
+                } else {
+                    arrangement.name.clone()
+                },
+                origin: "Arrangement".to_string(),
+                created_by_op: arrangement.created_by_op.clone(),
+                created_at: arrangement.created_at,
+                parents: source_node_ids,
+                length: 0,
+                circular: false,
+                pool_size: 1,
+                pool_members: vec![],
+                arrangement_id: Some(arrangement.arrangement_id.clone()),
+                arrangement_mode: Some(arrangement.mode.clone()),
+                lane_container_ids: arrangement.lane_container_ids.clone(),
+                ladders: arrangement.ladders.clone(),
+                genome_anchor_summary: None,
+                genome_anchor_display: None,
+                is_full_genome_sequence: false,
+                retrieval_descriptor: None,
+                analysis_kind: None,
+                analysis_artifact_id: None,
+                analysis_reference_seq_id: None,
+                analysis_mode: None,
+                analysis_point_count: None,
+                analysis_bin_count: None,
+                macro_instance_id: None,
+                macro_routine_id: None,
+                macro_template_name: None,
+                macro_status: None,
+                macro_status_message: None,
+                macro_op_ids: vec![],
+                macro_inputs: vec![],
+                macro_outputs: vec![],
+            });
+        }
+        graph_rows.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then(a.node_id.cmp(&b.node_id))
+        });
+
+        let valid_lineage_node_ids: HashSet<String> =
+            graph_rows.iter().map(|row| row.node_id.clone()).collect();
+        let sanitized_groups =
+            Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
+        let (projected_graph_rows, projected_graph_edges) =
+            Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &sanitized_groups);
+        Self::project_lineage_graph_operation_hubs(
+            &projected_graph_rows,
+            &projected_graph_edges,
+            &graph_op_label_by_id,
+            &self.lineage_reopenable_gibson_op_ids,
+        )
+    }
+
+    fn lineage_svg_node_kind(row: &LineageRow) -> LineageSvgNodeKind {
+        match row.kind {
+            LineageNodeKind::Sequence if row.pool_size > 1 => LineageSvgNodeKind::Pool,
+            LineageNodeKind::Sequence => LineageSvgNodeKind::Sequence,
+            LineageNodeKind::Arrangement => LineageSvgNodeKind::Arrangement,
+            LineageNodeKind::Macro => LineageSvgNodeKind::Macro,
+            LineageNodeKind::Analysis if Self::is_lineage_operation_hub(row) => {
+                LineageSvgNodeKind::OperationHub
+            }
+            LineageNodeKind::Analysis => LineageSvgNodeKind::Analysis,
+        }
+    }
+
+    fn lineage_svg_node_title(row: &LineageRow) -> String {
+        let display = row.display_name.trim();
+        if !display.is_empty() {
+            display.to_string()
+        } else {
+            row.seq_id.clone()
+        }
+    }
+
+    fn lineage_svg_node_subtitle(row: &LineageRow) -> String {
+        match row.kind {
+            LineageNodeKind::Sequence if row.pool_size > 1 => {
+                format!(
+                    "{} | pool n={} | {} bp",
+                    row.seq_id, row.pool_size, row.length
+                )
+            }
+            LineageNodeKind::Sequence => {
+                let topology = if row.circular { "circular" } else { "linear" };
+                format!("{} ({} bp, {topology})", row.seq_id, row.length)
+            }
+            LineageNodeKind::Arrangement => format!(
+                "{} | {} | lanes={}",
+                row.arrangement_id.as_deref().unwrap_or(&row.seq_id),
+                row.arrangement_mode.as_deref().unwrap_or("-"),
+                row.lane_container_ids.len()
+            ),
+            LineageNodeKind::Macro => format!(
+                "{} | ops={}",
+                row.macro_instance_id.as_deref().unwrap_or(&row.seq_id),
+                row.macro_op_ids.len()
+            ),
+            LineageNodeKind::Analysis if Self::is_lineage_operation_hub(row) => {
+                format!("op={}", row.created_by_op)
+            }
+            LineageNodeKind::Analysis => {
+                if let Some(artifact_id) = row.analysis_artifact_id.as_deref() {
+                    format!("{} | {}", row.origin, artifact_id)
+                } else {
+                    format!("{} | {}", row.origin, row.seq_id)
+                }
+            }
+        }
+    }
+
+    fn render_projected_lineage_svg_text(
+        &self,
+        rows: &[LineageRow],
+        edges: &[(String, String, String)],
+        op_label_by_id: &HashMap<String, String>,
+    ) -> String {
+        let (layout_by_node, _, _) = Self::compute_lineage_dag_layout(rows, edges);
+        let nodes: Vec<LineageSvgNode> = rows
+            .iter()
+            .enumerate()
+            .map(|(fallback_rank, row)| {
+                let (layer, rank) = layout_by_node
+                    .get(&row.node_id)
+                    .copied()
+                    .unwrap_or((0, fallback_rank));
+                let manual_offset = self
+                    .lineage_graph_node_offsets
+                    .get(&row.node_id)
+                    .copied()
+                    .unwrap_or(Vec2::ZERO);
+                LineageSvgNode {
+                    node_id: row.node_id.clone(),
+                    title: Self::lineage_svg_node_title(row),
+                    subtitle: Self::lineage_svg_node_subtitle(row),
+                    kind: Self::lineage_svg_node_kind(row),
+                    x: 120.0 + layer as f32 * 220.0 + manual_offset.x,
+                    y: 120.0 + rank as f32 * 110.0 + manual_offset.y,
+                }
+            })
+            .collect();
+        let svg_edges: Vec<LineageSvgEdge> = edges
+            .iter()
+            .map(|(from_node_id, to_node_id, op_id)| LineageSvgEdge {
+                from_node_id: from_node_id.clone(),
+                to_node_id: to_node_id.clone(),
+                label: op_label_by_id
+                    .get(op_id)
+                    .cloned()
+                    .unwrap_or_else(|| op_id.clone()),
+            })
+            .collect();
+        let title = format!("GENtle Lineage (DALG) - {}", self.current_project_name());
+        export_projected_lineage_svg(&title, &nodes, &svg_edges)
+    }
+
+    fn render_current_visible_lineage_svg_text(&mut self) -> String {
+        let (rows, edges, op_label_by_id) = self.current_visible_lineage_graph_for_export();
+        self.render_projected_lineage_svg_text(&rows, &edges, &op_label_by_id)
+    }
+
+    fn export_visible_lineage_svg_to_path(
+        &mut self,
+        path: &str,
+    ) -> std::result::Result<String, String> {
+        let svg = self.render_current_visible_lineage_svg_text();
+        fs::write(path, svg)
+            .map_err(|err| format!("Could not export lineage SVG to '{}': {err}", path))?;
+        Ok(format!("Wrote lineage SVG to '{}'", path))
+    }
+
     fn build_lineage_table_entries(
         rows: &[LineageRow],
         groups: &[PersistedLineageNodeGroup],
@@ -23062,6 +23314,7 @@ Error: `{err}`"
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
+        let mut request_export_lineage_svg = false;
         let mut reopen_gibson_from_operation: Option<String> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
@@ -24718,6 +24971,17 @@ Error: `{err}`"
                                 } else {
                                     ui.label("No node under cursor");
                                 }
+                                ui.separator();
+                                if ui
+                                    .button("Save Graph as SVG...")
+                                    .on_hover_text(
+                                        "Export the currently visible lineage graph view as SVG",
+                                    )
+                                    .clicked()
+                                {
+                                    request_export_lineage_svg = true;
+                                    ui.close();
+                                }
                             });
                             let (space_pan_requested, option_pan_requested, modifiers) = ui
                                 .input(|i| {
@@ -25880,6 +26144,9 @@ Error: `{err}`"
                 &dotplot_id,
                 reference_seq_id.as_deref(),
             );
+        }
+        if request_export_lineage_svg {
+            self.prompt_export_lineage_svg();
         }
         if let Some(container_ids) = open_lane_containers.take() {
             for container_id in &container_ids {
@@ -32741,6 +33008,15 @@ mod tests {
     }
 
     #[test]
+    fn default_save_file_names_follow_current_project_name() {
+        let mut app = GENtleApp::default();
+        app.current_project_path = Some("/tmp/demo.gentle.json".to_string());
+
+        assert_eq!(app.default_project_save_file_name(), "demo.gentle.json");
+        assert_eq!(app.default_lineage_svg_file_name(), "demo.lineage.svg");
+    }
+
+    #[test]
     fn can_close_project_is_enabled_for_unsaved_project_with_content() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -33731,6 +34007,38 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             projected_labels.get("op-gb::hub_in").map(String::as_str),
             Some("Gibson cloning")
         );
+    }
+
+    #[test]
+    fn render_current_visible_lineage_svg_text_uses_gibson_operation_hub_projection() {
+        let mut app = GENtleApp::default();
+        app.current_project_path = Some("/tmp/demo.gentle.json".to_string());
+        app.lineage_rows = vec![
+            make_lineage_row("n1", "dest"),
+            make_lineage_row("n2", "insert"),
+            make_lineage_row("n3", "primer_left"),
+            make_lineage_row("n4", "primer_right"),
+            make_lineage_row("n5", "product"),
+        ];
+        app.lineage_edges = vec![
+            ("n1".to_string(), "n3".to_string(), "op-gb".to_string()),
+            ("n1".to_string(), "n4".to_string(), "op-gb".to_string()),
+            ("n1".to_string(), "n5".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n3".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n4".to_string(), "op-gb".to_string()),
+            ("n2".to_string(), "n5".to_string(), "op-gb".to_string()),
+        ];
+        app.lineage_op_label_by_id =
+            HashMap::from([("op-gb".to_string(), "Gibson cloning".to_string())]);
+        app.lineage_reopenable_gibson_op_ids = HashSet::from(["op-gb".to_string()]);
+        app.lineage_cache_valid = true;
+        app.lineage_cache_stamp = app.current_lineage_change_stamp();
+
+        let svg = app.render_current_visible_lineage_svg_text();
+
+        assert!(svg.contains("GENtle Lineage (DALG) - demo.gentle.json"));
+        assert!(svg.contains("Gibson cloning"));
+        assert!(svg.contains("op=op-gb"));
     }
 
     #[test]

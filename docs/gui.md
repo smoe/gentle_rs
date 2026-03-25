@@ -794,6 +794,13 @@ Node click behavior in lineage `Graph` view:
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
     sequence/node from project state on confirm.
   - both are disabled for non-leaf nodes in this first pass.
+- Right-click context menu on the lineage graph canvas also includes
+  `Save Graph as SVG...`.
+  - the exported SVG follows the same visible grouped/hub-projected graph model
+    used by the main window, so Gibson apply operations save as the same single
+    `Gibson cloning` operation node users see on screen
+  - the suggested filename defaults to the project name stem plus
+    `.lineage.svg`
 - Retrieval-pattern badges are shown for retrieval-derived sequence nodes:
   - `GENE` for `ExtractGenomeGene`
   - `REGION` for `ExtractGenomeRegion`
@@ -2189,6 +2196,14 @@ Use the top application menu:
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
 - `File -> Quit`
+
+Save/export filename defaults:
+
+- `Save Project...` suggests the current project filename when the project
+  already has a path.
+- For unsaved projects, `Save Project...` derives the suggested filename from
+  the current project name instead of using a fixed generic placeholder.
+- `Export DALG SVG...` suggests the project name stem plus `.lineage.svg`.
 
 Window/application close shortcuts:
 
