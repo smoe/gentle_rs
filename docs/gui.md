@@ -876,6 +876,8 @@ Node click behavior in lineage `Graph` view:
   - the exported SVG follows the same visible grouped/hub-projected graph model
     used by the main window, so Gibson apply operations save as the same single
     `Gibson cloning` operation node users see on screen
+  - exported Gibson hub connector edges stay unlabeled because the operation is
+    named by the hub box itself, which keeps hero/tutorial figures readable
   - the suggested filename defaults to the project name stem plus
     `.lineage.svg`
 - Retrieval-pattern badges are shown for retrieval-derived sequence nodes:

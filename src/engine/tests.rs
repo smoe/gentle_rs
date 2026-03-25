@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::genomes::BlastHit;
+use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use std::collections::HashMap;
@@ -4734,6 +4735,188 @@ fn test_render_lineage_svg_includes_macro_instance_nodes() {
     assert!(text.contains("Reverse helper"));
     assert!(text.contains("in:seq_id"));
     assert!(text.contains("out:out_id"));
+}
+
+#[test]
+fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
+    let mut state = ProjectState::default();
+    let mut destination =
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT")
+            .expect("destination sequence");
+    destination.set_name("destination_vector".to_string());
+    destination.set_circular(true);
+    state
+        .sequences
+        .insert("destination_vector".to_string(), destination);
+
+    let mut insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
+        .expect("insert sequence");
+    insert.set_name("insert_x_amplicon".to_string());
+    insert.set_circular(false);
+    state
+        .sequences
+        .insert("insert_x_amplicon".to_string(), insert);
+
+    let mut engine = GentleEngine::from_state(state);
+    let plan_json = r#"{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "lineage_cli_projection_test",
+  "title": "CLI projection test",
+  "summary": "single insert",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "selected window",
+      "start_0based": 12,
+      "end_0based_exclusive": 18,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {"topology": "circular", "output_id_hint": "lineage_out"},
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_left"},
+      "right_end_strategy": {"mode": "primer_added_overlap", "target_junction_id": "junction_right"}
+    }
+  ],
+  "assembly_order": [
+    {"kind": "destination_end", "id": "dest_left"},
+    {"kind": "fragment", "id": "insert_x"},
+    {"kind": "destination_end", "id": "dest_right"}
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {"kind": "destination_end", "id": "dest_left"},
+      "right_member": {"kind": "fragment", "id": "insert_x"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 20, "right_member_bp": 0},
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": ["junction_right"]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {"kind": "fragment", "id": "insert_x"},
+      "right_member": {"kind": "destination_end", "id": "dest_right"},
+      "required_overlap_bp": 20,
+      "overlap_partition": {"left_member_bp": 0, "right_member_bp": 20},
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": ["junction_left"]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 18,
+      "overlap_bp_max": 24,
+      "minimum_overlap_tm_celsius": 48.0,
+      "priming_segment_tm_min_celsius": 48.0,
+      "priming_segment_tm_max_celsius": 70.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 30,
+      "max_anneal_hits": 4
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": []
+    }
+  }
+}"#;
+    let apply_result = engine
+        .apply(Operation::ApplyGibsonAssemblyPlan {
+            plan_json: plan_json.to_string(),
+        })
+        .expect("apply Gibson operation");
+
+    let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let hub_nodes: Vec<_> = nodes
+        .iter()
+        .filter(|node| {
+            node.kind == LineageSvgNodeKind::OperationHub && node.title == "Gibson cloning"
+        })
+        .collect();
+    assert_eq!(
+        hub_nodes.len(),
+        1,
+        "projected lineage should contain one Gibson hub"
+    );
+    let hub_node_id = hub_nodes[0].node_id.clone();
+    assert_eq!(
+        edges
+            .iter()
+            .filter(|edge| edge.from_node_id == hub_node_id || edge.to_node_id == hub_node_id)
+            .count(),
+        5,
+        "single-insert Gibson should render 2 input edges and 3 output edges via the hub"
+    );
+    assert!(
+        !edges.iter().any(|edge| edge.label == apply_result.op_id),
+        "projected Gibson edges should use the shared Gibson label instead of the raw op id"
+    );
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("lineage.gibson.svg");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::RenderLineageSvg {
+            path: path_text.clone(),
+        })
+        .expect("render lineage svg");
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert_eq!(
+        text.matches("Gibson cloning").count(),
+        1,
+        "hero export should label the Gibson operation once on the hub node"
+    );
+    assert!(text.contains("lineage_out"));
+    assert!(!text.contains("op=op-3"));
+
+    let temp = tempdir().expect("tempdir");
+    let state_path = temp.path().join("lineage.state.json");
+    engine
+        .state()
+        .save_to_path(state_path.to_string_lossy().as_ref())
+        .expect("save state");
+    let reloaded_state =
+        ProjectState::load_from_path(state_path.to_string_lossy().as_ref()).expect("reload state");
+    let (reloaded_nodes, _) = build_lineage_svg_graph(&reloaded_state, &[]);
+    assert_eq!(
+        reloaded_nodes
+            .iter()
+            .filter(|node| {
+                node.kind == LineageSvgNodeKind::OperationHub && node.title == "Gibson cloning"
+            })
+            .count(),
+        1,
+        "saved-state lineage export should still infer the Gibson hub after reload"
+    );
+
+    let mut reloaded_engine = GentleEngine::from_state(reloaded_state);
+    let reloaded_svg_path = temp.path().join("lineage.reloaded.gibson.svg");
+    reloaded_engine
+        .apply(Operation::RenderLineageSvg {
+            path: reloaded_svg_path.display().to_string(),
+        })
+        .expect("render lineage svg after reload");
+    let reloaded_text = std::fs::read_to_string(reloaded_svg_path).unwrap();
+    assert_eq!(
+        reloaded_text.matches("Gibson cloning").count(),
+        1,
+        "reloaded hero export should still label the Gibson operation once"
+    );
+    assert!(reloaded_text.contains("lineage_out"));
+    assert!(!reloaded_text.contains("op=op-3"));
 }
 
 #[test]

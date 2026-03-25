@@ -648,7 +648,10 @@ impl GenomeCatalog {
         &self,
         output_catalog_path: Option<&str>,
     ) -> Result<EnsemblCatalogUpdateReport, String> {
-        self.apply_ensembl_catalog_updates_with_fetcher(output_catalog_path, &fetch_http_text_with_retry)
+        self.apply_ensembl_catalog_updates_with_fetcher(
+            output_catalog_path,
+            &fetch_http_text_with_retry,
+        )
     }
 
     pub fn remove_catalog_entry(
@@ -686,18 +689,19 @@ impl GenomeCatalog {
         &self,
         fetch_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<EnsemblCatalogUpdatePreview, String> {
-        let catalog_path = self.catalog_path().ok_or_else(|| {
-            "This genome catalog is not backed by a JSON file path".to_string()
-        })?;
-        let mut grouped: HashMap<String, Vec<(String, GenomeCatalogEntry, EnsemblCatalogTemplate)>> =
-            HashMap::new();
+        let catalog_path = self
+            .catalog_path()
+            .ok_or_else(|| "This genome catalog is not backed by a JSON file path".to_string())?;
+        let mut grouped: HashMap<
+            String,
+            Vec<(String, GenomeCatalogEntry, EnsemblCatalogTemplate)>,
+        > = HashMap::new();
         for (genome_id, entry) in &self.entries {
             if let Some(template) = ensembl_template_metadata(entry) {
-                grouped.entry(template_group_key(&template)).or_default().push((
-                    genome_id.clone(),
-                    entry.clone(),
-                    template,
-                ));
+                grouped
+                    .entry(template_group_key(&template))
+                    .or_default()
+                    .push((genome_id.clone(), entry.clone(), template));
             }
         }
 
@@ -712,7 +716,8 @@ impl GenomeCatalog {
         for group_key in group_keys {
             let mut rows = grouped.remove(&group_key).unwrap_or_default();
             rows.sort_by(|left, right| {
-                right.2
+                right
+                    .2
                     .release
                     .cmp(&left.2.release)
                     .then_with(|| left.0.cmp(&right.0))
@@ -739,8 +744,11 @@ impl GenomeCatalog {
                     source_genome_id, *collection_latest, resolved_current.release
                 ));
             }
-            let target_genome_id =
-                rewrite_ensembl_catalog_key_release(&source_genome_id, &template, resolved_current.release)?;
+            let target_genome_id = rewrite_ensembl_catalog_key_release(
+                &source_genome_id,
+                &template,
+                resolved_current.release,
+            )?;
             let current_target_entry = self.entries.get(&target_genome_id).cloned();
             let old_sequence_remote = current_target_entry
                 .as_ref()
@@ -3818,9 +3826,8 @@ fn fetch_ensembl_collection_latest_release(
     collection: &str,
     fetch_text: &dyn Fn(&str) -> Result<String, String>,
 ) -> Result<u32, String> {
-    let url = ensembl_collection_root_url(collection).ok_or_else(|| {
-        format!("Unsupported Ensembl collection '{}'", collection)
-    })?;
+    let url = ensembl_collection_root_url(collection)
+        .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", collection))?;
     let listing = fetch_text(url)?;
     let pattern = if normalize_ensembl_collection(collection) == Some("vertebrates") {
         r"release-1[1-9][0-9]"
@@ -3856,20 +3863,19 @@ fn parse_listing_href_values(listing: &str) -> Vec<String> {
     values
 }
 
-fn choose_current_ensembl_fasta_filename(
-    listing: &str,
-    file_stem: &str,
-) -> Result<String, String> {
+fn choose_current_ensembl_fasta_filename(listing: &str, file_stem: &str) -> Result<String, String> {
     let prefix = format!("{file_stem}.");
     let mut matches: Vec<String> = parse_listing_href_values(listing)
         .into_iter()
         .filter(|value| value.starts_with(&prefix) && value.ends_with(".fa.gz"))
         .collect();
     matches.sort_by_key(|value| ensembl_fasta_filename_rank(value));
-    matches
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("Could not locate FASTA file for Ensembl stem '{}'", file_stem))
+    matches.into_iter().next().ok_or_else(|| {
+        format!(
+            "Could not locate FASTA file for Ensembl stem '{}'",
+            file_stem
+        )
+    })
 }
 
 fn ensembl_fasta_filename_rank(filename: &str) -> usize {
@@ -3919,7 +3925,8 @@ fn resolve_current_ensembl_remote_entry(
     let gtf_listing_url = current_ensembl_gtf_listing_url(template);
     let fasta_listing = fetch_text(&fasta_listing_url)?;
     let gtf_listing = fetch_text(&gtf_listing_url)?;
-    let fasta_filename = choose_current_ensembl_fasta_filename(&fasta_listing, &template.file_stem)?;
+    let fasta_filename =
+        choose_current_ensembl_fasta_filename(&fasta_listing, &template.file_stem)?;
     let (gtf_filename, release) =
         choose_current_ensembl_gtf_filename_and_release(&gtf_listing, &template.file_stem)?;
     Ok(ResolvedCurrentEnsemblRemoteEntry {
@@ -3975,8 +3982,14 @@ fn build_updated_ensembl_catalog_entry(
     next
 }
 
-fn resolve_catalog_output_path(source_path: &Path, output_catalog_path: Option<&str>) -> Result<PathBuf, String> {
-    match output_catalog_path.map(str::trim).filter(|value| !value.is_empty()) {
+fn resolve_catalog_output_path(
+    source_path: &Path,
+    output_catalog_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    match output_catalog_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(path) => Ok(PathBuf::from(path)),
         None => {
             if catalog_path_is_writable(source_path) {
@@ -3996,7 +4009,13 @@ fn catalog_path_is_writable(path: &Path) -> bool {
         OpenOptions::new().append(true).open(path).is_ok()
     } else {
         path.parent()
-            .map(|parent| parent.exists() && !parent.metadata().map(|m| m.permissions().readonly()).unwrap_or(true))
+            .map(|parent| {
+                parent.exists()
+                    && !parent
+                        .metadata()
+                        .map(|m| m.permissions().readonly())
+                        .unwrap_or(true)
+            })
             .unwrap_or(false)
     }
 }
@@ -4024,8 +4043,12 @@ fn write_catalog_entries_to_path(
     for (key, value) in entries {
         sorted.insert(key.clone(), value.clone());
     }
-    let text = serde_json::to_string_pretty(&sorted)
-        .map_err(|e| format!("Could not serialize genome catalog '{}': {e}", output_path.display()))?;
+    let text = serde_json::to_string_pretty(&sorted).map_err(|e| {
+        format!(
+            "Could not serialize genome catalog '{}': {e}",
+            output_path.display()
+        )
+    })?;
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -4034,8 +4057,12 @@ fn write_catalog_entries_to_path(
             )
         })?;
     }
-    fs::write(output_path, format!("{text}\n"))
-        .map_err(|e| format!("Could not write genome catalog '{}': {e}", output_path.display()))
+    fs::write(output_path, format!("{text}\n")).map_err(|e| {
+        format!(
+            "Could not write genome catalog '{}': {e}",
+            output_path.display()
+        )
+    })
 }
 
 fn fetch_http_text_with_retry(source: &str) -> Result<String, String> {
@@ -8778,11 +8805,20 @@ mod tests {
             .preview_ensembl_catalog_updates_with_fetcher(&fetch)
             .unwrap();
         assert_eq!(preview.updates.len(), 1);
-        assert_eq!(preview.updates[0].source_genome_id, "Mouse GRCm39 Ensembl 115");
-        assert_eq!(preview.updates[0].target_genome_id, "Mouse GRCm39 Ensembl 116");
+        assert_eq!(
+            preview.updates[0].source_genome_id,
+            "Mouse GRCm39 Ensembl 115"
+        );
+        assert_eq!(
+            preview.updates[0].target_genome_id,
+            "Mouse GRCm39 Ensembl 116"
+        );
         assert_eq!(preview.updates[0].action, "add_new_release");
         assert_eq!(
-            preview.collection_latest_releases.get("vertebrates").copied(),
+            preview
+                .collection_latest_releases
+                .get("vertebrates")
+                .copied(),
             Some(116)
         );
 
@@ -8845,14 +8881,21 @@ mod tests {
             .unwrap();
         assert_eq!(preview.updates.len(), 1);
         assert_eq!(preview.updates[0].action, "refresh_existing_release");
-        assert_eq!(preview.updates[0].target_genome_id, "Mouse GRCm39 Ensembl 116");
+        assert_eq!(
+            preview.updates[0].target_genome_id,
+            "Mouse GRCm39 Ensembl 116"
+        );
 
         catalog
             .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
             .unwrap();
         let text = fs::read_to_string(&catalog_path).unwrap();
         assert!(text.contains("release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz"));
-        assert!(text.contains("release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"));
+        assert!(
+            text.contains(
+                "release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"
+            )
+        );
     }
 
     #[test]
@@ -8972,7 +9015,10 @@ mod tests {
                 &fetch,
             )
             .unwrap();
-        assert_eq!(report.output_catalog_path, output_catalog_path.display().to_string());
+        assert_eq!(
+            report.output_catalog_path,
+            output_catalog_path.display().to_string()
+        );
         assert!(output_catalog_path.exists());
     }
 
@@ -9021,7 +9067,9 @@ mod tests {
         catalog.prepare_genome_once("ToyA").unwrap();
         catalog.prepare_genome_once("ToyB").unwrap();
 
-        let report = catalog.remove_prepared_genome_install("ToyA", None).unwrap();
+        let report = catalog
+            .remove_prepared_genome_install("ToyA", None)
+            .unwrap();
         assert!(report.removed);
         assert!(!cache_dir.join("toya").exists());
         assert!(cache_dir.join("toyb").exists());
