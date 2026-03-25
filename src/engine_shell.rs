@@ -15020,7 +15020,7 @@ pub fn execute_shell_command_with_options(
             selection,
         } => {
             let written = engine
-                .export_rna_read_hits_fasta(report_id, path, *selection)
+                .export_rna_read_hits_fasta(report_id, path, *selection, &[])
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15123,7 +15123,7 @@ pub fn execute_shell_command_with_options(
             limit,
         } => {
             let export = engine
-                .export_rna_read_alignments_tsv(report_id, path, *selection, *limit)
+                .export_rna_read_alignments_tsv(report_id, path, *selection, *limit, &[])
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,

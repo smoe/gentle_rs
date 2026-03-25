@@ -4560,6 +4560,8 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
     },
     ExportRnaReadSampleSheet {
         path: String,
@@ -4595,6 +4597,8 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default)]
         limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
     },
     ExportRnaReadAlignmentDotplotSvg {
         report_id: String,

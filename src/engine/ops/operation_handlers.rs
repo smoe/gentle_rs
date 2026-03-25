@@ -6071,14 +6071,21 @@ impl GentleEngine {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => {
-                let count = self.export_rna_read_hits_fasta(&report_id, &path, selection)?;
+                let count = self.export_rna_read_hits_fasta(
+                    &report_id,
+                    &path,
+                    selection,
+                    &selected_record_indices,
+                )?;
                 result.messages.push(format!(
-                    "Exported {} RNA-read hit sequence(s) from '{}' to '{}' (selection={})",
+                    "Exported {} RNA-read hit sequence(s) from '{}' to '{}' (selection={}, selected_record_indices={})",
                     count,
                     report_id,
                     path,
-                    selection.as_str()
+                    selection.as_str(),
+                    selected_record_indices.len()
                 ));
             }
             Operation::ExportRnaReadSampleSheet {
@@ -6155,21 +6162,28 @@ impl GentleEngine {
                 path,
                 selection,
                 limit,
+                selected_record_indices,
             } => {
-                let export =
-                    self.export_rna_read_alignments_tsv(&report_id, &path, selection, limit)?;
+                let export = self.export_rna_read_alignments_tsv(
+                    &report_id,
+                    &path,
+                    selection,
+                    limit,
+                    &selected_record_indices,
+                )?;
                 let limit_text = export
                     .limit
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "all".to_string());
                 result.messages.push(format!(
-                    "Exported RNA-read alignment TSV '{}' to '{}' (selection={}, rows={}, aligned_total={}, limit={})",
+                    "Exported RNA-read alignment TSV '{}' to '{}' (selection={}, rows={}, aligned_total={}, limit={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
                     export.selection.as_str(),
                     export.row_count,
                     export.aligned_count,
-                    limit_text
+                    limit_text,
+                    selected_record_indices.len()
                 ));
             }
             Operation::ExportRnaReadAlignmentDotplotSvg {

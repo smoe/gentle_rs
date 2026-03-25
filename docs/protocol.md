@@ -559,12 +559,12 @@ Current draft operations:
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
-- `ExportRnaReadHitsFasta { report_id, path, selection }`
+- `ExportRnaReadHitsFasta { report_id, path, selection, selected_record_indices? }`
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
 - `ExportRnaReadExonPathsTsv { report_id, path, selection }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
-- `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
+- `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices? }`
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
@@ -2110,6 +2110,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         offsets first and falls back to coarse genomic-span overlap only for
         legacy mappings that do not carry template offsets
       - deterministic retained-hit re-ranking by alignment-aware retention rank
+  - exact-subset export behavior:
+    - `ExportRnaReadHitsFasta` and `ExportRnaReadAlignmentsTsv` accept
+      optional `selected_record_indices[]`
+    - when present, the explicit 0-based stored `record_index` subset
+      overrides the coarse `selection` preset
+    - intended for exporting the exact contributor reads surfaced by mapped
+      `Audit` actions in the GUI
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -2190,11 +2197,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       alignment-aware retention score (mapping + seed metrics)
 - Alignment-TSV export:
   - operation:
-    `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
+    `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices? }`
   - export schema: `gentle.rna_read_alignment_tsv_export.v1`
   - output: ranked alignment rows as TSV with:
     - leading `#` metadata lines for report provenance (`selection`, `limit`,
-      `profile`, `scope`, `origin_mode`)
+      `selected_record_indices`, `profile`, `scope`, `origin_mode`)
     - seed-screen sampling/gating context (`k`, `seed_stride_bp`,
       overlap/order-density wording, seed thresholds)
     - alignment config summary (`min_identity_fraction`,
@@ -2226,6 +2233,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - intended for downstream dotplots/manual inspection of saved-report
       outliers without re-reading the FASTA input
 - `rna-reads export-hits-fasta` header extensions:
+  - optional `selected_record_indices[]` overrides the coarse selection preset
+    for exact saved-report subset export
   - `exon_path_tx=<transcript_id|none>`
   - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
     exon transitions and `-` for unconfirmed adjacency
@@ -2233,6 +2242,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
     normalization marker)
   - `origin_class=<...>` plus `origin_conf=<...>` and `strand_conf=<...>`
+- `rna-reads export-exon-paths-tsv` and `rna-reads export-exon-abundance-tsv`
+  now begin with the same `#` report/seed-screen provenance block used by the
+  alignment TSV export, minus alignment-only fields
 - cDNA/direct-RNA normalization controls in `seed_filter`:
   - `cdna_poly_t_flip_enabled` (default `true`)
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the

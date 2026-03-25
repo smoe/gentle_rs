@@ -540,6 +540,11 @@ Feature tree grouping:
         - mapped exon/junction contribution spans
         - direct actions (`Copy highlighted FASTA`, `Materialize highlighted`,
           `Export dotplot...`)
+      - selected-row actions now also include exact saved-report export:
+        - `Export selected FASTA...`
+        - `Export selected alignments...`
+        - after using `Audit`, these exports write exactly the contributor
+          reads behind the chosen mapped exon/junction/isoform row
     - `Aggregate support`
       - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are
@@ -591,8 +596,11 @@ Feature tree grouping:
       splicing ROI
   - export actions include:
     - `Export Retained Top Reads (FASTA)...`
-    - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows)
-    - `Export Exon Abundance (TSV)...` (exon/transition abundance rows)
+    - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows with
+      the same `#` report/seed-screen provenance header block used by the
+      alignment TSV export)
+    - `Export Exon Abundance (TSV)...` (exon/transition abundance rows with
+      the same `#` report/seed-screen provenance header block)
     - `Export Score Density (SVG)...` (uses current `Linear`/`Log` scale toggle
       and now keeps the compact per-bin count labels seen in the live plot,
       plus the active seed-screen provenance: profile, scope, origin mode,

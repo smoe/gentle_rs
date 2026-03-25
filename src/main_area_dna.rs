@@ -17472,7 +17472,9 @@ impl MainAreaDna {
         requested_word_size: usize,
         requested_step_bp: usize,
     ) -> (usize, usize) {
-        let word_size = requested_word_size.min(query_len.min(reference_span_bp)).max(1);
+        let word_size = requested_word_size
+            .min(query_len.min(reference_span_bp))
+            .max(1);
         let step_bp = Self::recommend_pair_dotplot_step(
             query_len,
             reference_span_bp,
@@ -18375,6 +18377,42 @@ impl MainAreaDna {
             report_id,
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![],
+        });
+    }
+
+    fn export_selected_rna_hits_fasta(&mut self) {
+        let report_id = self.rna_reads_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            let message = "Set a Report ID first to export selected reads".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let selected_record_indices = self
+            .rna_seed_selected_record_indices
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        if selected_record_indices.is_empty() {
+            let message = "Select one or more reads first to export selected FASTA".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let default_name = format!("{report_id}_selected_reads.fa");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("FASTA", &["fa", "fasta"])
+            .save_file()
+        else {
+            return;
+        };
+        self.apply_operation_with_feedback(Operation::ExportRnaReadHitsFasta {
+            report_id,
+            path: path.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            selected_record_indices,
         });
     }
 
@@ -18449,6 +18487,42 @@ impl MainAreaDna {
             report_id,
             path: path.display().to_string(),
             scale,
+        });
+    }
+
+    fn export_selected_rna_read_alignments_tsv(&mut self) {
+        let report_id = self.rna_reads_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            let message = "Set a Report ID first to export selected aligned rows".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let selected_record_indices = self
+            .rna_seed_selected_record_indices
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        if selected_record_indices.is_empty() {
+            let message = "Select one or more aligned rows first to export them as TSV".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let default_name = format!("{report_id}_selected_alignments.tsv");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("TSV", &["tsv", "txt"])
+            .save_file()
+        else {
+            return;
+        };
+        self.apply_operation_with_feedback(Operation::ExportRnaReadAlignmentsTsv {
+            report_id,
+            path: path.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: None,
+            selected_record_indices,
         });
     }
 
@@ -20015,12 +20089,38 @@ impl MainAreaDna {
                     Self::selected_rna_report_hits(report, &self.rna_seed_selected_record_indices);
                 self.copy_rna_report_hits_as_fasta(ui, &hits, "selected report reads");
             }
+            if ui
+                .add_enabled(
+                    selected_count > 0,
+                    egui::Button::new(format!("Export selected FASTA ({selected_count})...")),
+                )
+                .on_hover_text(
+                    "Export exactly the currently selected/audited saved-report reads as FASTA.",
+                )
+                .clicked()
+            {
+                self.export_selected_rna_hits_fasta();
+            }
             if ui.button("Copy highlighted FASTA").clicked() {
                 let hits = self
                     .selected_highlighted_rna_report_hit(report)
                     .into_iter()
                     .collect::<Vec<_>>();
                 self.copy_rna_report_hits_as_fasta(ui, &hits, "highlighted aligned read");
+            }
+            if ui
+                .add_enabled(
+                    selected_count > 0,
+                    egui::Button::new(format!(
+                        "Export selected alignments ({selected_count})..."
+                    )),
+                )
+                .on_hover_text(
+                    "Export exactly the currently selected/audited aligned rows as TSV.",
+                )
+                .clicked()
+            {
+                self.export_selected_rna_read_alignments_tsv();
             }
             if ui
                 .add_enabled(selected_count > 0, egui::Button::new("Materialize selected"))

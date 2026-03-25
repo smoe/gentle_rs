@@ -284,20 +284,24 @@ impl GentleEngine {
         report_id: &str,
         path: &str,
         selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
     ) -> Result<usize, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let mut writer = BufWriter::new(File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA-read FASTA output '{}': {e}", path),
         })?);
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let mut written = 0usize;
         for hit in &report.hits {
-            let include = match selection {
-                RnaReadHitSelection::All => true,
-                RnaReadHitSelection::SeedPassed => hit.passed_seed_filter,
-                RnaReadHitSelection::Aligned => hit.best_mapping.is_some(),
-            };
-            if !include {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
                 continue;
             }
             // Report payload keeps detailed mapping metrics while FASTA headers provide compact
@@ -382,6 +386,18 @@ impl GentleEngine {
             RnaReadHitSelection::All => true,
             RnaReadHitSelection::SeedPassed => hit.passed_seed_filter,
             RnaReadHitSelection::Aligned => hit.best_mapping.is_some(),
+        }
+    }
+
+    fn include_rna_read_hit_by_selection_and_indices(
+        hit: &RnaReadInterpretationHit,
+        selection: RnaReadHitSelection,
+        explicit_record_filter: &HashSet<usize>,
+    ) -> bool {
+        if !explicit_record_filter.is_empty() {
+            explicit_record_filter.contains(&hit.record_index)
+        } else {
+            Self::include_rna_read_hit_by_selection(hit, selection)
         }
     }
 
@@ -503,6 +519,7 @@ impl GentleEngine {
         path: &str,
         selection: RnaReadHitSelection,
         limit: Option<usize>,
+        selected_record_indices: &[usize],
     ) -> Result<RnaReadAlignmentTsvExport, EngineError> {
         let path = path.trim();
         if path.is_empty() {
@@ -519,8 +536,23 @@ impl GentleEngine {
                 });
             }
         }
-        let inspection =
-            self.inspect_rna_read_alignments(report_id, selection, limit.unwrap_or(usize::MAX))?;
+        let report = self.get_rna_read_report(report_id)?;
+        let mut inspection = self.inspect_rna_read_alignments(report_id, selection, usize::MAX)?;
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        if !explicit_record_filter.is_empty() {
+            inspection
+                .rows
+                .retain(|row| explicit_record_filter.contains(&row.record_index));
+            inspection.row_count = inspection.rows.len();
+            inspection.aligned_count = inspection.row_count;
+        }
+        if let Some(value) = limit {
+            inspection.rows.truncate(value);
+            inspection.row_count = inspection.rows.len();
+        }
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
@@ -530,10 +562,11 @@ impl GentleEngine {
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_alignment_tsv_metadata_lines(
-            &self.get_rna_read_report(report_id)?,
+            &report,
             &inspection,
             selection,
             limit,
+            selected_record_indices,
         ) {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -890,6 +923,15 @@ impl GentleEngine {
             message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
         })?;
         let mut writer = BufWriter::new(file);
+        for line in Self::rna_read_tsv_common_metadata_lines(&report, selection, &[]) {
+            writeln!(writer, "{line}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read exon-path export metadata to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
         writeln!(
             writer,
             "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\tmsa_eligible\tmsa_eligibility_reason\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_alignment_mode\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
@@ -1014,6 +1056,15 @@ impl GentleEngine {
             ),
         })?;
         let mut writer = BufWriter::new(file);
+        for line in Self::rna_read_tsv_common_metadata_lines(&report, selection, &[]) {
+            writeln!(writer, "{line}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read exon-abundance metadata to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
         writeln!(
             writer,
             "report_id\tseq_id\tselection\trow_kind\texon_ordinal\tfrom_exon_ordinal\tto_exon_ordinal\tsupport_read_count\tsupport_fraction\tconfirmed_read_count\tconfirmed_fraction\tunconfirmed_read_count\tunconfirmed_fraction"
@@ -1415,15 +1466,23 @@ impl GentleEngine {
         )
     }
 
-    fn rna_read_alignment_tsv_metadata_lines(
+    fn format_selected_record_indices_for_metadata(selected_record_indices: &[usize]) -> String {
+        if selected_record_indices.is_empty() {
+            "none".to_string()
+        } else {
+            selected_record_indices
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+    }
+
+    fn rna_read_tsv_common_metadata_lines(
         report: &RnaReadInterpretationReport,
-        inspection: &RnaReadAlignmentInspection,
         selection: RnaReadHitSelection,
-        limit: Option<usize>,
+        selected_record_indices: &[usize],
     ) -> Vec<String> {
-        let limit_text = limit
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "all".to_string());
         let target_gene_ids = if report.target_gene_ids.is_empty() {
             "none".to_string()
         } else {
@@ -1431,13 +1490,11 @@ impl GentleEngine {
         };
         vec![
             format!(
-                "# report_id={} seq_id={} selection={} limit={} row_count={} aligned_count={}",
-                Self::sanitize_tsv_cell(&inspection.report_id),
-                Self::sanitize_tsv_cell(&inspection.seq_id),
+                "# report_id={} seq_id={} selection={} selected_record_indices={}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
                 selection.as_str(),
-                limit_text,
-                inspection.row_count,
-                inspection.aligned_count,
+                Self::format_selected_record_indices_for_metadata(selected_record_indices),
             ),
             format!(
                 "# profile={} report_mode={} input_format={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
@@ -1449,13 +1506,40 @@ impl GentleEngine {
                 report.roi_seed_capture_enabled,
                 Self::sanitize_tsv_cell(&target_gene_ids),
             ),
-            format!("# {}", Self::rna_read_seed_filter_summary(&report.seed_filter)),
             format!(
-                "# align_config: min_identity_fraction={:.2} max_secondary_mappings={}",
-                report.align_config.min_identity_fraction,
-                report.align_config.max_secondary_mappings,
+                "# {}",
+                Self::rna_read_seed_filter_summary(&report.seed_filter)
             ),
         ]
+    }
+
+    fn rna_read_alignment_tsv_metadata_lines(
+        report: &RnaReadInterpretationReport,
+        inspection: &RnaReadAlignmentInspection,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: &[usize],
+    ) -> Vec<String> {
+        let limit_text = limit
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "all".to_string());
+        let mut lines =
+            Self::rna_read_tsv_common_metadata_lines(report, selection, selected_record_indices);
+        lines[0] = format!(
+            "# report_id={} seq_id={} selection={} selected_record_indices={} limit={} row_count={} aligned_count={}",
+            Self::sanitize_tsv_cell(&inspection.report_id),
+            Self::sanitize_tsv_cell(&inspection.seq_id),
+            selection.as_str(),
+            Self::format_selected_record_indices_for_metadata(selected_record_indices),
+            limit_text,
+            inspection.row_count,
+            inspection.aligned_count,
+        );
+        lines.push(format!(
+            "# align_config: min_identity_fraction={:.2} max_secondary_mappings={}",
+            report.align_config.min_identity_fraction, report.align_config.max_secondary_mappings,
+        ));
+        lines
     }
 
     pub fn export_rna_read_sample_sheet(
@@ -1901,11 +1985,7 @@ impl GentleEngine {
                 .filter(|ch| !ch.is_whitespace())
                 .map(|ch| {
                     let upper = ch.to_ascii_uppercase();
-                    if upper == 'U' {
-                        'T'
-                    } else {
-                        upper
-                    }
+                    if upper == 'U' { 'T' } else { upper }
                 })
                 .collect::<String>();
             sequence.clear();
@@ -2718,8 +2798,8 @@ impl GentleEngine {
             key_counts.into_iter().max_by(|left, right| {
                 left.1
                     .cmp(&right.1)
-                    .then_with(|| right.0 .0.cmp(&left.0 .0))
-                    .then_with(|| right.0 .1.cmp(&left.0 .1))
+                    .then_with(|| right.0.0.cmp(&left.0.0))
+                    .then_with(|| right.0.1.cmp(&left.0.1))
             })
         else {
             return SeedChainSpacingMetrics {
