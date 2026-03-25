@@ -1728,6 +1728,10 @@ Current baseline:
 
 - `Prepared References...` exists, includes the chromosome line inspector, and
   offers confirmed per-row reinstall for stale/partial prepared genomes.
+- `Prepare Reference Genome...` now keeps a structured per-step checklist visible
+  through completion, adds active-step ETA for determinate byte-based work, and
+  surfaces explicit reinstall-from-sources recovery when reindex detects an
+  inconsistent cached install.
 - Shell/agent UI-intent routing is implemented:
   - `ui intents`
   - `ui open|focus TARGET ...`

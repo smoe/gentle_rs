@@ -3133,7 +3133,9 @@ fn validate_annotation_gene_contigs_against_fasta_index(
         "Prepared genome '{}' is inconsistent: annotation gene index '{}' references contigs \
 missing from prepared sequence '{}' (missing {} of {} gene-bearing contigs: {}). FASTA \
 index='{}'. This often indicates truncated gzip decode, mismatched sequence/annotation \
-sources, or stale cache; reinstall or verify the configured sources.",
+sources, or stale cache. Reindex reuses cached sequence/annotation files and cannot repair \
+this prepared install; reinstall from sources as the next step, or verify the configured \
+sources.",
         genome_id,
         gene_index_path.display(),
         sequence_path.display(),

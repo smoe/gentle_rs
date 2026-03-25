@@ -1910,12 +1910,21 @@ Recommended flow:
    - this runs in background and now shows the full ordered prepare plan up front
    - each conceptual process gets its own row and progress bar:
      sequence, annotation, FASTA index, gene index, BLAST index
+   - byte-based active steps now show `bytes: X / Y • ETA ...` once enough
+     progress has been observed to make a stable estimate
    - completed rows stay checked until you close the prepare window or start a
      new prepare/reindex/refresh run
+   - after a successful prepare/reindex/refresh, the full checklist remains
+     visible and is explicitly marked complete instead of collapsing back to a
+     raw phase line
    - long-running indeterminate work such as BLAST indexing stays visible as an
      active checklist row instead of looking idle
+   - if reindex discovers that the cached prepared files are internally
+     inconsistent, the dialog keeps the error details visible and offers
+     `Reinstall From Sources...` as the recommended recovery action
    - the Background Jobs window keeps a compact prepare summary only:
-     mode, current step, completed step count, and one overall progress bar
+     mode, current step, completed step count, one overall progress bar, and
+     active-step ETA when the running step has determinate byte progress
    - the raw text status block remains below the checklist for full diagnostic detail
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
