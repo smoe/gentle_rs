@@ -360,6 +360,7 @@ order. Durable architecture constraints and decisions remain in
     - `pcr.assay.pair`
     - `pcr.assay.pair.no_product`
     - `pcr.assay.pair.with_tail`
+    - `pcr.oe.substitution`
     - `pcr.assay.qpcr`
   - renderer contract is now abstraction-first:
     - protocol strip = ordered event sequence
@@ -402,6 +403,12 @@ order. Durable architecture constraints and decisions remain in
       end labels
     - tailed pair-PCR renders now show non-annealing 5' primer tails and
       their deterministic carry-through into the product lane
+  - overlap-extension substitution mutagenesis baseline is now shipped through
+    `pcr.oe.substitution`:
+    - six-panel OE-PCR strip with primer set `a..f`
+    - strand-specific anneal-gap lane plus explicit polymerase fill lane
+    - deterministic geometry bindings (`flank_bp`, `overlap_bp`, `insert_bp`)
+      can be applied through template bindings
   - next protocol-cartoon family expansion for PCR:
     - batch, nested, inverse, and richer artifact/readout variants through the
       same template/binding abstraction

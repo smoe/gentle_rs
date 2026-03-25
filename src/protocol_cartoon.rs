@@ -21,6 +21,8 @@ pub enum ProtocolCartoonKind {
     PcrAssayPairNoProduct,
     #[serde(rename = "pcr.assay.pair.with_tail")]
     PcrAssayPairWithTail,
+    #[serde(rename = "pcr.oe.substitution")]
+    PcrOeSubstitution,
     #[serde(rename = "pcr.assay.qpcr")]
     PcrAssayQpcr,
 }
@@ -34,6 +36,7 @@ impl ProtocolCartoonKind {
             Self::PcrAssayPair => "pcr.assay.pair",
             Self::PcrAssayPairNoProduct => "pcr.assay.pair.no_product",
             Self::PcrAssayPairWithTail => "pcr.assay.pair.with_tail",
+            Self::PcrOeSubstitution => "pcr.oe.substitution",
             Self::PcrAssayQpcr => "pcr.assay.qpcr",
         }
     }
@@ -48,6 +51,7 @@ impl ProtocolCartoonKind {
             Self::PcrAssayPair => "PCR Assay (pair-primer baseline)",
             Self::PcrAssayPairNoProduct => "PCR Assay (report-only no-product)",
             Self::PcrAssayPairWithTail => "PCR Assay (insertion-first tailed pair-PCR)",
+            Self::PcrOeSubstitution => "PCR Mutagenesis (overlap-extension substitution)",
             Self::PcrAssayQpcr => "qPCR Assay (probe-bearing baseline)",
         }
     }
@@ -69,6 +73,9 @@ impl ProtocolCartoonKind {
             }
             Self::PcrAssayPairWithTail => {
                 "Insertion-first pair-PCR strip with anchored 5' extensions and carried-in product tails"
+            }
+            Self::PcrOeSubstitution => {
+                "Six-step overlap-extension substitution strip with primer set a-f and strand-specific anneal/fill states"
             }
             Self::PcrAssayQpcr => {
                 "Mechanism-first qPCR strip: template context, ROI, probe-bearing assay setup, amplification, and quantitative readout"
@@ -101,6 +108,12 @@ impl ProtocolCartoonKind {
             | "pcr.assay.tailed"
             | "pcr.tailed"
             | "tailed_pcr" => Some(Self::PcrAssayPairWithTail),
+            "pcr.oe.substitution"
+            | "pcr.oe"
+            | "oe_pcr"
+            | "oe-pcr"
+            | "overlap_extension_pcr"
+            | "overlap-extension-pcr" => Some(Self::PcrOeSubstitution),
             "pcr.assay.qpcr" | "pcr.qpcr" | "qpcr" | "q-pcr" => Some(Self::PcrAssayQpcr),
             _ => None,
         }
@@ -114,6 +127,7 @@ impl ProtocolCartoonKind {
             Self::PcrAssayPair,
             Self::PcrAssayPairNoProduct,
             Self::PcrAssayPairWithTail,
+            Self::PcrOeSubstitution,
             Self::PcrAssayQpcr,
         ]
     }
@@ -984,6 +998,7 @@ pub fn protocol_cartoon_template_for_kind(kind: &ProtocolCartoonKind) -> Protoco
         ProtocolCartoonKind::PcrAssayPair => pcr_assay_pair_template(),
         ProtocolCartoonKind::PcrAssayPairNoProduct => pcr_assay_pair_no_product_template(),
         ProtocolCartoonKind::PcrAssayPairWithTail => pcr_assay_pair_with_tail_template(),
+        ProtocolCartoonKind::PcrOeSubstitution => pcr_oe_substitution_template(),
         ProtocolCartoonKind::PcrAssayQpcr => pcr_assay_qpcr_template(),
     }
 }
@@ -2164,6 +2179,326 @@ fn pcr_assay_pair_with_tail_template() -> ProtocolCartoonTemplate {
 
 fn pcr_assay_qpcr_template() -> ProtocolCartoonTemplate {
     protocol_cartoon_template_from_spec(pcr_assay_qpcr_spec())
+}
+
+fn pcr_oe_substitution_template() -> ProtocolCartoonTemplate {
+    let mut template: ProtocolCartoonTemplate = serde_json::from_str(include_str!(
+        "../docs/examples/protocol_cartoon/oe_substitution_figure1_template.json"
+    ))
+    .expect("built-in OE substitution template JSON should parse");
+    template.id = ProtocolCartoonKind::PcrOeSubstitution.id().to_string();
+    template
+}
+
+fn feature_length_override(
+    event_id: &str,
+    molecule_id: &str,
+    feature_id: &str,
+    length_bp: usize,
+) -> ProtocolCartoonTemplateFeatureBinding {
+    ProtocolCartoonTemplateFeatureBinding {
+        event_id: event_id.to_string(),
+        molecule_id: molecule_id.to_string(),
+        feature_id: feature_id.to_string(),
+        label: None,
+        length_bp: Some(length_bp.max(1)),
+        top_length_bp: None,
+        bottom_length_bp: None,
+        color_hex: None,
+        bottom_color_hex: None,
+        top_nick_after: None,
+        bottom_nick_after: None,
+    }
+}
+
+/// Build deterministic geometry bindings for the built-in overlap-extension
+/// substitution cartoon (`pcr.oe.substitution`).
+///
+/// `overlap_bp` is the short overlap token (default `9` in the baseline strip).
+/// Long overlap segments in first-step products and single-strand states are
+/// derived as `3 * overlap_bp` to preserve the 18+9 conceptual ratio.
+pub fn pcr_oe_substitution_geometry_bindings(
+    flank_bp: usize,
+    overlap_bp: usize,
+    insert_bp: usize,
+) -> ProtocolCartoonTemplateBindings {
+    let flank_bp = flank_bp.max(1);
+    let overlap_bp = overlap_bp.max(1);
+    let insert_bp = insert_bp.max(1);
+    let long_overlap_bp = overlap_bp.saturating_mul(3).max(1);
+
+    let mut feature_overrides: Vec<ProtocolCartoonTemplateFeatureBinding> = vec![];
+    let mut push = |event_id: &str, molecule_id: &str, feature_id: &str, length_bp: usize| {
+        feature_overrides.push(feature_length_override(event_id, molecule_id, feature_id, length_bp));
+    };
+
+    // Figure 1 (setup): context and insert lengths.
+    push("starting_segments", "target_dna", "target_left_context", flank_bp);
+    push("starting_segments", "target_dna", "target_right_context", flank_bp);
+    push("starting_segments", "insert_dna", "insert_fragment_y", insert_bp);
+
+    // Figure 2 (primer design): flank and insert geometry + long overlap-bearing primers.
+    push(
+        "primer_design_assignment",
+        "target_with_primers",
+        "ab_template_flank",
+        flank_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "target_with_primers",
+        "ef_template_flank",
+        flank_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "target_with_primers",
+        "reverse_primer_b_kink_site",
+        long_overlap_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "target_with_primers",
+        "forward_primer_e_kink_site",
+        long_overlap_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "insert_with_primers",
+        "forward_primer_c_kink_to_b_site",
+        long_overlap_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "insert_with_primers",
+        "insert_fragment_y",
+        insert_bp,
+    );
+    push(
+        "primer_design_assignment",
+        "insert_with_primers",
+        "reverse_primer_d_kink_to_e_site",
+        long_overlap_bp,
+    );
+
+    // Figure 3 (first PCR products): AB/CD/EF haplotypes.
+    push(
+        "first_step_pcr_products",
+        "ab_first_pcr_product",
+        "ab_genomic_flank",
+        flank_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "ab_first_pcr_product",
+        "ab_blue_overlap",
+        long_overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "ab_first_pcr_product",
+        "ab_green_tail",
+        overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "cd_first_pcr_product",
+        "cd_blue_overlap",
+        overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "cd_first_pcr_product",
+        "insert_fragment_y",
+        insert_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "cd_first_pcr_product",
+        "cd_red_overlap",
+        overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "ef_first_pcr_product",
+        "ef_green_head",
+        overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "ef_first_pcr_product",
+        "ef_red_overlap",
+        long_overlap_bp,
+    );
+    push(
+        "first_step_pcr_products",
+        "ef_first_pcr_product",
+        "ef_genomic_flank",
+        flank_bp,
+    );
+
+    // Figure 4 (denatured single strands): same haplotypes as Figure 3.
+    push(
+        "denature_single_strands",
+        "ab_single_strand",
+        "ab_genomic_flank_ss",
+        flank_bp,
+    );
+    push(
+        "denature_single_strands",
+        "ab_single_strand",
+        "ab_blue_overlap_ss",
+        long_overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "ab_single_strand",
+        "ab_green_tail_ss",
+        overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "cd_single_strand",
+        "cd_blue_overlap_ss",
+        overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "cd_single_strand",
+        "insert_fragment_y",
+        insert_bp,
+    );
+    push(
+        "denature_single_strands",
+        "cd_single_strand",
+        "cd_red_overlap_ss",
+        overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "ef_single_strand",
+        "ef_green_head_ss",
+        overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "ef_single_strand",
+        "ef_red_overlap_ss",
+        long_overlap_bp,
+    );
+    push(
+        "denature_single_strands",
+        "ef_single_strand",
+        "ef_genomic_flank_ss",
+        flank_bp,
+    );
+
+    // Figure 5/6 slot geometry mirrors the strand-aligned gap model.
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "left_genomic_top_only",
+        flank_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "left_blue_top_only",
+        overlap_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "shared_blue_overlap",
+        overlap_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "insert_green_bottom_only",
+        insert_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "shared_red_overlap",
+        overlap_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "right_red_top_only",
+        overlap_bp,
+    );
+    push(
+        "anneal_overlap_intermediate",
+        "annealed_overlap_product",
+        "right_genomic_top_only",
+        flank_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "left_genomic_filled",
+        flank_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "left_blue_filled",
+        overlap_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "shared_blue_filled",
+        overlap_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "insert_green_filled",
+        insert_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "shared_red_filled",
+        overlap_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "right_red_filled",
+        overlap_bp,
+    );
+    push(
+        "polymerase_fill_gaps",
+        "filled_overlap_product",
+        "right_genomic_filled",
+        flank_bp,
+    );
+
+    ProtocolCartoonTemplateBindings {
+        schema: protocol_cartoon_template_bindings_schema_id(),
+        template_id: Some(ProtocolCartoonKind::PcrOeSubstitution.id().to_string()),
+        defaults: ProtocolCartoonTemplateBindingsDefaults::default(),
+        event_overrides: vec![],
+        molecule_overrides: vec![],
+        feature_overrides,
+    }
+}
+
+/// Resolve the built-in overlap-extension substitution template with explicit
+/// geometry bindings.
+pub fn pcr_oe_substitution_spec_with_geometry(
+    flank_bp: usize,
+    overlap_bp: usize,
+    insert_bp: usize,
+) -> Result<ProtocolCartoonSpec, String> {
+    let template = pcr_oe_substitution_template();
+    let bindings = pcr_oe_substitution_geometry_bindings(flank_bp, overlap_bp, insert_bp);
+    resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
 }
 
 fn pcr_template_context_molecule(
@@ -4209,6 +4544,14 @@ mod tests {
             Some(ProtocolCartoonKind::PcrAssayPairWithTail)
         );
         assert_eq!(
+            ProtocolCartoonKind::parse_id("pcr.oe.substitution"),
+            Some(ProtocolCartoonKind::PcrOeSubstitution)
+        );
+        assert_eq!(
+            ProtocolCartoonKind::parse_id("oe-pcr"),
+            Some(ProtocolCartoonKind::PcrOeSubstitution)
+        );
+        assert_eq!(
             ProtocolCartoonKind::parse_id("qpcr"),
             Some(ProtocolCartoonKind::PcrAssayQpcr)
         );
@@ -4218,17 +4561,19 @@ mod tests {
     #[test]
     fn catalog_rows_are_deterministic() {
         let rows = protocol_cartoon_catalog_rows();
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 7);
         assert_eq!(rows[0].id, "gibson.two_fragment");
         assert_eq!(rows[1].id, "gibson.single_insert_dual_junction");
         assert_eq!(rows[2].id, "pcr.assay.pair");
         assert_eq!(rows[3].id, "pcr.assay.pair.no_product");
         assert_eq!(rows[4].id, "pcr.assay.pair.with_tail");
-        assert_eq!(rows[5].id, "pcr.assay.qpcr");
+        assert_eq!(rows[5].id, "pcr.oe.substitution");
+        assert_eq!(rows[6].id, "pcr.assay.qpcr");
         assert!(rows[0].title.contains("Gibson"));
         assert!(rows[2].title.contains("PCR"));
         assert!(rows[4].title.contains("tail"));
-        assert!(rows[5].title.contains("qPCR"));
+        assert!(rows[5].title.contains("overlap-extension"));
+        assert!(rows[6].title.contains("qPCR"));
     }
 
     #[test]
@@ -4251,6 +4596,12 @@ mod tests {
         );
         assert_eq!(tailed_template.id, "pcr.assay.pair.with_tail");
         assert!(!tailed_template.events.is_empty());
+
+        let oe_template =
+            protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrOeSubstitution);
+        assert_eq!(oe_template.schema, "gentle.protocol_cartoon_template.v1");
+        assert_eq!(oe_template.id, "pcr.oe.substitution");
+        assert_eq!(oe_template.events.len(), 6);
 
         let qpcr_template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
         assert_eq!(qpcr_template.schema, "gentle.protocol_cartoon_template.v1");
@@ -4836,6 +5187,43 @@ mod tests {
         assert!(svg.contains("Amplicon with inserted 5&apos; tails"));
         assert!(svg.contains("data-primer-glyph=\"F\""));
         assert!(svg.contains("data-primer-glyph=\"R\""));
+    }
+
+    #[test]
+    fn render_oe_substitution_svg_contains_expected_labels() {
+        let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrOeSubstitution);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Figure 1"));
+        assert!(svg.contains("Figure 6"));
+        assert!(svg.contains("data-primer-glyph=\"a\""));
+        assert!(svg.contains("data-primer-glyph=\"f\""));
+        assert!(svg.contains("data-primer-kink=\"true\""));
+    }
+
+    #[test]
+    fn oe_substitution_geometry_bindings_apply_to_core_features() {
+        let template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrOeSubstitution);
+        let bindings = pcr_oe_substitution_geometry_bindings(150, 11, 72);
+        let spec = resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+            .expect("resolve OE bindings");
+
+        let fig3 = event_by_id(&spec, "first_step_pcr_products");
+        let ab = molecule_by_id(fig3, "ab_first_pcr_product");
+        assert_eq!(feature_by_id(ab, "ab_genomic_flank").length_bp, 150);
+        assert_eq!(feature_by_id(ab, "ab_blue_overlap").length_bp, 33);
+        assert_eq!(feature_by_id(ab, "ab_green_tail").length_bp, 11);
+
+        let cd = molecule_by_id(fig3, "cd_first_pcr_product");
+        assert_eq!(feature_by_id(cd, "insert_fragment_y").length_bp, 72);
+        assert_eq!(feature_by_id(cd, "cd_blue_overlap").length_bp, 11);
+        assert_eq!(feature_by_id(cd, "cd_red_overlap").length_bp, 11);
+
+        let fig5 = event_by_id(&spec, "anneal_overlap_intermediate");
+        let anneal = molecule_by_id(fig5, "annealed_overlap_product");
+        assert_eq!(feature_by_id(anneal, "left_genomic_top_only").length_bp, 150);
+        assert_eq!(feature_by_id(anneal, "shared_blue_overlap").length_bp, 11);
+        assert_eq!(feature_by_id(anneal, "insert_green_bottom_only").length_bp, 72);
+        assert_eq!(feature_by_id(anneal, "shared_red_overlap").length_bp, 11);
     }
 
     #[test]

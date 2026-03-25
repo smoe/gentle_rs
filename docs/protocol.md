@@ -1633,6 +1633,9 @@ Protocol-cartoon family growth direction (planned):
   - `pcr.assay.pair.with_tail`: insertion-first strip with requested extension
     sequences + insertion anchors, anchor-adjacent primer windows, and carried-
     through inserted terminal tails in the final amplicon
+  - `pcr.oe.substitution`: six-step overlap-extension substitution strip with
+    primer set `a`..`f`, first-step product haplotypes (`AB`/`CD`/`EF`),
+    strand-specific anneal-gap geometry, and polymerase fill
 - Implemented qPCR baseline in the same `pcr.assay.*` family:
   - `pcr.assay.qpcr`: same base strip enriched with one internal probe window
     plus explicit forward/reverse primer glyphs, a retained probe marker, and

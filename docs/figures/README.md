@@ -79,7 +79,9 @@ cargo run --quiet --bin gentle_cli -- \
 ```
 
 `pcr_overlap_extension_substitution_fig1_style.svg` is a deterministic render
-from template `docs/examples/protocol_cartoon/oe_substitution_figure1_template.json`.
+of built-in protocol cartoon `pcr.oe.substitution`
+(template source:
+`docs/examples/protocol_cartoon/oe_substitution_figure1_template.json`).
 It currently captures Figures 1-6 in the same renderer style used by built-in
 Gibson cartoons:
 
@@ -98,8 +100,8 @@ Regenerate it from the repository root with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-template-svg \
-  docs/examples/protocol_cartoon/oe_substitution_figure1_template.json \
+  protocol-cartoon render-svg \
+  pcr.oe.substitution \
   docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
 ```
 

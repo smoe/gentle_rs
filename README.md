@@ -143,12 +143,12 @@ template+insert setup, chimeric primer assignment (`a`..`f`), three first-step
 PCR products (`AB`, `CD`, `EF`), denaturation, overlap annealing with
 strand-specific gaps, and polymerase fill to one continuous duplex product.
 
-The figure is rendered from the deterministic template route:
+The figure is rendered from the built-in protocol-cartoon route:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  protocol-cartoon render-template-svg \
-  docs/examples/protocol_cartoon/oe_substitution_figure1_template.json \
+  protocol-cartoon render-svg \
+  pcr.oe.substitution \
   docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
 ```
 
