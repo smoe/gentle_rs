@@ -1688,7 +1688,7 @@ impl GentleEngine {
         let counted_file = CountingReader::new(file, Arc::clone(&source_bytes_read));
         let lower = path.to_ascii_lowercase();
         let mut reader: Box<dyn BufRead> = if lower.ends_with(".gz") {
-            let decoder = GzDecoder::new(BufReader::new(counted_file));
+            let decoder = MultiGzDecoder::new(BufReader::new(counted_file));
             Box::new(BufReader::new(decoder))
         } else {
             Box::new(BufReader::new(counted_file))

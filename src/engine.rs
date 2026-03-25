@@ -52,7 +52,7 @@ use crate::{
         normalize_entry_id as normalize_uniprot_entry_id, parse_swiss_prot_text,
     },
 };
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};

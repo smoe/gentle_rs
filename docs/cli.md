@@ -215,6 +215,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
+  Concatenated gzip members are accepted for gzipped FASTA input as well.
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
   Phase split:
@@ -2261,9 +2262,11 @@ Notes:
 - `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
 - `ImportGenomeVcfTrack` expects the same genome-anchored `seq_id`.
 - BED import accepts local `.bed` and `.bed.gz` files.
+- Concatenated gzip members are accepted for `.bed.gz` track input.
 - BigWig import accepts local `.bw` and `.bigWig` files and uses
   `bigWigToBedGraph` (override with `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`).
 - VCF import accepts local `.vcf` and `.vcf.gz` files.
+- Concatenated gzip members are accepted for `.vcf.gz` track input.
 - For VCF import, `min_score` / `max_score` filter on VCF `QUAL`.
 - `ExtractGenomeRegion`, `ExtractGenomeGene`, and `ExtendGenomeAnchor` append extraction provenance
   records into `ProjectState.metadata["provenance"]["genome_extractions"]`

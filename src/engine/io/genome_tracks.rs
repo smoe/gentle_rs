@@ -51,7 +51,7 @@ impl GentleEngine {
         })?;
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".gz") {
-            let decoder = GzDecoder::new(BufReader::new(file));
+            let decoder = MultiGzDecoder::new(BufReader::new(file));
             Ok(Box::new(BufReader::new(decoder)))
         } else {
             Ok(Box::new(BufReader::new(file)))

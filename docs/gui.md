@@ -345,6 +345,7 @@ Feature tree grouping:
     - the panel is ROI-first and local-model-first, not a whole-genome mapper
   - phase-1 FASTA input run panel for `InterpretRnaReads`
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
+  - gzip FASTA input also accepts concatenated gzip members
   - progress updates are throttled to reduce UI overhead:
     - debug builds: read-count updates approximately every `1000` reads
     - release builds: read-count updates approximately every `10000` reads
@@ -2018,6 +2019,7 @@ Recommended flow:
      - projected target count + track name
      - track-file existence check
    - choose a track file (`.bed`, `.bed.gz`, `.bw`, `.bigWig`, `.vcf`, or `.vcf.gz`)
+   - gzip track inputs also accept concatenated gzip members
    - optionally set track name and score filters
    - optional preflight toggle:
      - `Track this file for auto-sync`

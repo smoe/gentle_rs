@@ -246,6 +246,16 @@ fn write_gzip(path: &Path, text: &str) {
     encoder.finish().unwrap();
 }
 
+fn write_multi_member_gzip(path: &Path, members: &[&str]) {
+    std::fs::File::create(path).unwrap();
+    for member in members {
+        let file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+        let mut encoder = GzEncoder::new(file, Compression::default());
+        encoder.write_all(member.as_bytes()).unwrap();
+        encoder.finish().unwrap();
+    }
+}
+
 #[cfg(unix)]
 fn install_fake_rnapkin(path: &Path) -> String {
     let script_path = path.join("fake_rnapkin.sh");
@@ -7663,6 +7673,104 @@ fn test_import_genome_bed_track_supports_plain_and_gzip() {
     );
 }
 
+#[test]
+fn test_import_genome_bed_track_supports_concatenated_gzip_members() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta_gz = root.join("toy.fa.gz");
+    let ann_gz = root.join("toy.gtf.gz");
+    write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+    write_gzip(
+        &ann_gz,
+        "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+    );
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        file_url(&fasta_gz),
+        file_url(&ann_gz),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).unwrap();
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::ExtractGenomeRegion {
+            genome_id: "ToyGenome".to_string(),
+            chromosome: "chr1".to_string(),
+            start_1based: 1,
+            end_1based: 12,
+            output_id: Some("toy_slice".to_string()),
+            annotation_scope: None,
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path_str),
+            cache_dir: None,
+        })
+        .unwrap();
+
+    let bed_gz = root.join("signals_concat.bed.gz");
+    write_multi_member_gzip(
+        &bed_gz,
+        &[
+            "chr1\t1\t4\tpeak_a\t42\t+\n",
+            "chr1\t5\t8\tpeak_b\t25\t-\n",
+            "chr1\t9\t12\tpeak_c\t18\t+\n",
+        ],
+    );
+    let result = engine
+        .apply(Operation::ImportGenomeBedTrack {
+            seq_id: "toy_slice".to_string(),
+            path: bed_gz.to_string_lossy().to_string(),
+            track_name: Some("chipseq_concat_gz".to_string()),
+            min_score: Some(20.0),
+            max_score: None,
+            clear_existing: Some(true),
+        })
+        .unwrap();
+    assert!(result.changed_seq_ids.contains(&"toy_slice".to_string()));
+
+    let dna = engine.state().sequences.get("toy_slice").unwrap();
+    let generated: Vec<_> = dna
+        .features()
+        .iter()
+        .filter(|f| {
+            f.qualifier_values("gentle_generated".into())
+                .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+        })
+        .collect();
+    assert_eq!(generated.len(), 2);
+    assert!(generated.iter().any(|f| {
+        f.qualifier_values("label".into())
+            .next()
+            .map(|v| v.contains("peak_a"))
+            .unwrap_or(false)
+    }));
+    assert!(generated.iter().any(|f| {
+        f.qualifier_values("label".into())
+            .next()
+            .map(|v| v.contains("peak_b"))
+            .unwrap_or(false)
+    }));
+}
+
 #[cfg(unix)]
 #[test]
 fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
@@ -10619,6 +10727,33 @@ fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
     assert_eq!(records[1].header_id, "read_2");
     assert_eq!(records[1].sequence, b"CCGG".to_vec());
     assert!(records[1].source_byte_offset > records[0].source_byte_offset);
+}
+
+#[test]
+fn test_parse_fasta_records_with_offsets_supports_concatenated_gzip_input() {
+    let td = tempdir().expect("tempdir");
+    let fasta_gz = td.path().join("reads_concat.fa.gz");
+    write_multi_member_gzip(
+        &fasta_gz,
+        &[
+            ">read_1 comment\nAUGT\n",
+            ">read_2\nCC\nGG\n",
+            ">read_3\nUUAA\n",
+        ],
+    );
+
+    let records = GentleEngine::parse_fasta_records_with_offsets(
+        fasta_gz.to_str().expect("utf-8 path"),
+    )
+    .expect("parse concatenated gzip FASTA");
+    assert_eq!(records.len(), 3);
+    assert_eq!(records[0].header_id, "read_1");
+    assert_eq!(records[0].sequence, b"ATGT".to_vec());
+    assert_eq!(records[1].header_id, "read_2");
+    assert_eq!(records[1].sequence, b"CCGG".to_vec());
+    assert_eq!(records[2].header_id, "read_3");
+    assert_eq!(records[2].sequence, b"TTAA".to_vec());
+    assert!(records[2].source_byte_offset > records[1].source_byte_offset);
 }
 
 #[test]
