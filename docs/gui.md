@@ -1983,6 +1983,9 @@ Recommended flow:
    - open `Prepared References...`
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
+   - each prepared row also shows a compact cached-sequence summary derived
+     from the prepared FASTA index (`contig count | longest contig`), with hover
+     details for total span and representative contig names
    - use `Reinstall...` on a prepared row to refresh a stale or partial install;
      reinstall forces a fresh source download/index rebuild, and GENtle asks
      for confirmation because it can take some time
@@ -2078,8 +2081,9 @@ Notes:
   storage is recommended over `/tmp`.
 - If `catalog` is empty, engine uses default `assets/genomes.json`.
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
-  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
-  S288c (Ensembl 113 and 116), and `LocalProject` (backed by
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Caenorhabditis elegans
+  WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c (Ensembl 113 and 115),
+  and `LocalProject` (backed by
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
 - A curated starter helper catalog is available at

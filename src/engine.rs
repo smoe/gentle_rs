@@ -7160,8 +7160,30 @@ impl GentleEngine {
         } else {
             "not available".to_string()
         };
+        let cached_sequence_status = if report.cached_contig_count == 0 {
+            "unavailable".to_string()
+        } else {
+            let longest = report
+                .cached_longest_contig
+                .as_deref()
+                .unwrap_or("unknown");
+            let longest_bp = report.cached_longest_contig_bp.unwrap_or(0);
+            let preview = if report.cached_contig_preview.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", report.cached_contig_preview.join(", "))
+            };
+            format!(
+                "{} contigs, total_span={} bp, longest={} ({} bp){}",
+                report.cached_contig_count,
+                report.cached_total_span_bp,
+                longest,
+                longest_bp,
+                preview
+            )
+        };
         format!(
-            "Prepared genome '{}' ({status}). cache='{}' sequence='{}' [{}], annotation='{}' [{}], blast_index={}",
+            "Prepared genome '{}' ({status}). cache='{}' sequence='{}' [{}], annotation='{}' [{}], blast_index={}, cached_sequence={}",
             genome_id,
             cache_dir
                 .map(str::trim)
@@ -7171,7 +7193,8 @@ impl GentleEngine {
             sequence_type,
             report.annotation_path,
             annotation_type,
-            blast_status
+            blast_status,
+            cached_sequence_status
         )
     }
 

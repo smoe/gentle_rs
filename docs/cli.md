@@ -2270,8 +2270,9 @@ Notes:
   (genome id, coordinates/query, source descriptors, and checksums when present).
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
-  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
-  S288c (Ensembl 113 and 116), and `LocalProject` (backed by
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Caenorhabditis elegans
+  WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c (Ensembl 113 and 115),
+  and `LocalProject` (backed by
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.

@@ -42,6 +42,13 @@
     "annotations_remote": "https://ftp.ensembl.org/pub/release-116/:tf/rattus_norvegicus/Rattus_norvegicus.GRCr8.116.gtf.gz",
     "cache_dir": "data/genomes"
   },
+  "Caenorhabditis elegans WBcel235 Ensembl 115": {
+    "ncbi_taxonomy_id": 6239,
+    "description": "Caenorhabditis elegans WBcel235 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/caenorhabditis_elegans/dna/Caenorhabditis_elegans.WBcel235.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/caenorhabditis_elegans/Caenorhabditis_elegans.WBcel235.115.gtf.gz",
+    "cache_dir": "data/genomes"
+  },
   "Saccharomyces cerevisiae S288c Ensembl 113": {
     "description": "Saccharomyces cerevisiae S288c Ensembl 113",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",

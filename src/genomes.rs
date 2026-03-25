@@ -146,6 +146,16 @@ pub struct PrepareGenomeReport {
     pub blast_index_ready: bool,
     pub blast_index_executable: Option<String>,
     #[serde(default)]
+    pub cached_contig_count: usize,
+    #[serde(default)]
+    pub cached_total_span_bp: u64,
+    #[serde(default)]
+    pub cached_longest_contig: Option<String>,
+    #[serde(default)]
+    pub cached_longest_contig_bp: Option<u64>,
+    #[serde(default)]
+    pub cached_contig_preview: Vec<String>,
+    #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(default)]
     pub annotation_parse_report: Option<AnnotationParseReport>,
@@ -220,6 +230,25 @@ pub struct PreparedGenomeInspection {
     pub gene_index_ready: bool,
     pub total_size_bytes: u64,
     pub installed_at_unix_ms: u128,
+    #[serde(default)]
+    pub cached_contig_count: usize,
+    #[serde(default)]
+    pub cached_total_span_bp: u64,
+    #[serde(default)]
+    pub cached_longest_contig: Option<String>,
+    #[serde(default)]
+    pub cached_longest_contig_bp: Option<u64>,
+    #[serde(default)]
+    pub cached_contig_preview: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PreparedSequenceCacheSummary {
+    contig_count: usize,
+    total_span_bp: u64,
+    longest_contig: Option<String>,
+    longest_contig_bp: Option<u64>,
+    contig_preview: Vec<String>,
 }
 
 /// Result of resolving a requested genome id to a prepared install.
@@ -570,6 +599,13 @@ impl GenomeCatalog {
         let fasta_index_ready = fasta_index_path.exists();
         let gene_index_ready = gene_index_path.exists();
         let blast_index_ready = is_blast_index_ready(&blast_index_files);
+        let cache_summary = if fasta_index_ready {
+            load_fasta_index(&fasta_index_path)
+                .map(|index| summarize_fasta_index(&index))
+                .unwrap_or_default()
+        } else {
+            PreparedSequenceCacheSummary::default()
+        };
         let total_size_bytes = [
             &sequence_path,
             &annotation_path,
@@ -612,6 +648,11 @@ impl GenomeCatalog {
             gene_index_ready,
             total_size_bytes,
             installed_at_unix_ms: manifest.installed_at_unix_ms,
+            cached_contig_count: cache_summary.contig_count,
+            cached_total_span_bp: cache_summary.total_span_bp,
+            cached_longest_contig: cache_summary.longest_contig,
+            cached_longest_contig_bp: cache_summary.longest_contig_bp,
+            cached_contig_preview: cache_summary.contig_preview,
         }))
     }
 
@@ -832,6 +873,9 @@ impl GenomeCatalog {
                 manifest.annotation_source_type.clone().unwrap_or_else(|| {
                     classify_source_type_label(&manifest.annotation_source).to_string()
                 });
+            let cache_summary = load_fasta_index(Path::new(&manifest.fasta_index_path))
+                .map(|index| summarize_fasta_index(&index))
+                .unwrap_or_default();
             return Ok(PrepareGenomeReport {
                 genome_id: genome_id.to_string(),
                 reused_existing: true,
@@ -845,6 +889,11 @@ impl GenomeCatalog {
                 blast_db_prefix: manifest.blast_db_prefix.clone(),
                 blast_index_ready: blast_outcome.ready,
                 blast_index_executable: blast_outcome.executable,
+                cached_contig_count: cache_summary.contig_count,
+                cached_total_span_bp: cache_summary.total_span_bp,
+                cached_longest_contig: cache_summary.longest_contig,
+                cached_longest_contig_bp: cache_summary.longest_contig_bp,
+                cached_contig_preview: cache_summary.contig_preview,
                 warnings,
                 annotation_parse_report,
             });
@@ -1045,6 +1094,9 @@ impl GenomeCatalog {
         if let Some(report) = annotation_parse_report.as_ref() {
             warnings.extend(summarize_annotation_parse_warnings(report));
         }
+        let cache_summary = load_fasta_index(Path::new(&manifest.fasta_index_path))
+            .map(|index| summarize_fasta_index(&index))
+            .unwrap_or_default();
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
@@ -1059,6 +1111,11 @@ impl GenomeCatalog {
             blast_db_prefix: manifest.blast_db_prefix.clone(),
             blast_index_ready: blast_outcome.ready,
             blast_index_executable: blast_outcome.executable,
+            cached_contig_count: cache_summary.contig_count,
+            cached_total_span_bp: cache_summary.total_span_bp,
+            cached_longest_contig: cache_summary.longest_contig,
+            cached_longest_contig_bp: cache_summary.longest_contig_bp,
+            cached_contig_preview: cache_summary.contig_preview,
             warnings,
             annotation_parse_report,
         })
@@ -2494,6 +2551,32 @@ fn classify_source_type(source: &str) -> SourceType {
         return SourceType::NcbiAssembly;
     }
     SourceType::RemoteHttp
+}
+
+fn summarize_fasta_index(index: &HashMap<String, FastaIndexEntry>) -> PreparedSequenceCacheSummary {
+    let mut contigs = index
+        .iter()
+        .map(|(name, entry)| (name.clone(), entry.length))
+        .collect::<Vec<_>>();
+    contigs.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+    let total_span_bp = contigs
+        .iter()
+        .fold(0u64, |acc, (_, length)| acc.saturating_add(*length));
+    let (longest_contig, longest_contig_bp) = contigs
+        .first()
+        .map(|(name, length)| (Some(name.clone()), Some(*length)))
+        .unwrap_or((None, None));
+    PreparedSequenceCacheSummary {
+        contig_count: contigs.len(),
+        total_span_bp,
+        longest_contig,
+        longest_contig_bp,
+        contig_preview: contigs
+            .iter()
+            .take(8)
+            .map(|(name, _)| name.clone())
+            .collect(),
+    }
 }
 
 fn has_non_empty(value: &Option<String>) -> bool {
@@ -4860,6 +4943,10 @@ mod tests {
         assert!(Path::new(&first.sequence_path).exists());
         assert!(Path::new(&first.annotation_path).exists());
         assert!(Path::new(&first.fasta_index_path).exists());
+        assert_eq!(first.cached_contig_count, 2);
+        assert_eq!(first.cached_total_span_bp, 20);
+        assert_eq!(first.cached_longest_contig.as_deref(), Some("chr1"));
+        assert_eq!(first.cached_longest_contig_bp, Some(12));
         let manifest =
             GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
                 .unwrap();
@@ -4890,6 +4977,14 @@ mod tests {
         assert!(inspection.annotation_present);
         assert!(inspection.fasta_index_ready);
         assert!(inspection.gene_index_ready);
+        assert_eq!(inspection.cached_contig_count, 2);
+        assert_eq!(inspection.cached_total_span_bp, 20);
+        assert_eq!(inspection.cached_longest_contig.as_deref(), Some("chr1"));
+        assert_eq!(inspection.cached_longest_contig_bp, Some(12));
+        assert_eq!(
+            inspection.cached_contig_preview,
+            vec!["chr1".to_string(), "II".to_string()]
+        );
         assert!(
             inspection
                 .sequence_sha1
@@ -4907,6 +5002,10 @@ mod tests {
 
         let second = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(second.reused_existing);
+        assert_eq!(second.cached_contig_count, 2);
+        assert_eq!(second.cached_total_span_bp, 20);
+        assert_eq!(second.cached_longest_contig.as_deref(), Some("chr1"));
+        assert_eq!(second.cached_longest_contig_bp, Some(12));
 
         let seq = catalog
             .get_sequence_region("ToyGenome", "1", 3, 10)
@@ -4922,6 +5021,77 @@ mod tests {
         assert_eq!(genes[0].gene_id.as_deref(), Some("GENE1"));
         assert_eq!(genes[0].gene_name.as_deref(), Some("MYGENE"));
         assert_eq!(genes[0].biotype.as_deref(), Some("protein_coding"));
+    }
+
+    #[test]
+    fn test_prepare_genome_reports_cache_summary_for_worm_like_lettered_contigs() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_gz = root.join("celegans.fa.gz");
+        let ann_gz = root.join("celegans.gtf.gz");
+        write_gzip(
+            &fasta_gz,
+            ">I\nACGTACGTACGT\n>II\nTTTTGGGGCCCCAAAATTTT\n>X\nGATTACAGATTACAGATTACA\n>MtDNA\nATGCATGC\n",
+        );
+        write_gzip(
+            &ann_gz,
+            concat!(
+                "X\tsrc\tgene\t3\t18\t.\t+\t.\tgene_id \"WBGene00000001\"; gene_name \"lin-4\"; gene_biotype \"ncRNA\";\n",
+                "II\tsrc\tgene\t5\t16\t.\t-\t.\tgene_id \"WBGene00000002\"; gene_name \"unc-54\"; gene_biotype \"protein_coding\";\n"
+            ),
+        );
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let genome_id = "Caenorhabditis elegans WBcel235 Ensembl 115";
+        let catalog_json = format!(
+            r#"{{
+  "{genome_id}": {{
+    "description": "worm test genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let report = catalog.prepare_genome_once(genome_id).unwrap();
+        assert_eq!(report.cached_contig_count, 4);
+        assert_eq!(report.cached_total_span_bp, 61);
+        assert_eq!(report.cached_longest_contig.as_deref(), Some("X"));
+        assert_eq!(report.cached_longest_contig_bp, Some(21));
+        assert_eq!(
+            report.cached_contig_preview,
+            vec![
+                "X".to_string(),
+                "II".to_string(),
+                "I".to_string(),
+                "MtDNA".to_string()
+            ]
+        );
+
+        let seq = catalog.get_sequence_region(genome_id, "X", 5, 10).unwrap();
+        assert_eq!(seq, "ACAGAT");
+        let inspection = catalog
+            .inspect_prepared_genome(genome_id, None)
+            .unwrap()
+            .expect("inspection should exist");
+        assert_eq!(inspection.cached_contig_count, 4);
+        assert_eq!(inspection.cached_total_span_bp, 61);
+        assert_eq!(inspection.cached_longest_contig.as_deref(), Some("X"));
+        assert_eq!(inspection.cached_longest_contig_bp, Some(21));
+        let genes = catalog.list_gene_regions(genome_id, None).unwrap();
+        assert!(genes.iter().any(|gene| gene.chromosome == "X"));
     }
 
     #[test]
@@ -6637,6 +6807,7 @@ mod tests {
             "Human GRCh38 NCBI RefSeq GCF_000001405.40",
             "Mouse GRCm39 Ensembl 116",
             "Rat GRCr8 Ensembl 116",
+            "Caenorhabditis elegans WBcel235 Ensembl 115",
             "Saccharomyces cerevisiae S288c Ensembl 113",
             "Saccharomyces cerevisiae S288c Ensembl 115",
             "LocalProject",

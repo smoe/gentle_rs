@@ -9207,6 +9207,21 @@ Error: `{err}`"
         }
     }
 
+    fn format_bp_compact(bp: u64) -> String {
+        const UNITS: [&str; 4] = ["bp", "kbp", "Mbp", "Gbp"];
+        let mut value = bp as f64;
+        let mut unit = 0usize;
+        while value >= 1000.0 && unit + 1 < UNITS.len() {
+            value /= 1000.0;
+            unit += 1;
+        }
+        if unit == 0 {
+            format!("{bp} {}", UNITS[unit])
+        } else {
+            format!("{value:.2} {}", UNITS[unit])
+        }
+    }
+
     fn format_short_sha1(value: &Option<String>) -> String {
         value
             .as_ref()
@@ -9220,6 +9235,47 @@ Error: `{err}`"
                 }
             })
             .unwrap_or_else(|| "-".to_string())
+    }
+
+    fn format_prepared_cache_summary(inspection: &PreparedGenomeInspection) -> String {
+        if inspection.cached_contig_count == 0 {
+            return "-".to_string();
+        }
+        let longest = inspection
+            .cached_longest_contig
+            .as_deref()
+            .unwrap_or("?");
+        let longest_bp = inspection.cached_longest_contig_bp.unwrap_or(0);
+        format!(
+            "{} ctgs | {} {}",
+            inspection.cached_contig_count,
+            longest,
+            Self::format_bp_compact(longest_bp)
+        )
+    }
+
+    fn format_prepared_cache_hover_text(inspection: &PreparedGenomeInspection) -> String {
+        if inspection.cached_contig_count == 0 {
+            return "No cached contig summary available from the FASTA index.".to_string();
+        }
+        let longest = inspection
+            .cached_longest_contig
+            .as_deref()
+            .unwrap_or("?");
+        let longest_bp = inspection.cached_longest_contig_bp.unwrap_or(0);
+        let preview = if inspection.cached_contig_preview.is_empty() {
+            "-".to_string()
+        } else {
+            inspection.cached_contig_preview.join(", ")
+        };
+        format!(
+            "contigs: {}\ntotal span: {}\nlongest: {} ({})\npreview: {}",
+            inspection.cached_contig_count,
+            Self::format_bp_compact(inspection.cached_total_span_bp),
+            longest,
+            Self::format_bp_compact(longest_bp),
+            preview
+        )
     }
 
     fn parse_prepare_timeout_seconds(&self) -> Result<Option<u64>, String> {
@@ -12871,11 +12927,12 @@ Error: `{err}`"
                                     );
                                     egui::Grid::new("prepared_genome_inspector_grid")
                                         .striped(true)
-                                        .num_columns(8)
+                                        .num_columns(9)
                                         .show(ui, |ui| {
                                             ui.strong("Genome");
                                             ui.strong("Size");
                                             ui.strong("Ready");
+                                            ui.strong("Cache");
                                             ui.strong("Sources");
                                             ui.strong("SHA1 seq/ann");
                                             ui.strong("Installed");
@@ -12910,6 +12967,19 @@ Error: `{err}`"
                                                         "n"
                                                     }
                                                 ));
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        Self::format_prepared_cache_summary(
+                                                            inspection,
+                                                        ),
+                                                    )
+                                                    .small(),
+                                                )
+                                                .on_hover_text(
+                                                    Self::format_prepared_cache_hover_text(
+                                                        inspection,
+                                                    ),
+                                                );
                                                 ui.label(format!(
                                                     "{}/{}",
                                                     inspection.sequence_source_type,

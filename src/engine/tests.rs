@@ -5881,6 +5881,13 @@ fn test_prepare_genome_and_extract_region_operations() {
             .iter()
             .any(|m| m.contains("Prepared genome 'ToyGenome'"))
     );
+    assert!(
+        prep.messages
+            .iter()
+            .any(|m| m.contains("cached_sequence=1 contigs")),
+        "messages were: {:?}",
+        prep.messages
+    );
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
     let catalog_names = GentleEngine::list_reference_genomes(Some(&catalog_path_str)).unwrap();
     assert!(catalog_names.contains(&"ToyGenome".to_string()));
