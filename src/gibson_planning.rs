@@ -3698,7 +3698,7 @@ fn build_multi_insert_cartoon_spec(
     const DEST_ARM_BODY_BP: usize = 88;
     const INSERT_BODY_BP: usize = 92;
     const CHEW_EXTRA_BP: usize = 8;
-    const ANNEAL_GAP_DISPLAY_BP: usize = CHEW_EXTRA_BP + 2;
+    const ANNEAL_GAP_DISPLAY_BP: usize = CHEW_EXTRA_BP + 6;
     const EXTEND_GAP_DISPLAY_BP: usize = CHEW_EXTRA_BP.saturating_sub(2);
     let body_palette = [
         "#f2c84b", "#4e8bd8", "#f08a39", "#8c6dd7", "#5aaa55", "#d66f8f",
@@ -3715,7 +3715,6 @@ fn build_multi_insert_cartoon_spec(
         label: String,
         body_color: &'static str,
         right_overlap_color: &'static str,
-        right_overlap_bp: usize,
     }
     let mut context_molecules = Vec::new();
     let mut chew_back_molecules = Vec::new();
@@ -3739,6 +3738,7 @@ fn build_multi_insert_cartoon_spec(
         .overlap_bp
         .max(representative_overlap_bp)
         .max(1);
+    let displayed_overlap_bp = representative_overlap_bp.max(1);
 
     context_molecules.push(DnaMoleculeCartoon {
         id: "destination_left_context".to_string(),
@@ -3756,8 +3756,8 @@ fn build_multi_insert_cartoon_spec(
             ),
             duplex_cartoon_feature(
                 "junction_left_overlap",
-                format!("Left junction {} bp", left_terminal_bp),
-                left_terminal_bp,
+                "Left junction homology",
+                displayed_overlap_bp,
                 overlap_palette[0],
             ),
         ],
@@ -3784,7 +3784,7 @@ fn build_multi_insert_cartoon_spec(
             top_only_cartoon_feature(
                 "left_overlap_exposed",
                 "Left terminal homology",
-                left_terminal_bp,
+                displayed_overlap_bp,
                 overlap_palette[0],
             ),
         ],
@@ -3827,7 +3827,6 @@ fn build_multi_insert_cartoon_spec(
             label: compact_cartoon_label(&fragment.seq_id, &fragment.fragment_id, 18),
             body_color,
             right_overlap_color,
-            right_overlap_bp,
         });
         context_molecules.push(DnaMoleculeCartoon {
             id: format!("{}_context", fragment_id),
@@ -3837,7 +3836,7 @@ fn build_multi_insert_cartoon_spec(
                 duplex_cartoon_feature(
                     format!("{}_left_overlap_context", fragment_id),
                     format!("{} left junction", fragment.fragment_id),
-                    left_overlap_bp,
+                    displayed_overlap_bp,
                     left_overlap_color,
                 ),
                 duplex_cartoon_feature(
@@ -3849,7 +3848,7 @@ fn build_multi_insert_cartoon_spec(
                 duplex_cartoon_feature(
                     format!("{}_right_overlap_context", fragment_id),
                     format!("{} right junction", fragment.fragment_id),
-                    right_overlap_bp,
+                    displayed_overlap_bp,
                     right_overlap_color,
                 ),
             ],
@@ -3867,7 +3866,7 @@ fn build_multi_insert_cartoon_spec(
                 bottom_only_cartoon_feature(
                     format!("{}_left_overlap_exposed", fragment_id),
                     format!("{} left homology", fragment.fragment_id),
-                    left_overlap_bp,
+                    displayed_overlap_bp,
                     left_overlap_color,
                 ),
                 bottom_only_cartoon_feature(
@@ -3891,7 +3890,7 @@ fn build_multi_insert_cartoon_spec(
                 top_only_cartoon_feature(
                     format!("{}_right_overlap_exposed", fragment_id),
                     format!("{} right homology", fragment.fragment_id),
-                    right_overlap_bp,
+                    displayed_overlap_bp,
                     right_overlap_color,
                 ),
             ],
@@ -3916,8 +3915,8 @@ fn build_multi_insert_cartoon_spec(
         features: vec![
             duplex_cartoon_feature(
                 "junction_right_overlap",
-                format!("Right junction {} bp", right_terminal_bp),
-                right_terminal_bp,
+                "Right junction homology",
+                displayed_overlap_bp,
                 overlap_palette[ordered_fragment_ids.len() % overlap_palette.len()],
             ),
             duplex_cartoon_feature(
@@ -3938,7 +3937,7 @@ fn build_multi_insert_cartoon_spec(
             bottom_only_cartoon_feature(
                 "right_overlap_exposed",
                 "Right terminal homology",
-                right_terminal_bp,
+                displayed_overlap_bp,
                 overlap_palette[ordered_fragment_ids.len() % overlap_palette.len()],
             ),
             bottom_only_cartoon_feature(
@@ -3977,7 +3976,7 @@ fn build_multi_insert_cartoon_spec(
         annealed_features.push(duplex_cartoon_feature(
             "assembled_left_terminal_overlap",
             "Left terminal junction",
-            left_terminal_bp,
+            displayed_overlap_bp,
             overlap_palette[0],
         ));
         annealed_features.push(bottom_only_cartoon_feature(
@@ -4017,7 +4016,7 @@ fn build_multi_insert_cartoon_spec(
         annealed_features.push(duplex_cartoon_feature(
             overlap_id,
             overlap_label,
-            fragment.right_overlap_bp,
+            displayed_overlap_bp,
             fragment.right_overlap_color,
         ));
         if let Some(next_fragment) = fragment_specs.get(idx + 1) {
@@ -4061,7 +4060,7 @@ fn build_multi_insert_cartoon_spec(
         extended_features.push(duplex_cartoon_feature(
             "assembled_left_terminal_overlap",
             "Left terminal junction",
-            left_terminal_bp,
+            displayed_overlap_bp,
             overlap_palette[0],
         ));
         extended_features.push(duplex_cartoon_feature_with_nicks(
@@ -4105,7 +4104,7 @@ fn build_multi_insert_cartoon_spec(
         extended_features.push(duplex_cartoon_feature(
             overlap_id,
             overlap_label,
-            fragment.right_overlap_bp,
+            displayed_overlap_bp,
             fragment.right_overlap_color,
         ));
         if let Some(next_fragment) = fragment_specs.get(idx + 1) {
@@ -4714,6 +4713,7 @@ mod tests {
             .find(|event| event.id == "anneal")
             .expect("anneal event");
         let assembled = anneal.molecules.first().expect("assembled molecule");
+        let representative_overlap_bp = preview.cartoon.representative_overlap_bp;
         assert!(
             assembled
                 .features
@@ -4748,6 +4748,25 @@ mod tests {
             anneal_left_gap.top_length_bp > extend_left_gap.top_length_bp,
             "anneal gap should render wider than extend gap"
         );
+
+        let overlap_feature_ids = [
+            "assembled_left_terminal_overlap",
+            "assembled_internal_overlap_insert_x_insert_y",
+            "assembled_right_terminal_overlap",
+        ];
+        for feature_id in overlap_feature_ids {
+            let overlap = assembled
+                .features
+                .iter()
+                .find(|feature| feature.id == feature_id)
+                .unwrap_or_else(|| panic!("missing overlap feature {feature_id}"));
+            assert_eq!(
+                overlap.length_bp, representative_overlap_bp,
+                "displayed overlap width should stay normalized across all Gibson junctions"
+            );
+            assert_eq!(overlap.top_length_bp, representative_overlap_bp);
+            assert_eq!(overlap.bottom_length_bp, representative_overlap_bp);
+        }
     }
 
     #[test]

@@ -1088,7 +1088,7 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
         ".pc_mol_label { font: 600 13px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #2d4f5b; }",
     );
     svg.push_str(
-        ".pc_end_label { font: 600 11px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #375965; }",
+        ".pc_end_label { font: 600 10px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #375965; }",
     );
     svg.push_str(
         ".pc_feature_marker_text { font: 700 10px 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif; fill: #ffffff; }",
@@ -1272,11 +1272,11 @@ fn render_linear_molecule(
 
     if let Some(end) = molecule.left_end.as_ref() {
         apply_left_end_style(&mut left_top, &mut left_bottom, end);
-        render_end_annotation(svg, x, y + 34.0, true, end);
+        render_end_annotation(svg, left_top, left_bottom, y + 9.5, true, end);
     }
     if let Some(end) = molecule.right_end.as_ref() {
         apply_right_end_style(&mut right_top, &mut right_bottom, end);
-        render_end_annotation(svg, x + width, y + 34.0, false, end);
+        render_end_annotation(svg, right_top, right_bottom, y + 9.5, false, end);
     }
 
     let shared_left = left_top.min(left_bottom);
@@ -1627,18 +1627,45 @@ fn apply_right_end_style(right_top: &mut f32, right_bottom: &mut f32, end: &DnaE
     }
 }
 
-fn render_end_annotation(svg: &mut String, x: f32, y: f32, is_left: bool, end: &DnaEndStyle) {
+fn render_end_annotation(
+    svg: &mut String,
+    top_edge: f32,
+    bottom_edge: f32,
+    y: f32,
+    is_left: bool,
+    end: &DnaEndStyle,
+) {
     let text = match end {
         DnaEndStyle::NotShown => return,
         DnaEndStyle::Continuation => return,
         DnaEndStyle::Blunt => "blunt".to_string(),
         DnaEndStyle::Sticky { polarity, nt } => format!("{} {}nt", polarity.label(), nt),
     };
-    let anchor = if is_left { "start" } else { "end" };
-    let dx = if is_left { 0.0 } else { -2.0 };
+    let (x, anchor) = match end {
+        DnaEndStyle::Blunt => {
+            if is_left {
+                (top_edge - 6.0, "end")
+            } else {
+                (top_edge + 6.0, "start")
+            }
+        }
+        DnaEndStyle::Sticky { .. } => (((top_edge + bottom_edge) * 0.5), "middle"),
+        DnaEndStyle::NotShown | DnaEndStyle::Continuation => unreachable!(),
+    };
+    let y = match end {
+        DnaEndStyle::Blunt => y,
+        DnaEndStyle::Sticky { .. } => {
+            if is_left {
+                y - 1.0
+            } else {
+                y + 4.0
+            }
+        }
+        DnaEndStyle::NotShown | DnaEndStyle::Continuation => unreachable!(),
+    };
     svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_end_label\" text-anchor=\"{}\">{}</text>",
-        x + dx,
+        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_end_label\" text-anchor=\"{}\" dominant-baseline=\"middle\">{}</text>",
+        x,
         y,
         anchor,
         escape_xml(&text)
@@ -4345,6 +4372,13 @@ mod tests {
         spec.events[0].molecules[0].left_end = Some(DnaEndStyle::NotShown);
         let svg = render_protocol_cartoon_spec_svg(&spec);
         assert!(!svg.contains("5&apos; 6nt"));
+    }
+
+    #[test]
+    fn render_end_annotations_use_compact_mid_strand_layout() {
+        let svg = render_protocol_cartoon_spec_svg(&custom_test_spec());
+        assert!(svg.contains(".pc_end_label { font: 600 10px"));
+        assert!(svg.contains("dominant-baseline=\"middle\""));
     }
 
     #[test]
