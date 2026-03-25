@@ -49,11 +49,11 @@ use crate::{
     enzymes,
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN,
-        EnsemblCatalogUpdatePreview, GenomeBlastReport, GenomeCatalog,
-        GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan, MAKEBLASTDB_ENV_BIN,
-        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan, PrepareGenomePlanStep,
-        PrepareGenomeProgress, PrepareGenomeStepId, PreparedGenomeInspection,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, EnsemblCatalogUpdatePreview,
+        GenomeBlastReport, GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord,
+        GenomeSourcePlan, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
+        PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
+        PreparedGenomeInspection,
     },
     gibson_planning::{
         GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
@@ -9120,8 +9120,10 @@ Error: `{err}`"
                     preview,
                     output_catalog_path: String::new(),
                 });
-                self.genome_prepare_status =
-                    format!("Loaded Ensembl catalog update preview for '{}'.", catalog_path);
+                self.genome_prepare_status = format!(
+                    "Loaded Ensembl catalog update preview for '{}'.",
+                    catalog_path
+                );
             }
             Err(e) => {
                 self.genome_prepare_status = format!(
@@ -9137,10 +9139,7 @@ Error: `{err}`"
         let Some(dialog) = self.pending_ensembl_catalog_update.clone() else {
             return;
         };
-        let output_catalog_path = dialog
-            .output_catalog_path
-            .trim()
-            .to_string();
+        let output_catalog_path = dialog.output_catalog_path.trim().to_string();
         let output_catalog_path = if output_catalog_path.is_empty() {
             None
         } else {
@@ -36042,8 +36041,8 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         let svg = app.render_current_visible_lineage_svg_text();
 
         assert!(svg.contains("GENtle Lineage (DALG) - demo.gentle.json"));
-        assert!(svg.contains("Gibson cloning"));
-        assert!(svg.contains("op=op-gb"));
+        assert_eq!(svg.matches("Gibson cloning").count(), 1);
+        assert!(!svg.contains("op=op-gb"));
     }
 
     #[test]

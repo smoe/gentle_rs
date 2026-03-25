@@ -709,6 +709,12 @@ order. Durable architecture constraints and decisions remain in
     Gibson-hub projection model shown in the graph view, so saved DALG output
     matches the visible `Gibson cloning` operation node instead of the older
     raw multi-edge serialization
+  - engine/CLI `RenderLineageSvg` now also projects Gibson apply operations
+    through that same dedicated `Gibson cloning` hub so command-line SVGs no
+    longer fall back to the impossible raw multi-edge form
+  - projected Gibson hub SVG export now centers the hub label inside the box
+    and suppresses redundant connector-edge labels for cleaner tutorial/hero
+    figures
   - graph-canvas context menu now includes `Save Graph as SVG...`
   - `Save Project...` / lineage-SVG save dialogs now default filenames from the
     current project name/path rather than fixed placeholders

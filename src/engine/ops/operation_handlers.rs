@@ -2554,7 +2554,7 @@ impl GentleEngine {
                 ));
             }
             Operation::RenderLineageSvg { path } => {
-                let svg = export_lineage_svg(&self.state);
+                let svg = export_lineage_svg(&self.state, self.operation_log());
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not write SVG output '{path}': {e}"),

@@ -2187,6 +2187,9 @@ Render lineage SVG (engine operation):
 {"RenderLineageSvg":{"path":"lineage.svg"}}
 ```
 
+- Gibson apply operations export as the same dedicated `Gibson cloning` hub
+  shown in the GUI, instead of a raw parent-to-each-output multi-edge graph.
+
 Render pool gel SVG with ladder selection (engine operation):
 
 ```json

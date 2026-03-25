@@ -1,11 +1,13 @@
 //! Lineage graph export and serialization utilities.
 
-use crate::engine::ProjectState;
-use std::collections::{HashMap, HashSet};
+use crate::{
+    engine::{LineageMacroPortBinding, Operation, OperationRecord, ProjectState},
+    gibson_planning::GibsonAssemblyPlan,
+};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use svg::Document;
 use svg::node::element::{Circle, Line, Polygon, Rectangle, Text};
 
-const W: f32 = 1600.0;
 const MIN_H: f32 = 180.0;
 const MIN_W: f32 = 960.0;
 const TOP_CONTENT_Y: f32 = 120.0;
@@ -61,6 +63,10 @@ pub fn export_projected_lineage_svg(
     nodes: &[LineageSvgNode],
     edges: &[LineageSvgEdge],
 ) -> String {
+    let node_by_id: HashMap<String, &LineageSvgNode> = nodes
+        .iter()
+        .map(|node| (node.node_id.clone(), node))
+        .collect();
     let pos_by_node: HashMap<String, (f32, f32)> = nodes
         .iter()
         .map(|node| (node.node_id.clone(), (node.x, node.y)))
@@ -99,7 +105,12 @@ pub fn export_projected_lineage_svg(
                 .set("stroke", "#8a8a8a")
                 .set("stroke-width", 1.2),
         );
-        if !edge.label.trim().is_empty() {
+        let suppress_edge_label = node_by_id
+            .get(&edge.from_node_id)
+            .into_iter()
+            .chain(node_by_id.get(&edge.to_node_id))
+            .any(|node| node.kind == LineageSvgNodeKind::OperationHub);
+        if !suppress_edge_label && !edge.label.trim().is_empty() {
             let mx = (fx + tx) * 0.5;
             let my = (fy + ty) * 0.5 - 6.0;
             doc = doc
@@ -212,6 +223,17 @@ pub fn export_projected_lineage_svg(
                         .set("stroke", "#2d6f61")
                         .set("stroke-width", 1),
                 );
+                doc = doc.add(
+                    Text::new(node.title.clone())
+                        .set("x", x)
+                        .set("y", y)
+                        .set("text-anchor", "middle")
+                        .set("dominant-baseline", "middle")
+                        .set("font-family", "Helvetica, Arial, sans-serif")
+                        .set("font-size", 12)
+                        .set("fill", "#ffffff"),
+                );
+                continue;
             }
         }
 
@@ -237,8 +259,587 @@ pub fn export_projected_lineage_svg(
     doc.to_string()
 }
 
-pub fn export_lineage_svg(state: &ProjectState) -> String {
-    let mut rows: Vec<(String, String, String, usize, usize)> = state
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EngineLineageRenderRowKind {
+    Sequence,
+    Arrangement,
+    Macro,
+    OperationHub,
+}
+
+#[derive(Clone, Debug)]
+struct EngineLineageRenderRow {
+    node_id: String,
+    seq_id: String,
+    display_name: String,
+    created_by_op: String,
+    created_at: u128,
+    kind: EngineLineageRenderRowKind,
+    length: usize,
+    circular: bool,
+    pool_size: usize,
+    arrangement_id: Option<String>,
+    arrangement_mode: Option<String>,
+    lane_count: usize,
+    macro_instance_id: Option<String>,
+    macro_op_count: usize,
+}
+
+fn operation_variant_name(op: &Operation) -> String {
+    serde_json::to_value(op)
+        .ok()
+        .and_then(|value| value.as_object().and_then(|obj| obj.keys().next().cloned()))
+        .unwrap_or_else(|| "UnknownOperation".to_string())
+}
+
+fn humanize_operation_variant_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len() + 8);
+    let mut prev_is_lower_or_digit = false;
+    for ch in raw.chars() {
+        let is_upper = ch.is_ascii_uppercase();
+        if is_upper && prev_is_lower_or_digit && !out.is_empty() {
+            out.push(' ');
+        }
+        out.push(ch);
+        prev_is_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+    }
+    out
+}
+
+fn summarize_gibson_operation(plan_json: &str) -> String {
+    let parsed: Result<GibsonAssemblyPlan, _> = serde_json::from_str(plan_json);
+    match parsed {
+        Ok(plan) => {
+            let insert_seq_ids = if plan.fragments.is_empty() {
+                "-".to_string()
+            } else {
+                plan.fragments
+                    .iter()
+                    .map(|fragment| fragment.seq_id.clone())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let opening_mode = if plan.destination.opening.mode.trim().is_empty() {
+                "-".to_string()
+            } else {
+                plan.destination.opening.mode.trim().to_string()
+            };
+            let output = if plan.product.output_id_hint.trim().is_empty() {
+                "-".to_string()
+            } else {
+                plan.product.output_id_hint.trim().to_string()
+            };
+            format!(
+                "Gibson cloning: destination={}, inserts={}, opening={}, output={}",
+                plan.destination.seq_id, insert_seq_ids, opening_mode, output
+            )
+        }
+        Err(_) => "Gibson cloning".to_string(),
+    }
+}
+
+fn summarize_operation_for_lineage(op: &Operation) -> String {
+    match op {
+        Operation::ApplyGibsonAssemblyPlan { plan_json } => summarize_gibson_operation(plan_json),
+        _ => humanize_operation_variant_name(&operation_variant_name(op)),
+    }
+}
+
+fn infer_gibson_like_operation_ids_from_state(state: &ProjectState) -> HashSet<String> {
+    let mut output_seq_ids_by_op: HashMap<String, Vec<String>> = HashMap::new();
+    for node in state.lineage.nodes.values() {
+        let Some(op_id) = node.created_by_op.as_ref() else {
+            continue;
+        };
+        output_seq_ids_by_op
+            .entry(op_id.clone())
+            .or_default()
+            .push(node.seq_id.clone());
+    }
+
+    let mut parent_nodes_by_op: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut child_nodes_by_op: HashMap<String, HashSet<String>> = HashMap::new();
+    for edge in &state.lineage.edges {
+        parent_nodes_by_op
+            .entry(edge.op_id.clone())
+            .or_default()
+            .insert(edge.from_node_id.clone());
+        child_nodes_by_op
+            .entry(edge.op_id.clone())
+            .or_default()
+            .insert(edge.to_node_id.clone());
+    }
+
+    output_seq_ids_by_op
+        .into_iter()
+        .filter_map(|(op_id, output_seq_ids)| {
+            let has_left_primer = output_seq_ids
+                .iter()
+                .any(|seq_id| seq_id.ends_with("_left_insert_primer"));
+            let has_right_primer = output_seq_ids
+                .iter()
+                .any(|seq_id| seq_id.ends_with("_right_insert_primer"));
+            if !has_left_primer || !has_right_primer {
+                return None;
+            }
+            let parent_count = parent_nodes_by_op
+                .get(&op_id)
+                .map(|nodes| nodes.len())
+                .unwrap_or(0);
+            let child_count = child_nodes_by_op
+                .get(&op_id)
+                .map(|nodes| nodes.len())
+                .unwrap_or(0);
+            (parent_count >= 2 && child_count >= 2).then_some(op_id)
+        })
+        .collect()
+}
+
+fn lineage_layout_positions(
+    order_by_layer: &BTreeMap<usize, Vec<String>>,
+) -> HashMap<String, usize> {
+    let mut positions = HashMap::new();
+    for nodes in order_by_layer.values() {
+        for (index, node_id) in nodes.iter().enumerate() {
+            positions.insert(node_id.clone(), index);
+        }
+    }
+    positions
+}
+
+fn compute_lineage_dag_layout(
+    rows: &[EngineLineageRenderRow],
+    edges: &[(String, String, String)],
+) -> HashMap<String, (usize, usize)> {
+    if rows.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut row_index: HashMap<String, usize> = HashMap::new();
+    for (index, row) in rows.iter().enumerate() {
+        row_index.insert(row.node_id.clone(), index);
+    }
+
+    let mut parents_by_node: HashMap<String, Vec<String>> = HashMap::new();
+    let mut children_by_node: HashMap<String, Vec<String>> = HashMap::new();
+    let mut indegree_by_node: HashMap<String, usize> = HashMap::new();
+    for row in rows {
+        parents_by_node.insert(row.node_id.clone(), Vec::new());
+        children_by_node.insert(row.node_id.clone(), Vec::new());
+        indegree_by_node.insert(row.node_id.clone(), 0);
+    }
+
+    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+    for (from_node, to_node, _op_id) in edges {
+        if !row_index.contains_key(from_node) || !row_index.contains_key(to_node) {
+            continue;
+        }
+        if !seen_edges.insert((from_node.clone(), to_node.clone())) {
+            continue;
+        }
+        if let Some(children) = children_by_node.get_mut(from_node) {
+            children.push(to_node.clone());
+        }
+        if let Some(parents) = parents_by_node.get_mut(to_node) {
+            parents.push(from_node.clone());
+        }
+        if let Some(indegree) = indegree_by_node.get_mut(to_node) {
+            *indegree = indegree.saturating_add(1);
+        }
+    }
+
+    for parents in parents_by_node.values_mut() {
+        parents.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+    }
+    for children in children_by_node.values_mut() {
+        children.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+    }
+
+    let mut ready: Vec<String> = indegree_by_node
+        .iter()
+        .filter_map(|(node_id, indegree)| (*indegree == 0).then(|| node_id.clone()))
+        .collect();
+    ready.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+
+    let mut topo_order: Vec<String> = Vec::with_capacity(rows.len());
+    let mut topo_seen: HashSet<String> = HashSet::with_capacity(rows.len());
+    while !ready.is_empty() {
+        let node_id = ready.remove(0);
+        if !topo_seen.insert(node_id.clone()) {
+            continue;
+        }
+        topo_order.push(node_id.clone());
+        if let Some(children) = children_by_node.get(&node_id) {
+            for child_id in children {
+                if let Some(indegree) = indegree_by_node.get_mut(child_id)
+                    && *indegree > 0
+                {
+                    *indegree -= 1;
+                    if *indegree == 0 {
+                        ready.push(child_id.clone());
+                    }
+                }
+            }
+        }
+        ready.sort_by_key(|candidate| row_index.get(candidate).copied().unwrap_or(usize::MAX));
+    }
+
+    for row in rows {
+        if topo_seen.insert(row.node_id.clone()) {
+            topo_order.push(row.node_id.clone());
+        }
+    }
+
+    let mut layer_by_node: HashMap<String, usize> = HashMap::new();
+    for node_id in &topo_order {
+        let layer = parents_by_node
+            .get(node_id)
+            .map(|parents| {
+                parents
+                    .iter()
+                    .filter_map(|parent_id| layer_by_node.get(parent_id).copied())
+                    .max()
+                    .map(|max_parent_layer| max_parent_layer + 1)
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        layer_by_node.insert(node_id.clone(), layer);
+    }
+
+    let mut order_by_layer: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    for node_id in &topo_order {
+        let layer = layer_by_node.get(node_id).copied().unwrap_or(0);
+        order_by_layer
+            .entry(layer)
+            .or_default()
+            .push(node_id.clone());
+    }
+    for nodes in order_by_layer.values_mut() {
+        nodes.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+    }
+
+    let max_layer = order_by_layer.keys().copied().max().unwrap_or(0);
+    let barycenter = |neighbors: &[String], positions: &HashMap<String, usize>| -> Option<f32> {
+        let mut sum = 0.0f32;
+        let mut count = 0usize;
+        for node_id in neighbors {
+            if let Some(pos) = positions.get(node_id) {
+                sum += *pos as f32;
+                count += 1;
+            }
+        }
+        (count > 0).then(|| sum / count as f32)
+    };
+
+    for _ in 0..6 {
+        for layer in 1..=max_layer {
+            let positions = lineage_layout_positions(&order_by_layer);
+            let Some(mut nodes) = order_by_layer.remove(&layer) else {
+                continue;
+            };
+            nodes.sort_by(|left, right| {
+                let left_score = parents_by_node
+                    .get(left)
+                    .and_then(|parents| barycenter(parents, &positions));
+                let right_score = parents_by_node
+                    .get(right)
+                    .and_then(|parents| barycenter(parents, &positions));
+                let fallback = row_index
+                    .get(left)
+                    .copied()
+                    .unwrap_or(usize::MAX)
+                    .cmp(&row_index.get(right).copied().unwrap_or(usize::MAX));
+                match (left_score, right_score) {
+                    (Some(l), Some(r)) => l
+                        .partial_cmp(&r)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(fallback),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => fallback,
+                }
+            });
+            order_by_layer.insert(layer, nodes);
+        }
+
+        if max_layer == 0 {
+            break;
+        }
+
+        for layer in (0..max_layer).rev() {
+            let positions = lineage_layout_positions(&order_by_layer);
+            let Some(mut nodes) = order_by_layer.remove(&layer) else {
+                continue;
+            };
+            nodes.sort_by(|left, right| {
+                let left_score = children_by_node
+                    .get(left)
+                    .and_then(|children| barycenter(children, &positions));
+                let right_score = children_by_node
+                    .get(right)
+                    .and_then(|children| barycenter(children, &positions));
+                let fallback = row_index
+                    .get(left)
+                    .copied()
+                    .unwrap_or(usize::MAX)
+                    .cmp(&row_index.get(right).copied().unwrap_or(usize::MAX));
+                match (left_score, right_score) {
+                    (Some(l), Some(r)) => l
+                        .partial_cmp(&r)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(fallback),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => fallback,
+                }
+            });
+            order_by_layer.insert(layer, nodes);
+        }
+    }
+
+    let mut layout_by_node: HashMap<String, (usize, usize)> = HashMap::new();
+    for (layer, nodes) in &order_by_layer {
+        for (rank, node_id) in nodes.iter().enumerate() {
+            layout_by_node.insert(node_id.clone(), (*layer, rank));
+        }
+    }
+
+    for row in rows {
+        let fallback_rank = row_index.get(&row.node_id).copied().unwrap_or(0);
+        layout_by_node
+            .entry(row.node_id.clone())
+            .or_insert((0, fallback_rank));
+    }
+
+    layout_by_node
+}
+
+fn sequence_nodes_for_binding(
+    state: &ProjectState,
+    binding: &LineageMacroPortBinding,
+) -> Vec<String> {
+    let mut node_ids: Vec<String> = vec![];
+    let mut seen: HashSet<String> = HashSet::new();
+    match binding.kind.trim().to_ascii_lowercase().as_str() {
+        "sequence" => {
+            for seq_id in &binding.values {
+                if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                    && seen.insert(node_id.clone())
+                {
+                    node_ids.push(node_id.clone());
+                }
+            }
+        }
+        "container" => {
+            for container_id in &binding.values {
+                let Some(container) = state.container_state.containers.get(container_id) else {
+                    continue;
+                };
+                for seq_id in &container.members {
+                    if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                        && seen.insert(node_id.clone())
+                    {
+                        node_ids.push(node_id.clone());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    node_ids
+}
+
+fn project_lineage_operation_hubs(
+    rows: &[EngineLineageRenderRow],
+    edges: &[(String, String, String)],
+    hub_op_ids: &HashSet<String>,
+) -> (Vec<EngineLineageRenderRow>, Vec<(String, String, String)>) {
+    let valid_node_ids: HashSet<String> = rows.iter().map(|row| row.node_id.clone()).collect();
+    let row_by_node: HashMap<String, EngineLineageRenderRow> = rows
+        .iter()
+        .map(|row| (row.node_id.clone(), row.clone()))
+        .collect();
+    let mut op_parents: HashMap<String, BTreeSet<String>> = HashMap::new();
+    let mut op_children: HashMap<String, BTreeSet<String>> = HashMap::new();
+    for (from_node, to_node, op_id) in edges {
+        if !hub_op_ids.contains(op_id) {
+            continue;
+        }
+        if !valid_node_ids.contains(from_node) || !valid_node_ids.contains(to_node) {
+            continue;
+        }
+        op_parents
+            .entry(op_id.clone())
+            .or_default()
+            .insert(from_node.clone());
+        op_children
+            .entry(op_id.clone())
+            .or_default()
+            .insert(to_node.clone());
+    }
+
+    let hubbed_ops: Vec<String> = hub_op_ids
+        .iter()
+        .filter(|op_id| {
+            op_parents.get(*op_id).map(|rows| rows.len()).unwrap_or(0) >= 2
+                && op_children.get(*op_id).map(|rows| rows.len()).unwrap_or(0) >= 2
+        })
+        .cloned()
+        .collect();
+    if hubbed_ops.is_empty() {
+        return (rows.to_vec(), edges.to_vec());
+    }
+
+    let hubbed_op_ids: HashSet<String> = hubbed_ops.iter().cloned().collect();
+    let mut out_rows = rows.to_vec();
+    let mut out_edges: Vec<(String, String, String)> = vec![];
+    let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+
+    for op_id in hubbed_ops {
+        let parents = op_parents
+            .get(&op_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let children = op_children
+            .get(&op_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let hub_node_id = format!("operation:{op_id}");
+        let created_at = parents
+            .iter()
+            .filter_map(|node_id| row_by_node.get(node_id))
+            .map(|row| row.created_at)
+            .max()
+            .unwrap_or(0);
+        out_rows.push(EngineLineageRenderRow {
+            node_id: hub_node_id.clone(),
+            seq_id: op_id.clone(),
+            display_name: "Gibson cloning".to_string(),
+            created_by_op: op_id.clone(),
+            created_at,
+            kind: EngineLineageRenderRowKind::OperationHub,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_count: 0,
+            macro_instance_id: None,
+            macro_op_count: 0,
+        });
+
+        let inbound_op_id = format!("{op_id}::hub_in");
+        let outbound_op_id = format!("{op_id}::hub_out");
+        for parent in parents {
+            let key = (parent, hub_node_id.clone(), inbound_op_id.clone());
+            if seen_edges.insert(key.clone()) {
+                out_edges.push(key);
+            }
+        }
+        for child in children {
+            let key = (hub_node_id.clone(), child, outbound_op_id.clone());
+            if seen_edges.insert(key.clone()) {
+                out_edges.push(key);
+            }
+        }
+    }
+
+    for edge in edges {
+        if hubbed_op_ids.contains(&edge.2) {
+            continue;
+        }
+        if seen_edges.insert(edge.clone()) {
+            out_edges.push(edge.clone());
+        }
+    }
+
+    out_rows.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then(a.node_id.cmp(&b.node_id))
+    });
+    (out_rows, out_edges)
+}
+
+fn lineage_svg_node_kind(row: &EngineLineageRenderRow) -> LineageSvgNodeKind {
+    match row.kind {
+        EngineLineageRenderRowKind::Sequence if row.pool_size > 1 => LineageSvgNodeKind::Pool,
+        EngineLineageRenderRowKind::Sequence => LineageSvgNodeKind::Sequence,
+        EngineLineageRenderRowKind::Arrangement => LineageSvgNodeKind::Arrangement,
+        EngineLineageRenderRowKind::Macro => LineageSvgNodeKind::Macro,
+        EngineLineageRenderRowKind::OperationHub => LineageSvgNodeKind::OperationHub,
+    }
+}
+
+fn lineage_svg_node_title(row: &EngineLineageRenderRow) -> String {
+    let display = row.display_name.trim();
+    if !display.is_empty() {
+        display.to_string()
+    } else {
+        row.seq_id.clone()
+    }
+}
+
+fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
+    match row.kind {
+        EngineLineageRenderRowKind::Sequence if row.pool_size > 1 => {
+            format!(
+                "{} | pool n={} | {} bp",
+                row.seq_id, row.pool_size, row.length
+            )
+        }
+        EngineLineageRenderRowKind::Sequence => {
+            let topology = if row.circular { "circular" } else { "linear" };
+            format!("{} ({} bp, {topology})", row.seq_id, row.length)
+        }
+        EngineLineageRenderRowKind::Arrangement => format!(
+            "{} | {} | lanes={}",
+            row.arrangement_id.as_deref().unwrap_or(&row.seq_id),
+            row.arrangement_mode.as_deref().unwrap_or("-"),
+            row.lane_count
+        ),
+        EngineLineageRenderRowKind::Macro => format!(
+            "{} | ops={}",
+            row.macro_instance_id.as_deref().unwrap_or(&row.seq_id),
+            row.macro_op_count
+        ),
+        EngineLineageRenderRowKind::OperationHub => format!("op={}", row.created_by_op),
+    }
+}
+
+pub fn build_lineage_svg_graph(
+    state: &ProjectState,
+    operation_log: &[OperationRecord],
+) -> (Vec<LineageSvgNode>, Vec<LineageSvgEdge>) {
+    let mut op_created_count: HashMap<String, usize> = HashMap::new();
+    let mut op_label_by_id: HashMap<String, String> = HashMap::new();
+    let mut hub_op_ids = infer_gibson_like_operation_ids_from_state(state);
+    let mut individually_rendered_multi_output_ops = hub_op_ids.clone();
+    for record in operation_log {
+        op_created_count.insert(
+            record.result.op_id.clone(),
+            record.result.created_seq_ids.len(),
+        );
+        op_label_by_id.insert(
+            record.result.op_id.clone(),
+            summarize_operation_for_lineage(&record.op),
+        );
+        if matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. }) {
+            hub_op_ids.insert(record.result.op_id.clone());
+            individually_rendered_multi_output_ops.insert(record.result.op_id.clone());
+        }
+    }
+    for op_id in &hub_op_ids {
+        op_label_by_id
+            .entry(op_id.clone())
+            .or_insert_with(|| "Gibson cloning".to_string());
+    }
+
+    let mut rows: Vec<EngineLineageRenderRow> = state
         .lineage
         .nodes
         .values()
@@ -248,600 +849,199 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
                 .get(&node.seq_id)
                 .and_then(|dna| dna.name().clone())
                 .unwrap_or_else(|| node.seq_id.clone());
-            let length = state
+            let (length, circular) = state
                 .sequences
                 .get(&node.seq_id)
-                .map(|dna| dna.len())
-                .unwrap_or(0);
-            (
-                node.node_id.clone(),
-                node.seq_id.clone(),
+                .map(|dna| (dna.len(), dna.is_circular()))
+                .unwrap_or((0, false));
+            let pool_size = node
+                .created_by_op
+                .as_ref()
+                .and_then(|op_id| {
+                    (!individually_rendered_multi_output_ops.contains(op_id))
+                        .then(|| op_created_count.get(op_id).copied())
+                        .flatten()
+                })
+                .unwrap_or(1);
+            EngineLineageRenderRow {
+                node_id: node.node_id.clone(),
+                seq_id: node.seq_id.clone(),
                 display_name,
+                created_by_op: node
+                    .created_by_op
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                created_at: node.created_at_unix_ms,
+                kind: EngineLineageRenderRowKind::Sequence,
                 length,
-                node.created_at_unix_ms as usize,
-            )
+                circular,
+                pool_size,
+                arrangement_id: None,
+                arrangement_mode: None,
+                lane_count: 0,
+                macro_instance_id: None,
+                macro_op_count: 0,
+            }
         })
         .collect();
-    rows.sort_by(|a, b| a.4.cmp(&b.4).then(a.0.cmp(&b.0)));
+    rows.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then(a.node_id.cmp(&b.node_id))
+    });
 
-    let mut op_created_count: HashMap<String, usize> = HashMap::new();
-    for node in state.lineage.nodes.values() {
-        if let Some(op_id) = &node.created_by_op {
-            *op_created_count.entry(op_id.clone()).or_insert(0) += 1;
-        }
-    }
-
-    let mut pos_by_node: HashMap<String, (f32, f32)> = HashMap::new();
-    for (idx, row) in rows.iter().enumerate() {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        use std::hash::{Hash, Hasher};
-        row.0.hash(&mut h);
-        let lane = (h.finish() % 5) as f32;
-        let x = 110.0 + idx as f32 * 170.0;
-        let y = 120.0 + lane * 130.0;
-        pos_by_node.insert(row.0.clone(), (x, y));
-    }
-
-    struct ArrangementRenderRow {
-        node_id: String,
-        arrangement_id: String,
-        display_name: String,
-        created_by_op: String,
-        created_at: usize,
-        mode: String,
-        lane_container_ids: Vec<String>,
-        ladders: Vec<String>,
-        source_node_ids: Vec<String>,
-    }
-
-    let mut arrangement_rows: Vec<ArrangementRenderRow> = state
-        .container_state
-        .arrangements
+    let raw_lineage_edges: Vec<(String, String, String)> = state
+        .lineage
+        .edges
         .iter()
-        .map(|(id, arrangement)| {
-            let mut source_node_ids: Vec<String> = vec![];
-            let mut seen: HashSet<String> = HashSet::new();
-            for container_id in &arrangement.lane_container_ids {
-                if let Some(container) = state.container_state.containers.get(container_id) {
-                    for seq_id in &container.members {
-                        if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
-                            if seen.insert(node_id.clone()) {
-                                source_node_ids.push(node_id.clone());
-                            }
-                        }
+        .filter_map(|edge| {
+            let from = state.lineage.nodes.get(&edge.from_node_id)?.node_id.clone();
+            let to = state.lineage.nodes.get(&edge.to_node_id)?.node_id.clone();
+            Some((from, to, edge.op_id.clone()))
+        })
+        .collect();
+
+    let (mut projected_rows, mut projected_edges) =
+        project_lineage_operation_hubs(&rows, &raw_lineage_edges, &hub_op_ids);
+    for op_id in &hub_op_ids {
+        op_label_by_id.insert(op_id.clone(), "Gibson cloning".to_string());
+        op_label_by_id.insert(format!("{op_id}::hub_in"), "Gibson cloning".to_string());
+        op_label_by_id.insert(format!("{op_id}::hub_out"), "Gibson cloning".to_string());
+    }
+
+    for (id, arrangement) in &state.container_state.arrangements {
+        let mut source_node_ids: Vec<String> = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        for container_id in &arrangement.lane_container_ids {
+            if let Some(container) = state.container_state.containers.get(container_id) {
+                for seq_id in &container.members {
+                    if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                        && seen.insert(node_id.clone())
+                    {
+                        source_node_ids.push(node_id.clone());
                     }
                 }
             }
-            ArrangementRenderRow {
-                node_id: format!("arr:{id}"),
-                arrangement_id: id.clone(),
-                display_name: arrangement.name.clone().unwrap_or_else(|| id.clone()),
-                created_by_op: arrangement
-                    .created_by_op
-                    .clone()
-                    .unwrap_or_else(|| "CreateArrangementSerial".to_string()),
-                created_at: arrangement.created_at_unix_ms as usize,
-                mode: format!("{:?}", arrangement.mode),
-                lane_container_ids: arrangement.lane_container_ids.clone(),
-                ladders: arrangement.ladders.clone(),
-                source_node_ids,
-            }
-        })
-        .collect();
-    arrangement_rows.sort_by(|a, b| {
-        a.created_at
-            .cmp(&b.created_at)
-            .then(a.arrangement_id.cmp(&b.arrangement_id))
-    });
-
-    let max_sequence_x = pos_by_node.values().map(|(x, _)| *x).fold(110.0, f32::max);
-    let mut arrangement_layer_counts: HashMap<usize, usize> = HashMap::new();
-    let mut arrangement_positions: HashMap<String, (f32, f32)> = HashMap::new();
-    for arrangement in &arrangement_rows {
-        let mut source_x_max = 110.0f32;
-        let mut source_y_sum = 0.0f32;
-        let mut source_y_count = 0usize;
-        for source_node_id in &arrangement.source_node_ids {
-            if let Some((sx, sy)) = pos_by_node.get(source_node_id) {
-                source_x_max = source_x_max.max(*sx);
-                source_y_sum += *sy;
-                source_y_count += 1;
-            }
         }
-        let lane = (((source_x_max - 110.0) / 170.0).round() as usize).saturating_add(1);
-        let lane_idx = arrangement_layer_counts
-            .entry(lane)
-            .and_modify(|idx| *idx += 1)
-            .or_insert(0usize);
-        let x = (source_x_max + 190.0).max(max_sequence_x + 120.0);
-        let y = if source_y_count > 0 {
-            source_y_sum / source_y_count as f32
-        } else {
-            120.0 + (*lane_idx as f32) * 120.0
-        };
-        arrangement_positions.insert(arrangement.node_id.clone(), (x, y));
-        pos_by_node.insert(arrangement.node_id.clone(), (x, y));
+        let arrangement_node_id = format!("arr:{id}");
+        let created_by_op = arrangement
+            .created_by_op
+            .clone()
+            .unwrap_or_else(|| "CreateArrangementSerial".to_string());
+        projected_rows.push(EngineLineageRenderRow {
+            node_id: arrangement_node_id.clone(),
+            seq_id: id.clone(),
+            display_name: arrangement.name.clone().unwrap_or_else(|| id.clone()),
+            created_by_op: created_by_op.clone(),
+            created_at: arrangement.created_at_unix_ms,
+            kind: EngineLineageRenderRowKind::Arrangement,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: Some(id.clone()),
+            arrangement_mode: Some(format!("{:?}", arrangement.mode)),
+            lane_count: arrangement.lane_container_ids.len(),
+            macro_instance_id: None,
+            macro_op_count: 0,
+        });
+        for from_node_id in source_node_ids {
+            projected_edges.push((
+                from_node_id,
+                arrangement_node_id.clone(),
+                created_by_op.clone(),
+            ));
+        }
     }
 
-    struct MacroRenderRow {
-        node_id: String,
-        macro_instance_id: String,
-        display_name: String,
-        created_at: usize,
-        template_name: Option<String>,
-        routine_id: Option<String>,
-        status: String,
-        status_message: Option<String>,
-        input_bindings: Vec<crate::engine::LineageMacroPortBinding>,
-        output_bindings: Vec<crate::engine::LineageMacroPortBinding>,
-        expanded_op_ids: Vec<String>,
-    }
-
-    let mut macro_rows: Vec<MacroRenderRow> = state
-        .lineage
-        .macro_instances
-        .iter()
-        .map(|instance| MacroRenderRow {
-            node_id: format!("macro:{}", instance.macro_instance_id),
-            macro_instance_id: instance.macro_instance_id.clone(),
+    for instance in &state.lineage.macro_instances {
+        let macro_node_id = format!("macro:{}", instance.macro_instance_id);
+        projected_rows.push(EngineLineageRenderRow {
+            node_id: macro_node_id.clone(),
+            seq_id: instance.macro_instance_id.clone(),
             display_name: instance
                 .routine_title
                 .clone()
                 .or_else(|| instance.routine_id.clone())
                 .or_else(|| instance.template_name.clone())
                 .unwrap_or_else(|| "Macro".to_string()),
-            created_at: instance.created_at_unix_ms as usize,
-            template_name: instance.template_name.clone(),
-            routine_id: instance.routine_id.clone(),
-            status: format!("{:?}", instance.status).to_ascii_lowercase(),
-            status_message: instance.status_message.clone(),
-            input_bindings: instance.bound_inputs.clone(),
-            output_bindings: instance.bound_outputs.clone(),
-            expanded_op_ids: instance.expanded_op_ids.clone(),
-        })
-        .collect();
-    macro_rows.sort_by(|a, b| {
+            created_by_op: instance
+                .expanded_op_ids
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "-".to_string()),
+            created_at: instance.created_at_unix_ms,
+            kind: EngineLineageRenderRowKind::Macro,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_count: 0,
+            macro_instance_id: Some(instance.macro_instance_id.clone()),
+            macro_op_count: instance.expanded_op_ids.len(),
+        });
+        for binding in &instance.bound_inputs {
+            let edge_label_id = format!(
+                "macro:{}:in:{}",
+                instance.macro_instance_id, binding.port_id
+            );
+            op_label_by_id
+                .entry(edge_label_id.clone())
+                .or_insert_with(|| format!("in:{}", binding.port_id));
+            for from_node_id in sequence_nodes_for_binding(state, binding) {
+                projected_edges.push((from_node_id, macro_node_id.clone(), edge_label_id.clone()));
+            }
+        }
+        for binding in &instance.bound_outputs {
+            let edge_label_id = format!(
+                "macro:{}:out:{}",
+                instance.macro_instance_id, binding.port_id
+            );
+            op_label_by_id
+                .entry(edge_label_id.clone())
+                .or_insert_with(|| format!("out:{}", binding.port_id));
+            for to_node_id in sequence_nodes_for_binding(state, binding) {
+                projected_edges.push((macro_node_id.clone(), to_node_id, edge_label_id.clone()));
+            }
+        }
+    }
+
+    projected_rows.sort_by(|a, b| {
         a.created_at
             .cmp(&b.created_at)
-            .then(a.macro_instance_id.cmp(&b.macro_instance_id))
+            .then(a.node_id.cmp(&b.node_id))
     });
-    for (idx, macro_row) in macro_rows.iter().enumerate() {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        use std::hash::{Hash, Hasher};
-        macro_row.node_id.hash(&mut h);
-        let lane = (h.finish() % 5) as f32;
-        let x = 140.0 + idx as f32 * 170.0;
-        let y = 160.0 + lane * 130.0;
-        pos_by_node.insert(macro_row.node_id.clone(), (x, y));
-    }
-
-    let canvas_height = lineage_canvas_height(&pos_by_node);
-
-    let mut doc = Document::new()
-        .set("viewBox", (0, 0, W, canvas_height))
-        .set("width", W)
-        .set("height", canvas_height)
-        .set("style", "background:#ffffff");
-
-    doc = doc.add(
-        Text::new("GENtle Lineage (DALG)")
-            .set("x", 24)
-            .set("y", 34)
-            .set("font-family", "Helvetica, Arial, sans-serif")
-            .set("font-size", 24)
-            .set("fill", "#202020"),
-    );
-
-    for edge in &state.lineage.edges {
-        let Some((fx, fy)) = state
-            .lineage
-            .nodes
-            .get(&edge.from_node_id)
-            .and_then(|n| pos_by_node.get(&n.node_id))
-            .cloned()
-        else {
-            continue;
-        };
-        let Some((tx, ty)) = state
-            .lineage
-            .nodes
-            .get(&edge.to_node_id)
-            .and_then(|n| pos_by_node.get(&n.node_id))
-            .cloned()
-        else {
-            continue;
-        };
-        doc = doc.add(
-            Line::new()
-                .set("x1", fx)
-                .set("y1", fy)
-                .set("x2", tx)
-                .set("y2", ty)
-                .set("stroke", "#8a8a8a")
-                .set("stroke-width", 1.2),
-        );
-        let mx = (fx + tx) * 0.5;
-        let my = (fy + ty) * 0.5 - 6.0;
-        doc = doc
-            .add(
-                Rectangle::new()
-                    .set("x", mx - 52.0)
-                    .set("y", my - 12.0)
-                    .set("width", 104)
-                    .set("height", 16)
-                    .set("fill", "#f5f5f5")
-                    .set("stroke", "#e0e0e0")
-                    .set("rx", 2),
-            )
-            .add(
-                Text::new(edge.op_id.clone())
-                    .set("x", mx)
-                    .set("y", my)
-                    .set("text-anchor", "middle")
-                    .set("dominant-baseline", "middle")
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 10)
-                    .set("fill", "#222222"),
-            );
-    }
-
-    for arrangement in &arrangement_rows {
-        let Some((tx, ty)) = arrangement_positions.get(&arrangement.node_id).copied() else {
-            continue;
-        };
-        for from_node_id in &arrangement.source_node_ids {
-            let Some((fx, fy)) = pos_by_node.get(from_node_id).copied() else {
-                continue;
-            };
-            doc = doc.add(
-                Line::new()
-                    .set("x1", fx)
-                    .set("y1", fy)
-                    .set("x2", tx)
-                    .set("y2", ty)
-                    .set("stroke", "#5b6f65")
-                    .set("stroke-width", 1.1)
-                    .set("stroke-dasharray", "4 3"),
-            );
-            let mx = (fx + tx) * 0.5;
-            let my = (fy + ty) * 0.5 - 7.0;
-            doc = doc
-                .add(
-                    Rectangle::new()
-                        .set("x", mx - 58.0)
-                        .set("y", my - 12.0)
-                        .set("width", 116)
-                        .set("height", 16)
-                        .set("fill", "#eef6f1")
-                        .set("stroke", "#d4e6dd")
-                        .set("rx", 2),
-                )
-                .add(
-                    Text::new(arrangement.created_by_op.clone())
-                        .set("x", mx)
-                        .set("y", my)
-                        .set("text-anchor", "middle")
-                        .set("dominant-baseline", "middle")
-                        .set("font-family", "Helvetica, Arial, sans-serif")
-                        .set("font-size", 9)
-                        .set("fill", "#1f2b25"),
-                );
-        }
-    }
-
-    let sequence_nodes_for_binding =
-        |binding: &crate::engine::LineageMacroPortBinding| -> Vec<String> {
-            let mut node_ids: Vec<String> = vec![];
-            let mut seen: HashSet<String> = HashSet::new();
-            match binding.kind.trim().to_ascii_lowercase().as_str() {
-                "sequence" => {
-                    for seq_id in &binding.values {
-                        if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
-                            if seen.insert(node_id.clone()) {
-                                node_ids.push(node_id.clone());
-                            }
-                        }
-                    }
-                }
-                "container" => {
-                    for container_id in &binding.values {
-                        let Some(container) = state.container_state.containers.get(container_id)
-                        else {
-                            continue;
-                        };
-                        for seq_id in &container.members {
-                            if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
-                                if seen.insert(node_id.clone()) {
-                                    node_ids.push(node_id.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
+    let layout_by_node = compute_lineage_dag_layout(&projected_rows, &projected_edges);
+    let nodes: Vec<LineageSvgNode> = projected_rows
+        .iter()
+        .enumerate()
+        .map(|(fallback_rank, row)| {
+            let (layer, rank) = layout_by_node
+                .get(&row.node_id)
+                .copied()
+                .unwrap_or((0, fallback_rank));
+            LineageSvgNode {
+                node_id: row.node_id.clone(),
+                title: lineage_svg_node_title(row),
+                subtitle: lineage_svg_node_subtitle(row),
+                kind: lineage_svg_node_kind(row),
+                x: 120.0 + layer as f32 * 220.0,
+                y: 120.0 + rank as f32 * 110.0,
             }
-            node_ids
-        };
+        })
+        .collect();
+    let edges: Vec<LineageSvgEdge> = projected_edges
+        .into_iter()
+        .map(|(from_node_id, to_node_id, op_id)| LineageSvgEdge {
+            from_node_id,
+            to_node_id,
+            label: op_label_by_id.get(&op_id).cloned().unwrap_or(op_id),
+        })
+        .collect();
+    (nodes, edges)
+}
 
-    for macro_row in &macro_rows {
-        let Some((mx, my)) = pos_by_node.get(&macro_row.node_id).copied() else {
-            continue;
-        };
-        for binding in &macro_row.input_bindings {
-            let source_nodes = sequence_nodes_for_binding(binding);
-            for source_node_id in source_nodes {
-                let Some((sx, sy)) = pos_by_node.get(&source_node_id).copied() else {
-                    continue;
-                };
-                doc = doc.add(
-                    Line::new()
-                        .set("x1", sx)
-                        .set("y1", sy)
-                        .set("x2", mx)
-                        .set("y2", my)
-                        .set("stroke", "#6f6f7b")
-                        .set("stroke-width", 1.0)
-                        .set("stroke-dasharray", "5 3"),
-                );
-                let lx = (sx + mx) * 0.5;
-                let ly = (sy + my) * 0.5 - 6.0;
-                doc = doc
-                    .add(
-                        Rectangle::new()
-                            .set("x", lx - 44.0)
-                            .set("y", ly - 10.0)
-                            .set("width", 88)
-                            .set("height", 14)
-                            .set("fill", "#f3f3f7")
-                            .set("stroke", "#e2e2ea")
-                            .set("rx", 2),
-                    )
-                    .add(
-                        Text::new(format!("in:{}", binding.port_id))
-                            .set("x", lx)
-                            .set("y", ly)
-                            .set("text-anchor", "middle")
-                            .set("dominant-baseline", "middle")
-                            .set("font-family", "Helvetica, Arial, sans-serif")
-                            .set("font-size", 8.5)
-                            .set("fill", "#30303a"),
-                    );
-            }
-        }
-        for binding in &macro_row.output_bindings {
-            let target_nodes = sequence_nodes_for_binding(binding);
-            for target_node_id in target_nodes {
-                let Some((tx, ty)) = pos_by_node.get(&target_node_id).copied() else {
-                    continue;
-                };
-                doc = doc.add(
-                    Line::new()
-                        .set("x1", mx)
-                        .set("y1", my)
-                        .set("x2", tx)
-                        .set("y2", ty)
-                        .set("stroke", "#6f6f7b")
-                        .set("stroke-width", 1.0)
-                        .set("stroke-dasharray", "5 3"),
-                );
-                let lx = (tx + mx) * 0.5;
-                let ly = (ty + my) * 0.5 - 6.0;
-                doc = doc
-                    .add(
-                        Rectangle::new()
-                            .set("x", lx - 44.0)
-                            .set("y", ly - 10.0)
-                            .set("width", 88)
-                            .set("height", 14)
-                            .set("fill", "#f3f3f7")
-                            .set("stroke", "#e2e2ea")
-                            .set("rx", 2),
-                    )
-                    .add(
-                        Text::new(format!("out:{}", binding.port_id))
-                            .set("x", lx)
-                            .set("y", ly)
-                            .set("text-anchor", "middle")
-                            .set("dominant-baseline", "middle")
-                            .set("font-family", "Helvetica, Arial, sans-serif")
-                            .set("font-size", 8.5)
-                            .set("fill", "#30303a"),
-                    );
-            }
-        }
-    }
-
-    for row in &rows {
-        let Some((x, y)) = pos_by_node.get(&row.0).cloned() else {
-            continue;
-        };
-        let pool_size = state
-            .lineage
-            .nodes
-            .get(&row.0)
-            .and_then(|n| n.created_by_op.clone())
-            .and_then(|op| op_created_count.get(&op).cloned())
-            .unwrap_or(1);
-        if pool_size > 1 {
-            let points = format!(
-                "{},{} {},{} {},{} {},{}",
-                x,
-                y - 18.0,
-                x + 18.0,
-                y,
-                x,
-                y + 18.0,
-                x - 18.0,
-                y
-            );
-            doc = doc
-                .add(
-                    Polygon::new()
-                        .set("points", points)
-                        .set("fill", "#b47846")
-                        .set("stroke", "#a05f2b")
-                        .set("stroke-width", 1),
-                )
-                .add(
-                    Text::new(format!("n={pool_size}"))
-                        .set("x", x + 22.0)
-                        .set("y", y - 12.0)
-                        .set("font-family", "Helvetica, Arial, sans-serif")
-                        .set("font-size", 10)
-                        .set("fill", "#5c4300"),
-                );
-        } else {
-            doc = doc.add(
-                Circle::new()
-                    .set("cx", x)
-                    .set("cy", y)
-                    .set("r", 16)
-                    .set("fill", "#5a8cd2")
-                    .set("stroke", "#3b6aaa")
-                    .set("stroke-width", 1),
-            );
-        }
-
-        doc = doc
-            .add(
-                Text::new(row.2.clone())
-                    .set("x", x + 24.0)
-                    .set("y", y - 2.0)
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 12)
-                    .set("fill", "#101010"),
-            )
-            .add(
-                Text::new(format!("{} ({} bp)", row.1, row.3))
-                    .set("x", x + 24.0)
-                    .set("y", y + 12.0)
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 10)
-                    .set("fill", "#222222"),
-            );
-    }
-
-    for arrangement in &arrangement_rows {
-        let Some((x, y)) = arrangement_positions.get(&arrangement.node_id).copied() else {
-            continue;
-        };
-        let ladders = if arrangement.ladders.is_empty() {
-            "auto".to_string()
-        } else {
-            arrangement.ladders.join(" + ")
-        };
-        doc = doc
-            .add(
-                Rectangle::new()
-                    .set("x", x - 36.0)
-                    .set("y", y - 14.0)
-                    .set("width", 72)
-                    .set("height", 28)
-                    .set("rx", 5)
-                    .set("fill", "#6c9a7a")
-                    .set("stroke", "#537563")
-                    .set("stroke-width", 1),
-            )
-            .add(
-                Text::new(arrangement.arrangement_id.clone())
-                    .set("x", x)
-                    .set("y", y)
-                    .set("text-anchor", "middle")
-                    .set("dominant-baseline", "middle")
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 10)
-                    .set("fill", "#ffffff"),
-            )
-            .add(
-                Text::new(arrangement.display_name.clone())
-                    .set("x", x + 42.0)
-                    .set("y", y - 2.0)
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 12)
-                    .set("fill", "#101010"),
-            )
-            .add(
-                Text::new(format!(
-                    "{} | lanes={} | ladders={}",
-                    arrangement.mode.to_lowercase(),
-                    arrangement.lane_container_ids.len(),
-                    ladders
-                ))
-                .set("x", x + 42.0)
-                .set("y", y + 12.0)
-                .set("font-family", "Helvetica, Arial, sans-serif")
-                .set("font-size", 10)
-                .set("fill", "#1f2b25"),
-            );
-    }
-
-    for macro_row in &macro_rows {
-        let Some((x, y)) = pos_by_node.get(&macro_row.node_id).copied() else {
-            continue;
-        };
-        let op_count = macro_row.expanded_op_ids.len();
-        doc = doc
-            .add(
-                Rectangle::new()
-                    .set("x", x - 40.0)
-                    .set("y", y - 15.0)
-                    .set("width", 80)
-                    .set("height", 30)
-                    .set("rx", 4)
-                    .set("fill", "#62626c")
-                    .set("stroke", "#4f4f58")
-                    .set("stroke-width", 1),
-            )
-            .add(
-                Text::new(macro_row.macro_instance_id.clone())
-                    .set("x", x)
-                    .set("y", y)
-                    .set("text-anchor", "middle")
-                    .set("dominant-baseline", "middle")
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 10)
-                    .set("fill", "#ffffff"),
-            )
-            .add(
-                Text::new(macro_row.display_name.clone())
-                    .set("x", x + 46.0)
-                    .set("y", y - 2.0)
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 12)
-                    .set("fill", "#101010"),
-            )
-            .add(
-                Text::new(format!(
-                    "status={} | template={} | routine={} | ops={}",
-                    macro_row.status,
-                    macro_row.template_name.as_deref().unwrap_or("-"),
-                    macro_row.routine_id.as_deref().unwrap_or("-"),
-                    op_count
-                ))
-                .set("x", x + 46.0)
-                .set("y", y + 12.0)
-                .set("font-family", "Helvetica, Arial, sans-serif")
-                .set("font-size", 10)
-                .set("fill", "#30303a"),
-            );
-        if let Some(status_message) = macro_row.status_message.as_deref() {
-            let compact = if status_message.chars().count() > 72 {
-                let mut truncated = status_message.chars().take(72).collect::<String>();
-                truncated.push_str("...");
-                truncated
-            } else {
-                status_message.to_string()
-            };
-            doc = doc.add(
-                Text::new(format!("note={compact}"))
-                    .set("x", x + 46.0)
-                    .set("y", y + 24.0)
-                    .set("font-family", "Helvetica, Arial, sans-serif")
-                    .set("font-size", 9)
-                    .set("fill", "#7a1c1c"),
-            );
-        }
-    }
-
-    doc.to_string()
+pub fn export_lineage_svg(state: &ProjectState, operation_log: &[OperationRecord]) -> String {
+    let (nodes, edges) = build_lineage_svg_graph(state, operation_log);
+    export_projected_lineage_svg("GENtle Lineage (DALG)", &nodes, &edges)
 }

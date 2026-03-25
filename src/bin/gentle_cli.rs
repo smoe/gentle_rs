@@ -1175,7 +1175,9 @@ fn run() -> Result<(), String> {
                         .map(str::trim)
                         .filter(|v| !v.is_empty())
                         .or_else(|| helper_mode.then_some(default_catalog))
-                        .ok_or_else(|| format!("Missing catalog path for {label} validate-catalog"))?;
+                        .ok_or_else(|| {
+                            format!("Missing catalog path for {label} validate-catalog")
+                        })?;
                     let genomes = GentleEngine::list_reference_genomes(Some(resolved_catalog))
                         .map_err(|e| e.to_string())?;
                     print_json(&json!({
