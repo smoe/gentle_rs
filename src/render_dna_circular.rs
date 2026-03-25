@@ -13,33 +13,30 @@ use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, Vec2,
 };
 use gb_io::seq::Feature;
-use lazy_static::lazy_static;
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::{Arc, RwLock},
+    sync::{Arc, LazyLock, RwLock},
 };
 
 // Defines static stroke styles (BLACK_1, GRAY_1) and a color map (ORF_COLORS) for Open Reading Frames (ORFs).
-lazy_static! {
-    pub static ref BLACK_1: Stroke = Stroke {
-        width: 1.0,
-        color: Color32::BLACK,
-    };
-    pub static ref GRAY_1: Stroke = Stroke {
-        width: 1.0,
-        color: Color32::GRAY,
-    };
-    static ref ORF_COLORS: HashMap<i32, Color32> = {
-        let mut m = HashMap::new();
-        m.insert(-1, Color32::LIGHT_RED);
-        m.insert(-2, Color32::LIGHT_GREEN);
-        m.insert(-3, Color32::LIGHT_BLUE);
-        m.insert(1, Color32::DARK_RED);
-        m.insert(2, Color32::DARK_GREEN);
-        m.insert(3, Color32::DARK_BLUE);
-        m
-    };
-}
+pub static BLACK_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
+    width: 1.0,
+    color: Color32::BLACK,
+});
+pub static GRAY_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
+    width: 1.0,
+    color: Color32::GRAY,
+});
+static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert(-1, Color32::LIGHT_RED);
+    m.insert(-2, Color32::LIGHT_GREEN);
+    m.insert(-3, Color32::LIGHT_BLUE);
+    m.insert(1, Color32::DARK_RED);
+    m.insert(2, Color32::DARK_GREEN);
+    m.insert(3, Color32::DARK_BLUE);
+    m
+});
 
 /// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
 #[derive(Debug, Clone)]

@@ -3,27 +3,26 @@
 // Some icons used in the GUI
 
 use eframe::egui;
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 
-lazy_static! {
-    pub static ref APP_ICON: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../assets/icon.png"));
-    pub static ref SPLASH_SCREEN: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/GENtle.png"));
-    pub static ref ICON_CIRCULAR_LINEAR: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/display_circular_linear.png"));
-    pub static ref ICON_SHOW_SEQUENCE: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/show_sequence.png"));
-    pub static ref ICON_SHOW_MAP: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/show_map.png"));
-    pub static ref ICON_RESTRICTION_ENZYMES: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/restriction_enzymes.png"));
-    pub static ref ICON_OPEN_READING_FRAMES: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/display_orfs.png"));
-    pub static ref ICON_FEATURES: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/display_features.png"));
-    pub static ref ICON_GC_CONTENT: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/gc_content.png"));
-    pub static ref ICON_METHYLATION_SITES: egui::Image<'static> =
-        egui::Image::new(egui::include_image!("../icons/accessories-calculator.png"));
-}
+pub static APP_ICON: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../assets/icon.png")));
+pub static SPLASH_SCREEN: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/GENtle.png")));
+pub static ICON_CIRCULAR_LINEAR: LazyLock<egui::Image<'static>> = LazyLock::new(|| {
+    egui::Image::new(egui::include_image!("../icons/display_circular_linear.png"))
+});
+pub static ICON_SHOW_SEQUENCE: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/show_sequence.png")));
+pub static ICON_SHOW_MAP: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/show_map.png")));
+pub static ICON_RESTRICTION_ENZYMES: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/restriction_enzymes.png")));
+pub static ICON_OPEN_READING_FRAMES: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/display_orfs.png")));
+pub static ICON_FEATURES: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/display_features.png")));
+pub static ICON_GC_CONTENT: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/gc_content.png")));
+pub static ICON_METHYLATION_SITES: LazyLock<egui::Image<'static>> =
+    LazyLock::new(|| egui::Image::new(egui::include_image!("../icons/accessories-calculator.png")));

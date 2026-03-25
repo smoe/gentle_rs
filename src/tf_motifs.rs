@@ -1,8 +1,11 @@
 //! TF-motif registry and matching support.
 
-use lazy_static::lazy_static;
 use serde::Deserialize;
-use std::{collections::HashMap, fs, sync::RwLock};
+use std::{
+    collections::HashMap,
+    fs,
+    sync::{LazyLock, RwLock},
+};
 
 const RUNTIME_TF_MOTIF_PATH: &str = "data/resources/jaspar.motifs.json";
 const BUILTIN_TF_MOTIFS_JSON: &str = include_str!("../assets/jaspar.motifs.json");
@@ -155,9 +158,7 @@ impl TfMotifDb {
     }
 }
 
-lazy_static! {
-    static ref TF_MOTIFS: RwLock<TfMotifDb> = RwLock::new(TfMotifDb::load());
-}
+static TF_MOTIFS: LazyLock<RwLock<TfMotifDb>> = LazyLock::new(|| RwLock::new(TfMotifDb::load()));
 
 pub fn resolve_motif(token: &str) -> Option<String> {
     TF_MOTIFS

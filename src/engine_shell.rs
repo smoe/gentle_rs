@@ -65,7 +65,6 @@ use crate::{
     },
     tf_motifs,
 };
-use lazy_static::lazy_static;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -84,7 +83,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
@@ -193,10 +192,8 @@ impl Default for BlastAsyncPersistedStore {
     }
 }
 
-lazy_static! {
-    static ref BLAST_ASYNC_JOBS: Mutex<HashMap<String, BlastAsyncJobRecord>> =
-        Mutex::new(HashMap::new());
-}
+static BLAST_ASYNC_JOBS: LazyLock<Mutex<HashMap<String, BlastAsyncJobRecord>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(test)]
 pub(crate) static BLAST_ASYNC_TEST_MUTEX: Mutex<()> = Mutex::new(());

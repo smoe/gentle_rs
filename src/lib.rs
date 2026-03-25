@@ -6,7 +6,7 @@
 use amino_acids::AminoAcids;
 use dna_ladder::{LadderCatalog, default_dna_ladders, default_rna_ladders};
 use enzymes::Enzymes;
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 
 /// About/help metadata and version presentation helpers.
 pub mod about;
@@ -118,16 +118,14 @@ pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;
 
-lazy_static! {
-    // Restriction enzymes and proteases
-    pub static ref ENZYMES: Enzymes = Enzymes::default();
+// Restriction enzymes and proteases
+pub static ENZYMES: LazyLock<Enzymes> = LazyLock::new(Enzymes::default);
 
-    // Amino acids
-    pub static ref AMINO_ACIDS : AminoAcids = AminoAcids::default();
+// Amino acids
+pub static AMINO_ACIDS: LazyLock<AminoAcids> = LazyLock::new(AminoAcids::default);
 
-    // DNA ladders
-    pub static ref DNA_LADDERS: LadderCatalog = default_dna_ladders();
+// DNA ladders
+pub static DNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_dna_ladders);
 
-    // RNA ladders
-    pub static ref RNA_LADDERS: LadderCatalog = default_rna_ladders();
-}
+// RNA ladders
+pub static RNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_rna_ladders);

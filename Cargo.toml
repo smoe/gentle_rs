@@ -63,7 +63,6 @@ serde_json = "^1"
 serde_with = "*"
 quick-xml = { version = "0.37", features = ["serialize"] }
 bio = "^1"
-lazy_static = "^1"
 csv = "^1"
 itertools = "*"
 # gb-io = "*" # Until nom-7 is merged and published
