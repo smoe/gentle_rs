@@ -64,6 +64,36 @@ Example:
 - `gentle-v0.1.0-windows-x64.zip`
 - `gentle-v0.1.0-release-attributes.json`
 
+## Local Pre-Tag Smoke Checklist
+
+Before pushing an internal or public release tag, run a release-shaped local
+smoke pass that matches the packaging feature set rather than the lean default
+developer build.
+
+Required local matrix:
+
+```bash
+cargo build --release --features script-interfaces
+cargo run --release --bin gentle -- --version
+cargo run --release --bin gentle_cli -- capabilities
+cargo run --release --features js-interface --bin gentle_js -- --version
+cargo run --release --features lua-interface --bin gentle_lua -- --version
+cargo run --release --bin gentle_examples_docs -- --check
+cargo run --release --bin gentle_examples_docs -- tutorial-check
+cargo run --release --bin gentle_mcp -- --help
+```
+
+Release-note expectations for that smoke pass:
+
+- record pass/fail per command in the versioned root release-notes document
+- call out any intentionally skipped entrypoint or known failure explicitly
+
+Release-workflow assumptions to re-check before tagging:
+
+- macOS installer output remains `.dmg`
+- Windows installer output remains `.zip`
+- Linux release metadata defaults to `tarball`
+
 ## Standard Tagged Release
 
 1. Ensure `main` is green in CI.

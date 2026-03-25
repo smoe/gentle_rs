@@ -664,6 +664,9 @@ Patterns menu:
        - insert rows are ordered explicitly in the GUI
        - one insert creates two terminal junctions; each additional insert
          adds one internal Gibson junction
+       - current execution guardrail:
+         multi-insert Gibson currently requires a defined destination opening;
+         `existing_termini` remains the single-fragment handoff path
        - extra insert rows can be added, removed, and reordered directly in
          the specialist
     3. `Design Targets`
@@ -730,6 +733,9 @@ Patterns menu:
        - `Apply Gibson Cloning` only enables after preview reports no blocking
          errors, then runs one shared engine operation and creates new sequence
          nodes for two primers per insert plus the assembled product
+       - if preview is blocked, the status text now repeats the concrete
+         blocking reason instead of only reporting an error count, including the
+         multi-insert `defined opening` guardrail when applicable
        - in lineage `Graph` view, that apply step is projected as one explicit
          Gibson operation hub between the destination + insert inputs and all
          created outputs

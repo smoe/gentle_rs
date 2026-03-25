@@ -689,6 +689,12 @@ order. Durable architecture constraints and decisions remain in
   - graph-canvas context menu now includes `Save Graph as SVG...`
   - `Save Project...` / lineage-SVG save dialogs now default filenames from the
     current project name/path rather than fixed placeholders
+  - interim release-readiness pass now also covers:
+    - explicit Gibson specialist/help/tutorial guardrail text for the current
+      multi-insert `defined opening` requirement
+    - versioned root release notes for `v0.1.0-internal.2`
+    - `docs/release.md` local pre-tag smoke checklist matching the
+      `script-interfaces` packaging build
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:

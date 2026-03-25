@@ -6540,6 +6540,38 @@ Error: `{err}`"
         rows
     }
 
+    fn gibson_is_multi_insert_draft(&self) -> bool {
+        self.gibson_ui_insert_rows().len() > 1
+    }
+
+    fn gibson_multi_insert_defined_opening_note() -> &'static str {
+        "Multi-insert Gibson currently requires a defined destination opening; 'existing_termini' remains the single-fragment handoff path."
+    }
+
+    fn gibson_apply_blocked_status(preview: &GibsonAssemblyPreview) -> String {
+        if preview
+            .errors
+            .iter()
+            .any(|err| err == Self::gibson_multi_insert_defined_opening_note())
+        {
+            format!(
+                "Gibson apply blocked: {}",
+                Self::gibson_multi_insert_defined_opening_note()
+            )
+        } else if let Some(first_error) = preview.errors.first() {
+            format!(
+                "Gibson apply blocked: {} ({} blocking error(s) total). Resolve them first and rerun preview.",
+                first_error,
+                preview.errors.len()
+            )
+        } else {
+            format!(
+                "Gibson apply blocked: preview still has {} blocking error(s). Resolve them first and rerun preview.",
+                preview.errors.len()
+            )
+        }
+    }
+
     fn refresh_gibson_output_id_hint_default(&mut self) {
         if !self.gibson_output_id_hint.trim().is_empty() {
             return;
@@ -15150,10 +15182,7 @@ Error: `{err}`"
     fn run_gibson_apply(&mut self) {
         match self.gibson_preview_output.as_ref() {
             Some(preview) if !preview.can_execute => {
-                self.gibson_status = format!(
-                    "Gibson apply blocked: preview still has {} blocking error(s). Resolve them first and rerun preview.",
-                    preview.errors.len()
-                );
+                self.gibson_status = Self::gibson_apply_blocked_status(preview);
                 return;
             }
             None => {
@@ -16298,11 +16327,15 @@ Error: `{err}`"
             cancel_clicked = true;
         }
         ui.label(
-            "Destination-first Gibson specialist: choose a destination, define the opening, choose one insert, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
+            "Destination-first Gibson specialist: choose a destination, define the opening, choose one or more ordered inserts, then derive overlaps, primers, validation findings, and the factual protocol cartoon from one shared preview path.",
         );
         ui.small(
             "This specialist stays Gibson-specific on purpose: overlap/Tm targets are exposed directly, while generic PCR/qPCR controls remain elsewhere.",
         );
+        ui.small(format!(
+            "Current limitation: {}",
+            Self::gibson_multi_insert_defined_opening_note()
+        ));
 
         let sequence_ids = self.project_sequence_ids_for_blast();
         let active_context_summary = self.gibson_active_context_summary();
@@ -17075,6 +17108,14 @@ Error: `{err}`"
         } else {
             ui.small(
                 "Preview first to see the exact primer and assembled-product nodes that Gibson apply will create.",
+            );
+        }
+        if self.gibson_is_multi_insert_draft()
+            && self.gibson_opening_mode == GibsonUiOpeningMode::ExistingTermini
+        {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                Self::gibson_multi_insert_defined_opening_note(),
             );
         }
         ui.horizontal_wrapped(|ui| {
@@ -31356,8 +31397,9 @@ mod tests {
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
         },
         gibson_planning::{
-            GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion, GibsonPrimerSegment,
-            GibsonPrimerSuggestion, GibsonResolvedJunctionPreview,
+            GibsonAssemblyPreview, GibsonCartoonPreview, GibsonDestinationOpeningSuggestion,
+            GibsonPreviewDestination, GibsonPreviewInsert, GibsonPrimerSegment,
+            GibsonPrimerSuggestion, GibsonResolvedJunctionPreview, GibsonRoutineHandoffPreview,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -33457,6 +33499,35 @@ mod tests {
 
         assert_eq!(hidden_count, 1);
         assert_eq!(displayed, vec![mcs_row]);
+    }
+
+    #[test]
+    fn gibson_apply_blocked_status_surfaces_existing_termini_limitation() {
+        let preview = GibsonAssemblyPreview {
+            schema: "gentle.gibson_assembly_preview.v1".to_string(),
+            plan_id: "gibson_multi_insert".to_string(),
+            title: "Gibson preview".to_string(),
+            summary: "multi-insert preview".to_string(),
+            can_execute: false,
+            destination: GibsonPreviewDestination::default(),
+            fragments: vec![],
+            insert: GibsonPreviewInsert::default(),
+            resolved_junctions: vec![],
+            primer_suggestions: vec![],
+            warnings: vec![],
+            errors: vec![GENtleApp::gibson_multi_insert_defined_opening_note().to_string()],
+            notes: vec![],
+            cartoon: GibsonCartoonPreview::default(),
+            routine_handoff: GibsonRoutineHandoffPreview::default(),
+        };
+
+        assert_eq!(
+            GENtleApp::gibson_apply_blocked_status(&preview),
+            format!(
+                "Gibson apply blocked: {}",
+                GENtleApp::gibson_multi_insert_defined_opening_note()
+            )
+        );
     }
 
     #[test]

@@ -20,6 +20,10 @@ should do:
 5. exports machine-readable plan/preview outputs, and
 6. matches the shared-shell/CLI `gibson preview` result.
 
+Current limitation to keep in mind while testing: multi-insert Gibson execution
+currently requires a defined destination opening; `existing_termini` remains
+the single-fragment handoff path.
+
 ## Fastest Setup
 
 Recommended route:
@@ -44,6 +48,8 @@ By the end of this tutorial, you should have verified all of these:
 
 - the `Patterns -> Gibson...` window opens and stays Gibson-specific
 - destination and insert selection work from local sequences
+- the specialist help text calls out the current multi-insert `defined opening`
+  guardrail before apply
 - defined-site opening coordinates are accepted
 - `Preview Gibson Plan` yields:
   - two resolved junctions
@@ -323,6 +329,9 @@ Mark the tutorial successful if all of these are true:
 - [ ] `Patterns -> Gibson...` opens and shows all five sections
 - [ ] `Tm Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
+- [ ] the specialist warning text says multi-insert execution currently
+      requires a defined destination opening and that `existing_termini`
+      remains the single-fragment handoff path
 - [ ] defined-site opening `941..941` is accepted
 - [ ] `Opening sketch` shows the exact cut sequence plus the destination after opening
 - [ ] preview returns `2` resolved junctions

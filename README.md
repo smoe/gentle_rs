@@ -15,7 +15,7 @@ auditable instead of being redrawn by hand.
 Today, that already means GENtle can:
 
 - plan and review Gibson assemblies with explicit overlaps, primer suggestions,
-  and lineage-visible outputs
+  lineage-visible outputs, and ordered multi-insert previews
 - execute PCR, advanced PCR, PCR mutagenesis, primer-pair design, and qPCR
   assay design through one shared engine family
 - render factual protocol cartoons and lineage graphs from the same project
@@ -94,6 +94,10 @@ in the lineage graph. This figure is not a screenshot; it is the SVG export of
 the same lineage graph that becomes available in the GUI after Gibson apply,
 via `File -> Export DALG SVG...` or the graph-canvas context menu entry
 `Save Graph as SVG...`.
+
+Current limitation: multi-insert execution currently requires a defined
+destination opening; `existing_termini` remains the single-fragment handoff
+path.
 
 These README Gibson figures are generated from shared engine routes, not drawn
 by hand. Together they answer three different questions:
