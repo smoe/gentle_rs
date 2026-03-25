@@ -1023,7 +1023,13 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
     }
 
     let panel_w = 308.0_f32;
-    let panel_h = 324.0_f32;
+    let max_molecules = spec
+        .events
+        .iter()
+        .map(|event| event.molecules.len())
+        .max()
+        .unwrap_or(1);
+    let panel_h = if max_molecules <= 1 { 286.0 } else { 324.0 };
     let panel_gap = 24.0_f32;
     let margin_x = 36.0_f32;
     let margin_y = 28.0_f32;
@@ -1233,10 +1239,10 @@ fn render_molecule(svg: &mut String, molecule: &DnaMoleculeCartoon, x: f32, y: f
 
     match molecule.topology {
         DnaTopologyCartoon::Linear => {
-            render_linear_molecule(svg, molecule, x, y + 14.0, width);
+            render_linear_molecule(svg, molecule, x, y + 18.0, width);
         }
         DnaTopologyCartoon::Circular => {
-            render_circular_molecule(svg, molecule, x, y + 14.0, width);
+            render_circular_molecule(svg, molecule, x, y + 18.0, width);
         }
     }
 
@@ -1282,7 +1288,6 @@ fn render_linear_molecule(
     let mut top_nicks: Vec<f32> = vec![];
     let mut bottom_nicks: Vec<f32> = vec![];
     let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String)> = vec![];
-    let mut feature_markers: Vec<(f32, String, String)> = vec![];
     for (feature_idx, feature) in molecule.features.iter().enumerate() {
         let slot_w = if feature_idx + 1 == molecule.features.len() {
             (shared_right - slot_cursor).max(0.5)
@@ -1313,12 +1318,6 @@ fn render_linear_molecule(
                 slot_w,
                 primer_kind,
                 normalize_hex_color(&feature.color_hex),
-            ));
-        } else if let Some((marker_label, marker_fill)) = feature_marker_badge(feature) {
-            feature_markers.push((
-                slot_cursor + (slot_w * 0.5),
-                marker_label.to_string(),
-                marker_fill.to_string(),
             ));
         }
         let boundary_x = slot_cursor + slot_w;
@@ -1363,7 +1362,7 @@ fn render_linear_molecule(
     for (center_x, primer_w, primer_kind, primer_fill) in primer_glyphs {
         match primer_kind {
             PrimerGlyphKind::Forward => {
-                render_primer_glyph(svg, center_x, y, primer_w, "F", &primer_fill, "top", false);
+                render_primer_glyph(svg, center_x, y, primer_w, "F", &primer_fill, "top", true);
             }
             PrimerGlyphKind::Reverse => {
                 render_primer_glyph(
@@ -1377,10 +1376,10 @@ fn render_linear_molecule(
                     true,
                 );
             }
+            PrimerGlyphKind::Probe => {
+                render_primer_glyph(svg, center_x, y, primer_w, "P", &primer_fill, "top", false);
+            }
         }
-    }
-    for (marker_x, marker_label, marker_fill) in feature_markers {
-        render_feature_marker(svg, marker_x, y, &marker_label, &marker_fill);
     }
 
     if let Some(DnaEndStyle::Continuation) = molecule.left_end.as_ref() {
@@ -1414,6 +1413,7 @@ fn render_strand_nick(svg: &mut String, x: f32, y: f32) {
 enum PrimerGlyphKind {
     Forward,
     Reverse,
+    Probe,
 }
 
 fn primer_glyph_kind(feature: &DnaFeatureCartoon) -> Option<PrimerGlyphKind> {
@@ -1422,15 +1422,8 @@ fn primer_glyph_kind(feature: &DnaFeatureCartoon) -> Option<PrimerGlyphKind> {
         Some(PrimerGlyphKind::Forward)
     } else if feature_id.contains("reverse_primer") {
         Some(PrimerGlyphKind::Reverse)
-    } else {
-        None
-    }
-}
-
-fn feature_marker_badge(feature: &DnaFeatureCartoon) -> Option<(&'static str, &'static str)> {
-    let feature_id = feature.id.to_ascii_lowercase();
-    if feature_id.contains("probe_window") || feature_id.contains("probe_site") {
-        Some(("P", "#577590"))
+    } else if feature_id.contains("probe_site") {
+        Some(PrimerGlyphKind::Probe)
     } else {
         None
     }
@@ -1444,28 +1437,39 @@ fn render_primer_glyph(
     label: &str,
     fill: &str,
     anchor: &str,
-    rotate_180: bool,
+    with_end_labels: bool,
 ) {
     let glyph_w = nominal_w.max(20.0).min(40.0);
     let glyph_h = 5.0;
-    let connector_y = anchor_y - 2.0;
-    let bar_y = anchor_y - 8.0;
-    let end_label_y = anchor_y - 11.5;
+    let anchor_lower = anchor.to_ascii_lowercase();
+    let on_bottom = anchor_lower == "bottom";
+    let connector_y = if on_bottom {
+        anchor_y + 5.0
+    } else {
+        anchor_y - 2.0
+    };
+    let bar_y = if on_bottom {
+        anchor_y + 10.0
+    } else {
+        anchor_y - 8.0
+    };
+    let end_label_y = if on_bottom {
+        anchor_y + 21.5
+    } else {
+        anchor_y - 11.5
+    };
     let label_y = bar_y + (glyph_h * 0.5) + 0.4;
     let left_x = center_x - (glyph_w * 0.5);
-    let rotation_attr = if rotate_180 { "180" } else { "0" };
-    let transform = if rotate_180 {
-        format!(" transform=\"rotate(180 {:.1} {:.1})\"", center_x, anchor_y)
+    let (left_end_label, right_end_label) = if label == "R" {
+        ("3'", "5'")
     } else {
-        String::new()
+        ("5'", "3'")
     };
 
     svg.push_str(&format!(
-        "<g data-primer-glyph=\"{}\" data-primer-anchor=\"{}\" data-primer-rotation=\"{}\"{}>",
+        "<g data-primer-glyph=\"{}\" data-primer-anchor=\"{}\" data-primer-rotation=\"0\">",
         escape_xml(label),
-        escape_xml(anchor),
-        rotation_attr,
-        transform
+        escape_xml(anchor)
     ));
     svg.push_str(&format!(
         "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.4\"/>",
@@ -1490,45 +1494,21 @@ fn render_primer_glyph(
         label_y,
         escape_xml(label)
     ));
-    svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"end\" dominant-baseline=\"middle\">{}</text>",
-        left_x - 3.5,
-        end_label_y,
-        escape_xml("5'")
-    ));
-    svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"start\" dominant-baseline=\"middle\">{}</text>",
-        left_x + glyph_w + 3.5,
-        end_label_y,
-        escape_xml("3'")
-    ));
+    if with_end_labels {
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"end\" dominant-baseline=\"middle\">{}</text>",
+            left_x - 3.5,
+            end_label_y,
+            escape_xml(left_end_label)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_primer_end_label\" text-anchor=\"start\" dominant-baseline=\"middle\">{}</text>",
+            left_x + glyph_w + 3.5,
+            end_label_y,
+            escape_xml(right_end_label)
+        ));
+    }
     svg.push_str("</g>");
-}
-
-fn render_feature_marker(svg: &mut String, center_x: f32, strand_y: f32, label: &str, fill: &str) {
-    let line_top_y = strand_y - 6.0;
-    let badge_cy = strand_y - 12.0;
-    svg.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.8\"/>",
-        center_x,
-        strand_y,
-        center_x,
-        line_top_y,
-        fill
-    ));
-    svg.push_str(&format!(
-        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"6.5\" fill=\"{}\" data-feature-marker=\"{}\"/>",
-        center_x,
-        badge_cy,
-        fill,
-        escape_xml(label)
-    ));
-    svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" class=\"pc_feature_marker_text\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
-        center_x,
-        badge_cy + 0.5,
-        escape_xml(label)
-    ));
 }
 
 fn render_circular_molecule(
@@ -1747,28 +1727,29 @@ fn append_wrapped_text(
     text: &str,
     class: &str,
 ) {
-    let words = text.split_whitespace().collect::<Vec<_>>();
-    if words.is_empty() {
-        return;
-    }
-
     let mut lines: Vec<String> = vec![];
-    let mut current = String::new();
-    for word in words {
-        let candidate = if current.is_empty() {
-            word.to_string()
-        } else {
-            format!("{} {}", current, word)
-        };
-        if candidate.chars().count() > max_chars && !current.is_empty() {
-            lines.push(current);
-            current = word.to_string();
-        } else {
-            current = candidate;
+    for paragraph in text.split('\n') {
+        let words = paragraph.split_whitespace().collect::<Vec<_>>();
+        if words.is_empty() {
+            continue;
         }
-    }
-    if !current.is_empty() {
-        lines.push(current);
+        let mut current = String::new();
+        for word in words {
+            let candidate = if current.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current, word)
+            };
+            if candidate.chars().count() > max_chars && !current.is_empty() {
+                lines.push(current);
+                current = word.to_string();
+            } else {
+                current = candidate;
+            }
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
     }
 
     for (idx, line) in lines.into_iter().take(3).enumerate() {
@@ -2045,13 +2026,46 @@ fn pcr_template_context_molecule(
     id: &str,
     label: &str,
     left_context_bp: usize,
-    primer_site_bp: usize,
     roi_bp: usize,
     right_context_bp: usize,
     context_color: &str,
     roi_color: &str,
-    forward_primer_color: &str,
-    reverse_primer_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            duplex_feature_block("roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
+    )
+}
+
+fn pcr_constraint_windows_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    forward_window_bp: usize,
+    roi_bp: usize,
+    reverse_window_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    forward_window_color: &str,
+    roi_color: &str,
+    reverse_window_color: &str,
 ) -> DnaMoleculeCartoon {
     linear_molecule_block(
         id,
@@ -2064,17 +2078,17 @@ fn pcr_template_context_molecule(
                 context_color,
             ),
             duplex_feature_block(
-                "forward_primer_site",
-                "Forward primer site",
-                primer_site_bp,
-                forward_primer_color,
+                "forward_window",
+                "Forward primer window",
+                forward_window_bp,
+                forward_window_color,
             ),
             duplex_feature_block("roi", "Selected ROI", roi_bp, roi_color),
             duplex_feature_block(
-                "reverse_primer_site",
-                "Reverse primer site",
-                primer_site_bp,
-                reverse_primer_color,
+                "reverse_window",
+                "Reverse primer window",
+                reverse_window_bp,
+                reverse_window_color,
             ),
             duplex_feature_block(
                 "template_right_context",
@@ -2088,29 +2102,73 @@ fn pcr_template_context_molecule(
     )
 }
 
-fn pcr_roi_molecule(id: &str, label: &str, roi_bp: usize, roi_color: &str) -> DnaMoleculeCartoon {
+fn pcr_primers_within_windows_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    forward_window_margin_bp: usize,
+    primer_site_bp: usize,
+    roi_bp: usize,
+    reverse_window_margin_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    forward_window_color: &str,
+    roi_color: &str,
+    reverse_window_color: &str,
+) -> DnaMoleculeCartoon {
     linear_molecule_block(
         id,
         label,
-        vec![duplex_feature_block(
-            "roi",
-            "Selected ROI",
-            roi_bp,
-            roi_color,
-        )],
-        DnaEndStyle::Blunt,
-        DnaEndStyle::Blunt,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            duplex_feature_block(
+                "forward_window_margin",
+                "Forward window margin",
+                forward_window_margin_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block(
+                "forward_primer_site",
+                "Forward primer",
+                primer_site_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block("amplicon_roi", "Selected ROI", roi_bp, roi_color),
+            duplex_feature_block(
+                "reverse_primer_site",
+                "Reverse primer",
+                primer_site_bp,
+                reverse_window_color,
+            ),
+            duplex_feature_block(
+                "reverse_window_margin",
+                "Reverse window margin",
+                reverse_window_margin_bp,
+                reverse_window_color,
+            ),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
     )
 }
 
-fn pcr_amplicon_molecule(
+fn pcr_roi_bounded_amplicon_molecule(
     id: &str,
     label: &str,
     primer_site_bp: usize,
-    flank_bp: usize,
     roi_bp: usize,
     forward_primer_color: &str,
-    flank_color: &str,
     roi_color: &str,
     reverse_primer_color: &str,
 ) -> DnaMoleculeCartoon {
@@ -2120,26 +2178,14 @@ fn pcr_amplicon_molecule(
         vec![
             duplex_feature_block(
                 "forward_primer_site",
-                "Forward primer site",
+                "Forward primer",
                 primer_site_bp,
                 forward_primer_color,
             ),
-            duplex_feature_block(
-                "amplicon_left_flank",
-                "Assay-defined flank",
-                flank_bp,
-                flank_color,
-            ),
             duplex_feature_block("amplicon_roi", "Selected ROI", roi_bp, roi_color),
             duplex_feature_block(
-                "amplicon_right_flank",
-                "Assay-defined flank",
-                flank_bp,
-                flank_color,
-            ),
-            duplex_feature_block(
                 "reverse_primer_site",
-                "Reverse primer site",
+                "Reverse primer",
                 primer_site_bp,
                 reverse_primer_color,
             ),
@@ -2149,17 +2195,79 @@ fn pcr_amplicon_molecule(
     )
 }
 
-fn qpcr_amplicon_molecule(
+fn qpcr_constraint_windows_molecule(
+    id: &str,
+    label: &str,
+    left_context_bp: usize,
+    forward_window_bp: usize,
+    roi_left_bp: usize,
+    probe_window_bp: usize,
+    roi_right_bp: usize,
+    reverse_window_bp: usize,
+    right_context_bp: usize,
+    context_color: &str,
+    forward_window_color: &str,
+    roi_color: &str,
+    probe_window_color: &str,
+    reverse_window_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "template_left_context",
+                "Template context",
+                left_context_bp,
+                context_color,
+            ),
+            duplex_feature_block(
+                "forward_window",
+                "Upstream primer window",
+                forward_window_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block("roi_left", "ROI segment", roi_left_bp, roi_color),
+            duplex_feature_block(
+                "probe_window",
+                "Probe window",
+                probe_window_bp,
+                probe_window_color,
+            ),
+            duplex_feature_block("roi_right", "ROI segment", roi_right_bp, roi_color),
+            duplex_feature_block(
+                "reverse_window",
+                "Downstream primer window",
+                reverse_window_bp,
+                reverse_window_color,
+            ),
+            duplex_feature_block(
+                "template_right_context",
+                "Template context",
+                right_context_bp,
+                context_color,
+            ),
+        ],
+        DnaEndStyle::Continuation,
+        DnaEndStyle::Continuation,
+    )
+}
+
+fn qpcr_assay_layout_molecule(
     id: &str,
     label: &str,
     primer_site_bp: usize,
-    roi_side_bp: usize,
-    probe_window_bp: usize,
-    forward_primer_color: &str,
-    flank_color: &str,
+    forward_window_margin_bp: usize,
+    roi_left_bp: usize,
+    probe_window_left_margin_bp: usize,
+    probe_site_bp: usize,
+    probe_window_right_margin_bp: usize,
+    roi_right_bp: usize,
+    reverse_window_margin_bp: usize,
+    forward_window_color: &str,
     roi_color: &str,
-    probe_color: &str,
-    reverse_primer_color: &str,
+    probe_window_color: &str,
+    reverse_window_color: &str,
 ) -> DnaMoleculeCartoon {
     linear_molecule_block(
         id,
@@ -2167,30 +2275,107 @@ fn qpcr_amplicon_molecule(
         vec![
             duplex_feature_block(
                 "forward_primer_site",
-                "Forward primer site",
+                "Forward primer",
                 primer_site_bp,
-                forward_primer_color,
+                forward_window_color,
             ),
             duplex_feature_block(
-                "amplicon_left_flank",
-                "Assay-defined flank",
-                10,
-                flank_color,
+                "forward_window_margin",
+                "Forward window margin",
+                forward_window_margin_bp,
+                forward_window_color,
             ),
-            duplex_feature_block("roi_left", "ROI segment", roi_side_bp, roi_color),
-            duplex_feature_block("probe_window", "Probe window", probe_window_bp, probe_color),
-            duplex_feature_block("roi_right", "ROI segment", roi_side_bp, roi_color),
+            duplex_feature_block("roi_left", "ROI segment", roi_left_bp, roi_color),
             duplex_feature_block(
-                "amplicon_right_flank",
-                "Assay-defined flank",
-                10,
-                flank_color,
+                "probe_window_left",
+                "Probe window",
+                probe_window_left_margin_bp,
+                probe_window_color,
+            ),
+            duplex_feature_block("probe_site", "Probe oligo", probe_site_bp, probe_window_color),
+            duplex_feature_block(
+                "probe_window_right",
+                "Probe window",
+                probe_window_right_margin_bp,
+                probe_window_color,
+            ),
+            duplex_feature_block("roi_right", "ROI segment", roi_right_bp, roi_color),
+            duplex_feature_block(
+                "reverse_window_margin",
+                "Reverse window margin",
+                reverse_window_margin_bp,
+                reverse_window_color,
             ),
             duplex_feature_block(
                 "reverse_primer_site",
-                "Reverse primer site",
+                "Reverse primer",
                 primer_site_bp,
-                reverse_primer_color,
+                reverse_window_color,
+            ),
+        ],
+        DnaEndStyle::Blunt,
+        DnaEndStyle::Blunt,
+    )
+}
+
+fn qpcr_quantified_amplicon_molecule(
+    id: &str,
+    label: &str,
+    primer_site_bp: usize,
+    forward_window_margin_bp: usize,
+    roi_left_bp: usize,
+    probe_window_left_margin_bp: usize,
+    probe_site_bp: usize,
+    probe_window_right_margin_bp: usize,
+    roi_right_bp: usize,
+    reverse_window_margin_bp: usize,
+    forward_window_color: &str,
+    roi_color: &str,
+    probe_window_color: &str,
+    reverse_window_color: &str,
+) -> DnaMoleculeCartoon {
+    linear_molecule_block(
+        id,
+        label,
+        vec![
+            duplex_feature_block(
+                "forward_primer_site",
+                "Forward primer",
+                primer_site_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block(
+                "forward_window_margin",
+                "Forward window margin",
+                forward_window_margin_bp,
+                forward_window_color,
+            ),
+            duplex_feature_block("roi_left", "ROI segment", roi_left_bp, roi_color),
+            duplex_feature_block(
+                "probe_window_left",
+                "Probe window",
+                probe_window_left_margin_bp,
+                probe_window_color,
+            ),
+            duplex_feature_block("probe_site", "Probe oligo", probe_site_bp, probe_window_color),
+            duplex_feature_block(
+                "probe_window_right",
+                "Probe window",
+                probe_window_right_margin_bp,
+                probe_window_color,
+            ),
+            duplex_feature_block("roi_right", "ROI segment", roi_right_bp, roi_color),
+            duplex_feature_block(
+                "reverse_window_margin",
+                "Reverse window margin",
+                reverse_window_margin_bp,
+                reverse_window_color,
+            ),
+            duplex_feature_block(
+                "reverse_primer_site",
+                "Reverse primer",
+                primer_site_bp,
+                reverse_window_color,
             ),
         ],
         DnaEndStyle::Blunt,
@@ -2199,133 +2384,97 @@ fn qpcr_amplicon_molecule(
 }
 
 fn pcr_assay_pair_spec() -> ProtocolCartoonSpec {
-    const TEMPLATE_LEFT_BP: usize = 90;
+    const TEMPLATE_LEFT_BP: usize = 74;
+    const FORWARD_WINDOW_BP: usize = 30;
     const PRIMER_SITE_BP: usize = 18;
     const ROI_BP: usize = 120;
-    const TEMPLATE_RIGHT_BP: usize = 90;
-    const AMPLICON_FLANK_BP: usize = 24;
+    const REVERSE_WINDOW_BP: usize = 30;
+    const TEMPLATE_RIGHT_BP: usize = 74;
+    const WINDOW_MARGIN_BP: usize = 12;
 
     let template_color = "#c9b37e";
     let roi_color = "#2a9d8f";
-    let flank_color = "#e07a5f";
-    let forward_primer_color = "#b5476d";
-    let reverse_primer_color = "#4c5d9e";
+    let forward_window_color = "#d1495b";
+    let reverse_window_color = "#3d6fb6";
 
     ProtocolCartoonSpec {
         id: ProtocolCartoonKind::PcrAssayPair.id().to_string(),
         title: "GENtle Protocol Cartoon: PCR Assay (pair-primer baseline)".to_string(),
-        summary: "Five-step pair-PCR strip from source template to selected ROI, assay setup, amplification, and amplicon/report outcome.".to_string(),
+        summary: "Four-step PCR strip: context+ROI, primer constraint windows, primer placement, and ROI-bounded amplicon outcome.".to_string(),
         events: vec![
             event_block(
-                "context",
-                "Context",
-                "A source template contains one user-selected ROI inside broader sequence context.",
+                "context_roi",
+                "Context + ROI",
+                "Template context selected.\nROI selected.\nGreen = ROI.",
                 ProtocolCartoonAction::Context,
                 vec![pcr_template_context_molecule(
                     "template_context",
                     "Source template",
                     TEMPLATE_LEFT_BP,
-                    PRIMER_SITE_BP,
                     ROI_BP,
                     TEMPLATE_RIGHT_BP,
                     template_color,
                     roi_color,
-                    forward_primer_color,
-                    reverse_primer_color,
                 )],
             ),
             event_block(
-                "roi",
-                "ROI",
-                "The assay narrows to the selected region of interest; the same ROI can also be extracted as a copy artifact elsewhere in the workflow.",
+                "primer_constraints",
+                "Primer Constraints",
+                "Red = Upstream primer window for primer.\nBlue = Downstream primer window for primer.\nPrimer termini must stay inside each window.",
                 ProtocolCartoonAction::Custom {
-                    label: "ROI".to_string(),
+                    label: "Constraints".to_string(),
                 },
-                vec![
-                    pcr_template_context_molecule(
-                        "template_context_targeted",
-                        "Template with highlighted ROI",
-                        TEMPLATE_LEFT_BP,
-                        PRIMER_SITE_BP,
-                        ROI_BP,
-                        TEMPLATE_RIGHT_BP,
-                        template_color,
-                        roi_color,
-                        forward_primer_color,
-                        reverse_primer_color,
-                    ),
-                    pcr_roi_molecule("selected_roi", "Selected ROI", ROI_BP, roi_color),
-                ],
-            ),
-            event_block(
-                "assay_setup",
-                "Assay Setup",
-                "One primer pair is planned to bracket the ROI with short assay-defined flanks; primer sequences remain inspectable in the report rather than the cartoon itself.",
-                ProtocolCartoonAction::Custom {
-                    label: "Assay Setup".to_string(),
-                },
-                vec![pcr_amplicon_molecule(
-                    "planned_amplicon",
-                    "Planned amplicon",
-                    PRIMER_SITE_BP,
-                    AMPLICON_FLANK_BP,
+                vec![pcr_constraint_windows_molecule(
+                    "template_with_windows",
+                    "Template with ROI + primer windows",
+                    TEMPLATE_LEFT_BP,
+                    FORWARD_WINDOW_BP,
                     ROI_BP,
-                    forward_primer_color,
-                    flank_color,
+                    REVERSE_WINDOW_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
                     roi_color,
-                    reverse_primer_color,
+                    reverse_window_color,
                 )],
             ),
             event_block(
-                "amplify",
-                "Amplify",
-                "Thermocycling enriches the bracketed segment, turning the planned ROI into one amplicon product class.",
+                "primers",
+                "Primers",
+                "Chosen forward/reverse primers lie within their windows and terminate at the ROI boundaries while genomic context remains visible.",
                 ProtocolCartoonAction::Custom {
-                    label: "Amplify".to_string(),
+                    label: "Primers".to_string(),
                 },
-                vec![
-                    pcr_template_context_molecule(
-                        "template_source_during_pcr",
-                        "Template source",
-                        TEMPLATE_LEFT_BP,
-                        PRIMER_SITE_BP,
-                        ROI_BP,
-                        TEMPLATE_RIGHT_BP,
-                        template_color,
-                        roi_color,
-                        forward_primer_color,
-                        reverse_primer_color,
-                    ),
-                    pcr_amplicon_molecule(
-                        "amplicon_class",
-                        "Amplicon class",
-                        PRIMER_SITE_BP,
-                        AMPLICON_FLANK_BP,
-                        ROI_BP,
-                        forward_primer_color,
-                        flank_color,
-                        roi_color,
-                        reverse_primer_color,
-                    ),
-                ],
+                vec![pcr_primers_within_windows_molecule(
+                    "primer_layout",
+                    "Primer placement in windows",
+                    TEMPLATE_LEFT_BP,
+                    WINDOW_MARGIN_BP,
+                    PRIMER_SITE_BP,
+                    ROI_BP,
+                    WINDOW_MARGIN_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
+                    roi_color,
+                    reverse_window_color,
+                )],
             ),
             event_block(
                 "product",
                 "Product",
-                "The accepted primer pair yields one inspectable amplicon artifact and one linked report or primer-pair container downstream.",
+                "PCR yields an ROI-focused amplicon bounded by the chosen primer termini.",
                 ProtocolCartoonAction::Custom {
                     label: "Product".to_string(),
                 },
-                vec![pcr_amplicon_molecule(
+                vec![pcr_roi_bounded_amplicon_molecule(
                     "accepted_amplicon",
-                    "Accepted amplicon",
+                    "ROI-bounded amplicon",
                     PRIMER_SITE_BP,
-                    AMPLICON_FLANK_BP,
                     ROI_BP,
-                    forward_primer_color,
-                    flank_color,
+                    forward_window_color,
                     roi_color,
-                    reverse_primer_color,
+                    reverse_window_color,
                 )],
             ),
         ],
@@ -2333,108 +2482,96 @@ fn pcr_assay_pair_spec() -> ProtocolCartoonSpec {
 }
 
 fn pcr_assay_pair_no_product_spec() -> ProtocolCartoonSpec {
-    const TEMPLATE_LEFT_BP: usize = 90;
+    const TEMPLATE_LEFT_BP: usize = 74;
+    const FORWARD_WINDOW_BP: usize = 30;
     const PRIMER_SITE_BP: usize = 18;
     const ROI_BP: usize = 120;
-    const TEMPLATE_RIGHT_BP: usize = 90;
-    const AMPLICON_FLANK_BP: usize = 24;
+    const REVERSE_WINDOW_BP: usize = 30;
+    const TEMPLATE_RIGHT_BP: usize = 74;
+    const WINDOW_MARGIN_BP: usize = 12;
 
     let template_color = "#c9b37e";
     let roi_color = "#2a9d8f";
-    let flank_color = "#e07a5f";
-    let forward_primer_color = "#b5476d";
-    let reverse_primer_color = "#4c5d9e";
+    let forward_window_color = "#d1495b";
+    let reverse_window_color = "#3d6fb6";
 
     ProtocolCartoonSpec {
         id: ProtocolCartoonKind::PcrAssayPairNoProduct.id().to_string(),
         title: "GENtle Protocol Cartoon: PCR Assay (report-only no-product)".to_string(),
-        summary: "Five-step pair-PCR strip where a defined ROI remains inspectable but no accepted primer pair yields an amplicon product.".to_string(),
+        summary: "Four-step PCR strip matching the baseline flow, but ending with report-only output when no primer pair is accepted.".to_string(),
         events: vec![
             event_block(
-                "context",
-                "Context",
-                "A source template contains one user-selected ROI inside broader sequence context.",
+                "context_roi",
+                "Context + ROI",
+                "Template context selected.\nROI selected.\nGreen = ROI.",
                 ProtocolCartoonAction::Context,
                 vec![pcr_template_context_molecule(
                     "template_context",
                     "Source template",
                     TEMPLATE_LEFT_BP,
-                    PRIMER_SITE_BP,
                     ROI_BP,
                     TEMPLATE_RIGHT_BP,
                     template_color,
                     roi_color,
-                    forward_primer_color,
-                    reverse_primer_color,
                 )],
             ),
             event_block(
-                "roi",
-                "ROI",
-                "The selected ROI remains the stable target even when no assay satisfies all constraints.",
+                "primer_constraints",
+                "Primer Constraints",
+                "Red = Upstream primer window for primer.\nBlue = Downstream primer window for primer.\nConstraints may still reject all candidates.",
                 ProtocolCartoonAction::Custom {
-                    label: "ROI".to_string(),
+                    label: "Constraints".to_string(),
                 },
-                vec![
-                    pcr_template_context_molecule(
-                        "template_context_targeted",
-                        "Template with highlighted ROI",
-                        TEMPLATE_LEFT_BP,
-                        PRIMER_SITE_BP,
-                        ROI_BP,
-                        TEMPLATE_RIGHT_BP,
-                        template_color,
-                        roi_color,
-                        forward_primer_color,
-                        reverse_primer_color,
-                    ),
-                    pcr_roi_molecule("selected_roi", "Selected ROI", ROI_BP, roi_color),
-                ],
+                vec![pcr_constraint_windows_molecule(
+                    "template_with_windows",
+                    "Template with ROI + primer windows",
+                    TEMPLATE_LEFT_BP,
+                    FORWARD_WINDOW_BP,
+                    ROI_BP,
+                    REVERSE_WINDOW_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
+                    roi_color,
+                    reverse_window_color,
+                )],
             ),
             event_block(
-                "assay_setup",
-                "Assay Setup",
-                "One primer-pair design attempt still brackets the ROI conceptually, but downstream constraint checks can reject every candidate.",
+                "primers",
+                "Primers",
+                "Candidate forward/reverse primers lie in-window and terminate at ROI boundaries, but no candidate pair survives all constraints.",
                 ProtocolCartoonAction::Custom {
-                    label: "Assay Setup".to_string(),
+                    label: "Primers".to_string(),
                 },
-                vec![pcr_amplicon_molecule(
-                    "planned_amplicon",
-                    "Planned amplicon",
+                vec![pcr_primers_within_windows_molecule(
+                    "primer_layout",
+                    "Candidate primer placement",
+                    TEMPLATE_LEFT_BP,
+                    WINDOW_MARGIN_BP,
                     PRIMER_SITE_BP,
-                    AMPLICON_FLANK_BP,
                     ROI_BP,
-                    forward_primer_color,
-                    flank_color,
+                    WINDOW_MARGIN_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
                     roi_color,
-                    reverse_primer_color,
-                )],
-            ),
-            event_block(
-                "review",
-                "Review",
-                "Constraint checks exhaust the candidate space, so the workflow keeps an explanation report even though no accepted primer pair remains.",
-                ProtocolCartoonAction::Custom {
-                    label: "Review".to_string(),
-                },
-                vec![pcr_roi_molecule(
-                    "selected_roi_under_review",
-                    "ROI retained for review",
-                    ROI_BP,
-                    roi_color,
+                    reverse_window_color,
                 )],
             ),
             event_block(
                 "report_only",
                 "Report Only",
-                "No amplicon product is emitted; users inspect the retained ROI context and the failure report rather than a product container.",
+                "No amplicon product is emitted; users inspect retained ROI context and the failure report.",
                 ProtocolCartoonAction::Custom {
                     label: "Report".to_string(),
                 },
-                vec![pcr_roi_molecule(
-                    "selected_roi_report_only",
-                    "ROI retained for report",
+                vec![pcr_template_context_molecule(
+                    "template_context_report_only",
+                    "Template + ROI retained",
+                    TEMPLATE_LEFT_BP,
                     ROI_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
                     roi_color,
                 )],
             ),
@@ -2443,138 +2580,118 @@ fn pcr_assay_pair_no_product_spec() -> ProtocolCartoonSpec {
 }
 
 fn pcr_assay_qpcr_spec() -> ProtocolCartoonSpec {
-    const TEMPLATE_LEFT_BP: usize = 90;
+    const TEMPLATE_LEFT_BP: usize = 62;
+    const FORWARD_WINDOW_BP: usize = 26;
     const PRIMER_SITE_BP: usize = 18;
-    const ROI_BP: usize = 120;
-    const TEMPLATE_RIGHT_BP: usize = 90;
-    const ROI_SIDE_BP: usize = 36;
-    const PROBE_WINDOW_BP: usize = 48;
+    const ROI_LEFT_BP: usize = 40;
+    const PROBE_WINDOW_BP: usize = 40;
+    const PROBE_SITE_BP: usize = 12;
+    const ROI_RIGHT_BP: usize = 40;
+    const REVERSE_WINDOW_BP: usize = 26;
+    const TEMPLATE_RIGHT_BP: usize = 62;
+    const FORWARD_WINDOW_MARGIN_BP: usize = FORWARD_WINDOW_BP - PRIMER_SITE_BP;
+    const REVERSE_WINDOW_MARGIN_BP: usize = REVERSE_WINDOW_BP - PRIMER_SITE_BP;
+    const PROBE_WINDOW_LEFT_MARGIN_BP: usize = (PROBE_WINDOW_BP - PROBE_SITE_BP) / 2;
+    const PROBE_WINDOW_RIGHT_MARGIN_BP: usize =
+        PROBE_WINDOW_BP - PROBE_SITE_BP - PROBE_WINDOW_LEFT_MARGIN_BP;
+    const ROI_TOTAL_BP: usize = ROI_LEFT_BP + PROBE_WINDOW_BP + ROI_RIGHT_BP;
 
     let template_color = "#c9b37e";
     let roi_color = "#2a9d8f";
-    let flank_color = "#e07a5f";
-    let probe_color = "#577590";
-    let forward_primer_color = "#b5476d";
-    let reverse_primer_color = "#4c5d9e";
+    let probe_window_color = "#577590";
+    let forward_window_color = "#d1495b";
+    let reverse_window_color = "#3d6fb6";
 
     ProtocolCartoonSpec {
         id: ProtocolCartoonKind::PcrAssayQpcr.id().to_string(),
         title: "GENtle Protocol Cartoon: qPCR Assay (probe-bearing baseline)".to_string(),
-        summary: "Five-step qPCR strip from source template to selected ROI, probe-bearing assay setup, amplification, and quantitative readout.".to_string(),
+        summary: "Four-step qPCR strip aligned to the baseline PCR flow, with an explicit probe window independent of ROI.".to_string(),
         events: vec![
             event_block(
-                "context",
-                "Context",
-                "A source template contains one selected ROI inside broader sequence context.",
+                "context_roi",
+                "Context + ROI",
+                "Template context selected.\nROI selected.\nGreen = ROI.",
                 ProtocolCartoonAction::Context,
                 vec![pcr_template_context_molecule(
                     "template_context",
                     "Source template",
                     TEMPLATE_LEFT_BP,
-                    PRIMER_SITE_BP,
-                    ROI_BP,
+                    ROI_TOTAL_BP,
                     TEMPLATE_RIGHT_BP,
                     template_color,
                     roi_color,
-                    forward_primer_color,
-                    reverse_primer_color,
                 )],
             ),
             event_block(
-                "roi",
-                "ROI",
-                "The assay remains selection-first: one highlighted ROI becomes the quantitative target window.",
+                "primer_constraints",
+                "Primer Constraints",
+                "Red = Upstream primer window.\nBlue = Downstream primer window.\nSlate = Internal probe window.",
                 ProtocolCartoonAction::Custom {
-                    label: "ROI".to_string(),
+                    label: "Constraints".to_string(),
                 },
-                vec![
-                    pcr_template_context_molecule(
-                        "template_context_targeted",
-                        "Template with highlighted ROI",
-                        TEMPLATE_LEFT_BP,
-                        PRIMER_SITE_BP,
-                        ROI_BP,
-                        TEMPLATE_RIGHT_BP,
-                        template_color,
-                        roi_color,
-                        forward_primer_color,
-                        reverse_primer_color,
-                    ),
-                    pcr_roi_molecule("selected_roi", "Selected ROI", ROI_BP, roi_color),
-                ],
-            ),
-            event_block(
-                "assay_setup",
-                "Assay Setup",
-                "A qPCR assay adds one internal probe window inside the amplicon while the forward and reverse pair still bracket the ROI. Oligo sequences stay inspectable in the report rather than the cartoon itself.",
-                ProtocolCartoonAction::Custom {
-                    label: "Assay Setup".to_string(),
-                },
-                vec![qpcr_amplicon_molecule(
-                    "planned_qpcr_amplicon",
-                    "Probe-bearing amplicon",
-                    PRIMER_SITE_BP,
-                    ROI_SIDE_BP,
+                vec![qpcr_constraint_windows_molecule(
+                    "template_with_qpcr_windows",
+                    "Template with ROI + primer/probe windows",
+                    TEMPLATE_LEFT_BP,
+                    FORWARD_WINDOW_BP,
+                    ROI_LEFT_BP,
                     PROBE_WINDOW_BP,
-                    forward_primer_color,
-                    flank_color,
+                    ROI_RIGHT_BP,
+                    REVERSE_WINDOW_BP,
+                    TEMPLATE_RIGHT_BP,
+                    template_color,
+                    forward_window_color,
                     roi_color,
-                    probe_color,
-                    reverse_primer_color,
+                    probe_window_color,
+                    reverse_window_color,
                 )],
             ),
             event_block(
-                "amplify",
-                "Amplify",
-                "Thermocycling enriches the probe-bearing target, so one assay-defined amplicon class accumulates across cycles.",
+                "primers_probe",
+                "Primers + Probe",
+                "Amplified amplicon only.\nNo genomic flanks shown.\nOligos remain within their windows.",
                 ProtocolCartoonAction::Custom {
-                    label: "Amplify".to_string(),
+                    label: "Assay".to_string(),
                 },
-                vec![
-                    pcr_template_context_molecule(
-                        "template_source_during_qpcr",
-                        "Template source",
-                        TEMPLATE_LEFT_BP,
-                        PRIMER_SITE_BP,
-                        ROI_BP,
-                        TEMPLATE_RIGHT_BP,
-                        template_color,
-                        roi_color,
-                        forward_primer_color,
-                        reverse_primer_color,
-                    ),
-                    qpcr_amplicon_molecule(
-                        "qpcr_amplicon_class",
-                        "qPCR amplicon class",
-                        PRIMER_SITE_BP,
-                        ROI_SIDE_BP,
-                        PROBE_WINDOW_BP,
-                        forward_primer_color,
-                        flank_color,
-                        roi_color,
-                        probe_color,
-                        reverse_primer_color,
-                    ),
-                ],
+                vec![qpcr_assay_layout_molecule(
+                    "qpcr_layout",
+                    "Amplified amplicon with assay oligos",
+                    PRIMER_SITE_BP,
+                    FORWARD_WINDOW_MARGIN_BP,
+                    ROI_LEFT_BP,
+                    PROBE_WINDOW_LEFT_MARGIN_BP,
+                    PROBE_SITE_BP,
+                    PROBE_WINDOW_RIGHT_MARGIN_BP,
+                    ROI_RIGHT_BP,
+                    REVERSE_WINDOW_MARGIN_BP,
+                    forward_window_color,
+                    roi_color,
+                    probe_window_color,
+                    reverse_window_color,
+                )],
             ),
             event_block(
                 "quantify",
                 "Quantify",
-                "Signal is read from the probe-bearing amplicon window and linked back to the same ROI and assay definition.",
+                "Fluorescence is read per cycle.\nSame probe-bearing amplicon geometry.",
                 ProtocolCartoonAction::Custom {
                     label: "Quantify".to_string(),
                 },
-                vec![qpcr_amplicon_molecule(
+                vec![qpcr_quantified_amplicon_molecule(
                     "quantified_amplicon",
-                    "Quantified amplicon class",
+                    "Quantified probe-bearing amplicon",
                     PRIMER_SITE_BP,
-                    ROI_SIDE_BP,
-                    PROBE_WINDOW_BP,
-                    forward_primer_color,
-                    flank_color,
+                    FORWARD_WINDOW_MARGIN_BP,
+                    ROI_LEFT_BP,
+                    PROBE_WINDOW_LEFT_MARGIN_BP,
+                    PROBE_SITE_BP,
+                    PROBE_WINDOW_RIGHT_MARGIN_BP,
+                    ROI_RIGHT_BP,
+                    REVERSE_WINDOW_MARGIN_BP,
+                    forward_window_color,
                     roi_color,
-                    probe_color,
-                    reverse_primer_color,
+                    probe_window_color,
+                    reverse_window_color,
                 )],
             ),
         ],
@@ -3857,42 +3974,63 @@ mod tests {
     #[test]
     fn pcr_pair_spec_is_event_sequence() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
-        assert_eq!(spec.events.len(), 5);
+        assert_eq!(spec.events.len(), 4);
         assert_eq!(spec.events[0].action, ProtocolCartoonAction::Context);
-        assert_eq!(spec.events[2].title, "Assay Setup");
-        assert_eq!(spec.events[4].title, "Product");
+        assert_eq!(spec.events[1].title, "Primer Constraints");
+        assert_eq!(spec.events[2].title, "Primers");
+        assert_eq!(spec.events[3].title, "Product");
     }
 
     #[test]
     fn pcr_pair_spec_highlights_roi_and_final_amplicon() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
         let context = &spec.events[0].molecules[0];
-        let product = &spec.events[4].molecules[0];
+        let constraints = &spec.events[1].molecules[0];
+        let product = &spec.events[3].molecules[0];
 
         assert!(context.features.iter().any(|feature| feature.id == "roi"));
         assert!(
-            context
+            !context
                 .features
                 .iter()
                 .any(|feature| feature.id == "forward_primer_site")
         );
         assert!(
-            context
+            !context
                 .features
                 .iter()
                 .any(|feature| feature.id == "reverse_primer_site")
+        );
+        assert!(constraints.features.iter().any(|feature| feature.id == "roi"));
+        assert!(
+            !constraints
+                .features
+                .iter()
+                .any(|feature| feature.id == "forward_primer_site")
+        );
+        assert!(
+            !constraints
+                .features
+                .iter()
+                .any(|feature| feature.id == "reverse_primer_site")
+        );
+        assert!(
+            constraints
+                .features
+                .iter()
+                .any(|feature| feature.id == "forward_window")
+        );
+        assert!(
+            constraints
+                .features
+                .iter()
+                .any(|feature| feature.id == "reverse_window")
         );
         assert!(
             product
                 .features
                 .iter()
                 .any(|feature| feature.id == "amplicon_roi")
-        );
-        assert!(
-            product
-                .features
-                .iter()
-                .any(|feature| feature.id == "amplicon_left_flank")
         );
         assert!(
             product
@@ -3911,7 +4049,7 @@ mod tests {
     #[test]
     fn pcr_pair_no_product_finishes_with_report_only_context() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
-        let final_event = &spec.events[4];
+        let final_event = &spec.events[3];
 
         assert_eq!(final_event.title, "Report Only");
         assert!(final_event.caption.contains("No amplicon product"));
@@ -3924,30 +4062,90 @@ mod tests {
     }
 
     #[test]
+    fn pcr_context_and_roi_panels_remain_primer_free() {
+        let pair = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        let no_product = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayPairNoProduct);
+        let qpcr = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
+
+        for spec in [&pair, &no_product, &qpcr] {
+            for event in [&spec.events[0], &spec.events[1]] {
+                for molecule in &event.molecules {
+                    assert!(!molecule
+                        .features
+                        .iter()
+                        .any(|feature| feature.id == "forward_primer_site"));
+                    assert!(!molecule
+                        .features
+                        .iter()
+                        .any(|feature| feature.id == "reverse_primer_site"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn qpcr_spec_is_event_sequence_with_probe_window() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
-        assert_eq!(spec.events.len(), 5);
-        assert_eq!(spec.events[2].title, "Assay Setup");
-        assert_eq!(spec.events[4].title, "Quantify");
+        assert_eq!(spec.events.len(), 4);
+        assert_eq!(spec.events[1].title, "Primer Constraints");
+        assert_eq!(spec.events[2].title, "Primers + Probe");
+        assert_eq!(spec.events[3].title, "Quantify");
         assert!(
-            spec.events[2].molecules[0]
+            spec.events[1].molecules[0]
                 .features
                 .iter()
                 .any(|feature| feature.id == "probe_window")
+        );
+        assert!(
+            !spec.events[1].molecules[0]
+                .features
+                .iter()
+                .any(|feature| feature.id == "probe_site")
         );
     }
 
     #[test]
     fn qpcr_final_panel_retains_probe_window() {
         let spec = protocol_cartoon_spec_for_kind(&ProtocolCartoonKind::PcrAssayQpcr);
-        let quantified = &spec.events[4].molecules[0];
+        let assay = &spec.events[2].molecules[0];
+        let quantified = &spec.events[3].molecules[0];
+        assert!(
+            assay
+                .features
+                .iter()
+                .any(|feature| feature.id == "probe_window_left")
+        );
+        assert!(
+            assay
+                .features
+                .iter()
+                .any(|feature| feature.id == "probe_window_right")
+        );
         assert!(
             quantified
                 .features
                 .iter()
-                .any(|feature| feature.id == "probe_window")
+                .any(|feature| feature.id == "probe_window_left")
         );
-        assert_eq!(quantified.label, "Quantified amplicon class");
+        assert!(
+            quantified
+                .features
+                .iter()
+                .any(|feature| feature.id == "probe_window_right")
+        );
+        assert!(
+            assay
+                .features
+                .iter()
+                .all(|feature| !feature.id.contains("template"))
+        );
+        assert!(
+            quantified
+                .features
+                .iter()
+                .all(|feature| !feature.id.contains("template"))
+        );
+        assert_eq!(quantified.label, "Quantified probe-bearing amplicon");
     }
 
     #[test]
@@ -4078,11 +4276,16 @@ mod tests {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayPair);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("PCR Assay"));
-        assert!(svg.contains("Selected ROI"));
-        assert!(svg.contains("Accepted amplicon"));
+        assert!(svg.contains("Context + ROI"));
+        assert!(svg.contains("Primer Constraints"));
+        assert!(svg.contains("Green ="));
+        assert!(svg.contains("Red = Upstream primer window for"));
+        assert!(svg.contains("Blue = Downstream primer window for"));
+        assert!(svg.contains("ROI-bounded amplicon"));
         assert!(svg.contains("data-primer-glyph=\"F\""));
         assert!(svg.contains("data-primer-glyph=\"R\""));
-        assert!(svg.contains("data-primer-rotation=\"180\""));
+        assert!(svg.contains("data-primer-anchor=\"bottom\""));
+        assert!(!svg.contains("data-primer-rotation=\"180\""));
         assert!(svg.contains("5&apos;"));
         assert!(svg.contains("3&apos;"));
         assert!(!svg.contains("data-feature-marker=\"F\""));
@@ -4094,7 +4297,7 @@ mod tests {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayPairNoProduct);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Report Only"));
-        assert!(svg.contains("ROI retained for report"));
+        assert!(svg.contains("Template + ROI retained"));
     }
 
     #[test]
@@ -4102,12 +4305,16 @@ mod tests {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayQpcr);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("qPCR Assay"));
-        assert!(svg.contains("Probe-bearing amplicon"));
+        assert!(svg.contains("Primer Constraints"));
+        assert!(svg.contains("Primers + Probe"));
+        assert!(svg.contains("Slate = Internal probe window"));
         assert!(svg.contains("Quantify"));
         assert!(svg.contains("data-primer-glyph=\"F\""));
         assert!(svg.contains("data-primer-glyph=\"R\""));
-        assert!(svg.contains("data-primer-rotation=\"180\""));
-        assert!(svg.contains("data-feature-marker=\"P\""));
+        assert!(svg.contains("data-primer-glyph=\"P\""));
+        assert!(svg.contains("data-primer-anchor=\"bottom\""));
+        assert!(!svg.contains("data-primer-rotation=\"180\""));
+        assert!(!svg.contains("data-feature-marker=\"P\""));
         assert!(!svg.contains("data-feature-marker=\"F\""));
         assert!(!svg.contains("data-feature-marker=\"R\""));
     }

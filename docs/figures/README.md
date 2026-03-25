@@ -35,9 +35,9 @@ cargo run --quiet --bin gentle_cli -- \
 
 `pcr_pair_protocol_cartoon.svg` is the deterministic success-path render of the
 built-in protocol cartoon `pcr.assay.pair`. It keeps the PCR story
-selection-first: source template, highlighted ROI, explicit forward/reverse
-primer glyphs with 5'/3' orientation, assay setup, amplification, and accepted
-amplicon outcome.
+selection-first: context + highlighted ROI first, then explicit forward/reverse
+constraint windows (red/blue) around the ROI (green), followed by readable
+primer placement and accepted ROI-bounded amplicon outcome.
 
 Regenerate it from the repository root with:
 
@@ -63,8 +63,9 @@ cargo run --quiet --bin gentle_cli -- \
 
 `qpcr_assay_protocol_cartoon.svg` is the deterministic probe-bearing qPCR strip
 for `pcr.assay.qpcr`. It reuses the same PCR family layout while adding an
-internal probe window, explicit forward/reverse primer glyphs, and a
-quantitative readout terminal state.
+explicit third probe window (separate from ROI semantics), keeps panel 2
+constraint-only, and shows panels 3/4 on amplified amplicon geometry (no
+genomic flanks) with the probe constrained inside its dedicated window.
 
 Regenerate it from the repository root with:
 
