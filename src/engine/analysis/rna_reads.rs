@@ -529,6 +529,20 @@ impl GentleEngine {
             ),
         })?;
         let mut writer = BufWriter::new(file);
+        for line in Self::rna_read_alignment_tsv_metadata_lines(
+            &self.get_rna_read_report(report_id)?,
+            &inspection,
+            selection,
+            limit,
+        ) {
+            writeln!(writer, "{line}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read alignment TSV metadata to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
         writeln!(
             writer,
             "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
@@ -1159,7 +1173,7 @@ impl GentleEngine {
         let height = 300.0f64;
         let margin_left = 56.0f64;
         let margin_right = 24.0f64;
-        let margin_top = 36.0f64;
+        let margin_top = 66.0f64;
         let margin_bottom = 40.0f64;
         let axis_bottom = height - margin_bottom;
         let plot_top = margin_top + 16.0;
@@ -1190,6 +1204,19 @@ impl GentleEngine {
             report.read_count_seed_passed,
             report.read_count_aligned
         );
+        let provenance = format!(
+            "profile={} mode={} scope={} origin={} | {}",
+            report.profile.as_str(),
+            report.report_mode.as_str(),
+            report.scope.as_str(),
+            report.origin_mode.as_str(),
+            Self::rna_read_seed_filter_summary(&report.seed_filter),
+        );
+        let bins_source = if report.score_density_bins.is_empty() {
+            "score-density bins derived from retained hits"
+        } else {
+            "score-density bins stored in report"
+        };
 
         let mut svg = String::new();
         svg.push_str(&format!(
@@ -1205,6 +1232,16 @@ impl GentleEngine {
             "<text x=\"{x:.1}\" y=\"36\" font-family=\"monospace\" font-size=\"11\" fill=\"#4b5563\">{subtitle}</text>\n",
             x = chart_left,
             subtitle = Self::escape_svg_text(&subtitle)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"50\" font-family=\"monospace\" font-size=\"10\" fill=\"#4b5563\">{provenance}</text>\n",
+            x = chart_left,
+            provenance = Self::escape_svg_text(&provenance)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"62\" font-family=\"monospace\" font-size=\"10\" fill=\"#6b7280\">{bins_source}</text>\n",
+            x = chart_left,
+            bins_source = Self::escape_svg_text(bins_source)
         ));
         svg.push_str(&format!(
             "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"none\" stroke=\"#9ca3af\" stroke-width=\"1\"/>\n",
@@ -1333,6 +1370,92 @@ impl GentleEngine {
 
     pub(super) fn sanitize_tsv_cell(raw: &str) -> String {
         raw.replace(['\t', '\n', '\r'], " ")
+    }
+
+    fn ordered_window_overlap_summary(window_len: usize, step_bp: usize) -> String {
+        let safe_step = step_bp.max(1);
+        let overlap_bp = window_len.saturating_sub(safe_step);
+        let windows_per_base = (window_len.saturating_add(safe_step).saturating_sub(1)) / safe_step;
+        if safe_step == 1 {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in {windows_per_base} consecutive ordered windows (dense sliding)"
+            )
+        } else if safe_step < window_len {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in up to {windows_per_base} consecutive ordered windows (subsampled sliding)"
+            )
+        } else if safe_step == window_len {
+            "adjacent windows do not overlap; each interior base participates in at most 1 ordered window (edge-touching sampling)".to_string()
+        } else {
+            format!(
+                "adjacent windows do not overlap and can leave up to {} bp unsampled between starts; each interior base participates in at most 1 ordered window (sparse sampling)",
+                safe_step - window_len
+            )
+        }
+    }
+
+    fn rna_read_seed_filter_summary(seed_filter: &RnaReadSeedFilterConfig) -> String {
+        format!(
+            "seed_filter: k={} stride={} min_seed_hit_fraction={:.2} min_weighted_seed_hit_fraction={:.2} min_unique_matched_kmers={} max_median_transcript_gap={:.2} min_chain_consistency_fraction={:.2} min_confirmed_exon_transitions={} min_transition_support_fraction={:.2} poly_t_flip={} poly_t_prefix_min_bp={} | {}",
+            seed_filter.kmer_len,
+            seed_filter.seed_stride_bp,
+            seed_filter.min_seed_hit_fraction,
+            seed_filter.min_weighted_seed_hit_fraction,
+            seed_filter.min_unique_matched_kmers,
+            seed_filter.max_median_transcript_gap,
+            seed_filter.min_chain_consistency_fraction,
+            seed_filter.min_confirmed_exon_transitions,
+            seed_filter.min_transition_support_fraction,
+            seed_filter.cdna_poly_t_flip_enabled,
+            seed_filter.poly_t_prefix_min_bp,
+            Self::ordered_window_overlap_summary(
+                seed_filter.kmer_len.max(1),
+                seed_filter.seed_stride_bp.max(1),
+            ),
+        )
+    }
+
+    fn rna_read_alignment_tsv_metadata_lines(
+        report: &RnaReadInterpretationReport,
+        inspection: &RnaReadAlignmentInspection,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+    ) -> Vec<String> {
+        let limit_text = limit
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "all".to_string());
+        let target_gene_ids = if report.target_gene_ids.is_empty() {
+            "none".to_string()
+        } else {
+            report.target_gene_ids.join(",")
+        };
+        vec![
+            format!(
+                "# report_id={} seq_id={} selection={} limit={} row_count={} aligned_count={}",
+                Self::sanitize_tsv_cell(&inspection.report_id),
+                Self::sanitize_tsv_cell(&inspection.seq_id),
+                selection.as_str(),
+                limit_text,
+                inspection.row_count,
+                inspection.aligned_count,
+            ),
+            format!(
+                "# profile={} report_mode={} input_format={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
+                report.profile.as_str(),
+                report.report_mode.as_str(),
+                report.input_format.as_str(),
+                report.scope.as_str(),
+                report.origin_mode.as_str(),
+                report.roi_seed_capture_enabled,
+                Self::sanitize_tsv_cell(&target_gene_ids),
+            ),
+            format!("# {}", Self::rna_read_seed_filter_summary(&report.seed_filter)),
+            format!(
+                "# align_config: min_identity_fraction={:.2} max_secondary_mappings={}",
+                report.align_config.min_identity_fraction,
+                report.align_config.max_secondary_mappings,
+            ),
+        ]
     }
 
     pub fn export_rna_read_sample_sheet(
@@ -1778,7 +1901,11 @@ impl GentleEngine {
                 .filter(|ch| !ch.is_whitespace())
                 .map(|ch| {
                     let upper = ch.to_ascii_uppercase();
-                    if upper == 'U' { 'T' } else { upper }
+                    if upper == 'U' {
+                        'T'
+                    } else {
+                        upper
+                    }
                 })
                 .collect::<String>();
             sequence.clear();
@@ -2591,8 +2718,8 @@ impl GentleEngine {
             key_counts.into_iter().max_by(|left, right| {
                 left.1
                     .cmp(&right.1)
-                    .then_with(|| right.0.0.cmp(&left.0.0))
-                    .then_with(|| right.0.1.cmp(&left.0.1))
+                    .then_with(|| right.0 .0.cmp(&left.0 .0))
+                    .then_with(|| right.0 .1.cmp(&left.0 .1))
             })
         else {
             return SeedChainSpacingMetrics {

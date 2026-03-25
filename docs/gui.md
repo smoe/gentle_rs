@@ -594,7 +594,9 @@ Feature tree grouping:
     - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows)
     - `Export Exon Abundance (TSV)...` (exon/transition abundance rows)
     - `Export Score Density (SVG)...` (uses current `Linear`/`Log` scale toggle
-      and now keeps the compact per-bin count labels seen in the live plot)
+      and now keeps the compact per-bin count labels seen in the live plot,
+      plus the active seed-screen provenance: profile, scope, origin mode,
+      `k`, `hash stride`, and overlap/order density)
     - `Export RNA sample sheet ...` (multi-report cohort summary)
   - top-read ranking now includes weighted seed score (inverse seed-occurrence
     weighting) to reduce dominance from repetitive low-complexity seeds

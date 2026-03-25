@@ -2193,11 +2193,24 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit? }`
   - export schema: `gentle.rna_read_alignment_tsv_export.v1`
   - output: ranked alignment rows as TSV with:
+    - leading `#` metadata lines for report provenance (`selection`, `limit`,
+      `profile`, `scope`, `origin_mode`)
+    - seed-screen sampling/gating context (`k`, `seed_stride_bp`,
+      overlap/order-density wording, seed thresholds)
+    - alignment config summary (`min_identity_fraction`,
+      `max_secondary_mappings`)
     - phase-1 transcript/path diagnostics
     - phase-2 mapping metrics
     - `alignment_effect`
     - compact mapped exon/junction attribution columns
     - optional top-`N` truncation via `limit`
+- Score-density SVG export:
+  - `rna-reads export-score-density-svg` writes the same report summary used by
+    the GUI plus seed-screen provenance in the SVG header:
+    - `profile`, `report_mode`, `scope`, `origin_mode`
+    - seed-filter summary with `k`, `seed_stride_bp`, thresholds, and
+      overlap/order-density wording
+    - whether bins were stored in the report or derived from retained hits
 - Alignment-dotplot export:
   - operation:
     `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
