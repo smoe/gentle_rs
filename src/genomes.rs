@@ -38,6 +38,7 @@
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::parse_gbseq_xml_file;
 use flate2::read::MultiGzDecoder;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
@@ -99,6 +100,17 @@ pub struct GenomeCatalogEntry {
     pub nucleotide_length_bp: Option<usize>,
     #[serde(default)]
     pub molecular_mass_da: Option<f64>,
+    #[serde(default)]
+    pub ensembl_template: Option<EnsemblCatalogTemplate>,
+}
+
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct EnsemblCatalogTemplate {
+    pub provider: String,
+    pub collection: String,
+    pub species_dir: String,
+    pub file_stem: String,
+    pub release: u32,
 }
 
 fn default_cache_dir() -> Option<String> {
@@ -159,6 +171,70 @@ pub struct PrepareGenomeReport {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub annotation_parse_report: Option<AnnotationParseReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnsemblCatalogUpdatePlanItem {
+    pub template_key: String,
+    pub source_genome_id: String,
+    pub target_genome_id: String,
+    pub collection: String,
+    pub old_release: u32,
+    pub new_release: u32,
+    pub action: String,
+    pub old_sequence_remote: String,
+    pub new_sequence_remote: String,
+    pub old_annotations_remote: String,
+    pub new_annotations_remote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnsemblCatalogUpdatePreview {
+    pub catalog_path: String,
+    pub writable_catalog: bool,
+    #[serde(default)]
+    pub collection_latest_releases: HashMap<String, u32>,
+    #[serde(default)]
+    pub updates: Vec<EnsemblCatalogUpdatePlanItem>,
+    #[serde(default)]
+    pub unchanged_entries: Vec<String>,
+    #[serde(default)]
+    pub skipped_entries: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnsemblCatalogUpdateReport {
+    pub catalog_path: String,
+    pub output_catalog_path: String,
+    pub wrote_catalog: bool,
+    #[serde(default)]
+    pub collection_latest_releases: HashMap<String, u32>,
+    #[serde(default)]
+    pub updates: Vec<EnsemblCatalogUpdatePlanItem>,
+    #[serde(default)]
+    pub unchanged_entries: Vec<String>,
+    #[serde(default)]
+    pub skipped_entries: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedGenomeRemovalReport {
+    pub genome_id: String,
+    pub cache_dir: String,
+    pub install_dir: String,
+    pub removed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeCatalogEntryRemovalReport {
+    pub genome_id: String,
+    pub catalog_path: String,
+    pub output_catalog_path: String,
+    pub removed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -486,6 +562,7 @@ struct BlastIndexOutcome {
 pub struct GenomeCatalog {
     entries: HashMap<String, GenomeCatalogEntry>,
     catalog_base_dir: PathBuf,
+    catalog_path: Option<PathBuf>,
 }
 
 impl GenomeCatalog {
@@ -506,6 +583,7 @@ impl GenomeCatalog {
         Ok(Self {
             entries,
             catalog_base_dir: base,
+            catalog_path: Some(PathBuf::from(path)),
         })
     }
 
@@ -513,6 +591,292 @@ impl GenomeCatalog {
         let mut names: Vec<String> = self.entries.keys().cloned().collect();
         names.sort_unstable();
         names
+    }
+
+    pub fn catalog_path(&self) -> Option<&Path> {
+        self.catalog_path.as_deref()
+    }
+
+    pub fn catalog_file_is_writable(&self) -> bool {
+        self.catalog_path()
+            .map(catalog_path_is_writable)
+            .unwrap_or(false)
+    }
+
+    pub fn has_ensembl_updatable_entries(&self) -> bool {
+        self.entries
+            .values()
+            .any(|entry| ensembl_template_metadata(entry).is_some())
+    }
+
+    pub fn remove_prepared_genome_install(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PreparedGenomeRemovalReport, String> {
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let removed = if install_dir.exists() {
+            fs::remove_dir_all(&install_dir).map_err(|e| {
+                format!(
+                    "Could not remove prepared genome install '{}' for '{}': {e}",
+                    install_dir.display(),
+                    genome_id
+                )
+            })?;
+            true
+        } else {
+            false
+        };
+        let cache_dir = self
+            .cache_dir_path_for_entry(entry, cache_dir_override)
+            .to_string_lossy()
+            .to_string();
+        Ok(PreparedGenomeRemovalReport {
+            genome_id: genome_id.to_string(),
+            cache_dir,
+            install_dir: canonical_or_display(&install_dir),
+            removed,
+        })
+    }
+
+    pub fn preview_ensembl_catalog_updates(&self) -> Result<EnsemblCatalogUpdatePreview, String> {
+        self.preview_ensembl_catalog_updates_with_fetcher(&fetch_http_text_with_retry)
+    }
+
+    pub fn apply_ensembl_catalog_updates(
+        &self,
+        output_catalog_path: Option<&str>,
+    ) -> Result<EnsemblCatalogUpdateReport, String> {
+        self.apply_ensembl_catalog_updates_with_fetcher(output_catalog_path, &fetch_http_text_with_retry)
+    }
+
+    pub fn remove_catalog_entry(
+        &self,
+        genome_id: &str,
+        output_catalog_path: Option<&str>,
+    ) -> Result<GenomeCatalogEntryRemovalReport, String> {
+        let source_path = self.catalog_path().ok_or_else(|| {
+            "This genome catalog is not backed by a writable JSON file path".to_string()
+        })?;
+        let output_path = resolve_catalog_output_path(source_path, output_catalog_path)?;
+        let mut next_entries = self.entries.clone();
+        if next_entries.remove(genome_id).is_none() {
+            return Err(format!(
+                "Genome catalog entry '{}' was not found in '{}'",
+                genome_id,
+                source_path.display()
+            ));
+        }
+        write_catalog_entries_to_path(
+            &output_path,
+            &next_entries,
+            output_catalog_path.is_none(),
+            Some(source_path),
+        )?;
+        Ok(GenomeCatalogEntryRemovalReport {
+            genome_id: genome_id.to_string(),
+            catalog_path: source_path.display().to_string(),
+            output_catalog_path: output_path.display().to_string(),
+            removed: true,
+        })
+    }
+
+    fn preview_ensembl_catalog_updates_with_fetcher(
+        &self,
+        fetch_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<EnsemblCatalogUpdatePreview, String> {
+        let catalog_path = self.catalog_path().ok_or_else(|| {
+            "This genome catalog is not backed by a JSON file path".to_string()
+        })?;
+        let mut grouped: HashMap<String, Vec<(String, GenomeCatalogEntry, EnsemblCatalogTemplate)>> =
+            HashMap::new();
+        for (genome_id, entry) in &self.entries {
+            if let Some(template) = ensembl_template_metadata(entry) {
+                grouped.entry(template_group_key(&template)).or_default().push((
+                    genome_id.clone(),
+                    entry.clone(),
+                    template,
+                ));
+            }
+        }
+
+        let mut collection_latest_releases: HashMap<String, u32> = HashMap::new();
+        let mut updates: Vec<EnsemblCatalogUpdatePlanItem> = vec![];
+        let mut unchanged_entries: Vec<String> = vec![];
+        let mut skipped_entries: Vec<String> = vec![];
+        let mut warnings: Vec<String> = vec![];
+
+        let mut group_keys: Vec<String> = grouped.keys().cloned().collect();
+        group_keys.sort_unstable();
+        for group_key in group_keys {
+            let mut rows = grouped.remove(&group_key).unwrap_or_default();
+            rows.sort_by(|left, right| {
+                right.2
+                    .release
+                    .cmp(&left.2.release)
+                    .then_with(|| left.0.cmp(&right.0))
+            });
+            let Some((source_genome_id, source_entry, template)) = rows.into_iter().next() else {
+                continue;
+            };
+            let collection_latest = collection_latest_releases
+                .entry(template.collection.clone())
+                .or_insert_with(|| {
+                    fetch_ensembl_collection_latest_release(&template.collection, fetch_text)
+                        .unwrap_or(template.release)
+                });
+            let resolved_current = resolve_current_ensembl_remote_entry(&template, fetch_text)?;
+            if resolved_current.release < template.release {
+                warnings.push(format!(
+                    "{}: current species listing returned release {} which is older than pinned release {}",
+                    source_genome_id, resolved_current.release, template.release
+                ));
+            }
+            if *collection_latest > resolved_current.release {
+                warnings.push(format!(
+                    "{}: collection latest release is {} but current species files resolve to {}",
+                    source_genome_id, *collection_latest, resolved_current.release
+                ));
+            }
+            let target_genome_id =
+                rewrite_ensembl_catalog_key_release(&source_genome_id, &template, resolved_current.release)?;
+            let current_target_entry = self.entries.get(&target_genome_id).cloned();
+            let old_sequence_remote = current_target_entry
+                .as_ref()
+                .and_then(|entry| entry.sequence_remote.clone())
+                .or_else(|| source_entry.sequence_remote.clone())
+                .unwrap_or_default();
+            let old_annotations_remote = current_target_entry
+                .as_ref()
+                .and_then(|entry| entry.annotations_remote.clone())
+                .or_else(|| source_entry.annotations_remote.clone())
+                .unwrap_or_default();
+            let refreshed_entry = build_updated_ensembl_catalog_entry(
+                current_target_entry.as_ref().unwrap_or(&source_entry),
+                &template,
+                resolved_current.release,
+                &target_genome_id,
+                &resolved_current.sequence_remote,
+                &resolved_current.annotations_remote,
+            );
+            let unchanged = old_sequence_remote == resolved_current.sequence_remote
+                && old_annotations_remote == resolved_current.annotations_remote
+                && target_genome_id == source_genome_id
+                && current_target_entry
+                    .as_ref()
+                    .and_then(|entry| entry.ensembl_template.as_ref())
+                    .map(|meta| meta.release == resolved_current.release)
+                    .unwrap_or(template.release == resolved_current.release);
+            if unchanged {
+                unchanged_entries.push(source_genome_id.clone());
+                continue;
+            }
+            let action = if target_genome_id == source_genome_id {
+                "refresh_existing_release"
+            } else if self.entries.contains_key(&target_genome_id) {
+                "refresh_newest_release"
+            } else {
+                "add_new_release"
+            };
+            if !has_non_empty(&refreshed_entry.sequence_remote)
+                || !has_non_empty(&refreshed_entry.annotations_remote)
+            {
+                skipped_entries.push(format!(
+                    "{}: missing derived Ensembl remote URLs for target '{}'",
+                    source_genome_id, target_genome_id
+                ));
+                continue;
+            }
+            updates.push(EnsemblCatalogUpdatePlanItem {
+                template_key: group_key.clone(),
+                source_genome_id,
+                target_genome_id,
+                collection: template.collection.clone(),
+                old_release: template.release,
+                new_release: resolved_current.release,
+                action: action.to_string(),
+                old_sequence_remote,
+                new_sequence_remote: resolved_current.sequence_remote,
+                old_annotations_remote,
+                new_annotations_remote: resolved_current.annotations_remote,
+            });
+        }
+
+        updates.sort_by(|left, right| left.target_genome_id.cmp(&right.target_genome_id));
+        unchanged_entries.sort_unstable();
+        skipped_entries.sort_unstable();
+        warnings.sort_unstable();
+
+        Ok(EnsemblCatalogUpdatePreview {
+            catalog_path: catalog_path.display().to_string(),
+            writable_catalog: catalog_path_is_writable(catalog_path),
+            collection_latest_releases,
+            updates,
+            unchanged_entries,
+            skipped_entries,
+            warnings,
+        })
+    }
+
+    fn apply_ensembl_catalog_updates_with_fetcher(
+        &self,
+        output_catalog_path: Option<&str>,
+        fetch_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<EnsemblCatalogUpdateReport, String> {
+        let source_path = self.catalog_path().ok_or_else(|| {
+            "This genome catalog is not backed by a writable JSON file path".to_string()
+        })?;
+        let output_path = resolve_catalog_output_path(source_path, output_catalog_path)?;
+        let preview = self.preview_ensembl_catalog_updates_with_fetcher(fetch_text)?;
+        let mut next_entries = self.entries.clone();
+        for update in &preview.updates {
+            let source_entry = self
+                .entries
+                .get(&update.source_genome_id)
+                .ok_or_else(|| {
+                    format!(
+                        "Could not find source genome '{}' while applying Ensembl catalog update",
+                        update.source_genome_id
+                    )
+                })?
+                .clone();
+            let template = ensembl_template_metadata(&source_entry).ok_or_else(|| {
+                format!(
+                    "Genome '{}' no longer has Ensembl template metadata",
+                    update.source_genome_id
+                )
+            })?;
+            let base_entry = next_entries
+                .get(&update.target_genome_id)
+                .cloned()
+                .unwrap_or(source_entry);
+            let refreshed_entry = build_updated_ensembl_catalog_entry(
+                &base_entry,
+                &template,
+                update.new_release,
+                &update.target_genome_id,
+                &update.new_sequence_remote,
+                &update.new_annotations_remote,
+            );
+            next_entries.insert(update.target_genome_id.clone(), refreshed_entry);
+        }
+        write_catalog_entries_to_path(
+            &output_path,
+            &next_entries,
+            output_catalog_path.is_none(),
+            Some(source_path),
+        )?;
+        Ok(EnsemblCatalogUpdateReport {
+            catalog_path: source_path.display().to_string(),
+            output_catalog_path: output_path.display().to_string(),
+            wrote_catalog: true,
+            collection_latest_releases: preview.collection_latest_releases,
+            updates: preview.updates,
+            unchanged_entries: preview.unchanged_entries,
+            skipped_entries: preview.skipped_entries,
+            warnings: preview.warnings,
+        })
     }
 
     /// Resolve concrete sequence/annotation sources for one genome entry.
@@ -2537,7 +2901,16 @@ FASTA index='{}'.{}{}",
         entry: &GenomeCatalogEntry,
         cache_dir_override: Option<&str>,
     ) -> PathBuf {
-        let base = cache_dir_override
+        let base = self.cache_dir_path_for_entry(entry, cache_dir_override);
+        base.join(sanitize_for_path(genome_id))
+    }
+
+    fn cache_dir_path_for_entry(
+        &self,
+        entry: &GenomeCatalogEntry,
+        cache_dir_override: Option<&str>,
+    ) -> PathBuf {
+        cache_dir_override
             .map(|raw| self.resolve_local_path(raw))
             .or_else(|| {
                 entry
@@ -2545,8 +2918,7 @@ FASTA index='{}'.{}{}",
                     .as_ref()
                     .map(|raw| self.resolve_local_path(raw))
             })
-            .unwrap_or_else(|| PathBuf::from(DEFAULT_GENOME_CACHE_DIR));
-        base.join(sanitize_for_path(genome_id))
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_GENOME_CACHE_DIR))
     }
 
     #[cfg(test)]
@@ -3272,6 +3644,20 @@ fn validate_catalog_entries(
                 );
             }
         }
+        if let Some(template) = entry.ensembl_template.as_ref() {
+            if normalize_ensembl_template(template).is_none() {
+                entry_errors.push(
+                    "'ensembl_template' requires provider='ensembl', collection='vertebrates|metazoa', non-empty species_dir/file_stem, and release >= 1"
+                        .to_string(),
+                );
+            }
+            if !has_non_empty(&entry.sequence_remote) || !has_non_empty(&entry.annotations_remote) {
+                entry_errors.push(
+                    "'ensembl_template' entries must also keep explicit 'sequence_remote' and 'annotations_remote' URLs"
+                        .to_string(),
+                );
+            }
+        }
 
         for err in entry_errors {
             errors.push(format!("{genome_id}: {err}"));
@@ -3285,6 +3671,378 @@ fn validate_catalog_entries(
             errors.join("\n- ")
         ))
     }
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedCurrentEnsemblRemoteEntry {
+    release: u32,
+    sequence_remote: String,
+    annotations_remote: String,
+}
+
+fn ensembl_template_metadata(entry: &GenomeCatalogEntry) -> Option<EnsemblCatalogTemplate> {
+    entry
+        .ensembl_template
+        .as_ref()
+        .and_then(|template| normalize_ensembl_template(template))
+}
+
+fn normalize_ensembl_template(template: &EnsemblCatalogTemplate) -> Option<EnsemblCatalogTemplate> {
+    let provider = template.provider.trim().to_ascii_lowercase();
+    let collection = template.collection.trim().to_ascii_lowercase();
+    let species_dir = template.species_dir.trim();
+    let file_stem = template.file_stem.trim();
+    if provider != "ensembl"
+        || normalize_ensembl_collection(&collection).is_none()
+        || species_dir.is_empty()
+        || file_stem.is_empty()
+        || template.release == 0
+    {
+        return None;
+    }
+    Some(EnsemblCatalogTemplate {
+        provider,
+        collection,
+        species_dir: species_dir.to_string(),
+        file_stem: file_stem.to_string(),
+        release: template.release,
+    })
+}
+
+fn normalize_ensembl_collection(collection: &str) -> Option<&'static str> {
+    match collection.trim().to_ascii_lowercase().as_str() {
+        "vertebrates" => Some("vertebrates"),
+        "metazoa" => Some("metazoa"),
+        _ => None,
+    }
+}
+
+fn template_group_key(template: &EnsemblCatalogTemplate) -> String {
+    format!(
+        "{}:{}:{}",
+        template.collection, template.species_dir, template.file_stem
+    )
+}
+
+fn current_ensembl_fasta_listing_url(template: &EnsemblCatalogTemplate) -> String {
+    match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
+        "vertebrates" => format!(
+            "https://ftp.ensembl.org/pub/current_fasta/{}/dna/",
+            template.species_dir
+        ),
+        "metazoa" => format!(
+            "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/fasta/{}/dna/",
+            template.species_dir
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn current_ensembl_gtf_listing_url(template: &EnsemblCatalogTemplate) -> String {
+    match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
+        "vertebrates" => format!(
+            "https://ftp.ensembl.org/pub/current_gtf/{}/",
+            template.species_dir
+        ),
+        "metazoa" => format!(
+            "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/gtf/{}/",
+            template.species_dir
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn ensembl_release_fasta_url(
+    template: &EnsemblCatalogTemplate,
+    release: u32,
+    filename: &str,
+) -> String {
+    match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
+        "vertebrates" => {
+            if release >= 116 {
+                format!(
+                    "https://ftp.ensembl.org/pub/release-{release}/vertebrates/fasta/{}/dna/{}",
+                    template.species_dir, filename
+                )
+            } else {
+                format!(
+                    "https://ftp.ensembl.org/pub/release-{release}/fasta/{}/dna/{}",
+                    template.species_dir, filename
+                )
+            }
+        }
+        "metazoa" => format!(
+            "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-{release}/fasta/{}/dna/{}",
+            template.species_dir, filename
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn ensembl_release_gtf_url(
+    template: &EnsemblCatalogTemplate,
+    release: u32,
+    filename: &str,
+) -> String {
+    match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
+        "vertebrates" => {
+            if release >= 116 {
+                format!(
+                    "https://ftp.ensembl.org/pub/release-{release}/vertebrates/gtf/{}/{}",
+                    template.species_dir, filename
+                )
+            } else {
+                format!(
+                    "https://ftp.ensembl.org/pub/release-{release}/gtf/{}/{}",
+                    template.species_dir, filename
+                )
+            }
+        }
+        "metazoa" => format!(
+            "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-{release}/gtf/{}/{}",
+            template.species_dir, filename
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn ensembl_collection_root_url(collection: &str) -> Option<&'static str> {
+    match normalize_ensembl_collection(collection)? {
+        "vertebrates" => Some("https://ftp.ensembl.org/pub/"),
+        "metazoa" => Some("https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/"),
+        _ => None,
+    }
+}
+
+fn fetch_ensembl_collection_latest_release(
+    collection: &str,
+    fetch_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<u32, String> {
+    let url = ensembl_collection_root_url(collection).ok_or_else(|| {
+        format!("Unsupported Ensembl collection '{}'", collection)
+    })?;
+    let listing = fetch_text(url)?;
+    let pattern = if normalize_ensembl_collection(collection) == Some("vertebrates") {
+        r"release-1[1-9][0-9]"
+    } else {
+        r"release-[0-9]+"
+    };
+    parse_latest_release_from_listing(&listing, pattern).ok_or_else(|| {
+        format!(
+            "Could not detect latest Ensembl release in listing '{}' using pattern '{}'",
+            url, pattern
+        )
+    })
+}
+
+fn parse_latest_release_from_listing(listing: &str, pattern: &str) -> Option<u32> {
+    let regex = Regex::new(pattern).ok()?;
+    regex
+        .find_iter(listing)
+        .filter_map(|matched| matched.as_str().strip_prefix("release-"))
+        .filter_map(|value| value.parse::<u32>().ok())
+        .max()
+}
+
+fn parse_listing_href_values(listing: &str) -> Vec<String> {
+    let href_regex = Regex::new(r#"href="([^"]+)""#).expect("valid href regex");
+    let mut values: Vec<String> = href_regex
+        .captures_iter(listing)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().trim().to_string()))
+        .filter(|value| !value.is_empty() && !value.ends_with('/'))
+        .collect();
+    values.sort_unstable();
+    values.dedup();
+    values
+}
+
+fn choose_current_ensembl_fasta_filename(
+    listing: &str,
+    file_stem: &str,
+) -> Result<String, String> {
+    let prefix = format!("{file_stem}.");
+    let mut matches: Vec<String> = parse_listing_href_values(listing)
+        .into_iter()
+        .filter(|value| value.starts_with(&prefix) && value.ends_with(".fa.gz"))
+        .collect();
+    matches.sort_by_key(|value| ensembl_fasta_filename_rank(value));
+    matches
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("Could not locate FASTA file for Ensembl stem '{}'", file_stem))
+}
+
+fn ensembl_fasta_filename_rank(filename: &str) -> usize {
+    if filename.contains(".dna_sm.toplevel.fa.gz") {
+        0
+    } else if filename.contains(".dna.toplevel.fa.gz") {
+        1
+    } else if filename.contains(".dna_sm.primary_assembly.fa.gz") {
+        2
+    } else if filename.contains(".dna.primary_assembly.fa.gz") {
+        3
+    } else {
+        4
+    }
+}
+
+fn choose_current_ensembl_gtf_filename_and_release(
+    listing: &str,
+    file_stem: &str,
+) -> Result<(String, u32), String> {
+    let regex = Regex::new(&format!(
+        r#"^{}\.(\d+)\.gtf\.gz$"#,
+        regex::escape(file_stem)
+    ))
+    .map_err(|e| format!("Could not build Ensembl GTF matcher: {e}"))?;
+    let mut best: Option<(String, u32)> = None;
+    for value in parse_listing_href_values(listing) {
+        let Some(caps) = regex.captures(&value) else {
+            continue;
+        };
+        let Some(release) = caps.get(1).and_then(|m| m.as_str().parse::<u32>().ok()) else {
+            continue;
+        };
+        match best.as_ref() {
+            Some((_, best_release)) if *best_release >= release => {}
+            _ => best = Some((value, release)),
+        }
+    }
+    best.ok_or_else(|| format!("Could not locate GTF file for Ensembl stem '{}'", file_stem))
+}
+
+fn resolve_current_ensembl_remote_entry(
+    template: &EnsemblCatalogTemplate,
+    fetch_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<ResolvedCurrentEnsemblRemoteEntry, String> {
+    let fasta_listing_url = current_ensembl_fasta_listing_url(template);
+    let gtf_listing_url = current_ensembl_gtf_listing_url(template);
+    let fasta_listing = fetch_text(&fasta_listing_url)?;
+    let gtf_listing = fetch_text(&gtf_listing_url)?;
+    let fasta_filename = choose_current_ensembl_fasta_filename(&fasta_listing, &template.file_stem)?;
+    let (gtf_filename, release) =
+        choose_current_ensembl_gtf_filename_and_release(&gtf_listing, &template.file_stem)?;
+    Ok(ResolvedCurrentEnsemblRemoteEntry {
+        release,
+        sequence_remote: ensembl_release_fasta_url(template, release, &fasta_filename),
+        annotations_remote: ensembl_release_gtf_url(template, release, &gtf_filename),
+    })
+}
+
+fn rewrite_ensembl_catalog_key_release(
+    genome_id: &str,
+    template: &EnsemblCatalogTemplate,
+    new_release: u32,
+) -> Result<String, String> {
+    let old_suffix = if normalize_ensembl_collection(&template.collection) == Some("metazoa") {
+        format!("Ensembl Metazoa {}", template.release)
+    } else {
+        format!("Ensembl {}", template.release)
+    };
+    let new_suffix = if normalize_ensembl_collection(&template.collection) == Some("metazoa") {
+        format!("Ensembl Metazoa {new_release}")
+    } else {
+        format!("Ensembl {new_release}")
+    };
+    if let Some(prefix) = genome_id.strip_suffix(&old_suffix) {
+        return Ok(format!("{prefix}{new_suffix}"));
+    }
+    Err(format!(
+        "Genome id '{}' does not end with expected Ensembl suffix '{}'",
+        genome_id, old_suffix
+    ))
+}
+
+fn build_updated_ensembl_catalog_entry(
+    source_entry: &GenomeCatalogEntry,
+    template: &EnsemblCatalogTemplate,
+    release: u32,
+    target_genome_id: &str,
+    sequence_remote: &str,
+    annotations_remote: &str,
+) -> GenomeCatalogEntry {
+    let mut next = source_entry.clone();
+    next.description = Some(target_genome_id.to_string());
+    next.sequence_remote = Some(sequence_remote.to_string());
+    next.annotations_remote = Some(annotations_remote.to_string());
+    next.ensembl_template = Some(EnsemblCatalogTemplate {
+        provider: "ensembl".to_string(),
+        collection: template.collection.clone(),
+        species_dir: template.species_dir.clone(),
+        file_stem: template.file_stem.clone(),
+        release,
+    });
+    next
+}
+
+fn resolve_catalog_output_path(source_path: &Path, output_catalog_path: Option<&str>) -> Result<PathBuf, String> {
+    match output_catalog_path.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(path) => Ok(PathBuf::from(path)),
+        None => {
+            if catalog_path_is_writable(source_path) {
+                Ok(source_path.to_path_buf())
+            } else {
+                Err(format!(
+                    "Genome catalog '{}' is not writable; save an updated catalog copy first",
+                    source_path.display()
+                ))
+            }
+        }
+    }
+}
+
+fn catalog_path_is_writable(path: &Path) -> bool {
+    if path.exists() {
+        OpenOptions::new().append(true).open(path).is_ok()
+    } else {
+        path.parent()
+            .map(|parent| parent.exists() && !parent.metadata().map(|m| m.permissions().readonly()).unwrap_or(true))
+            .unwrap_or(false)
+    }
+}
+
+fn write_catalog_entries_to_path(
+    output_path: &Path,
+    entries: &HashMap<String, GenomeCatalogEntry>,
+    require_writable_existing: bool,
+    source_path: Option<&Path>,
+) -> Result<(), String> {
+    if require_writable_existing {
+        let Some(source_path) = source_path else {
+            return Err("Missing source catalog path for in-place catalog write".to_string());
+        };
+        if !catalog_path_is_writable(source_path) {
+            return Err(format!(
+                "Genome catalog '{}' is not writable; save an updated catalog copy first",
+                source_path.display()
+            ));
+        }
+    }
+    validate_catalog_entries(output_path.to_string_lossy().as_ref(), entries)?;
+    let mut sorted: std::collections::BTreeMap<String, GenomeCatalogEntry> =
+        std::collections::BTreeMap::new();
+    for (key, value) in entries {
+        sorted.insert(key.clone(), value.clone());
+    }
+    let text = serde_json::to_string_pretty(&sorted)
+        .map_err(|e| format!("Could not serialize genome catalog '{}': {e}", output_path.display()))?;
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Could not create catalog output directory '{}': {e}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(output_path, format!("{text}\n"))
+        .map_err(|e| format!("Could not write genome catalog '{}': {e}", output_path.display()))
+}
+
+fn fetch_http_text_with_retry(source: &str) -> Result<String, String> {
+    let response = fetch_http_source_with_retry(source)?;
+    response
+        .text()
+        .map_err(|e| format!("Could not read HTTP response body from '{}': {e}", source))
 }
 
 fn infer_annotation_extension(source: &str) -> &'static str {
@@ -7238,6 +7996,7 @@ mod tests {
         let catalog = GenomeCatalog {
             entries,
             catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
         };
         let source = catalog
             .resolve_source(
@@ -7268,6 +8027,7 @@ mod tests {
         let catalog = GenomeCatalog {
             entries,
             catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
         };
 
         assert!(catalog.source_plan("GRCh38.p14", None).is_ok());
@@ -7298,6 +8058,7 @@ mod tests {
         let catalog = GenomeCatalog {
             entries,
             catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
         };
 
         let err = catalog.source_plan("GRCh38.p14", None).unwrap_err();
@@ -7917,6 +8678,374 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_latest_release_from_listing_uses_release_1xx_pattern() {
+        let listing = r#"
+            <a href="release-109/">release-109/</a>
+            <a href="release-115/">release-115/</a>
+            <a href="release-116/">release-116/</a>
+            <a href="release-210/">release-210/</a>
+        "#;
+        assert_eq!(
+            parse_latest_release_from_listing(listing, r"release-1[1-9][0-9]"),
+            Some(116)
+        );
+    }
+
+    #[test]
+    fn test_apply_ensembl_catalog_updates_adds_newer_pinned_release_and_keeps_old_entry() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Mouse GRCm39 Ensembl 115": {
+    "description": "Mouse GRCm39 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/mus_musculus/Mus_musculus.GRCm39.115.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 115
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/" => Ok(
+                    r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
+                ),
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let preview = catalog
+            .preview_ensembl_catalog_updates_with_fetcher(&fetch)
+            .unwrap();
+        assert_eq!(preview.updates.len(), 1);
+        assert_eq!(preview.updates[0].source_genome_id, "Mouse GRCm39 Ensembl 115");
+        assert_eq!(preview.updates[0].target_genome_id, "Mouse GRCm39 Ensembl 116");
+        assert_eq!(preview.updates[0].action, "add_new_release");
+        assert_eq!(
+            preview.collection_latest_releases.get("vertebrates").copied(),
+            Some(116)
+        );
+
+        let report = catalog
+            .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
+            .unwrap();
+        assert_eq!(report.updates.len(), 1);
+
+        let rewritten =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let names = rewritten.list_genomes();
+        assert!(names.iter().any(|name| name == "Mouse GRCm39 Ensembl 115"));
+        assert!(names.iter().any(|name| name == "Mouse GRCm39 Ensembl 116"));
+    }
+
+    #[test]
+    fn test_apply_ensembl_catalog_updates_refreshes_existing_newest_release_in_place() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Mouse GRCm39 Ensembl 116": {
+    "description": "Mouse GRCm39 Ensembl 116",
+    "sequence_remote": "https://stale.example/mouse.fa.gz",
+    "annotations_remote": "https://stale.example/mouse.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 116
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/" => Ok(
+                    r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
+                ),
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let preview = catalog
+            .preview_ensembl_catalog_updates_with_fetcher(&fetch)
+            .unwrap();
+        assert_eq!(preview.updates.len(), 1);
+        assert_eq!(preview.updates[0].action, "refresh_existing_release");
+        assert_eq!(preview.updates[0].target_genome_id, "Mouse GRCm39 Ensembl 116");
+
+        catalog
+            .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
+            .unwrap();
+        let text = fs::read_to_string(&catalog_path).unwrap();
+        assert!(text.contains("release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz"));
+        assert!(text.contains("release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"));
+    }
+
+    #[test]
+    fn test_preview_ensembl_catalog_updates_supports_metazoa_templates() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 61": {
+    "description": "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 61",
+    "sequence_remote": "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-61/fasta/drosophila_melanogaster/dna/Drosophila_melanogaster.BDGP6.54.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-61/gtf/drosophila_melanogaster/Drosophila_melanogaster.BDGP6.54.61.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "metazoa",
+      "species_dir": "drosophila_melanogaster",
+      "file_stem": "Drosophila_melanogaster.BDGP6.54",
+      "release": 61
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/" => Ok(
+                    r#"<a href="release-61/">release-61/</a><a href="release-62/">release-62/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/fasta/drosophila_melanogaster/dna/" => Ok(
+                    r#"<a href="Drosophila_melanogaster.BDGP6.54.dna_sm.toplevel.fa.gz">fasta</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/gtf/drosophila_melanogaster/" => Ok(
+                    r#"<a href="Drosophila_melanogaster.BDGP6.54.62.gtf.gz">gtf</a>"#
+                        .to_string(),
+                ),
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let preview = catalog
+            .preview_ensembl_catalog_updates_with_fetcher(&fetch)
+            .unwrap();
+        assert_eq!(preview.updates.len(), 1);
+        assert_eq!(
+            preview.updates[0].target_genome_id,
+            "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62"
+        );
+        assert_eq!(
+            preview.collection_latest_releases.get("metazoa").copied(),
+            Some(62)
+        );
+    }
+
+    #[test]
+    fn test_apply_ensembl_catalog_updates_requires_output_copy_for_unwritable_catalog() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Mouse GRCm39 Ensembl 115": {
+    "description": "Mouse GRCm39 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/mus_musculus/Mus_musculus.GRCm39.115.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 115
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&catalog_path).unwrap().permissions();
+            perms.set_mode(0o444);
+            fs::set_permissions(&catalog_path, perms).unwrap();
+        }
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/" => Ok(
+                    r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
+                ),
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let err = catalog
+            .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
+            .unwrap_err();
+        assert!(err.contains("save an updated catalog copy first"));
+
+        let output_catalog_path = root.join("catalog.updated.json");
+        let report = catalog
+            .apply_ensembl_catalog_updates_with_fetcher(
+                Some(output_catalog_path.to_string_lossy().as_ref()),
+                &fetch,
+            )
+            .unwrap();
+        assert_eq!(report.output_catalog_path, output_catalog_path.display().to_string());
+        assert!(output_catalog_path.exists());
+    }
+
+    #[test]
+    fn test_remove_prepared_genome_install_removes_only_selected_install_dir() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyA": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "ToyB": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyA").unwrap();
+        catalog.prepare_genome_once("ToyB").unwrap();
+
+        let report = catalog.remove_prepared_genome_install("ToyA", None).unwrap();
+        assert!(report.removed);
+        assert!(!cache_dir.join("toya").exists());
+        assert!(cache_dir.join("toyb").exists());
+    }
+
+    #[test]
+    fn test_remove_catalog_entry_keeps_prepared_cache_untouched() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyA": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "ToyB": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyA").unwrap();
+        let install_dir = cache_dir.join("toya");
+        assert!(install_dir.exists());
+
+        let report = catalog.remove_catalog_entry("ToyA", None).unwrap();
+        assert!(report.removed);
+        let reloaded =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let names = reloaded.list_genomes();
+        assert!(!names.iter().any(|name| name == "ToyA"));
+        assert!(names.iter().any(|name| name == "ToyB"));
+        assert!(
+            install_dir.exists(),
+            "prepared cache should remain until Remove Prepared is requested explicitly"
+        );
+    }
+
+    #[test]
     fn test_repo_assets_genome_catalog_is_valid() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let catalog_path = root.join("assets").join("genomes.json");
@@ -7928,7 +9057,11 @@ mod tests {
             "Human GRCh38 Ensembl 116",
             "Human GRCh38 NCBI RefSeq GCF_000001405.40",
             "Mouse GRCm39 Ensembl 116",
-            "Rat GRCr8 Ensembl 116",
+            "Rat GRCr8 Ensembl 115",
+            "Danio rerio GRCz11 Ensembl 115",
+            "Pan troglodytes Pan_tro_3.0 Ensembl 115",
+            "Canis lupus familiaris ROS_Cfam_1.0 Ensembl 115",
+            "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62",
             "Caenorhabditis elegans WBcel235 Ensembl 115",
             "Saccharomyces cerevisiae S288c Ensembl 113",
             "Saccharomyces cerevisiae S288c Ensembl 115",

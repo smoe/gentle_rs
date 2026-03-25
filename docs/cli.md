@@ -832,9 +832,12 @@ cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome",
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
 cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.json
+cargo run --bin gentle_cli -- genomes update-ensembl-specs --catalog assets/genomes.json --output-catalog exports/genomes.updated.json
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
+cargo run --bin gentle_cli -- genomes remove-prepared "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes remove-catalog-entry "Human GRCh38 Ensembl 113" --catalog exports/genomes.custom.json
 cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":97.0,"min_query_coverage_percent":80.0}}' --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --annotation-scope core --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
@@ -843,8 +846,10 @@ cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/sign
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
+cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (online)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600
+cargo run --bin gentle_cli -- helpers remove-prepared "Plasmid pUC19 (online)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (online)" --filter bla --limit 20
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
@@ -1422,6 +1427,14 @@ Genome convenience commands:
 - `genomes validate-catalog [--catalog PATH]`
   - Verifies catalog JSON schema/entry rules and that each entry resolves usable
     sequence/annotation source definitions.
+- `genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
+  - Refreshes explicit pinned Ensembl URLs/specs for catalog rows that carry
+    `ensembl_template` metadata.
+  - Older pinned release rows stay in the catalog.
+  - If a newer current species release exists, GENtle adds or refreshes the
+    newest pinned row rather than overwriting the old one.
+  - If the active catalog file is not writable, `--output-catalog PATH` is
+    required so the updated catalog can be written as a copy.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Shows whether the genome cache is prepared/indexed.
   - Also reports resolved source details: `sequence_source_type`,
@@ -1437,6 +1450,14 @@ Genome convenience commands:
   - Output now includes `binary_preflight` (`gentle.blast_external_binary_preflight.v1`)
     with `makeblastdb`/`blastn` found/missing/version/path diagnostics captured
     before prepare work starts.
+- `genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+  - Deletes only the prepared install directory for one genome from the selected cache.
+  - Catalog JSON is left unchanged.
+- `genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]`
+  - Deletes only one row from the selected genome catalog JSON.
+  - Prepared cache files are left unchanged until `remove-prepared` is run explicitly.
+  - If the active catalog file is not writable, `--output-catalog PATH` is
+    required so the edited catalog can be written as a copy.
 - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Runs `blastn` against prepared genome cache/index.
   - `--task` defaults to `blastn-short`; accepted values: `blastn-short`, `blastn`.
@@ -1484,6 +1505,8 @@ Helper convenience commands:
   - Same behavior as `genomes list`, but defaults to `assets/helper_genomes.json`.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
+- `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
+  - Same behavior as `genomes update-ensembl-specs`, with helper-catalog default.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes status`, with helper-catalog default
     (including length/mass metadata fields).
@@ -1492,6 +1515,10 @@ Helper convenience commands:
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Same behavior as `genomes prepare`, with helper-catalog default.
   - `--timeout-secs N`: optional prepare-job timebox.
+- `helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes remove-prepared`, with helper-catalog default.
+- `helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]`
+  - Same behavior as `genomes remove-catalog-entry`, with helper-catalog default.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes blast`, with helper-catalog default.
 - `helpers blast-start HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
@@ -2273,9 +2300,11 @@ Notes:
   (genome id, coordinates/query, source descriptors, and checksums when present).
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
-  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Caenorhabditis elegans
-  WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c (Ensembl 113 and 115),
-  and `LocalProject` (backed by
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 115, Danio rerio GRCz11
+  Ensembl 115, Pan troglodytes Pan_tro_3.0 Ensembl 115, Canis lupus familiaris
+  ROS_Cfam_1.0 Ensembl 115, Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62,
+  Caenorhabditis elegans WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c
+  (Ensembl 113 and 115), and `LocalProject` (backed by
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
@@ -2283,6 +2312,9 @@ Notes:
   prepared annotation are present in the prepared FASTA index; truncated or
   mismatched installs fail during preparation instead of only later during
   extraction.
+- Catalog rows with `ensembl_template` metadata can be refreshed on demand via
+  `update-ensembl-specs`, which rewrites explicit pinned URLs without preparing
+  any genomes.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).
 - Missing-contig extraction errors now also report the prepared `sequence.fa`

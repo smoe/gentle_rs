@@ -1898,6 +1898,12 @@ Recommended flow:
    - click `Prepare Genome` for new installs or `Reindex Selected...` for an
      already prepared genome; reindex keeps the cached local sequence and
      annotation files by default and rebuilds the indexes from them
+   - `Update Ensembl Specs...` previews catalog-only refreshes for entries with
+     bundled `ensembl_template` metadata:
+     - fetches the current Ensembl/Ensembl Metazoa species listings
+     - keeps older pinned release rows in the catalog
+     - adds or refreshes the newest pinned release row without preparing or downloading genomes
+     - if the active catalog file is not writable, the dialog requires saving an updated catalog copy instead of modifying the bundled catalog in place
    - if the current catalog entry now points to different sources than the
      existing prepared manifest, `Reindex Selected...` still keeps the cached
      local files; only the explicit refresh action discards and re-downloads them
@@ -2023,6 +2029,11 @@ Recommended flow:
    - use `Reindex...` on a prepared row to rebuild indexes from cached local
      files; if you want to delete cached files and fetch fresh sources, choose
      the explicit `Remove Cached Files + Re-download` option in the confirmation dialog
+   - use `Remove Prepared...` on a row to delete just that prepared install from
+     the cache; the catalog entry remains available
+   - when the active catalog JSON is writable, rows also expose
+     `Remove Catalog Entry...`; this edits only the catalog JSON and leaves any
+     prepared cache untouched until `Remove Prepared...` is run explicitly
    - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
      prepared genome as proportional line lengths
    - when extraction fails with chromosome/contig mismatch, status messages now
@@ -2119,9 +2130,11 @@ Notes:
   storage is recommended over `/tmp`.
 - If `catalog` is empty, engine uses default `assets/genomes.json`.
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
-  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Caenorhabditis elegans
-  WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c (Ensembl 113 and 115),
-  and `LocalProject` (backed by
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 115, Danio rerio GRCz11
+  Ensembl 115, Pan troglodytes Pan_tro_3.0 Ensembl 115, Canis lupus familiaris
+  ROS_Cfam_1.0 Ensembl 115, Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62,
+  Caenorhabditis elegans WBcel235 Ensembl 115, Saccharomyces cerevisiae S288c
+  (Ensembl 113 and 115), and `LocalProject` (backed by
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
 - A curated starter helper catalog is available at

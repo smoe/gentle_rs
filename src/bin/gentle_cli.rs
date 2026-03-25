@@ -479,9 +479,12 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli genomes list [--catalog PATH]\n  \
   gentle_cli genomes validate-catalog [--catalog PATH]\n  \
+  gentle_cli genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
+  gentle_cli genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
@@ -489,9 +492,12 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH]\n  \
   gentle_cli helpers validate-catalog [--catalog PATH]\n  \
+  gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
+  gentle_cli helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
@@ -1142,6 +1148,86 @@ fn run() -> Result<(), String> {
                         "genomes": genomes,
                     }))
                 }
+                "validate-catalog" => {
+                    let mut catalog_path: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} validate-catalog"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} validate-catalog",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog))
+                        .ok_or_else(|| format!("Missing catalog path for {label} validate-catalog"))?;
+                    let genomes = GentleEngine::list_reference_genomes(Some(resolved_catalog))
+                        .map_err(|e| e.to_string())?;
+                    print_json(&json!({
+                        "catalog_path": resolved_catalog,
+                        "valid": true,
+                        "genome_count": genomes.len(),
+                    }))
+                }
+                "update-ensembl-specs" => {
+                    let mut catalog_path: Option<String> = None;
+                    let mut output_catalog_path: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} update-ensembl-specs"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output-catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --output-catalog for {label} update-ensembl-specs"
+                                    ));
+                                }
+                                output_catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} update-ensembl-specs",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+                        resolved_catalog,
+                        output_catalog_path.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    print_json(&report)
+                }
                 "status" => {
                     if args.len() <= cmd_idx + 2 {
                         usage();
@@ -1439,6 +1525,110 @@ fn run() -> Result<(), String> {
                         .save_to_path(&state_path)
                         .map_err(|e| e.to_string())?;
                     print_json(&result)
+                }
+                "remove-prepared" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(format!(
+                            "{label} remove-prepared requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} remove-prepared"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} remove-prepared"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} remove-prepared",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let report = GentleEngine::remove_prepared_reference_genome(
+                        resolved_catalog,
+                        &genome_id,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    print_json(&report)
+                }
+                "remove-catalog-entry" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(format!(
+                            "{label} remove-catalog-entry requires GENOME_ID [--catalog PATH] [--output-catalog PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let mut catalog_path: Option<String> = None;
+                    let mut output_catalog_path: Option<String> = None;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} remove-catalog-entry"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output-catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --output-catalog for {label} remove-catalog-entry"
+                                    ));
+                                }
+                                output_catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} remove-catalog-entry",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let report = GentleEngine::remove_reference_genome_catalog_entry(
+                        resolved_catalog,
+                        &genome_id,
+                        output_catalog_path.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    print_json(&report)
                 }
                 "extract-region" => {
                     if args.len() <= cmd_idx + 6 {
@@ -1747,7 +1937,7 @@ fn run() -> Result<(), String> {
                     print_json(&result)
                 }
                 other => Err(format!(
-                    "Unknown {label} subcommand '{}' (expected list, status, genes, prepare, extract-region, extract-gene)",
+                    "Unknown {label} subcommand '{}' (expected list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene)",
                     other
                 )),
             }

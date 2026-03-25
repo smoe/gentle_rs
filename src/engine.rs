@@ -30,11 +30,13 @@ use crate::{
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, EnsemblCatalogUpdatePreview,
+        EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
+        GenomeCatalogEntryRemovalReport, GenomeGeneRecord, GenomeSourcePlan,
+        GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
         PrepareGenomeReport, PreparedGenomeFallbackPolicy, PreparedGenomeInspection,
-        blast_external_binary_preflight_report, build_genbank_efetch_url,
-        is_prepare_cancelled_error, validate_genbank_accession,
+        PreparedGenomeRemovalReport, blast_external_binary_preflight_report,
+        build_genbank_efetch_url, is_prepare_cancelled_error, validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -6437,6 +6439,74 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Could not resolve source plan for genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn preview_reference_genome_ensembl_catalog_updates(
+        catalog_path: Option<&str>,
+    ) -> Result<EnsemblCatalogUpdatePreview, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .preview_ensembl_catalog_updates()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not preview Ensembl catalog updates for '{}': {}",
+                    catalog_path, e
+                ),
+            })
+    }
+
+    pub fn apply_reference_genome_ensembl_catalog_updates(
+        catalog_path: Option<&str>,
+        output_catalog_path: Option<&str>,
+    ) -> Result<EnsemblCatalogUpdateReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .apply_ensembl_catalog_updates(output_catalog_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not apply Ensembl catalog updates for '{}': {}",
+                    catalog_path, e
+                ),
+            })
+    }
+
+    pub fn remove_reference_genome_catalog_entry(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        output_catalog_path: Option<&str>,
+    ) -> Result<GenomeCatalogEntryRemovalReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog.remove_catalog_entry(genome_id, output_catalog_path).map_err(|e| {
+            EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not remove genome catalog entry '{}' from '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            }
+        })
+    }
+
+    pub fn remove_prepared_reference_genome(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<PreparedGenomeRemovalReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .remove_prepared_genome_install(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not remove prepared genome '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
             })

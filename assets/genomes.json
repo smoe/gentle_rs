@@ -4,14 +4,28 @@
     "description": "Human GRCh38 Ensembl 113",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/homo_sapiens/Homo_sapiens.GRCh38.113.gtf.gz",
-    "cache_dir": "data/genomes"
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "homo_sapiens",
+      "file_stem": "Homo_sapiens.GRCh38",
+      "release": 113
+    }
   },
   "Human GRCh38 Ensembl 116": {
     "ncbi_taxonomy_id": 9606,
     "description": "Human GRCh38 Ensembl 116",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
-    "cache_dir": "data/genomes"
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "homo_sapiens",
+      "file_stem": "Homo_sapiens.GRCh38",
+      "release": 116
+    }
   },
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {
     "ncbi_taxonomy_id": 9606,
@@ -33,14 +47,84 @@
     "description": "Mouse GRCm39 Ensembl 116",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
-    "cache_dir": "data/genomes"
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 116
+    }
   },
-  "Rat GRCr8 Ensembl 116": {
+  "Rat GRCr8 Ensembl 115": {
     "ncbi_taxonomy_id": 10116,
-    "description": "Rat GRCr8 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/rattus_norvegicus/dna/Rattus_norvegicus.GRCr8.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/:tf/rattus_norvegicus/Rattus_norvegicus.GRCr8.116.gtf.gz",
-    "cache_dir": "data/genomes"
+    "description": "Rat GRCr8 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/rattus_norvegicus/dna/Rattus_norvegicus.GRCr8.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/rattus_norvegicus/Rattus_norvegicus.GRCr8.115.gtf.gz",
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "rattus_norvegicus",
+      "file_stem": "Rattus_norvegicus.GRCr8",
+      "release": 115
+    }
+  },
+  "Danio rerio GRCz11 Ensembl 115": {
+    "ncbi_taxonomy_id": 7955,
+    "description": "Danio rerio GRCz11 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/danio_rerio/dna/Danio_rerio.GRCz11.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/danio_rerio/Danio_rerio.GRCz11.115.gtf.gz",
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "danio_rerio",
+      "file_stem": "Danio_rerio.GRCz11",
+      "release": 115
+    }
+  },
+  "Pan troglodytes Pan_tro_3.0 Ensembl 115": {
+    "ncbi_taxonomy_id": 9598,
+    "description": "Pan troglodytes Pan_tro_3.0 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/pan_troglodytes/dna/Pan_troglodytes.Pan_tro_3.0.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/pan_troglodytes/Pan_troglodytes.Pan_tro_3.0.115.gtf.gz",
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "pan_troglodytes",
+      "file_stem": "Pan_troglodytes.Pan_tro_3.0",
+      "release": 115
+    }
+  },
+  "Canis lupus familiaris ROS_Cfam_1.0 Ensembl 115": {
+    "ncbi_taxonomy_id": 9615,
+    "description": "Canis lupus familiaris ROS_Cfam_1.0 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/canis_lupus_familiaris/dna/Canis_lupus_familiaris.ROS_Cfam_1.0.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/canis_lupus_familiaris/Canis_lupus_familiaris.ROS_Cfam_1.0.115.gtf.gz",
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "canis_lupus_familiaris",
+      "file_stem": "Canis_lupus_familiaris.ROS_Cfam_1.0",
+      "release": 115
+    }
+  },
+  "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62": {
+    "ncbi_taxonomy_id": 7227,
+    "description": "Drosophila melanogaster BDGP6.54 Ensembl Metazoa 62",
+    "sequence_remote": "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-62/fasta/drosophila_melanogaster/dna/Drosophila_melanogaster.BDGP6.54.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-62/gtf/drosophila_melanogaster/Drosophila_melanogaster.BDGP6.54.62.gtf.gz",
+    "cache_dir": "data/genomes",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "metazoa",
+      "species_dir": "drosophila_melanogaster",
+      "file_stem": "Drosophila_melanogaster.BDGP6.54",
+      "release": 62
+    }
   },
   "Caenorhabditis elegans WBcel235 Ensembl 115": {
     "ncbi_taxonomy_id": 6239,

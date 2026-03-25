@@ -49,11 +49,11 @@ use crate::{
     enzymes,
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
-        GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan,
-        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
-        PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-        PreparedGenomeInspection,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN,
+        EnsemblCatalogUpdatePreview, GenomeBlastReport, GenomeCatalog,
+        GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan, MAKEBLASTDB_ENV_BIN,
+        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan, PrepareGenomePlanStep,
+        PrepareGenomeProgress, PrepareGenomeStepId, PreparedGenomeInspection,
     },
     gibson_planning::{
         GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
@@ -711,6 +711,9 @@ pub struct GENtleApp {
     pending_project_action: Option<ProjectAction>,
     pending_app_quit: bool,
     pending_prepared_genome_reinstall: Option<PreparedGenomeReinstallRequest>,
+    pending_ensembl_catalog_update: Option<PendingEnsemblCatalogUpdateDialog>,
+    pending_prepared_genome_removal: Option<PendingPreparedGenomeRemovalRequest>,
+    pending_genome_catalog_entry_removal: Option<PendingGenomeCatalogEntryRemovalRequest>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
@@ -1352,6 +1355,30 @@ struct PreparedGenomeReinstallRequest {
     catalog_path: String,
     cache_dir: String,
     dialog_host: PreparedGenomeReinstallDialogHost,
+}
+
+#[derive(Debug, Clone)]
+struct PendingEnsemblCatalogUpdateDialog {
+    scope: GenomeDialogScope,
+    catalog_path: String,
+    preview: EnsemblCatalogUpdatePreview,
+    output_catalog_path: String,
+}
+
+#[derive(Debug, Clone)]
+struct PendingPreparedGenomeRemovalRequest {
+    genome_id: String,
+    scope: GenomeDialogScope,
+    catalog_path: String,
+    cache_dir: String,
+    install_dir: String,
+}
+
+#[derive(Debug, Clone)]
+struct PendingGenomeCatalogEntryRemovalRequest {
+    genome_id: String,
+    scope: GenomeDialogScope,
+    catalog_path: String,
 }
 
 struct GenomeTrackImportTask {
@@ -2006,6 +2033,9 @@ impl Default for GENtleApp {
             pending_project_action: None,
             pending_app_quit: false,
             pending_prepared_genome_reinstall: None,
+            pending_ensembl_catalog_update: None,
+            pending_prepared_genome_removal: None,
+            pending_genome_catalog_entry_removal: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
@@ -9034,6 +9064,170 @@ Error: `{err}`"
         Ok(names)
     }
 
+    fn selected_genome_catalog_is_writable(&self) -> bool {
+        let catalog_path = self.genome_catalog_path_resolved();
+        GenomeCatalog::from_json_file(&catalog_path)
+            .map(|catalog| catalog.catalog_file_is_writable())
+            .unwrap_or(false)
+    }
+
+    fn selected_genome_catalog_has_ensembl_templates(&self) -> bool {
+        let catalog_path = self.genome_catalog_path_resolved();
+        GenomeCatalog::from_json_file(&catalog_path)
+            .map(|catalog| catalog.has_ensembl_updatable_entries())
+            .unwrap_or(false)
+    }
+
+    fn queue_ensembl_catalog_update_preview(&mut self) {
+        let catalog_path = self.genome_catalog_path_resolved();
+        match GentleEngine::preview_reference_genome_ensembl_catalog_updates(Some(&catalog_path)) {
+            Ok(preview) => {
+                self.pending_ensembl_catalog_update = Some(PendingEnsemblCatalogUpdateDialog {
+                    scope: self.genome_dialog_scope,
+                    catalog_path: catalog_path.clone(),
+                    preview,
+                    output_catalog_path: String::new(),
+                });
+                self.genome_prepare_status =
+                    format!("Loaded Ensembl catalog update preview for '{}'.", catalog_path);
+            }
+            Err(e) => {
+                self.genome_prepare_status = format!(
+                    "Could not preview Ensembl catalog updates for '{}': {}",
+                    catalog_path, e
+                );
+                self.pending_ensembl_catalog_update = None;
+            }
+        }
+    }
+
+    fn apply_pending_ensembl_catalog_update(&mut self) {
+        let Some(dialog) = self.pending_ensembl_catalog_update.clone() else {
+            return;
+        };
+        let output_catalog_path = dialog
+            .output_catalog_path
+            .trim()
+            .to_string();
+        let output_catalog_path = if output_catalog_path.is_empty() {
+            None
+        } else {
+            Some(output_catalog_path.as_str())
+        };
+        match GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+            Some(&dialog.catalog_path),
+            output_catalog_path,
+        ) {
+            Ok(report) => {
+                self.pending_ensembl_catalog_update = None;
+                self.genome_prepare_status = format!(
+                    "Ensembl catalog specs updated: {} update(s) written to '{}'.",
+                    report.updates.len(),
+                    report.output_catalog_path
+                );
+                if report.output_catalog_path == dialog.catalog_path {
+                    self.refresh_genome_catalog_list();
+                }
+            }
+            Err(e) => {
+                self.genome_prepare_status = format!(
+                    "Could not apply Ensembl catalog updates for '{}': {}",
+                    dialog.catalog_path, e
+                );
+            }
+        }
+    }
+
+    fn queue_prepared_genome_removal(
+        &mut self,
+        genome_id: String,
+        scope: GenomeDialogScope,
+        install_dir: String,
+    ) {
+        self.pending_prepared_genome_removal = Some(PendingPreparedGenomeRemovalRequest {
+            genome_id,
+            scope,
+            catalog_path: self.genome_catalog_path_resolved(),
+            cache_dir: self
+                .genome_cache_dir_opt()
+                .unwrap_or_else(|| scope.default_cache_dir().to_string()),
+            install_dir,
+        });
+    }
+
+    fn confirm_prepared_genome_removal(&mut self) {
+        let Some(request) = self.pending_prepared_genome_removal.take() else {
+            return;
+        };
+        match GentleEngine::remove_prepared_reference_genome(
+            Some(&request.catalog_path),
+            &request.genome_id,
+            Some(&request.cache_dir),
+        ) {
+            Ok(report) => {
+                self.genome_prepare_status = if report.removed {
+                    format!(
+                        "Removed prepared {} '{}' from '{}'.",
+                        request.scope.description(),
+                        request.genome_id,
+                        report.install_dir
+                    )
+                } else {
+                    format!(
+                        "No prepared {} files were present for '{}'.",
+                        request.scope.description(),
+                        request.genome_id
+                    )
+                };
+            }
+            Err(e) => {
+                self.genome_prepare_status = format!(
+                    "Could not remove prepared {} '{}': {}",
+                    request.scope.description(),
+                    request.genome_id,
+                    e
+                );
+            }
+        }
+    }
+
+    fn queue_catalog_entry_removal(&mut self, genome_id: String, scope: GenomeDialogScope) {
+        self.pending_genome_catalog_entry_removal = Some(PendingGenomeCatalogEntryRemovalRequest {
+            genome_id,
+            scope,
+            catalog_path: self.genome_catalog_path_resolved(),
+        });
+    }
+
+    fn confirm_catalog_entry_removal(&mut self) {
+        let Some(request) = self.pending_genome_catalog_entry_removal.take() else {
+            return;
+        };
+        match GentleEngine::remove_reference_genome_catalog_entry(
+            Some(&request.catalog_path),
+            &request.genome_id,
+            None,
+        ) {
+            Ok(report) => {
+                self.genome_prepare_status = format!(
+                    "Removed {} catalog entry '{}' from '{}'. Prepared cache files, if any, were left unchanged.",
+                    request.scope.description(),
+                    request.genome_id,
+                    report.output_catalog_path
+                );
+                self.refresh_genome_catalog_list();
+            }
+            Err(e) => {
+                self.genome_prepare_status = format!(
+                    "Could not remove {} catalog entry '{}': {}",
+                    request.scope.description(),
+                    request.genome_id,
+                    e
+                );
+            }
+        }
+    }
+
     fn project_sequence_ids_for_blast(&self) -> Vec<String> {
         let mut seq_ids: Vec<String> = self
             .engine
@@ -12226,6 +12420,21 @@ Error: `{err}`"
                 }
             }
         });
+        ui.horizontal(|ui| {
+            let can_update_ensembl = !running && self.selected_genome_catalog_has_ensembl_templates();
+            let hover = if can_update_ensembl {
+                "Preview and apply pinned Ensembl URL/spec refreshes for catalog entries that carry Ensembl template metadata."
+            } else {
+                "Current catalog has no Ensembl template metadata entries to update."
+            };
+            if ui
+                .add_enabled(can_update_ensembl, egui::Button::new("Update Ensembl Specs..."))
+                .on_hover_text(hover)
+                .clicked()
+            {
+                self.queue_ensembl_catalog_update_preview();
+            }
+        });
         if !self.genome_prepare_steps.is_empty() {
             self.render_prepare_step_checklist(ui);
         } else if let Some(progress) = &self.genome_prepare_progress {
@@ -12307,6 +12516,7 @@ Error: `{err}`"
                     self.dismiss_pending_prepared_genome_reinstall_for_host(
                         PreparedGenomeReinstallDialogHost::PrepareDialog,
                     );
+                    self.pending_ensembl_catalog_update = None;
                     self.clear_prepare_step_state();
                 }
                 return;
@@ -12326,6 +12536,7 @@ Error: `{err}`"
                     PreparedGenomeReinstallDialogHost::PrepareDialog,
                 );
                 self.show_reference_genome_prepare_dialog = false;
+                self.pending_ensembl_catalog_update = None;
                 self.clear_prepare_step_state();
             }
         });
@@ -12414,6 +12625,214 @@ Error: `{err}`"
                         .clicked()
                     {
                         self.pending_prepared_genome_reinstall = None;
+                    }
+                });
+            });
+    }
+
+    fn render_pending_ensembl_catalog_update_dialog(&mut self, ctx: &egui::Context) {
+        let Some(mut dialog) = self.pending_ensembl_catalog_update.clone() else {
+            return;
+        };
+        egui::Window::new("Update Ensembl Specs")
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .collapsible(false)
+            .movable(false)
+            .resizable(true)
+            .default_width(760.0)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Refresh pinned Ensembl catalog specs for the {} catalog?",
+                    dialog.scope.description()
+                ));
+                ui.small(
+                    "Older pinned releases stay in the catalog. Newer release rows are added or refreshed without downloading/preparing genomes.",
+                );
+                ui.separator();
+                ui.label(format!("catalog: {}", dialog.catalog_path));
+                if dialog.preview.writable_catalog {
+                    ui.small("This catalog is writable and can be updated in place.");
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(170, 120, 50),
+                        "This catalog is not writable in place. Choose a save path for an updated copy.",
+                    );
+                }
+                ui.horizontal(|ui| {
+                    ui.label("output");
+                    ui.text_edit_singleline(&mut dialog.output_catalog_path);
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Pick a destination for an updated catalog copy")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .save_file()
+                        {
+                            dialog.output_catalog_path = path.display().to_string();
+                        }
+                    }
+                });
+                if !dialog.preview.collection_latest_releases.is_empty() {
+                    let mut collections: Vec<_> =
+                        dialog.preview.collection_latest_releases.iter().collect();
+                    collections.sort_by(|left, right| left.0.cmp(right.0));
+                    for (collection, release) in collections {
+                        ui.small(format!("latest {collection} release seen: {release}"));
+                    }
+                }
+                ui.separator();
+                ui.label(format!(
+                    "Updates: {} | unchanged: {} | skipped: {}",
+                    dialog.preview.updates.len(),
+                    dialog.preview.unchanged_entries.len(),
+                    dialog.preview.skipped_entries.len()
+                ));
+                egui::ScrollArea::vertical()
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        for update in &dialog.preview.updates {
+                            ui.group(|ui| {
+                                ui.label(format!(
+                                    "{} -> {} ({}, {} -> {})",
+                                    update.source_genome_id,
+                                    update.target_genome_id,
+                                    update.action,
+                                    update.old_release,
+                                    update.new_release
+                                ));
+                                ui.small(format!("sequence: {}", update.new_sequence_remote));
+                                ui.small(format!("annotation: {}", update.new_annotations_remote));
+                            });
+                        }
+                    });
+                if !dialog.preview.skipped_entries.is_empty() {
+                    ui.separator();
+                    ui.label("Skipped:");
+                    for row in &dialog.preview.skipped_entries {
+                        ui.small(row);
+                    }
+                }
+                if !dialog.preview.warnings.is_empty() {
+                    ui.separator();
+                    ui.label("Warnings:");
+                    for warning in &dialog.preview.warnings {
+                        ui.small(warning);
+                    }
+                }
+                ui.separator();
+                let needs_output_copy =
+                    !dialog.preview.writable_catalog && dialog.output_catalog_path.trim().is_empty();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            !needs_output_copy,
+                            egui::Button::new(if dialog.preview.writable_catalog {
+                                "Update Catalog"
+                            } else {
+                                "Save Updated Copy"
+                            }),
+                        )
+                        .on_hover_text(
+                            "Write the refreshed Ensembl entries to the selected catalog path.",
+                        )
+                        .clicked()
+                    {
+                        self.pending_ensembl_catalog_update = Some(dialog.clone());
+                        self.apply_pending_ensembl_catalog_update();
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Close this preview without changing the catalog")
+                        .clicked()
+                    {
+                        self.pending_ensembl_catalog_update = None;
+                    }
+                });
+                if self.pending_ensembl_catalog_update.is_some() {
+                    self.pending_ensembl_catalog_update = Some(dialog);
+                }
+            });
+    }
+
+    fn render_pending_prepared_genome_removal_dialog(&mut self, ctx: &egui::Context) {
+        let Some(request) = self.pending_prepared_genome_removal.clone() else {
+            return;
+        };
+        egui::Window::new("Remove Prepared Genome")
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .collapsible(false)
+            .movable(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Remove prepared {} '{}' from the cache?",
+                    request.scope.description(),
+                    request.genome_id
+                ));
+                ui.small("This deletes the prepared install only. The catalog entry stays available.");
+                ui.separator();
+                ui.label(format!("catalog: {}", request.catalog_path));
+                ui.label(format!("cache_dir: {}", request.cache_dir));
+                ui.label(format!("install_dir: {}", request.install_dir));
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Remove Prepared")
+                        .on_hover_text("Delete the prepared install directory and all cached/indexed files for this genome")
+                        .clicked()
+                    {
+                        self.confirm_prepared_genome_removal();
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Keep the prepared install unchanged")
+                        .clicked()
+                    {
+                        self.pending_prepared_genome_removal = None;
+                    }
+                });
+            });
+    }
+
+    fn render_pending_catalog_entry_removal_dialog(&mut self, ctx: &egui::Context) {
+        let Some(request) = self.pending_genome_catalog_entry_removal.clone() else {
+            return;
+        };
+        egui::Window::new("Remove Catalog Entry")
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .collapsible(false)
+            .movable(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Remove {} catalog entry '{}'?",
+                    request.scope.description(),
+                    request.genome_id
+                ));
+                ui.small(
+                    "This edits only the catalog JSON. Prepared cache files, if any, are not deleted unless you also use 'Remove Prepared...'.",
+                );
+                ui.separator();
+                ui.label(format!("catalog: {}", request.catalog_path));
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Remove Catalog Entry")
+                        .on_hover_text("Delete this genome row from the active writable catalog")
+                        .clicked()
+                    {
+                        self.confirm_catalog_entry_removal();
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Keep the catalog entry unchanged")
+                        .clicked()
+                    {
+                        self.pending_genome_catalog_entry_removal = None;
                     }
                 });
             });
@@ -13584,11 +14003,17 @@ Error: `{err}`"
                 match self.collect_prepared_genome_inspections() {
                     Ok((inspections, errors)) => {
                         let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
+                        let catalog_writable = self.selected_genome_catalog_is_writable();
                         ui.label(format!(
                             "Prepared references: {} | total size: {}",
                             inspections.len(),
                             Self::format_bytes_compact(total_size)
                         ));
+                        if !catalog_writable {
+                            ui.small(
+                                "Catalog-entry removal is hidden here because the active catalog file is not writable.",
+                            );
+                        }
                         if inspections.is_empty() {
                             ui.label("No prepared references found for this catalog/cache.");
                         } else {
@@ -13705,6 +14130,32 @@ Error: `{err}`"
                                                             inspection.genome_id.clone(),
                                                             scope,
                                                             PreparedGenomeReinstallDialogHost::Root,
+                                                        );
+                                                    }
+                                                    if ui
+                                                        .small_button("Remove Prepared...")
+                                                        .on_hover_text(
+                                                            "Delete this prepared install from the cache without removing the catalog entry.",
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        self.queue_prepared_genome_removal(
+                                                            inspection.genome_id.clone(),
+                                                            scope,
+                                                            inspection.install_dir.clone(),
+                                                        );
+                                                    }
+                                                    if catalog_writable
+                                                        && ui
+                                                            .small_button("Remove Catalog Entry...")
+                                                            .on_hover_text(
+                                                                "Delete this row from the active writable catalog. Prepared cache files remain until 'Remove Prepared...' is run explicitly.",
+                                                            )
+                                                            .clicked()
+                                                    {
+                                                        self.queue_catalog_entry_removal(
+                                                            inspection.genome_id.clone(),
+                                                            scope,
                                                         );
                                                     }
                                                 });
@@ -30812,6 +31263,9 @@ impl eframe::App for GENtleApp {
                 ctx,
                 PreparedGenomeReinstallDialogHost::Root,
             );
+            self.render_pending_ensembl_catalog_update_dialog(ctx);
+            self.render_pending_prepared_genome_removal_dialog(ctx);
+            self.render_pending_catalog_entry_removal_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
             self.render_planning_dialog(ctx);
@@ -36130,5 +36584,73 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(status.contains("Saved group"));
         assert_eq!(app.lineage_node_groups.len(), 1);
         assert!(app.lineage_group_marked_nodes.is_empty());
+    }
+
+    #[test]
+    fn prepare_dialog_ensembl_update_action_depends_on_catalog_template_metadata() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let with_template = root.join("with_template.json");
+        let without_template = root.join("without_template.json");
+        fs::write(
+            &with_template,
+            r#"{
+  "Mouse GRCm39 Ensembl 116": {
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 116
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            &without_template,
+            r#"{
+  "LocalProject": {
+    "sequence_local": "../test_files/fixtures/genomes/AB011549.2.fa",
+    "annotations_local": "../test_files/fixtures/genomes/AB011549.2.gb"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let mut app = GENtleApp::default();
+        app.genome_catalog_path = with_template.display().to_string();
+        assert!(app.selected_genome_catalog_has_ensembl_templates());
+
+        app.genome_catalog_path = without_template.display().to_string();
+        assert!(!app.selected_genome_catalog_has_ensembl_templates());
+    }
+
+    #[test]
+    fn prepared_reference_catalog_entry_removal_requires_writable_catalog() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "LocalProject": {
+    "sequence_local": "../test_files/fixtures/genomes/AB011549.2.fa",
+    "annotations_local": "../test_files/fixtures/genomes/AB011549.2.gb"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let mut app = GENtleApp::default();
+        app.genome_catalog_path = catalog_path.display().to_string();
+        assert!(app.selected_genome_catalog_is_writable());
+
+        let mut perms = fs::metadata(&catalog_path).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&catalog_path, perms).unwrap();
+        assert!(!app.selected_genome_catalog_is_writable());
     }
 }

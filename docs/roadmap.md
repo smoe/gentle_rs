@@ -201,6 +201,13 @@ order. Durable architecture constraints and decisions remain in
   reindex keeps cached local sequence/annotation files, progress appears
   immediately when launched, and deleting cached downloads for a full refresh
   requires an explicit confirmation choice.
+- Genome-catalog maintenance now has a shared baseline:
+  - bundled `assets/genomes.json` now includes additional Ensembl templates for
+    zebrafish, chimp, dog, and Drosophila, while fixing the rat pinned release
+  - catalog rows can carry `ensembl_template` metadata so GENtle can refresh
+    explicit pinned Ensembl URLs on demand without preparing genomes
+  - `Prepared References...` now separates `Remove Prepared...` from
+    `Remove Catalog Entry...` so cache deletion and catalog editing are explicit
 - Prepare/reindex/refresh dialogs now expose a structured step checklist
   up front (per-step bars, completed checkmarks, compact jobs-panel summary)
   instead of a single raw phase bar, so long-running indexing work stays
