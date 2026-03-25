@@ -21,6 +21,11 @@ fn emit_build_version() {
 }
 
 fn main() {
+    // Keep debug iteration incremental: without an explicit rerun rule Cargo
+    // re-executes build.rs on any package file change, which would restamp the
+    // compile-time version metadata and invalidate more of the crate than
+    // needed on every small edit.
+    println!("cargo:rerun-if-changed=build.rs");
     emit_build_version();
 
     #[cfg(target_os = "windows")]
