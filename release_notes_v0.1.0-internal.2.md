@@ -1,34 +1,5 @@
 # Release Notes: `v0.1.0-internal.2`
 
-Release baseline: changes since tag `v0.1.0-internal.1`.
-
-Commit-range reference (`v0.1.0-internal.1..HEAD`):
-
-- `e895bf2` Multi-index for gene similarity
-- `a156e88` Preparation of sequence alignments - bio::alignment::pairwise::banded
-- `5737c5a` Code reorganisations, modularisation of indices, tutorials
-- `c7970a9` Code restructuring
-- `7c4bdd1` Progress indicator triggered every two seconds
-- `0f3b0eb` Fixed CPU usage in Expert Splicing Window
-- `213aeba` Improvements to cDNA mapping, Preparing for priorisation of alternative cloning paths
-- `6b42736` cDNA mapping defaults to 10mers (from 9mers)
-- `6f09fad` DNA feature grouping activated by default
-- `0d45084` Adding test data to the archive
-- `676b8a0` Splicing cDNA filter, layout fixes
-- `70a557b` RNA-seq mapping initiated, removed translations
-- `5df59f6` Removed some sqlite cruft from original GENtle
-- `ebcd0f5` Fixes
-- `bb06fca` ClawBio, hardening
-- `6d46246` More towards cloning patterns
-- `e0a391e` More consistent export
-- `2fafee1` Hardening blast searches
-- `d2a91bd` Improvements to Splicing Expert window - coloring
-- `6870f2f` Scrolling in splicing expert window
-- `f92e60b` Fixed genomes::tests::
-- `fb4a909` More hardening, more tutorials, also on Gibson
-- `897b858` Uniprot import. More towards primer design
-- `52bf3bf` Implemented mapping of isoforms as show case
-
 This internal release focuses on deterministic agent integration, cloning
 workflow standardization, expert-view improvements, and release-readiness
 hardening.
