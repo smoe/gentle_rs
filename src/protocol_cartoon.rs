@@ -504,9 +504,9 @@ impl ProtocolCartoonSpec {
                 let top_total_bp: usize = molecule.features.iter().map(|f| f.top_length_bp).sum();
                 let bottom_total_bp: usize =
                     molecule.features.iter().map(|f| f.bottom_length_bp).sum();
-                if top_total_bp == 0 || bottom_total_bp == 0 {
+                if top_total_bp == 0 && bottom_total_bp == 0 {
                     return Err(format!(
-                        "Molecule '{}' in event '{}' must retain non-zero top and bottom strand length",
+                        "Molecule '{}' in event '{}' must retain at least one non-zero strand",
                         molecule.id, event.id
                     ));
                 }
@@ -1301,7 +1301,8 @@ fn render_linear_molecule(
     let mut bottom_spans: Vec<(f32, f32, String)> = vec![];
     let mut top_nicks: Vec<f32> = vec![];
     let mut bottom_nicks: Vec<f32> = vec![];
-    let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String)> = vec![];
+    let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String, bool, String, String)> =
+        vec![];
     for (feature_idx, feature) in molecule.features.iter().enumerate() {
         let slot_w = if feature_idx + 1 == molecule.features.len() {
             (shared_right - slot_cursor).max(0.5)
@@ -1332,6 +1333,9 @@ fn render_linear_molecule(
                 slot_w,
                 primer_kind,
                 normalize_hex_color(&feature.color_hex),
+                primer_glyph_has_kink(feature),
+                primer_glyph_label(feature, primer_kind),
+                primer_glyph_kink_tail_color(feature),
             ));
         }
         let boundary_x = slot_cursor + slot_w;
@@ -1373,10 +1377,24 @@ fn render_linear_molecule(
     for nick_x in bottom_nicks {
         render_strand_nick(svg, nick_x, y + 11.0);
     }
-    for (center_x, primer_w, primer_kind, primer_fill) in primer_glyphs {
+    for (center_x, primer_w, primer_kind, primer_fill, kinked, label, kink_tail_color) in
+        primer_glyphs
+    {
         match primer_kind {
             PrimerGlyphKind::Forward => {
-                render_primer_glyph(svg, center_x, y, primer_w, "F", &primer_fill, "top", true);
+                render_primer_glyph(
+                    svg,
+                    center_x,
+                    y,
+                    primer_w,
+                    &label,
+                    false,
+                    &primer_fill,
+                    "top",
+                    true,
+                    kinked,
+                    &kink_tail_color,
+                );
             }
             PrimerGlyphKind::Reverse => {
                 render_primer_glyph(
@@ -1384,14 +1402,29 @@ fn render_linear_molecule(
                     center_x,
                     y + 11.0,
                     primer_w,
-                    "R",
+                    &label,
+                    true,
                     &primer_fill,
                     "bottom",
                     true,
+                    kinked,
+                    &kink_tail_color,
                 );
             }
             PrimerGlyphKind::Probe => {
-                render_primer_glyph(svg, center_x, y, primer_w, "P", &primer_fill, "top", false);
+                render_primer_glyph(
+                    svg,
+                    center_x,
+                    y,
+                    primer_w,
+                    &label,
+                    false,
+                    &primer_fill,
+                    "top",
+                    false,
+                    false,
+                    "#2a9d8f",
+                );
             }
         }
     }
@@ -1443,15 +1476,57 @@ fn primer_glyph_kind(feature: &DnaFeatureCartoon) -> Option<PrimerGlyphKind> {
     }
 }
 
+fn primer_glyph_has_kink(feature: &DnaFeatureCartoon) -> bool {
+    feature.id.to_ascii_lowercase().contains("kink")
+}
+
+fn primer_glyph_label(feature: &DnaFeatureCartoon, kind: PrimerGlyphKind) -> String {
+    let id = feature.id.to_ascii_lowercase();
+    let prefix = match kind {
+        PrimerGlyphKind::Forward => "forward_primer_",
+        PrimerGlyphKind::Reverse => "reverse_primer_",
+        PrimerGlyphKind::Probe => "probe_site_",
+    };
+    if let Some(start) = id.find(prefix) {
+        let tail = &id[start + prefix.len()..];
+        let token: String = tail
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        if token.len() == 1 && token.chars().all(|c| c.is_ascii_alphabetic()) {
+            return token;
+        }
+    }
+    match kind {
+        PrimerGlyphKind::Forward => "F".to_string(),
+        PrimerGlyphKind::Reverse => "R".to_string(),
+        PrimerGlyphKind::Probe => "P".to_string(),
+    }
+}
+
+fn primer_glyph_kink_tail_color(feature: &DnaFeatureCartoon) -> String {
+    let id = feature.id.to_ascii_lowercase();
+    if id.contains("_to_b") {
+        "#3d6fb6".to_string()
+    } else if id.contains("_to_e") {
+        "#d1495b".to_string()
+    } else {
+        "#2a9d8f".to_string()
+    }
+}
+
 fn render_primer_glyph(
     svg: &mut String,
     center_x: f32,
     anchor_y: f32,
     nominal_w: f32,
     label: &str,
+    is_reverse: bool,
     fill: &str,
     anchor: &str,
     with_end_labels: bool,
+    with_kink_tail: bool,
+    kink_tail_color: &str,
 ) {
     let glyph_w = nominal_w.max(20.0).min(40.0);
     let glyph_h = 5.0;
@@ -1474,16 +1549,22 @@ fn render_primer_glyph(
     };
     let label_y = bar_y + (glyph_h * 0.5) + 0.4;
     let left_x = center_x - (glyph_w * 0.5);
-    let (left_end_label, right_end_label) = if label == "R" {
+    let (left_end_label, right_end_label) = if is_reverse {
         ("3'", "5'")
     } else {
         ("5'", "3'")
     };
 
+    let kink_attr = if with_kink_tail {
+        " data-primer-kink=\"true\""
+    } else {
+        ""
+    };
     svg.push_str(&format!(
-        "<g data-primer-glyph=\"{}\" data-primer-anchor=\"{}\" data-primer-rotation=\"0\">",
+        "<g data-primer-glyph=\"{}\" data-primer-anchor=\"{}\" data-primer-rotation=\"0\"{}>",
         escape_xml(label),
-        escape_xml(anchor)
+        escape_xml(anchor),
+        kink_attr
     ));
     svg.push_str(&format!(
         "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.4\"/>",
@@ -1520,6 +1601,24 @@ fn render_primer_glyph(
             left_x + glyph_w + 3.5,
             end_label_y,
             escape_xml(right_end_label)
+        ));
+    }
+    if with_kink_tail {
+        let five_prime_on_left = !is_reverse;
+        let x_dir = if five_prime_on_left { -1.0 } else { 1.0 };
+        let y_dir = if on_bottom { 1.0 } else { -1.0 };
+        let bar_mid_y = bar_y + (glyph_h * 0.5);
+        let start_x = if five_prime_on_left {
+            left_x
+        } else {
+            left_x + glyph_w
+        };
+        let bend_x = start_x + (x_dir * 5.5);
+        let bend_y = bar_mid_y + (y_dir * 4.8);
+        let tail_end_x = bend_x + (x_dir * 13.0);
+        svg.push_str(&format!(
+            "<path d=\"M {:.1} {:.1} L {:.1} {:.1} L {:.1} {:.1}\" stroke=\"{}\" stroke-width=\"1.8\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+            start_x, bar_mid_y, bend_x, bend_y, tail_end_x, bend_y, kink_tail_color
         ));
     }
     svg.push_str("</g>");
@@ -4740,6 +4839,75 @@ mod tests {
     }
 
     #[test]
+    fn render_kinked_primer_feature_emits_kink_tail_marker() {
+        let spec = ProtocolCartoonSpec {
+            id: "kinked.primer".to_string(),
+            title: "Kinked Primer".to_string(),
+            summary: "kinked primer tail rendering".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "evt".to_string(),
+                title: "Kink".to_string(),
+                caption: "Primer with non-annealing 5' tail".to_string(),
+                action: ProtocolCartoonAction::Custom {
+                    label: "Primers".to_string(),
+                },
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "mol".to_string(),
+                    label: "Template".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![
+                        duplex_feature_block("left_context", "Left", 60, "#c9b37e"),
+                        duplex_feature_block(
+                            "forward_primer_kink_boundary",
+                            "Boundary",
+                            10,
+                            "#d1495b",
+                        ),
+                        duplex_feature_block("right_context", "Right", 60, "#c9b37e"),
+                    ],
+                    left_end: Some(DnaEndStyle::NotShown),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("data-primer-kink=\"true\""));
+        assert!(svg.contains("stroke=\"#2a9d8f\""));
+    }
+
+    #[test]
+    fn render_single_letter_primer_labels_from_feature_ids() {
+        let spec = ProtocolCartoonSpec {
+            id: "letter.labels".to_string(),
+            title: "Letter Labels".to_string(),
+            summary: "single-letter primer labels".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "evt".to_string(),
+                title: "Labels".to_string(),
+                caption: "custom letter labels".to_string(),
+                action: ProtocolCartoonAction::Custom {
+                    label: "Primers".to_string(),
+                },
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "mol".to_string(),
+                    label: "Template".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![
+                        duplex_feature_block("forward_primer_c_site", "c", 10, "#d1495b"),
+                        duplex_feature_block("body", "body", 60, "#c9b37e"),
+                        duplex_feature_block("reverse_primer_b_site", "b", 10, "#3d6fb6"),
+                    ],
+                    left_end: Some(DnaEndStyle::NotShown),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("data-primer-glyph=\"c\""));
+        assert!(svg.contains("data-primer-glyph=\"b\""));
+    }
+
+    #[test]
     fn render_qpcr_svg_contains_expected_labels() {
         let svg = render_protocol_cartoon_svg(&ProtocolCartoonKind::PcrAssayQpcr);
         assert!(svg.contains("<svg"));
@@ -4837,6 +5005,45 @@ mod tests {
         let svg = render_protocol_cartoon_spec_svg(&spec);
         assert!(svg.contains("#d7ae2f"));
         assert!(svg.contains("#66aefb"));
+    }
+
+    #[test]
+    fn validate_allows_true_single_strand_molecule() {
+        let spec = ProtocolCartoonSpec {
+            id: "single.strand".to_string(),
+            title: "Single Strand".to_string(),
+            summary: "top-only strand is valid".to_string(),
+            events: vec![ProtocolCartoonEvent {
+                id: "evt".to_string(),
+                title: "Denature".to_string(),
+                caption: "single-stranded fragment".to_string(),
+                action: ProtocolCartoonAction::Custom {
+                    label: "Denature".to_string(),
+                },
+                molecules: vec![DnaMoleculeCartoon {
+                    id: "ss".to_string(),
+                    label: "Top strand only".to_string(),
+                    topology: DnaTopologyCartoon::Linear,
+                    features: vec![DnaFeatureCartoon {
+                        id: "top_only".to_string(),
+                        label: "Top".to_string(),
+                        length_bp: 40,
+                        top_length_bp: 40,
+                        bottom_length_bp: 0,
+                        color_hex: "#3d6fb6".to_string(),
+                        bottom_color_hex: "#3d6fb6".to_string(),
+                        top_nick_after: false,
+                        bottom_nick_after: false,
+                    }],
+                    left_end: Some(DnaEndStyle::NotShown),
+                    right_end: Some(DnaEndStyle::NotShown),
+                }],
+            }],
+        };
+        assert!(spec.validate().is_ok());
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("Top strand only"));
+        assert!(!svg.contains("Invalid protocol cartoon"));
     }
 
     #[test]

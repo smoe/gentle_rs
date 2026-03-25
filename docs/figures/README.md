@@ -78,6 +78,31 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/pcr_pair_with_tail_protocol_cartoon.svg
 ```
 
+`pcr_overlap_extension_substitution_fig1_style.svg` is a deterministic render
+from template `docs/examples/protocol_cartoon/oe_substitution_figure1_template.json`.
+It currently captures Figures 1-6 in the same renderer style used by built-in
+Gibson cartoons:
+
+- Figure 1: starting dsDNA segments (target + insert), substitution boundaries,
+  and outer secondary primers (`a`,`f`).
+- Figure 2: primer-design assignment of all six primers (`a`..`f`), including
+  chimeric overhang intent for `b`,`c`,`d`,`e`.
+- Figure 3: three independent first-step PCR products: AB (`a+b`), CD
+  (`c+d`), and EF (`e+f`).
+- Figure 4: denaturation into single strands for AB/CD/EF products.
+- Figure 5: overlap annealing (b↔c, d↔e) into one annealed intermediate.
+- Figure 6: polymerase fills annealed gaps to form the continuous duplex
+  template for second-step amplification.
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/oe_substitution_figure1_template.json \
+  docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
+```
+
 `qpcr_assay_protocol_cartoon.svg` is the deterministic probe-bearing qPCR strip
 for `pcr.assay.qpcr`. It reuses the same PCR family layout while adding an
 explicit third probe window (separate from ROI semantics), keeps panel 2

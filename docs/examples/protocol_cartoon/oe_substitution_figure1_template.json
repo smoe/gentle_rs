@@ -1,0 +1,583 @@
+{
+  "schema": "gentle.protocol_cartoon_template.v1",
+  "id": "pcr.oe.substitution.figure1_6",
+  "title": "OE-PCR Figures 1-6: Setup, Primer Design, First PCR, Denature, Anneal, Fill",
+  "summary": "Figure 1 defines target + insert context with outer primers a/f. Figure 2 places all six primers (a-f) with chimeric overhang intent. Figure 3 shows first-step PCR products AB, CD, and EF. Figure 4 denatures to single strands. Figure 5 anneals 9-nt overlaps into one hybrid template. Figure 6 shows polymerase gap filling before second-step amplification with a/f.",
+  "defaults": {
+    "event_caption": "Define target substitution boundaries and the separate insert fragment.",
+    "feature_length_bp": 120,
+    "palette": [
+      "#c9b37e",
+      "#d1495b",
+      "#9ca3af",
+      "#7c3aed"
+    ]
+  },
+  "events": [
+    {
+      "id": "starting_segments",
+      "title": "Figure 1",
+      "action": "Context",
+      "caption": "Target DNA has blue/red substitution boundaries around span X, with secondary-PCR outer primers a (top-left) and f (bottom-right) aligned to target ends. Plain green insert DNA fragment Y will replace span X between those marks.",
+      "molecules": [
+        {
+          "id": "target_dna",
+          "label": "Target DNA (contains substitution window)",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "forward_primer_a_site",
+              "label": "Primer a site",
+              "length_bp": 46,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "target_left_context",
+              "label": "Left context",
+              "length_bp": 94,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "left_boundary",
+              "label": "Substitution boundary",
+              "length_bp": 10,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "replace_span_x",
+              "label": "Span X to be replaced",
+              "length_bp": 90,
+              "color_hex": "#9ca3af",
+              "bottom_color_hex": "#9ca3af"
+            },
+            {
+              "id": "right_boundary",
+              "label": "Substitution boundary",
+              "length_bp": 10,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "target_right_context",
+              "label": "Right context",
+              "length_bp": 94,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "reverse_primer_f_site",
+              "label": "Primer f site",
+              "length_bp": 46,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        },
+        {
+          "id": "insert_dna",
+          "label": "Insert DNA (fragment Y)",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "insert_fragment_y",
+              "label": "Insert Y",
+              "length_bp": 80,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "primer_design_assignment",
+      "title": "Figure 2",
+      "action": {
+        "Custom": {
+          "label": "Primer design"
+        }
+      },
+      "caption": "All six primers are defined. b/e are chimeric (18 nt template-derived at 3' plus 9 nt insert-derived at 5'). c/d are chimeric (18 nt insert-derived at 3' plus 9 nt flank-derived at 5') with tails matching b/e overlaps. a/f are nonchimeric outer primers for the second PCR.",
+      "molecules": [
+        {
+          "id": "target_with_primers",
+          "label": "Target template with a, b, e, f",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "forward_primer_a_site",
+              "label": "Primer a",
+              "length_bp": 46,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "ab_template_flank",
+              "label": "Template flank (A)",
+              "length_bp": 120,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "reverse_primer_b_kink_site",
+              "label": "Primer b (18nt template + 9nt insert)",
+              "length_bp": 27,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "left_boundary",
+              "label": "Substitution boundary",
+              "length_bp": 10,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "replace_span_x",
+              "label": "Span X to be replaced",
+              "length_bp": 90,
+              "color_hex": "#9ca3af",
+              "bottom_color_hex": "#9ca3af"
+            },
+            {
+              "id": "right_boundary",
+              "label": "Substitution boundary",
+              "length_bp": 10,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "forward_primer_e_kink_site",
+              "label": "Primer e (18nt template + 9nt insert)",
+              "length_bp": 27,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "ef_template_flank",
+              "label": "Template flank (F)",
+              "length_bp": 120,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "reverse_primer_f_site",
+              "label": "Primer f",
+              "length_bp": 46,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        },
+        {
+          "id": "insert_with_primers",
+          "label": "Insert cassette with c, d",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "forward_primer_c_kink_to_b_site",
+              "label": "Primer c (18nt insert + 9nt flank)",
+              "length_bp": 27,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "insert_fragment_y",
+              "label": "Insert Y",
+              "length_bp": 80,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "reverse_primer_d_kink_to_e_site",
+              "label": "Primer d (18nt insert + 9nt flank)",
+              "length_bp": 27,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "first_step_pcr_products",
+      "title": "Figure 3",
+      "action": {
+        "Custom": {
+          "label": "First PCR"
+        }
+      },
+      "caption": "Three independent first-step PCR reactions are run: a+b gives AB, c+d gives CD, and e+f gives EF. Chimeric primer-derived segments are incorporated into the blunt dsDNA products.",
+      "molecules": [
+        {
+          "id": "ab_first_pcr_product",
+          "label": "AB product (a + b)",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "ab_genomic_flank",
+              "label": "Genomic flank (A)",
+              "length_bp": 120,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "ab_blue_overlap",
+              "label": "Blue overlap segment",
+              "length_bp": 27,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "ab_green_tail",
+              "label": "Insert-derived green segment",
+              "length_bp": 9,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            }
+          ]
+        },
+        {
+          "id": "cd_first_pcr_product",
+          "label": "CD product (c + d)",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "cd_blue_overlap",
+              "label": "Blue overlap segment",
+              "length_bp": 9,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "insert_fragment_y",
+              "label": "Insert Y",
+              "length_bp": 80,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "cd_red_overlap",
+              "label": "Red overlap segment",
+              "length_bp": 9,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            }
+          ]
+        },
+        {
+          "id": "ef_first_pcr_product",
+          "label": "EF product (e + f)",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "ef_green_head",
+              "label": "Insert-derived green segment",
+              "length_bp": 9,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "ef_red_overlap",
+              "label": "Red overlap segment",
+              "length_bp": 27,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "ef_genomic_flank",
+              "label": "Genomic flank (F)",
+              "length_bp": 120,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "denature_single_strands",
+      "title": "Figure 4",
+      "action": {
+        "Custom": {
+          "label": "Denature"
+        }
+      },
+      "caption": "Heat denaturation separates AB, CD, and EF duplex products into single strands; each strand retains the same incorporated blue/green/red haplotype segments from Figure 3.",
+      "molecules": [
+        {
+          "id": "ab_single_strand",
+          "label": "AB strand",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "ab_genomic_flank_ss",
+              "label": "Genomic flank (A)",
+              "length_bp": 120,
+              "bottom_length_bp": 0,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "ab_blue_overlap_ss",
+              "label": "Blue overlap segment",
+              "length_bp": 27,
+              "bottom_length_bp": 0,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "ab_green_tail_ss",
+              "label": "Insert-derived green segment",
+              "length_bp": 9,
+              "bottom_length_bp": 0,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            }
+          ]
+        },
+        {
+          "id": "cd_single_strand",
+          "label": "CD strand",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "cd_blue_overlap_ss",
+              "label": "Blue overlap segment",
+              "length_bp": 9,
+              "bottom_length_bp": 0,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "insert_fragment_y",
+              "label": "Insert Y",
+              "length_bp": 80,
+              "bottom_length_bp": 0,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "cd_red_overlap_ss",
+              "label": "Red overlap segment",
+              "length_bp": 9,
+              "bottom_length_bp": 0,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            }
+          ]
+        },
+        {
+          "id": "ef_single_strand",
+          "label": "EF strand",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "ef_green_head_ss",
+              "label": "Insert-derived green segment",
+              "length_bp": 9,
+              "bottom_length_bp": 0,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "ef_red_overlap_ss",
+              "label": "Red overlap segment",
+              "length_bp": 27,
+              "bottom_length_bp": 0,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "ef_genomic_flank_ss",
+              "label": "Genomic flank (F)",
+              "length_bp": 120,
+              "bottom_length_bp": 0,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anneal_overlap_intermediate",
+      "title": "Figure 5",
+      "action": {
+        "Custom": {
+          "label": "Anneal"
+        }
+      },
+      "caption": "Annealed intermediate with strand-specific gaps: missing segments are on the opposite strand (not between fragment blocks).",
+      "molecules": [
+        {
+          "id": "annealed_overlap_product",
+          "label": "Annealed overlap intermediate",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "left_genomic_top_only",
+              "label": "Genomic (top only)",
+              "length_bp": 2,
+              "top_length_bp": 2,
+              "bottom_length_bp": 0,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "left_blue_top_only",
+              "label": "Blue (top only)",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 0,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "shared_blue_overlap",
+              "label": "Blue overlap",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "insert_green_bottom_only",
+              "label": "Green insert (bottom only)",
+              "length_bp": 5,
+              "top_length_bp": 0,
+              "bottom_length_bp": 5,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "shared_red_overlap",
+              "label": "Red overlap",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "right_red_top_only",
+              "label": "Red (top only)",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 0,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "right_genomic_top_only",
+              "label": "Genomic (top only)",
+              "length_bp": 2,
+              "top_length_bp": 2,
+              "bottom_length_bp": 0,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "polymerase_fill_gaps",
+      "title": "Figure 6",
+      "action": {
+        "Custom": {
+          "label": "Polymerase fill"
+        }
+      },
+      "caption": "Polymerase extends and fills all strand gaps, yielding a fully duplex overlap product.",
+      "molecules": [
+        {
+          "id": "filled_overlap_product",
+          "label": "Gap-filled overlap product",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "left_genomic_filled",
+              "label": "Genomic duplex",
+              "length_bp": 2,
+              "top_length_bp": 2,
+              "bottom_length_bp": 2,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            },
+            {
+              "id": "left_blue_filled",
+              "label": "Blue duplex",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "shared_blue_filled",
+              "label": "Blue overlap duplex",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#3d6fb6",
+              "bottom_color_hex": "#3d6fb6"
+            },
+            {
+              "id": "insert_green_filled",
+              "label": "Green insert duplex",
+              "length_bp": 5,
+              "top_length_bp": 5,
+              "bottom_length_bp": 5,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "shared_red_filled",
+              "label": "Red duplex",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "right_red_filled",
+              "label": "Red duplex",
+              "length_bp": 1,
+              "top_length_bp": 1,
+              "bottom_length_bp": 1,
+              "color_hex": "#d1495b",
+              "bottom_color_hex": "#d1495b"
+            },
+            {
+              "id": "right_genomic_filled",
+              "label": "Genomic duplex",
+              "length_bp": 2,
+              "top_length_bp": 2,
+              "bottom_length_bp": 2,
+              "color_hex": "#c9b37e",
+              "bottom_color_hex": "#c9b37e"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

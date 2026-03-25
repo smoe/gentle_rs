@@ -23,6 +23,14 @@ Secondary context source:
 - Repository: <https://github.com/rkalendar/PCRtools> (consulted as supporting
   implementation context, not as primary specification source)
 
+Additional method/figure-style reference for overlap-extension insertion/deletion mutagenesis:
+
+- Lee J, Shin M-K, Ryu D-K, Kim S, Ryu W-S. 2010. *Insertion and Deletion
+  Mutagenesis by Overlap Extension PCR*. In: Braman J (ed), *In Vitro
+  Mutagenesis Protocols*. Methods in Molecular Biology, vol. 634. Humana Press.
+  - DOI: <https://doi.org/10.1007/978-1-60761-652-8_10>
+  - Protocol page: <https://link.springer.com/protocol/10.1007/978-1-60761-652-8_10>
+
 Current status in GENtle:
 
 - No PCRtools source code is currently vendored or imported directly.
