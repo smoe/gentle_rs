@@ -88,6 +88,13 @@ pub type RunId = String;
 pub type NodeId = String;
 /// Stable identifier for one wet-lab-style container record.
 pub type ContainerId = String;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PrepareReferenceGenomeMode {
+    PrepareOrReuse,
+    ReindexCachedFiles,
+    RefreshFromSources,
+}
 pub use crate::feature_expert::{
     FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
@@ -7029,7 +7036,7 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
         timeout_seconds: Option<u64>,
-        force_refresh_from_sources: bool,
+        mode: PrepareReferenceGenomeMode,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, EngineError> {
         let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
@@ -7045,23 +7052,29 @@ impl GentleEngine {
             }
             on_progress(progress)
         };
-        let action_label = if force_refresh_from_sources {
-            "reinstall"
-        } else {
-            "preparation"
+        let action_label = match mode {
+            PrepareReferenceGenomeMode::PrepareOrReuse => "preparation",
+            PrepareReferenceGenomeMode::ReindexCachedFiles => "reindex",
+            PrepareReferenceGenomeMode::RefreshFromSources => "refresh",
         };
-        let result = if force_refresh_from_sources {
-            catalog.reinstall_genome_once_with_progress(
+        let result = match mode {
+            PrepareReferenceGenomeMode::PrepareOrReuse => catalog.prepare_genome_once_with_progress(
                 genome_id,
                 cache_dir.map(str::trim).filter(|v| !v.is_empty()),
                 &mut guarded_progress,
-            )
-        } else {
-            catalog.prepare_genome_once_with_progress(
-                genome_id,
-                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
-                &mut guarded_progress,
-            )
+            ),
+            PrepareReferenceGenomeMode::ReindexCachedFiles => catalog
+                .reindex_genome_once_with_progress(
+                    genome_id,
+                    cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                    &mut guarded_progress,
+                ),
+            PrepareReferenceGenomeMode::RefreshFromSources => catalog
+                .reinstall_genome_once_with_progress(
+                    genome_id,
+                    cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                    &mut guarded_progress,
+                ),
         };
         result.map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -7092,7 +7105,24 @@ impl GentleEngine {
             catalog_path,
             cache_dir,
             timeout_seconds,
-            false,
+            PrepareReferenceGenomeMode::PrepareOrReuse,
+            on_progress,
+        )
+    }
+
+    pub fn reindex_reference_genome_once(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, EngineError> {
+        Self::prepare_reference_genome_once_with_options(
+            genome_id,
+            catalog_path,
+            cache_dir,
+            timeout_seconds,
+            PrepareReferenceGenomeMode::ReindexCachedFiles,
             on_progress,
         )
     }
@@ -7109,7 +7139,7 @@ impl GentleEngine {
             catalog_path,
             cache_dir,
             timeout_seconds,
-            true,
+            PrepareReferenceGenomeMode::RefreshFromSources,
             on_progress,
         )
     }

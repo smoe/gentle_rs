@@ -197,6 +197,10 @@ order. Durable architecture constraints and decisions remain in
     very feature-dense entries.
 - `PrepareGenome` now detects source-path/URL drift for existing manifests and
   rebuilds from configured sources instead of silently reusing stale caches.
+- Prepared-genome reindexing now has an explicit cached-files-first path:
+  reindex keeps cached local sequence/annotation files, progress appears
+  immediately when launched, and deleting cached downloads for a full refresh
+  requires an explicit confirmation choice.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI

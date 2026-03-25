@@ -251,6 +251,13 @@ struct PreparedSequenceCacheSummary {
     contig_preview: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrepareGenomeMode {
+    PrepareOrReuse,
+    ReindexCachedFiles,
+    RefreshFromSources,
+}
+
 /// Result of resolving a requested genome id to a prepared install.
 ///
 /// When the exact requested id is not prepared, a compatible prepared assembly
@@ -671,6 +678,17 @@ impl GenomeCatalog {
         self.prepare_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
     }
 
+    /// Rebuild indexes from already cached local sequence/annotation files
+    /// without re-downloading sources.
+    pub fn reindex_genome_once(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PrepareGenomeReport, String> {
+        let mut noop = |_p: PrepareGenomeProgress| true;
+        self.reindex_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
+    }
+
     /// Reinstall sequence+annotation+indexes from sources, replacing any stale
     /// prepared files already present in the install dir.
     pub fn reinstall_genome_once(
@@ -694,7 +712,23 @@ impl GenomeCatalog {
         self.prepare_genome_once_with_progress_options(
             genome_id,
             cache_dir_override,
-            false,
+            PrepareGenomeMode::PrepareOrReuse,
+            on_progress,
+        )
+    }
+
+    /// Rebuild indexes from cached local sequence/annotation files while
+    /// reporting progress.
+    pub fn reindex_genome_once_with_progress(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<PrepareGenomeReport, String> {
+        self.prepare_genome_once_with_progress_options(
+            genome_id,
+            cache_dir_override,
+            PrepareGenomeMode::ReindexCachedFiles,
             on_progress,
         )
     }
@@ -712,7 +746,7 @@ impl GenomeCatalog {
         self.prepare_genome_once_with_progress_options(
             genome_id,
             cache_dir_override,
-            true,
+            PrepareGenomeMode::RefreshFromSources,
             on_progress,
         )
     }
@@ -721,7 +755,7 @@ impl GenomeCatalog {
         &self,
         genome_id: &str,
         cache_dir_override: Option<&str>,
-        force_refresh_requested: bool,
+        mode: PrepareGenomeMode,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, String> {
         let entry = self.entry(genome_id)?;
@@ -743,17 +777,36 @@ impl GenomeCatalog {
         )?;
         let sequence_source = sequence_resolution.source.clone();
         let annotation_source = annotation_resolution.source.clone();
-        let mut force_refresh_from_sources = force_refresh_requested;
+        let reindex_from_cached_files = matches!(mode, PrepareGenomeMode::ReindexCachedFiles);
+        let mut force_refresh_from_sources = matches!(mode, PrepareGenomeMode::RefreshFromSources);
+        let mut cached_source_drift_warning: Option<String> = None;
+        let existing_manifest = if manifest_path.exists() {
+            Some(Self::load_manifest(&manifest_path)?)
+        } else {
+            None
+        };
 
-        if manifest_path.exists() {
-            let manifest = Self::load_manifest(&manifest_path)?;
-            if !sources_equivalent(&manifest.sequence_source, &sequence_source)
-                || !sources_equivalent(&manifest.annotation_source, &annotation_source)
-            {
-                force_refresh_from_sources = true;
-            } else if !force_refresh_from_sources {
+        if let Some(manifest) = existing_manifest.as_ref() {
+            let sources_drifted = !sources_equivalent(&manifest.sequence_source, &sequence_source)
+                || !sources_equivalent(&manifest.annotation_source, &annotation_source);
+            if sources_drifted {
+                if reindex_from_cached_files {
+                    cached_source_drift_warning = Some(format!(
+                        "Prepared cache sources differ from the current catalog entry for '{}'; reindex used the cached local files without deleting or re-downloading them.",
+                        genome_id
+                    ));
+                } else {
+                    force_refresh_from_sources = true;
+                }
+            }
+            if !force_refresh_from_sources {
                 Self::validate_manifest_files(&manifest)?;
             }
+        } else if reindex_from_cached_files {
+            return Err(format!(
+                "Genome '{}' is not prepared locally; prepare it once before reindexing cached files",
+                genome_id
+            ));
         }
 
         if force_refresh_from_sources {
@@ -766,10 +819,15 @@ impl GenomeCatalog {
             )
         })?;
 
-        if manifest_path.exists() {
-            let mut manifest = Self::load_manifest(&manifest_path)?;
+        if let Some(mut manifest) = existing_manifest.clone() {
+            if reindex_from_cached_files || force_refresh_from_sources {
+                // Fall through to the rebuild path below.
+            } else {
             let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
             let mut warnings: Vec<String> = vec![];
+            if let Some(warning) = cached_source_drift_warning.clone() {
+                warnings.push(warning);
+            }
             let mut annotation_parse_report: Option<AnnotationParseReport> = None;
             let gene_index_path = manifest
                 .gene_index_path
@@ -905,14 +963,109 @@ impl GenomeCatalog {
                 warnings,
                 annotation_parse_report,
             });
+            }
         }
 
-        let sequence_path = install_dir.join("sequence.fa");
-        let fasta_index_path = install_dir.join("sequence.fa.fai");
-        let gene_index_path = install_dir.join("genes.json");
-        let blast_prefix_path = default_blast_db_prefix(&install_dir);
+        let existing_paths = if force_refresh_from_sources {
+            None
+        } else {
+            existing_manifest.as_ref()
+        };
+        let manifest_sequence_source = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .map(|manifest| manifest.sequence_source.clone())
+                .unwrap_or_else(|| sequence_source.clone())
+        } else {
+            sequence_source.clone()
+        };
+        let manifest_annotation_source = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .map(|manifest| manifest.annotation_source.clone())
+                .unwrap_or_else(|| annotation_source.clone())
+        } else {
+            annotation_source.clone()
+        };
+        let manifest_sequence_source_type = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .and_then(|manifest| manifest.sequence_source_type.clone())
+                .unwrap_or_else(|| {
+                    source_type_label(sequence_resolution.source_type).to_string()
+                })
+        } else {
+            source_type_label(sequence_resolution.source_type).to_string()
+        };
+        let manifest_annotation_source_type = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .and_then(|manifest| manifest.annotation_source_type.clone())
+                .unwrap_or_else(|| {
+                    source_type_label(annotation_resolution.source_type).to_string()
+                })
+        } else {
+            source_type_label(annotation_resolution.source_type).to_string()
+        };
+        let sequence_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.sequence_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa"));
+        let annotation_ext = infer_annotation_extension(&manifest_annotation_source);
+        let annotation_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.annotation_path))
+            .unwrap_or_else(|| install_dir.join(format!("annotation.{annotation_ext}")));
+        let fasta_index_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.fasta_index_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa.fai"));
+        let gene_index_path = existing_paths
+            .and_then(|manifest| manifest.gene_index_path.as_ref().map(PathBuf::from))
+            .unwrap_or_else(|| install_dir.join("genes.json"));
+        let blast_prefix_path = existing_paths
+            .and_then(|manifest| manifest.blast_db_prefix.as_deref().map(PathBuf::from))
+            .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
 
-        if !force_refresh_from_sources && non_empty_regular_file_exists(&sequence_path) {
+        if reindex_from_cached_files {
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "reset_indexes".to_string(),
+                    item: install_dir.display().to_string(),
+                    bytes_done: 0,
+                    bytes_total: None,
+                    percent: Some(0.0),
+                },
+            )?;
+            reset_prepared_genome_index_artifacts(
+                &fasta_index_path,
+                &gene_index_path,
+                &blast_prefix_path,
+            )?;
+        }
+
+        if reindex_from_cached_files {
+            if !non_empty_regular_file_exists(&sequence_path) {
+                return Err(format!(
+                    "Cannot reindex genome '{}' from cached files because prepared sequence '{}' is missing. Use source refresh/re-download instead.",
+                    genome_id,
+                    sequence_path.display()
+                ));
+            }
+            let bytes = fs::metadata(&sequence_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "reuse_sequence".to_string(),
+                    item: canonical_or_display(&sequence_path),
+                    bytes_done: bytes,
+                    bytes_total: Some(bytes),
+                    percent: Some(100.0),
+                },
+            )?;
+        } else if !force_refresh_from_sources && non_empty_regular_file_exists(&sequence_path) {
             let bytes = fs::metadata(&sequence_path)
                 .map(|meta| meta.len())
                 .unwrap_or(0);
@@ -945,9 +1098,29 @@ impl GenomeCatalog {
                 })
             })?;
         }
-        let annotation_ext = infer_annotation_extension(&annotation_source);
-        let annotation_path = install_dir.join(format!("annotation.{annotation_ext}"));
-        if !force_refresh_from_sources && non_empty_regular_file_exists(&annotation_path) {
+        if reindex_from_cached_files {
+            if !non_empty_regular_file_exists(&annotation_path) {
+                return Err(format!(
+                    "Cannot reindex genome '{}' from cached files because prepared annotation '{}' is missing. Use source refresh/re-download instead.",
+                    genome_id,
+                    annotation_path.display()
+                ));
+            }
+            let bytes = fs::metadata(&annotation_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "reuse_annotation".to_string(),
+                    item: canonical_or_display(&annotation_path),
+                    bytes_done: bytes,
+                    bytes_total: Some(bytes),
+                    percent: Some(100.0),
+                },
+            )?;
+        } else if !force_refresh_from_sources && non_empty_regular_file_exists(&annotation_path) {
             let bytes = fs::metadata(&annotation_path)
                 .map(|meta| meta.len())
                 .unwrap_or(0);
@@ -1001,7 +1174,10 @@ impl GenomeCatalog {
             })
         })?;
         let annotation_parse_report =
-            if !force_refresh_from_sources && non_empty_regular_file_exists(&gene_index_path) {
+            if !reindex_from_cached_files
+                && !force_refresh_from_sources
+                && non_empty_regular_file_exists(&gene_index_path)
+            {
                 let bytes = fs::metadata(&gene_index_path)
                     .map(|meta| meta.len())
                     .unwrap_or(0);
@@ -1075,14 +1251,10 @@ impl GenomeCatalog {
 
         let manifest = GenomeInstallManifest {
             genome_id: genome_id.to_string(),
-            sequence_source,
-            annotation_source,
-            sequence_source_type: Some(
-                source_type_label(sequence_resolution.source_type).to_string(),
-            ),
-            annotation_source_type: Some(
-                source_type_label(annotation_resolution.source_type).to_string(),
-            ),
+            sequence_source: manifest_sequence_source,
+            annotation_source: manifest_annotation_source,
+            sequence_source_type: Some(manifest_sequence_source_type),
+            annotation_source_type: Some(manifest_annotation_source_type),
             sequence_sha1: Some(compute_file_sha1(&sequence_path)?),
             annotation_sha1: Some(compute_file_sha1(&annotation_path)?),
             sequence_path: canonical_or_display(&sequence_path),
@@ -1109,6 +1281,9 @@ impl GenomeCatalog {
         )?;
 
         let mut warnings = blast_outcome.warnings;
+        if let Some(warning) = cached_source_drift_warning {
+            warnings.push(warning);
+        }
         if let Some(report) = annotation_parse_report.as_ref() {
             warnings.extend(summarize_annotation_parse_warnings(report));
         }
@@ -1116,7 +1291,7 @@ impl GenomeCatalog {
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
-            reused_existing: false,
+            reused_existing: reindex_from_cached_files,
             sequence_path: manifest.sequence_path,
             annotation_path: manifest.annotation_path,
             fasta_index_path: manifest.fasta_index_path,
@@ -3478,6 +3653,32 @@ fn reset_genome_install_dir(install_dir: &Path) -> Result<(), String> {
             install_dir.display()
         )
     })
+}
+
+fn remove_optional_file(path: &Path, label: &str) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    fs::remove_file(path)
+        .map_err(|e| format!("Could not remove stale {label} '{}': {e}", path.display()))
+}
+
+fn reset_prepared_genome_index_artifacts(
+    fasta_index_path: &Path,
+    gene_index_path: &Path,
+    blast_prefix_path: &Path,
+) -> Result<(), String> {
+    remove_optional_file(fasta_index_path, "FASTA index")?;
+    remove_optional_file(gene_index_path, "gene index")?;
+    for blast_index_path in collect_blast_index_files(blast_prefix_path) {
+        fs::remove_file(&blast_index_path).map_err(|e| {
+            format!(
+                "Could not remove stale BLAST index '{}': {e}",
+                blast_index_path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn is_blast_index_suffix(suffix: &str) -> bool {
@@ -5931,6 +6132,207 @@ mod tests {
             fs::read_to_string(cache_dir.join("toygenome").join("annotation.gtf"))
                 .expect("installed annotation");
         assert!(installed_annotation.contains("GENE17"));
+    }
+
+    #[test]
+    fn test_reindex_reuses_cached_files_without_redownloading_sources() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let source_fasta = root.join("source.fa");
+        let source_ann = root.join("source.gtf");
+        fs::write(&source_fasta, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &source_ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            source_fasta.display(),
+            source_ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let first = catalog.prepare_genome_once("ToyGenome").unwrap();
+        assert!(!first.reused_existing);
+        assert_eq!(
+            catalog.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            "ACGT"
+        );
+
+        fs::write(&source_fasta, ">chr1\nTTTTTTTT\n>chr17\nCCCCAAAA\n").unwrap();
+        fs::write(
+            &source_ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1B\"; gene_name \"ONE_B\";\n",
+                "chr17\tsrc\tgene\t1\t8\t.\t-\t.\tgene_id \"GENE17\"; gene_name \"SEVENTEEN\";\n"
+            ),
+        )
+        .unwrap();
+
+        let mut phases: Vec<String> = vec![];
+        let report = catalog
+            .reindex_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                phases.push(progress.phase);
+                true
+            })
+            .unwrap();
+        assert!(report.reused_existing);
+        assert!(phases.iter().any(|phase| phase == "reset_indexes"));
+        assert!(phases.iter().any(|phase| phase == "reuse_sequence"));
+        assert!(phases.iter().any(|phase| phase == "reuse_annotation"));
+        assert!(phases.iter().any(|phase| phase == "index_fasta"));
+        assert!(phases.iter().any(|phase| phase == "index_genes"));
+        assert!(!phases.iter().any(|phase| phase == "download_sequence"));
+        assert!(!phases.iter().any(|phase| phase == "download_annotation"));
+        assert!(!phases.iter().any(|phase| phase == "reuse_gene_index"));
+
+        assert_eq!(
+            catalog.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            "ACGT"
+        );
+        assert!(
+            catalog.get_sequence_region("ToyGenome", "chr17", 1, 4).is_err(),
+            "reindex should not have pulled in the changed source FASTA"
+        );
+        let genes = catalog.list_gene_regions("ToyGenome", None).unwrap();
+        assert_eq!(genes.len(), 1);
+        assert_eq!(genes[0].gene_id.as_deref(), Some("GENE1"));
+    }
+
+    #[test]
+    fn test_reindex_keeps_cached_files_even_when_catalog_sources_drift() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let source_fasta_v1 = root.join("source_v1.fa");
+        let source_ann_v1 = root.join("source_v1.gtf");
+        fs::write(&source_fasta_v1, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &source_ann_v1,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path_v1 = root.join("catalog_v1.json");
+        let catalog_json_v1 = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            source_fasta_v1.display(),
+            source_ann_v1.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path_v1, catalog_json_v1).unwrap();
+        let catalog_v1 = GenomeCatalog::from_json_file(&catalog_path_v1.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let first = catalog_v1.prepare_genome_once("ToyGenome").unwrap();
+        assert!(!first.reused_existing);
+        assert_eq!(
+            catalog_v1.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            "ACGT"
+        );
+
+        let source_fasta_v2 = root.join("source_v2.fa");
+        let source_ann_v2 = root.join("source_v2.gtf");
+        fs::write(&source_fasta_v2, ">chr1\nTTTTTTTT\n>chr17\nCCCCAAAA\n").unwrap();
+        fs::write(
+            &source_ann_v2,
+            concat!(
+                "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1B\"; gene_name \"ONE_B\";\n",
+                "chr17\tsrc\tgene\t1\t8\t.\t-\t.\tgene_id \"GENE17\"; gene_name \"SEVENTEEN\";\n"
+            ),
+        )
+        .unwrap();
+
+        let catalog_path_v2 = root.join("catalog_v2.json");
+        let catalog_json_v2 = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            source_fasta_v2.display(),
+            source_ann_v2.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path_v2, catalog_json_v2).unwrap();
+        let catalog_v2 = GenomeCatalog::from_json_file(&catalog_path_v2.to_string_lossy()).unwrap();
+
+        let mut phases: Vec<String> = vec![];
+        let report = catalog_v2
+            .reindex_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                phases.push(progress.phase);
+                true
+            })
+            .unwrap();
+        assert!(report.reused_existing);
+        assert!(phases.iter().any(|phase| phase == "reset_indexes"));
+        assert!(phases.iter().any(|phase| phase == "reuse_sequence"));
+        assert!(phases.iter().any(|phase| phase == "reuse_annotation"));
+        assert!(!phases.iter().any(|phase| phase == "download_sequence"));
+        assert!(!phases.iter().any(|phase| phase == "download_annotation"));
+        assert!(
+            report
+                .sequence_source
+                .as_deref()
+                .is_some_and(|source| source.ends_with("source_v1.fa")),
+            "report sequence source should preserve the cached-source provenance: {:?}",
+            report.sequence_source
+        );
+        assert!(
+            report
+                .annotation_source
+                .as_deref()
+                .is_some_and(|source| source.ends_with("source_v1.gtf")),
+            "report annotation source should preserve the cached-source provenance: {:?}",
+            report.annotation_source
+        );
+        assert!(report.warnings.iter().any(|warning| {
+            warning.contains("reindex used the cached local files without deleting or re-downloading them")
+        }));
+
+        assert_eq!(
+            catalog_v2.get_sequence_region("ToyGenome", "chr1", 1, 4).unwrap(),
+            "ACGT"
+        );
+        assert!(
+            catalog_v2.get_sequence_region("ToyGenome", "chr17", 1, 4).is_err(),
+            "reindex should keep using the cached local files when the catalog sources drift"
+        );
+        let genes = catalog_v2.list_gene_regions("ToyGenome", None).unwrap();
+        assert_eq!(genes.len(), 1);
+        assert_eq!(genes[0].gene_id.as_deref(), Some("GENE1"));
     }
 
     #[test]

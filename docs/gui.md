@@ -1894,14 +1894,20 @@ Recommended flow:
    - source summary line shows source types and, when available, nucleotide
      length and molecular mass metadata
    - the dropdown shows all catalog genomes; already prepared entries are tagged
-     and selecting one switches the main action to `Reinstall Selected...`
-   - click `Prepare Genome` for new installs or `Reinstall Selected...` for an
-     already prepared genome; reinstall forces a fresh source download/index
-     rebuild, and GENtle asks for confirmation because it can take some time
-   - when `Reinstall Selected...` is launched from the floating prepare window,
+     and selecting one switches the main action to `Reindex Selected...`
+   - click `Prepare Genome` for new installs or `Reindex Selected...` for an
+     already prepared genome; reindex keeps the cached local sequence and
+     annotation files by default and rebuilds the indexes from them
+   - if the current catalog entry now points to different sources than the
+     existing prepared manifest, `Reindex Selected...` still keeps the cached
+     local files; only the explicit refresh action discards and re-downloads them
+   - the confirmation dialog for prepared genomes offers two explicit actions:
+     - `Reindex Using Cached Files`
+     - `Remove Cached Files + Re-download`
+   - when `Reindex Selected...` is launched from the floating prepare window,
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
-   - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
+   - this runs in background, shows live progress immediately, and builds local FASTA, gene, and BLAST indexes
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues
    - a running prepare task can be cancelled via `Cancel Prepare`
@@ -1996,9 +2002,9 @@ Recommended flow:
    - each prepared row also shows a compact cached-sequence summary derived
      from the prepared FASTA index (`contig count | longest contig`), with hover
      details for total span and representative contig names
-   - use `Reinstall...` on a prepared row to refresh a stale or partial install;
-     reinstall forces a fresh source download/index rebuild, and GENtle asks
-     for confirmation because it can take some time
+   - use `Reindex...` on a prepared row to rebuild indexes from cached local
+     files; if you want to delete cached files and fetch fresh sources, choose
+     the explicit `Remove Cached Files + Re-download` option in the confirmation dialog
    - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
      prepared genome as proportional line lengths
    - when extraction fails with chromosome/contig mismatch, status messages now

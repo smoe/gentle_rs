@@ -505,7 +505,47 @@ impl GenomeDialogScope {
 enum PrepareGenomeDialogPrimaryAction {
     None,
     Prepare,
-    Reinstall,
+    Reindex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenomePrepareLaunchMode {
+    Prepare,
+    ReindexCachedFiles,
+    RefreshFromSources,
+}
+
+impl GenomePrepareLaunchMode {
+    fn progress_label(self) -> &'static str {
+        match self {
+            Self::Prepare => "Preparing",
+            Self::ReindexCachedFiles => "Reindexing",
+            Self::RefreshFromSources => "Refreshing",
+        }
+    }
+
+    fn job_summary(self) -> &'static str {
+        match self {
+            Self::Prepare => "Prepare genome started",
+            Self::ReindexCachedFiles => "Reindex genome started",
+            Self::RefreshFromSources => "Refresh genome started",
+        }
+    }
+
+    fn result_prefix(self, cancellation_requested: bool) -> &'static str {
+        match (self, cancellation_requested) {
+            (Self::Prepare, false) => "Prepare genome: ok",
+            (Self::Prepare, true) => "Prepare genome finished after cancellation request",
+            (Self::ReindexCachedFiles, false) => "Reindex genome: ok",
+            (Self::ReindexCachedFiles, true) => {
+                "Reindex genome finished after cancellation request"
+            }
+            (Self::RefreshFromSources, false) => "Refresh genome: ok",
+            (Self::RefreshFromSources, true) => {
+                "Refresh genome finished after cancellation request"
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1224,7 +1264,7 @@ struct GenomePrepareTask {
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     timeout_seconds: Option<u64>,
-    force_refresh_from_sources: bool,
+    mode: GenomePrepareLaunchMode,
     receiver: mpsc::Receiver<GenomePrepareTaskMessage>,
 }
 
@@ -6323,10 +6363,10 @@ Error: `{err}`"
         }
     }
 
-    fn confirm_prepared_genome_reinstall(&mut self) {
+    fn confirm_prepared_genome_reinstall(&mut self, mode: GenomePrepareLaunchMode) {
         if let Some(request) = self.pending_prepared_genome_reinstall.take() {
             self.apply_prepared_genome_reinstall_request(request);
-            self.start_prepare_reference_genome_with_options(true);
+            self.start_prepare_reference_genome_with_mode(mode);
         }
     }
 
@@ -8900,7 +8940,7 @@ Error: `{err}`"
         } else if preparable_set.contains(trimmed) {
             PrepareGenomeDialogPrimaryAction::Prepare
         } else if all_genomes.iter().any(|name| name == trimmed) {
-            PrepareGenomeDialogPrimaryAction::Reinstall
+            PrepareGenomeDialogPrimaryAction::Reindex
         } else {
             PrepareGenomeDialogPrimaryAction::None
         }
@@ -9321,7 +9361,13 @@ Error: `{err}`"
         elapsed_secs: f64,
         cancellation_requested: bool,
         timeout_seconds: Option<u64>,
+        mode: GenomePrepareLaunchMode,
     ) -> String {
+        let action = match mode {
+            GenomePrepareLaunchMode::Prepare => "Prepare genome",
+            GenomePrepareLaunchMode::ReindexCachedFiles => "Reindex genome",
+            GenomePrepareLaunchMode::RefreshFromSources => "Refresh genome",
+        };
         let lower = message.to_ascii_lowercase();
         let timed_out_hint = lower.contains("timed out") || lower.contains("timeout");
         let cancelled_hint = lower.contains("cancelled") || lower.contains("canceled");
@@ -9329,28 +9375,47 @@ Error: `{err}`"
             .map(|limit| elapsed_secs >= limit as f64)
             .unwrap_or(false);
         if timed_out_hint || (!cancellation_requested && cancelled_hint && timebox_elapsed) {
-            format!(
-                "Prepare genome timed out after {:.1}s: {}",
-                elapsed_secs, message
-            )
+            format!("{action} timed out after {:.1}s: {}", elapsed_secs, message)
         } else if cancellation_requested || cancelled_hint {
-            format!(
-                "Prepare genome cancelled after {:.1}s: {}",
-                elapsed_secs, message
-            )
+            format!("{action} cancelled after {:.1}s: {}", elapsed_secs, message)
         } else {
-            format!(
-                "Prepare genome failed after {:.1}s: {}",
-                elapsed_secs, message
-            )
+            format!("{action} failed after {:.1}s: {}", elapsed_secs, message)
         }
     }
 
     fn start_prepare_reference_genome(&mut self) {
-        self.start_prepare_reference_genome_with_options(false);
+        self.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
     }
 
-    fn start_prepare_reference_genome_with_options(&mut self, force_refresh_from_sources: bool) {
+    fn start_prepare_reference_genome_for_current_selection(&mut self) {
+        let preparable_genomes = match self.unprepared_genomes_for_prepare_dialog() {
+            Ok(names) => names,
+            Err(e) => {
+                self.genome_prepare_status = format!("Prepared-state check error: {e}");
+                return;
+            }
+        };
+        let preparable_set: HashSet<String> = preparable_genomes.into_iter().collect();
+        match Self::prepare_dialog_primary_action(
+            &self.genome_id,
+            &self.genome_catalog_genomes,
+            &preparable_set,
+        ) {
+            PrepareGenomeDialogPrimaryAction::Prepare => {
+                self.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
+            }
+            PrepareGenomeDialogPrimaryAction::Reindex => {
+                self.start_prepare_reference_genome_with_mode(
+                    GenomePrepareLaunchMode::ReindexCachedFiles,
+                );
+            }
+            PrepareGenomeDialogPrimaryAction::None => {
+                self.genome_prepare_status = "Select a genome first".to_string();
+            }
+        }
+    }
+
+    fn start_prepare_reference_genome_with_mode(&mut self, mode: GenomePrepareLaunchMode) {
         if self.genome_prepare_task.is_some() {
             self.genome_prepare_status = "Genome preparation is already running".to_string();
             return;
@@ -9379,17 +9444,16 @@ Error: `{err}`"
         let cancel_requested = Arc::new(AtomicBool::new(false));
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
-        let action_title = if force_refresh_from_sources {
-            "Reinstalling"
-        } else {
-            "Preparing"
-        };
-        let action_summary = if force_refresh_from_sources {
-            "Reinstall genome started"
-        } else {
-            "Prepare genome started"
-        };
-        self.genome_prepare_progress = None;
+        let action_title = mode.progress_label();
+        let action_summary = mode.job_summary();
+        self.genome_prepare_progress = Some(PrepareGenomeProgress {
+            genome_id: genome_id.clone(),
+            phase: "queued".to_string(),
+            item: "waiting for worker".to_string(),
+            bytes_done: 0,
+            bytes_total: None,
+            percent: Some(0.0),
+        });
         self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
             format!(
                 "{action_title} genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.\npreflight makeblastdb: {}",
@@ -9415,7 +9479,7 @@ Error: `{err}`"
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
             timeout_seconds,
-            force_refresh_from_sources,
+            mode,
             receiver: rx,
         });
         std::thread::spawn(move || {
@@ -9452,22 +9516,32 @@ Error: `{err}`"
                 }
                 true
             };
-            let outcome = (if force_refresh_from_sources {
-                GentleEngine::reinstall_reference_genome_once(
+            let outcome = (match mode {
+                GenomePrepareLaunchMode::Prepare => GentleEngine::prepare_reference_genome_once(
                     &genome_id,
                     catalog_path.as_deref(),
                     cache_dir.as_deref(),
                     timeout_seconds,
                     &mut progress_forwarder,
-                )
-            } else {
-                GentleEngine::prepare_reference_genome_once(
-                    &genome_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                    timeout_seconds,
-                    &mut progress_forwarder,
-                )
+                ),
+                GenomePrepareLaunchMode::ReindexCachedFiles => {
+                    GentleEngine::reindex_reference_genome_once(
+                        &genome_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        timeout_seconds,
+                        &mut progress_forwarder,
+                    )
+                }
+                GenomePrepareLaunchMode::RefreshFromSources => {
+                    GentleEngine::reinstall_reference_genome_once(
+                        &genome_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        timeout_seconds,
+                        &mut progress_forwarder,
+                    )
+                }
             })
             .map(|report| OpResult {
                 op_id: "background-prepare-genome".to_string(),
@@ -9498,11 +9572,7 @@ Error: `{err}`"
         let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_prepare_task {
             let active_job_id = task.job_id;
-            let action_title = if task.force_refresh_from_sources {
-                "Reinstalling"
-            } else {
-                "Preparing"
-            };
+            let action_title = task.mode.progress_label();
             const MAX_MESSAGES_PER_TICK: usize = 128;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
@@ -9560,7 +9630,7 @@ Error: `{err}`"
             );
         }
         if let Some((job_id, outcome)) = done {
-            let (elapsed, cancellation_requested, timeout_seconds, force_refresh_from_sources) =
+            let (elapsed, cancellation_requested, timeout_seconds, mode) =
                 self.genome_prepare_task
                     .as_ref()
                     .map(|task| {
@@ -9568,26 +9638,14 @@ Error: `{err}`"
                             task.started.elapsed().as_secs_f64(),
                             task.cancel_requested.load(Ordering::Relaxed),
                             task.timeout_seconds,
-                            task.force_refresh_from_sources,
+                            task.mode,
                         )
                     })
-                    .unwrap_or((0.0, false, None, false));
+                    .unwrap_or((0.0, false, None, GenomePrepareLaunchMode::Prepare));
             self.genome_prepare_task = None;
             match outcome {
                 Ok(result) => {
-                    let prefix = if cancellation_requested {
-                        if force_refresh_from_sources {
-                            "Reinstall genome finished after cancellation request"
-                        } else {
-                            "Prepare genome finished after cancellation request"
-                        }
-                    } else {
-                        if force_refresh_from_sources {
-                            "Reinstall genome: ok"
-                        } else {
-                            "Prepare genome: ok"
-                        }
-                    };
+                    let prefix = mode.result_prefix(cancellation_requested);
                     self.genome_prepare_status = format!(
                         "{}\nelapsed: {:.1}s",
                         Self::format_op_result_status(
@@ -9612,6 +9670,7 @@ Error: `{err}`"
                         elapsed,
                         cancellation_requested,
                         timeout_seconds,
+                        mode,
                     );
                     self.push_job_event(
                         BackgroundJobKind::PrepareGenome,
@@ -9619,10 +9678,10 @@ Error: `{err}`"
                         Some(job_id),
                         format!(
                             "{} genome ended in {:.1}s: {}",
-                            if force_refresh_from_sources {
-                                "Reinstall"
-                            } else {
-                                "Prepare"
+                            match mode {
+                                GenomePrepareLaunchMode::Prepare => "Prepare",
+                                GenomePrepareLaunchMode::ReindexCachedFiles => "Reindex",
+                                GenomePrepareLaunchMode::RefreshFromSources => "Refresh",
                             },
                             elapsed,
                             e.message
@@ -11510,11 +11569,13 @@ Error: `{err}`"
         let running = self.genome_prepare_task.is_some();
         let primary_action =
             Self::prepare_dialog_primary_action(&self.genome_id, &all_genomes, &preparable_set);
-        if matches!(primary_action, PrepareGenomeDialogPrimaryAction::Reinstall) {
+        if matches!(primary_action, PrepareGenomeDialogPrimaryAction::Reindex) {
             ui.label(
-                "Selected genome is already prepared. Use the main action below to reinstall it.",
+                "Selected genome is already prepared. Use the main action below to reindex it from cached local files.",
             );
-            ui.small("Reinstall keeps the same catalog/cache settings and may take some time.");
+            ui.small(
+                "Reindex keeps the downloaded local files by default. Removing cached files and re-downloading now requires explicit confirmation.",
+            );
         } else if !self.genome_id.trim().is_empty()
             && matches!(primary_action, PrepareGenomeDialogPrimaryAction::None)
         {
@@ -11524,7 +11585,8 @@ Error: `{err}`"
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 let mut status = format!(
-                    "Prepare task running ({:.1}s)",
+                    "{} task running ({:.1}s)",
+                    task.mode.progress_label(),
                     task.started.elapsed().as_secs_f32()
                 );
                 if let Some(timeout) = task.timeout_seconds {
@@ -11542,10 +11604,10 @@ Error: `{err}`"
                     "Prepare Genome",
                     format!("Download and index the selected {}", scope.description()),
                 ),
-                PrepareGenomeDialogPrimaryAction::Reinstall => (
-                    "Reinstall Selected...",
+                PrepareGenomeDialogPrimaryAction::Reindex => (
+                    "Reindex Selected...",
                     format!(
-                        "Re-download and rebuild the selected {}. A confirmation dialog will be shown.",
+                        "Reuse cached local files and rebuild indexes for the selected {}. A confirmation dialog will be shown.",
                         scope.description()
                     ),
                 ),
@@ -11567,7 +11629,7 @@ Error: `{err}`"
                     PrepareGenomeDialogPrimaryAction::Prepare => {
                         self.start_prepare_reference_genome();
                     }
-                    PrepareGenomeDialogPrimaryAction::Reinstall => {
+                    PrepareGenomeDialogPrimaryAction::Reindex => {
                         self.queue_prepared_genome_reinstall(
                             self.genome_id.clone(),
                             scope,
@@ -11700,21 +11762,23 @@ Error: `{err}`"
         } else {
             request.cache_dir.trim().to_string()
         };
-        egui::Window::new("Reinstall Prepared Genome")
+        egui::Window::new("Reindex Prepared Genome")
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .collapsible(false)
             .movable(false)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(format!(
-                    "Reinstall prepared {} '{}'?",
+                    "Reindex prepared {} '{}'?",
                     request.scope.description(),
                     request.genome_id
                 ));
                 ui.small(
-                    "This re-downloads source files and rebuilds local indexes in the selected cache.",
+                    "Reindex keeps the cached local sequence/annotation files and rebuilds local indexes in the selected cache.",
                 );
-                ui.small("It runs in the background, but it can take some time.");
+                ui.small(
+                    "Removing cached files and re-downloading from sources is available below, but only as an explicit action.",
+                );
                 ui.separator();
                 ui.label(format!("catalog: {resolved_catalog}"));
                 ui.label(format!("cache_dir: {resolved_cache}"));
@@ -11722,21 +11786,37 @@ Error: `{err}`"
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::from_rgb(190, 70, 70),
-                        "Another genome prepare task is already running. Finish or cancel it before starting a reinstall.",
+                        "Another genome prepare task is already running. Finish or cancel it before starting a reindex or refresh.",
                     );
                 }
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
                             self.genome_prepare_task.is_none(),
-                            egui::Button::new("Reinstall"),
+                            egui::Button::new("Reindex Using Cached Files"),
                         )
                         .on_hover_text(
-                            "Start the reinstall using the shown catalog/cache settings. This may take some time.",
+                            "Keep the cached local files and rebuild indexes using the shown catalog/cache settings. This may take some time.",
                         )
                         .clicked()
                     {
-                        self.confirm_prepared_genome_reinstall();
+                        self.confirm_prepared_genome_reinstall(
+                            GenomePrepareLaunchMode::ReindexCachedFiles,
+                        );
+                    }
+                    if ui
+                        .add_enabled(
+                            self.genome_prepare_task.is_none(),
+                            egui::Button::new("Remove Cached Files + Re-download"),
+                        )
+                        .on_hover_text(
+                            "Explicitly delete cached local files, download sources again, and rebuild all indexes.",
+                        )
+                        .clicked()
+                    {
+                        self.confirm_prepared_genome_reinstall(
+                            GenomePrepareLaunchMode::RefreshFromSources,
+                        );
                     }
                     if ui
                         .button("Cancel")
@@ -13024,10 +13104,10 @@ Error: `{err}`"
                                                     if ui
                                                         .add_enabled(
                                                             self.genome_prepare_task.is_none(),
-                                                            egui::Button::new("Reinstall..."),
+                                                            egui::Button::new("Reindex..."),
                                                         )
                                                         .on_hover_text(
-                                                            "Re-download and rebuild this prepared genome using the current catalog/cache settings. A confirmation dialog will be shown because it may take some time.",
+                                                            "Reuse cached local files and rebuild this prepared genome's indexes using the current catalog/cache settings. A confirmation dialog will be shown because it may take some time.",
                                                         )
                                                         .clicked()
                                                     {
@@ -28024,7 +28104,9 @@ Error: `{err}`"
                         ui.small("Idle");
                         if ui
                             .button("Retry")
-                            .on_hover_text("Run prepare genome again using current dialog settings")
+                            .on_hover_text(
+                                "Run the current prepare/reindex action again using the current dialog settings",
+                            )
                             .clicked()
                         {
                             let snapshot_id = self.capture_retry_snapshot(
@@ -28040,7 +28122,7 @@ Error: `{err}`"
                                     "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
                                 ),
                             );
-                            self.start_prepare_reference_genome();
+                            self.start_prepare_reference_genome_for_current_selection();
                         }
                     });
                 }
@@ -30164,9 +30246,10 @@ mod tests {
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
-        GenomeDialogScope, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, GibsonUiInsertOrientation, GibsonUiInsertRow,
-        GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
+        GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask,
+        GenomePrepareTaskMessage, GenomeTrackImportTask, GenomeTrackImportTaskMessage,
+        GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc,
+        HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
@@ -32664,7 +32747,7 @@ mod tests {
         );
         assert_eq!(
             GENtleApp::prepare_dialog_primary_action("Beta", &all_genomes, &preparable_set),
-            PrepareGenomeDialogPrimaryAction::Reinstall
+            PrepareGenomeDialogPrimaryAction::Reindex
         );
         assert_eq!(
             GENtleApp::prepare_dialog_primary_action("Gamma", &all_genomes, &preparable_set),
@@ -33654,7 +33737,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: None,
-            force_refresh_from_sources: false,
+            mode: GenomePrepareLaunchMode::Prepare,
             receiver: rx,
         });
 
@@ -33678,6 +33761,27 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 .cancel_requested
                 .load(Ordering::Relaxed)
         );
+    }
+
+    #[test]
+    fn start_prepare_reference_genome_with_mode_sets_queued_progress_immediately() {
+        let mut app = GENtleApp::default();
+        app.genome_id = "ToyGenome".to_string();
+        app.genome_catalog_path = "/definitely/missing/catalog.json".to_string();
+
+        app.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::ReindexCachedFiles);
+
+        let task = app
+            .genome_prepare_task
+            .as_ref()
+            .expect("prepare task should be registered immediately");
+        assert_eq!(task.mode, GenomePrepareLaunchMode::ReindexCachedFiles);
+        let progress = app
+            .genome_prepare_progress
+            .as_ref()
+            .expect("queued progress should be visible immediately");
+        assert_eq!(progress.phase, "queued");
+        assert_eq!(progress.genome_id, "ToyGenome");
     }
 
     #[test]
@@ -33722,7 +33826,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: None,
-            force_refresh_from_sources: false,
+            mode: GenomePrepareLaunchMode::Prepare,
             receiver: rx,
         });
 
@@ -33767,7 +33871,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(true)),
             timeout_seconds: Some(600),
-            force_refresh_from_sources: false,
+            mode: GenomePrepareLaunchMode::Prepare,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
@@ -33799,7 +33903,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now() - Duration::from_secs(3),
             cancel_requested: Arc::new(AtomicBool::new(false)),
             timeout_seconds: Some(1),
-            force_refresh_from_sources: false,
+            mode: GenomePrepareLaunchMode::Prepare,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
@@ -33831,7 +33935,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             started: Instant::now(),
             cancel_requested: Arc::new(AtomicBool::new(true)),
             timeout_seconds: None,
-            force_refresh_from_sources: false,
+            mode: GenomePrepareLaunchMode::Prepare,
             receiver: rx,
         });
         tx.send(GenomePrepareTaskMessage::Done {
