@@ -642,6 +642,8 @@ Patterns menu:
        - `Feature` column shows the overlapping gene when available, otherwise
          another overlapping feature label; MCS-linked rows also show the MCS
          location there
+       - suggestion cells use compact wrapped columns so longer feature or
+         REBASE text does not force the Gibson window excessively wide
        - shows end geometry (`blunt`, `5' overhang`, `3' overhang`) so sites
          such as `SmaI` can be chosen directly from the specialist
        - specific cutter suggestions show a compact `Cut` summary derived from

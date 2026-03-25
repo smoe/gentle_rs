@@ -15312,6 +15312,10 @@ Error: `{err}`"
                 let table_height = ((displayed_suggestions.len() + 1) as f32
                     * ui.spacing().interact_size.y)
                     + 10.0;
+                const SUGGESTION_COL_WIDTH: f32 = 120.0;
+                const ENDS_COL_WIDTH: f32 = 116.0;
+                const FEATURE_COL_WIDTH: f32 = 176.0;
+                const CUT_COL_WIDTH: f32 = 150.0;
                 egui::ScrollArea::horizontal()
                     .id_salt("gibson_destination_opening_suggestions_scroll")
                     .auto_shrink([false, false])
@@ -15319,7 +15323,7 @@ Error: `{err}`"
                     .show(ui, |ui| {
                         egui::Grid::new("gibson_destination_opening_suggestions")
                             .num_columns(5)
-                            .spacing([12.0, 6.0])
+                            .spacing([8.0, 4.0])
                             .striped(true)
                             .show(ui, |ui| {
                                 ui.strong("Suggestion").on_hover_text(
@@ -15339,25 +15343,58 @@ Error: `{err}`"
                                 for suggestion in &displayed_suggestions {
                                     let suggestion_help =
                                         Self::gibson_destination_suggestion_help_text(suggestion);
-                                    ui.label(Self::gibson_destination_suggestion_display_label(
-                                        suggestion,
-                                    ))
-                                        .on_hover_text(suggestion_help.clone());
-                                    ui.label(
-                                        Self::gibson_destination_suggestion_geometry_label(
-                                            suggestion,
-                                        ),
+                                    ui.add_sized(
+                                        [SUGGESTION_COL_WIDTH, 0.0],
+                                        egui::Label::new(
+                                            egui::RichText::new(
+                                                Self::gibson_destination_suggestion_display_label(
+                                                    suggestion,
+                                                ),
+                                            )
+                                            .small(),
+                                        )
+                                        .wrap(),
                                     )
                                     .on_hover_text(suggestion_help.clone());
-                                    ui.label(
-                                        Self::gibson_destination_suggestion_feature_label(
-                                            suggestion,
-                                        ),
+                                    ui.add_sized(
+                                        [ENDS_COL_WIDTH, 0.0],
+                                        egui::Label::new(
+                                            egui::RichText::new(
+                                                Self::gibson_destination_suggestion_geometry_label(
+                                                    suggestion,
+                                                ),
+                                            )
+                                            .small(),
+                                        )
+                                        .wrap(),
                                     )
                                     .on_hover_text(suggestion_help.clone());
-                                    ui.monospace(Self::gibson_destination_suggestion_cut_label(
-                                        suggestion,
-                                    ))
+                                    ui.add_sized(
+                                        [FEATURE_COL_WIDTH, 0.0],
+                                        egui::Label::new(
+                                            egui::RichText::new(
+                                                Self::gibson_destination_suggestion_feature_label(
+                                                    suggestion,
+                                                ),
+                                            )
+                                            .small(),
+                                        )
+                                        .wrap(),
+                                    )
+                                    .on_hover_text(suggestion_help.clone());
+                                    ui.add_sized(
+                                        [CUT_COL_WIDTH, 0.0],
+                                        egui::Label::new(
+                                            egui::RichText::new(
+                                                Self::gibson_destination_suggestion_cut_label(
+                                                    suggestion,
+                                                ),
+                                            )
+                                            .monospace()
+                                            .small(),
+                                        )
+                                        .wrap(),
+                                    )
                                     .on_hover_text(suggestion_help.clone());
                                     if ui
                                         .button("Use")
