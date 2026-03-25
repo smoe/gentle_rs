@@ -5948,11 +5948,45 @@ fn normalize_chromosome_token(raw: &str) -> String {
     }
 }
 
+fn accession_style_chromosome_alias(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let upper = trimmed.to_ascii_uppercase();
+    let without_version = upper.split('.').next().unwrap_or(&upper);
+    let suffix = without_version
+        .strip_prefix("NC_")
+        .or_else(|| without_version.strip_prefix("CM"))?;
+    if suffix.is_empty() || !suffix.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    let normalized = suffix.trim_start_matches('0');
+    if normalized.is_empty() {
+        Some("0".to_string())
+    } else {
+        Some(normalized.to_string())
+    }
+}
+
 fn chromosome_names_match(expected: &str, actual: &str) -> bool {
     if expected.eq_ignore_ascii_case(actual) {
         return true;
     }
-    normalize_chromosome_token(expected) == normalize_chromosome_token(actual)
+    let expected_normalized = normalize_chromosome_token(expected);
+    let actual_normalized = normalize_chromosome_token(actual);
+    if expected_normalized == actual_normalized {
+        return true;
+    }
+    accession_style_chromosome_alias(expected)
+        .into_iter()
+        .map(|alias| normalize_chromosome_token(&alias))
+        .chain(
+            accession_style_chromosome_alias(actual)
+                .into_iter()
+                .map(|alias| normalize_chromosome_token(&alias)),
+        )
+        .any(|alias| alias == expected_normalized || alias == actual_normalized)
 }
 
 fn pick_gene_name(attrs: &HashMap<String, String>) -> Option<String> {
@@ -6743,6 +6777,13 @@ mod tests {
             .expect_err("missing contig should fail");
         assert!(err.contains("Suggested matching contigs"));
         assert!(err.contains("NC_000017.11"));
+    }
+
+    #[test]
+    fn test_chromosome_names_match_accepts_accession_style_numeric_aliases() {
+        assert!(chromosome_names_match("17", "NC_000017.11"));
+        assert!(chromosome_names_match("chr17", "NC_000017.11"));
+        assert!(!chromosome_names_match("17", "NC_000018.11"));
     }
 
     #[test]
