@@ -53,8 +53,8 @@ name = "gentle"
 default = []
 screenshot-capture = []
 snapshot-tests = []
-js-interface = ["dep:deno_core", "dep:deno_error"]
-lua-interface = ["dep:mlua"]
+js-interface = ["dep:deno_core", "dep:deno_error", "dep:rustyline"]
+lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
@@ -84,8 +84,6 @@ eframe = { version = "*", features = [
 ] }
 egui_extras = { version = "*", features = ["all_loaders"] }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
-egui-file-dialog = "*" #  For file dialogs.
-copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
 resvg = "0.45.1"
 rfd = "*"
@@ -96,8 +94,8 @@ regex = "^1"
 pulldown-cmark = "0.12.2"
 sha1 = "0.10"
 
-# For cli
-rustyline = "*"
+# For feature-gated JS/Lua shells
+rustyline = { version = "*", optional = true }
 mlua = { version = "*", optional = true, features = ["lua54", "vendored", "serialize"] }
 deno_core = { version = "*", optional = true }
 deno_error = { version = "*", optional = true }
