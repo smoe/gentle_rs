@@ -1557,6 +1557,38 @@ pub struct PrimerInsertionContextReport {
     pub pairs: Vec<PrimerInsertionPairCompensation>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OverlapExtensionMutagenesisConstraints {
+    pub overlap_bp: usize,
+    pub outer_forward: PrimerDesignSideConstraint,
+    pub outer_reverse: PrimerDesignSideConstraint,
+    pub inner_forward: PrimerDesignSideConstraint,
+    pub inner_reverse: PrimerDesignSideConstraint,
+}
+
+impl Default for OverlapExtensionMutagenesisConstraints {
+    fn default() -> Self {
+        let side = PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 30,
+            min_tm_c: 50.0,
+            max_tm_c: 72.0,
+            min_gc_fraction: 0.30,
+            max_gc_fraction: 0.75,
+            max_anneal_hits: 1,
+            ..PrimerDesignSideConstraint::default()
+        };
+        Self {
+            overlap_bp: 24,
+            outer_forward: side.clone(),
+            outer_reverse: side.clone(),
+            inner_forward: side.clone(),
+            inner_reverse: side,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PrimerDesignRejectionSummary {
@@ -4471,6 +4503,16 @@ pub enum Operation {
         max_pairs: Option<usize>,
         report_id: Option<String>,
     },
+    PcrOverlapExtensionMutagenesis {
+        template: SeqId,
+        edit_start_0based: usize,
+        edit_end_0based_exclusive: usize,
+        #[serde(default)]
+        insert_sequence: String,
+        #[serde(default)]
+        constraints: OverlapExtensionMutagenesisConstraints,
+        output_prefix: Option<String>,
+    },
     DesignQpcrAssays {
         template: SeqId,
         roi_start_0based: usize,
@@ -6305,6 +6347,7 @@ impl GentleEngine {
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
                 "DesignInsertionPrimerPairs".to_string(),
+                "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
                 "DeriveTranscriptSequences".to_string(),
                 "ComputeDotplot".to_string(),

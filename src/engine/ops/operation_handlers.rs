@@ -1623,6 +1623,656 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn materialize_derived_linear_sequence(
+        &mut self,
+        result: &mut OpResult,
+        base_id: &str,
+        sequence: &str,
+    ) -> Result<String, EngineError> {
+        let mut dna = DNAsequence::from_sequence(sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not materialize derived sequence '{}': {e}", base_id),
+        })?;
+        dna.set_circular(false);
+        let seq_id = self.unique_seq_id(base_id);
+        dna.set_name(seq_id.clone());
+        Self::prepare_sequence(&mut dna);
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+        result.created_seq_ids.push(seq_id.clone());
+        Ok(seq_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_overlap_extension_mutagenesis(
+        &mut self,
+        result: &mut OpResult,
+        parent_seq_ids: &mut Vec<SeqId>,
+        template: SeqId,
+        edit_start_0based: usize,
+        edit_end_0based_exclusive: usize,
+        insert_sequence: String,
+        constraints: OverlapExtensionMutagenesisConstraints,
+        output_prefix: Option<String>,
+    ) -> Result<(), EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(&template)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{template}' not found"),
+            })?
+            .clone();
+        if dna.is_circular() {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: "PcrOverlapExtensionMutagenesis currently supports linear templates only"
+                    .to_string(),
+            });
+        }
+        let template_seq = dna.get_forward_string().to_ascii_uppercase();
+        let template_bytes = template_seq.as_bytes();
+        let template_len = template_bytes.len();
+        if template_len == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "PcrOverlapExtensionMutagenesis requires a non-empty template sequence"
+                    .to_string(),
+            });
+        }
+        if edit_start_0based > edit_end_0based_exclusive || edit_end_0based_exclusive > template_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "PcrOverlapExtensionMutagenesis edit window {}..{} is invalid for template length {}",
+                    edit_start_0based, edit_end_0based_exclusive, template_len
+                ),
+            });
+        }
+        if constraints.overlap_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "PcrOverlapExtensionMutagenesis requires overlap_bp >= 1".to_string(),
+            });
+        }
+
+        let insert_sequence = if insert_sequence.trim().is_empty() {
+            String::new()
+        } else {
+            Self::normalize_iupac_text(&insert_sequence)?
+        };
+        let deleted_bp = edit_end_0based_exclusive.saturating_sub(edit_start_0based);
+        let inserted_bp = insert_sequence.len();
+        if deleted_bp == 0 && inserted_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "PcrOverlapExtensionMutagenesis requires an insertion/deletion/replacement (received a no-op edit)".to_string(),
+            });
+        }
+
+        let mut mutated_template = String::with_capacity(template_len + inserted_bp);
+        mutated_template.push_str(&template_seq[..edit_start_0based]);
+        mutated_template.push_str(&insert_sequence);
+        mutated_template.push_str(&template_seq[edit_end_0based_exclusive..]);
+        if mutated_template.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "PcrOverlapExtensionMutagenesis cannot produce an empty mutant template"
+                    .to_string(),
+            });
+        }
+        let deleted_bp_i64 = i64::try_from(deleted_bp).map_err(|_| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Deletion span is too large".to_string(),
+        })?;
+        let inserted_bp_i64 = i64::try_from(inserted_bp).map_err(|_| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Insertion span is too large".to_string(),
+        })?;
+        let delta_bp_i64 = inserted_bp_i64 - deleted_bp_i64;
+        let map_original_to_mutant_pos = |pos: usize| -> Option<usize> {
+            if pos <= edit_start_0based {
+                Some(pos)
+            } else if pos >= edit_end_0based_exclusive {
+                if delta_bp_i64 >= 0 {
+                    pos.checked_add(delta_bp_i64 as usize)
+                } else {
+                    pos.checked_sub((-delta_bp_i64) as usize)
+                }
+            } else {
+                None
+            }
+        };
+
+        let mut outer_forward = constraints.outer_forward.clone();
+        outer_forward.end_0based =
+            Some(outer_forward.end_0based.unwrap_or(edit_start_0based).min(edit_start_0based));
+        let mut outer_reverse = constraints.outer_reverse.clone();
+        outer_reverse.start_0based = Some(
+            outer_reverse
+                .start_0based
+                .unwrap_or(edit_end_0based_exclusive)
+                .max(edit_end_0based_exclusive),
+        );
+        let mut inner_forward = constraints.inner_forward.clone();
+        inner_forward.start_0based = Some(
+            inner_forward
+                .start_0based
+                .unwrap_or(edit_end_0based_exclusive)
+                .max(edit_end_0based_exclusive),
+        );
+        let mut inner_reverse = constraints.inner_reverse.clone();
+        inner_reverse.end_0based =
+            Some(inner_reverse.end_0based.unwrap_or(edit_start_0based).min(edit_start_0based));
+
+        for (label, side) in [
+            ("outer_forward", &outer_forward),
+            ("outer_reverse", &outer_reverse),
+            ("inner_forward", &inner_forward),
+            ("inner_reverse", &inner_reverse),
+        ] {
+            Self::validate_primer_design_side_constraints(label, side)?;
+            if let Some(location) = side.location_0based {
+                if location >= template_len {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.location_0based ({location}) is outside template length {template_len}",
+                        ),
+                    });
+                }
+            }
+            if let Some(start) = side.start_0based {
+                if start >= template_len {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.start_0based ({start}) is outside template length {template_len}",
+                        ),
+                    });
+                }
+            }
+            if let Some(end) = side.end_0based {
+                if end == 0 || end > template_len {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.end_0based ({end}) must be in 1..={template_len} for this template",
+                        ),
+                    });
+                }
+            }
+        }
+
+        let outer_forward_seq_constraints =
+            Self::normalize_primer_side_sequence_constraints(&outer_forward)?;
+        let outer_reverse_seq_constraints =
+            Self::normalize_primer_side_sequence_constraints(&outer_reverse)?;
+        let inner_forward_seq_constraints =
+            Self::normalize_primer_side_sequence_constraints(&inner_forward)?;
+        let inner_reverse_seq_constraints =
+            Self::normalize_primer_side_sequence_constraints(&inner_reverse)?;
+        let inner_forward_base_tail = inner_forward_seq_constraints
+            .non_annealing_5prime_tail
+            .clone()
+            .unwrap_or_default();
+        let inner_reverse_base_tail = inner_reverse_seq_constraints
+            .non_annealing_5prime_tail
+            .clone()
+            .unwrap_or_default();
+
+        let mut inner_forward_generation = inner_forward.clone();
+        inner_forward_generation.non_annealing_5prime_tail = None;
+        let mut inner_reverse_generation = inner_reverse.clone();
+        inner_reverse_generation.non_annealing_5prime_tail = None;
+        let relaxed_inner_constraints = NormalizedPrimerSideSequenceConstraints::default();
+
+        let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let outer_forward_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            &outer_forward,
+            &outer_forward_seq_constraints,
+            false,
+            &mut rejection_summary,
+        );
+        let outer_reverse_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            &outer_reverse,
+            &outer_reverse_seq_constraints,
+            true,
+            &mut rejection_summary,
+        );
+        let inner_forward_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            &inner_forward_generation,
+            &relaxed_inner_constraints,
+            false,
+            &mut rejection_summary,
+        );
+        let inner_reverse_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            &inner_reverse_generation,
+            &relaxed_inner_constraints,
+            true,
+            &mut rejection_summary,
+        );
+
+        if outer_forward_candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No outer_forward primer candidates satisfied constraints".to_string(),
+            });
+        }
+        if outer_reverse_candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No outer_reverse primer candidates satisfied constraints".to_string(),
+            });
+        }
+        if inner_forward_candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No inner_forward primer candidates satisfied constraints".to_string(),
+            });
+        }
+        if inner_reverse_candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No inner_reverse primer candidates satisfied constraints".to_string(),
+            });
+        }
+
+        #[derive(Clone)]
+        struct OverlapExtensionDesign {
+            score: f64,
+            overlap_sequence: String,
+            outer_forward: PrimerDesignCandidate,
+            outer_reverse: PrimerDesignCandidate,
+            inner_forward: PrimerDesignCandidate,
+            inner_reverse: PrimerDesignCandidate,
+            inner_forward_full: String,
+            inner_reverse_full: String,
+            stage1_left_product: String,
+            stage1_right_product: String,
+            final_product: String,
+        }
+
+        let build_tailed_amplicon = |source: &str,
+                                     forward_start_0based: usize,
+                                     forward_anneal_len: usize,
+                                     forward_full: &str,
+                                     reverse_start_0based: usize,
+                                     reverse_full: &str|
+         -> Option<String> {
+            let forward_anneal_end = forward_start_0based.checked_add(forward_anneal_len)?;
+            if forward_anneal_end > reverse_start_0based {
+                return None;
+            }
+            let interior = source.get(forward_anneal_end..reverse_start_0based)?;
+            let reverse_full_rc = Self::reverse_complement(reverse_full);
+            Some(format!("{forward_full}{interior}{reverse_full_rc}"))
+        };
+        let primer_quality =
+            |sequence: &str, anneal_len: usize, tm_c: f64, gc_fraction: f64, anneal_hits: usize| {
+                let metrics = Self::compute_primer_heuristic_metrics(sequence.as_bytes());
+                let mut score = 1000.0;
+                score -= (tm_c - 62.0).abs() * 5.0;
+                score -= (gc_fraction - 0.5).abs() * 50.0;
+                score -= Self::preferred_primer_length_penalty(anneal_len) * 6.0;
+                score -= Self::primer_secondary_structure_penalty(metrics);
+                score -= (anneal_hits.saturating_sub(1) as f64) * 25.0;
+                score
+            };
+        let better_than =
+            |left: &OverlapExtensionDesign, right: &OverlapExtensionDesign| -> bool {
+                if (left.score - right.score).abs() > f64::EPSILON {
+                    return left.score > right.score;
+                }
+                (
+                    left.outer_forward.start_0based,
+                    left.inner_reverse.start_0based,
+                    left.inner_forward.start_0based,
+                    left.outer_reverse.start_0based,
+                    left.outer_forward.sequence.as_str(),
+                    left.inner_reverse_full.as_str(),
+                    left.inner_forward_full.as_str(),
+                    left.outer_reverse.sequence.as_str(),
+                ) < (
+                    right.outer_forward.start_0based,
+                    right.inner_reverse.start_0based,
+                    right.inner_forward.start_0based,
+                    right.outer_reverse.start_0based,
+                    right.outer_forward.sequence.as_str(),
+                    right.inner_reverse_full.as_str(),
+                    right.inner_forward_full.as_str(),
+                    right.outer_reverse.sequence.as_str(),
+                )
+            };
+
+        let max_evaluations = 250_000usize;
+        let mut evaluated = 0usize;
+        let mut evaluation_limited = false;
+        let mut best_design: Option<OverlapExtensionDesign> = None;
+
+        'inner_search: for inner_reverse_candidate in &inner_reverse_candidates {
+            if inner_reverse_candidate.end_0based_exclusive > edit_start_0based {
+                continue;
+            }
+            for inner_forward_candidate in &inner_forward_candidates {
+                if inner_forward_candidate.start_0based < edit_end_0based_exclusive {
+                    continue;
+                }
+                let Some(inner_forward_start_mut) =
+                    map_original_to_mutant_pos(inner_forward_candidate.start_0based)
+                else {
+                    continue;
+                };
+                let inner_reverse_end_mut = inner_reverse_candidate.end_0based_exclusive;
+                if inner_reverse_end_mut > inner_forward_start_mut {
+                    continue;
+                }
+                let overlap_sequence =
+                    &mutated_template[inner_reverse_end_mut..inner_forward_start_mut];
+                if overlap_sequence.len() < constraints.overlap_bp {
+                    continue;
+                }
+
+                let inner_forward_full = format!(
+                    "{}{}{}",
+                    inner_forward_base_tail, overlap_sequence, inner_forward_candidate.sequence
+                );
+                let inner_reverse_full = format!(
+                    "{}{}{}",
+                    inner_reverse_base_tail,
+                    Self::reverse_complement(overlap_sequence),
+                    inner_reverse_candidate.sequence
+                );
+                if !Self::primer_sequence_matches_side_constraints(
+                    inner_forward_full.as_bytes(),
+                    &inner_forward_seq_constraints,
+                ) {
+                    continue;
+                }
+                if !Self::primer_sequence_matches_side_constraints(
+                    inner_reverse_full.as_bytes(),
+                    &inner_reverse_seq_constraints,
+                ) {
+                    continue;
+                }
+
+                for outer_forward_candidate in &outer_forward_candidates {
+                    if outer_forward_candidate.start_0based >= inner_reverse_candidate.start_0based {
+                        continue;
+                    }
+                    let outer_forward_anneal_len = outer_forward_candidate
+                        .end_0based_exclusive
+                        .saturating_sub(outer_forward_candidate.start_0based);
+                    for outer_reverse_candidate in &outer_reverse_candidates {
+                        if evaluated >= max_evaluations {
+                            evaluation_limited = true;
+                            break 'inner_search;
+                        }
+                        evaluated = evaluated.saturating_add(1);
+
+                        if outer_reverse_candidate.start_0based
+                            <= inner_forward_candidate.end_0based_exclusive
+                        {
+                            continue;
+                        }
+                        let Some(outer_reverse_start_mut) =
+                            map_original_to_mutant_pos(outer_reverse_candidate.start_0based)
+                        else {
+                            continue;
+                        };
+                        if outer_forward_candidate
+                            .end_0based_exclusive
+                            > outer_reverse_start_mut
+                        {
+                            continue;
+                        }
+
+                        let inner_forward_anneal_len = inner_forward_candidate
+                            .end_0based_exclusive
+                            .saturating_sub(inner_forward_candidate.start_0based);
+                        let stage1_left_product = match build_tailed_amplicon(
+                            &template_seq,
+                            outer_forward_candidate.start_0based,
+                            outer_forward_anneal_len,
+                            &outer_forward_candidate.sequence,
+                            inner_reverse_candidate.start_0based,
+                            &inner_reverse_full,
+                        ) {
+                            Some(value) => value,
+                            None => continue,
+                        };
+                        let stage1_right_product = match build_tailed_amplicon(
+                            &template_seq,
+                            inner_forward_candidate.start_0based,
+                            inner_forward_anneal_len,
+                            &inner_forward_full,
+                            outer_reverse_candidate.start_0based,
+                            &outer_reverse_candidate.sequence,
+                        ) {
+                            Some(value) => value,
+                            None => continue,
+                        };
+                        let final_product = match build_tailed_amplicon(
+                            &mutated_template,
+                            outer_forward_candidate.start_0based,
+                            outer_forward_anneal_len,
+                            &outer_forward_candidate.sequence,
+                            outer_reverse_start_mut,
+                            &outer_reverse_candidate.sequence,
+                        ) {
+                            Some(value) => value,
+                            None => continue,
+                        };
+
+                        let score = primer_quality(
+                            &outer_forward_candidate.sequence,
+                            outer_forward_anneal_len,
+                            outer_forward_candidate.tm_c,
+                            outer_forward_candidate.gc_fraction,
+                            outer_forward_candidate.anneal_hits,
+                        ) + primer_quality(
+                            &outer_reverse_candidate.sequence,
+                            outer_reverse_candidate
+                                .end_0based_exclusive
+                                .saturating_sub(outer_reverse_candidate.start_0based),
+                            outer_reverse_candidate.tm_c,
+                            outer_reverse_candidate.gc_fraction,
+                            outer_reverse_candidate.anneal_hits,
+                        ) + primer_quality(
+                            &inner_forward_full,
+                            inner_forward_anneal_len,
+                            inner_forward_candidate.tm_c,
+                            inner_forward_candidate.gc_fraction,
+                            inner_forward_candidate.anneal_hits,
+                        ) + primer_quality(
+                            &inner_reverse_full,
+                            inner_reverse_candidate
+                                .end_0based_exclusive
+                                .saturating_sub(inner_reverse_candidate.start_0based),
+                            inner_reverse_candidate.tm_c,
+                            inner_reverse_candidate.gc_fraction,
+                            inner_reverse_candidate.anneal_hits,
+                        ) - (overlap_sequence.len().saturating_sub(constraints.overlap_bp) as f64)
+                            * 0.35
+                            - ((outer_forward_candidate.tm_c - outer_reverse_candidate.tm_c)
+                                .abs()
+                                * 4.0)
+                            - ((inner_forward_candidate.tm_c - inner_reverse_candidate.tm_c).abs()
+                                * 4.0);
+
+                        let candidate = OverlapExtensionDesign {
+                            score,
+                            overlap_sequence: overlap_sequence.to_string(),
+                            outer_forward: outer_forward_candidate.clone(),
+                            outer_reverse: outer_reverse_candidate.clone(),
+                            inner_forward: inner_forward_candidate.clone(),
+                            inner_reverse: inner_reverse_candidate.clone(),
+                            inner_forward_full: inner_forward_full.clone(),
+                            inner_reverse_full: inner_reverse_full.clone(),
+                            stage1_left_product,
+                            stage1_right_product,
+                            final_product,
+                        };
+                        match &best_design {
+                            Some(current) if !better_than(&candidate, current) => {}
+                            _ => best_design = Some(candidate),
+                        }
+                    }
+                }
+            }
+        }
+
+        if evaluation_limited {
+            result.warnings.push(format!(
+                "Overlap-extension mutagenesis candidate search reached evaluation limit ({max_evaluations}); narrow primer windows or use tighter constraints for a more exhaustive search",
+            ));
+        }
+        let Some(best_design) = best_design else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No overlap-extension insertion/deletion mutagenesis primer set satisfied constraints".to_string(),
+            });
+        };
+
+        parent_seq_ids.push(template.clone());
+        let base_prefix = output_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("{template}_oe_mut"));
+
+        let outer_forward_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_outer_fwd"),
+            &best_design.outer_forward.sequence,
+        )?;
+        let outer_reverse_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_outer_rev"),
+            &best_design.outer_reverse.sequence,
+        )?;
+        let inner_forward_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_inner_fwd"),
+            &best_design.inner_forward_full,
+        )?;
+        let inner_reverse_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_inner_rev"),
+            &best_design.inner_reverse_full,
+        )?;
+        let stage1_left_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_stage1_left"),
+            &best_design.stage1_left_product,
+        )?;
+        let stage1_right_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_stage1_right"),
+            &best_design.stage1_right_product,
+        )?;
+        let mutant_product_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{base_prefix}_mutant"),
+            &best_design.final_product,
+        )?;
+
+        if let Some(container_id) = self.add_container(
+            &[
+                outer_forward_id.clone(),
+                inner_reverse_id.clone(),
+                stage1_left_id.clone(),
+            ],
+            ContainerKind::Pool,
+            Some(format!(
+                "OE stage1 left ({})",
+                Self::normalize_id_token(&base_prefix)
+            )),
+            Some(&result.op_id),
+        ) {
+            result.messages.push(format!(
+                "Created overlap-extension stage-1 left container '{}' ({}, {}, {})",
+                container_id, outer_forward_id, inner_reverse_id, stage1_left_id
+            ));
+        }
+        if let Some(container_id) = self.add_container(
+            &[
+                inner_forward_id.clone(),
+                outer_reverse_id.clone(),
+                stage1_right_id.clone(),
+            ],
+            ContainerKind::Pool,
+            Some(format!(
+                "OE stage1 right ({})",
+                Self::normalize_id_token(&base_prefix)
+            )),
+            Some(&result.op_id),
+        ) {
+            result.messages.push(format!(
+                "Created overlap-extension stage-1 right container '{}' ({}, {}, {})",
+                container_id, inner_forward_id, outer_reverse_id, stage1_right_id
+            ));
+        }
+        if let Some(container_id) = self.add_container(
+            &[
+                outer_forward_id.clone(),
+                outer_reverse_id.clone(),
+                mutant_product_id.clone(),
+            ],
+            ContainerKind::Pool,
+            Some(format!(
+                "OE stage2 final ({})",
+                Self::normalize_id_token(&base_prefix)
+            )),
+            Some(&result.op_id),
+        ) {
+            result.messages.push(format!(
+                "Created overlap-extension stage-2 container '{}' ({}, {}, {})",
+                container_id, outer_forward_id, outer_reverse_id, mutant_product_id
+            ));
+        }
+
+        let mode = if deleted_bp == 0 {
+            "insertion"
+        } else if inserted_bp == 0 {
+            "deletion"
+        } else {
+            "replacement"
+        };
+        result.messages.push(format!(
+            "Overlap-extension {} mutagenesis from '{}' edit {}..{} (+{} bp / -{} bp) selected overlap={} bp and produced staged artifacts: left='{}', right='{}', final='{}'",
+            mode,
+            template,
+            edit_start_0based,
+            edit_end_0based_exclusive,
+            inserted_bp,
+            deleted_bp,
+            best_design.overlap_sequence.len(),
+            stage1_left_id,
+            stage1_right_id,
+            mutant_product_id
+        ));
+        result.messages.push(format!(
+            "Selected primer coordinates: outer_fwd={}..{}, inner_rev={}..{}, inner_fwd={}..{}, outer_rev={}..{}",
+            best_design.outer_forward.start_0based,
+            best_design.outer_forward.end_0based_exclusive,
+            best_design.inner_reverse.start_0based,
+            best_design.inner_reverse.end_0based_exclusive,
+            best_design.inner_forward.start_0based,
+            best_design.inner_forward.end_0based_exclusive,
+            best_design.outer_reverse.start_0based,
+            best_design.outer_reverse.end_0based_exclusive
+        ));
+        Ok(())
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -5042,6 +5692,25 @@ impl GentleEngine {
                     max_pairs,
                     report_id,
                     Some(insertion),
+                )?;
+            }
+            Operation::PcrOverlapExtensionMutagenesis {
+                template,
+                edit_start_0based,
+                edit_end_0based_exclusive,
+                insert_sequence,
+                constraints,
+                output_prefix,
+            } => {
+                self.execute_overlap_extension_mutagenesis(
+                    &mut result,
+                    &mut parent_seq_ids,
+                    template,
+                    edit_start_0based,
+                    edit_end_0based_exclusive,
+                    insert_sequence,
+                    constraints,
+                    output_prefix,
                 )?;
             }
             Operation::DesignQpcrAssays {

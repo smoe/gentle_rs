@@ -697,6 +697,9 @@ impl GentleEngine {
             | Operation::DesignInsertionPrimerPairs {
                 template: input, ..
             }
+            | Operation::PcrOverlapExtensionMutagenesis {
+                template: input, ..
+            }
             | Operation::DesignQpcrAssays {
                 template: input, ..
             }

@@ -448,6 +448,11 @@ order. Durable architecture constraints and decisions remain in
     insertion-first wrapper over pair design (requested anchors + extension
     sequences + anchor-adjacent windows) while persisting the same report
     schema with optional `insertion_context` compensation rows
+  - engine operation `PcrOverlapExtensionMutagenesis` now supports
+    overlap-extension insertion/deletion/replacement workflows with
+    deterministic inner-overlap tail synthesis and graph-visible staged
+    artifacts (outer/inner primers, stage-1 left/right products, stage-2 final
+    mutant product, and stage-specific containers)
   - engine operation `DesignQpcrAssays` now persists deterministic qPCR report
     payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
     records in project metadata

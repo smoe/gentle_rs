@@ -549,6 +549,7 @@ Current draft operations:
 - `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
+- `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
@@ -1980,6 +1981,63 @@ Operation progress/cancellation semantics:
     `insertion_context` rows for shift/compensation inspection
   - no dedicated GUI form yet; operation is available through `op`/workflow
     payloads.
+
+`PcrOverlapExtensionMutagenesis` contract (implemented baseline):
+
+- Purpose:
+  - deterministic overlap-extension insertion/deletion/replacement mutagenesis
+    planning + staged product materialization in the main operation graph.
+- Operation payload shape:
+
+```json
+{
+  "PcrOverlapExtensionMutagenesis": {
+    "template": "seq_id",
+    "edit_start_0based": 620,
+    "edit_end_0based_exclusive": 640,
+    "insert_sequence": "GGTACC",
+    "constraints": {
+      "overlap_bp": 24,
+      "outer_forward": {
+        "min_length": 20,
+        "max_length": 30
+      },
+      "outer_reverse": {
+        "min_length": 20,
+        "max_length": 30
+      },
+      "inner_forward": {
+        "min_length": 18,
+        "max_length": 28
+      },
+      "inner_reverse": {
+        "min_length": 18,
+        "max_length": 28
+      }
+    },
+    "output_prefix": "tp73_oe_mut"
+  }
+}
+```
+
+- Baseline behavior:
+  - `edit_start_0based..edit_end_0based_exclusive` defines the replaced region
+    on the original template.
+    - insertion: `edit_start == edit_end` and `insert_sequence` non-empty
+    - deletion: `insert_sequence` empty and `edit_end > edit_start`
+    - replacement: both deletion and insertion are non-empty
+  - inner primers are chosen upstream/downstream of the edit and receive dynamic
+    5' overlap tails derived from the mutant sequence so stage-1 products share
+    one explicit overlap segment (minimum `overlap_bp`).
+  - outer primers amplify both stage-1 fragments and the stage-2 final mutant
+    amplicon.
+  - operation materializes graph-visible artifacts:
+    - primers: `..._outer_fwd`, `..._outer_rev`, `..._inner_fwd`, `..._inner_rev`
+    - stage-1 products: `..._stage1_left`, `..._stage1_right`
+    - final stage-2 mutant: `..._mutant`
+    - three per-stage pool containers (left, right, final)
+  - operation warnings include deterministic candidate-search limit notices when
+    the combinatorial search budget is exhausted.
 
 `DesignQpcrAssays` contract (implemented baseline):
 

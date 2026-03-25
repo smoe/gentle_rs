@@ -1060,6 +1060,7 @@ inspection/export paths:
 
 - Engine operation:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `PcrOverlapExtensionMutagenesis { template, edit_start_0based, edit_end_0based_exclusive, insert_sequence?, constraints?, output_prefix? }`
   - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
@@ -1068,6 +1069,10 @@ inspection/export paths:
     - one derived sequence per forward/reverse primer in each accepted pair
     - one container per primer pair (forward + reverse members)
     - lineage edges from template sequence to each created primer sequence
+  - `PcrOverlapExtensionMutagenesis` materializes graph-visible staged outputs:
+    - outer/inner primer sequences
+    - stage-1 left/right fragments and stage-2 mutant product
+    - stage-specific containers for left/right/final assemblies
 - Persisted metadata:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - `qpcr_design_reports` (`gentle.qpcr_design_reports.v1`)

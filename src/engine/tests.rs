@@ -1836,6 +1836,197 @@ fn test_design_insertion_primer_pairs_records_anchor_shift_compensation() {
 }
 
 #[test]
+fn test_pcr_overlap_extension_mutagenesis_insertion_materializes_staged_products() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    let mut engine = GentleEngine::from_state(state);
+
+    let fixed_side = |location_0based: usize, length_bp: usize| PrimerDesignSideConstraint {
+        min_length: length_bp,
+        max_length: length_bp,
+        location_0based: Some(location_0based),
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+
+    let result = engine
+        .apply(Operation::PcrOverlapExtensionMutagenesis {
+            template: "tpl".to_string(),
+            edit_start_0based: 70,
+            edit_end_0based_exclusive: 70,
+            insert_sequence: "GGTACC".to_string(),
+            constraints: OverlapExtensionMutagenesisConstraints {
+                overlap_bp: 16,
+                outer_forward: fixed_side(8, 20),
+                outer_reverse: fixed_side(105, 20),
+                inner_forward: fixed_side(88, 16),
+                inner_reverse: fixed_side(45, 20),
+            },
+            output_prefix: Some("oe_insert".to_string()),
+        })
+        .expect("overlap-extension insertion mutagenesis");
+
+    let find_created = |token: &str| {
+        result
+            .created_seq_ids
+            .iter()
+            .find(|seq_id| seq_id.contains(token))
+            .cloned()
+            .expect("expected created artifact")
+    };
+    let inner_forward_id = find_created("_inner_fwd");
+    let stage1_left_id = find_created("_stage1_left");
+    let stage1_right_id = find_created("_stage1_right");
+    let mutant_id = find_created("_mutant");
+
+    let inner_forward_seq = engine
+        .state()
+        .sequences
+        .get(&inner_forward_id)
+        .expect("inner forward sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let stage1_left_seq = engine
+        .state()
+        .sequences
+        .get(&stage1_left_id)
+        .expect("stage1 left sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let stage1_right_seq = engine
+        .state()
+        .sequences
+        .get(&stage1_right_id)
+        .expect("stage1 right sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let mutant_seq = engine
+        .state()
+        .sequences
+        .get(&mutant_id)
+        .expect("mutant sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+
+    let mutated_template = format!("{}{}{}", &template_seq[..70], "GGTACC", &template_seq[70..]);
+    let expected_overlap = &mutated_template[65..94];
+    let expected_mutant = &mutated_template[8..131];
+    assert!(stage1_left_seq.ends_with(expected_overlap));
+    assert!(stage1_right_seq.starts_with(expected_overlap));
+    assert!(inner_forward_seq.contains("GGTACC"));
+    assert_eq!(mutant_seq, expected_mutant.to_string());
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|line| line.contains("Overlap-extension insertion mutagenesis"))
+    );
+}
+
+#[test]
+fn test_pcr_overlap_extension_mutagenesis_deletion_materializes_staged_products() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    let mut engine = GentleEngine::from_state(state);
+
+    let fixed_side = |location_0based: usize, length_bp: usize| PrimerDesignSideConstraint {
+        min_length: length_bp,
+        max_length: length_bp,
+        location_0based: Some(location_0based),
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 1000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+
+    let result = engine
+        .apply(Operation::PcrOverlapExtensionMutagenesis {
+            template: "tpl".to_string(),
+            edit_start_0based: 70,
+            edit_end_0based_exclusive: 80,
+            insert_sequence: String::new(),
+            constraints: OverlapExtensionMutagenesisConstraints {
+                overlap_bp: 12,
+                outer_forward: fixed_side(8, 20),
+                outer_reverse: fixed_side(105, 20),
+                inner_forward: fixed_side(88, 16),
+                inner_reverse: fixed_side(45, 20),
+            },
+            output_prefix: Some("oe_delete".to_string()),
+        })
+        .expect("overlap-extension deletion mutagenesis");
+
+    let find_created = |token: &str| {
+        result
+            .created_seq_ids
+            .iter()
+            .find(|seq_id| seq_id.contains(token))
+            .cloned()
+            .expect("expected created artifact")
+    };
+    let stage1_left_id = find_created("_stage1_left");
+    let stage1_right_id = find_created("_stage1_right");
+    let mutant_id = find_created("_mutant");
+
+    let stage1_left_seq = engine
+        .state()
+        .sequences
+        .get(&stage1_left_id)
+        .expect("stage1 left sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let stage1_right_seq = engine
+        .state()
+        .sequences
+        .get(&stage1_right_id)
+        .expect("stage1 right sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+    let mutant_seq = engine
+        .state()
+        .sequences
+        .get(&mutant_id)
+        .expect("mutant sequence exists")
+        .get_forward_string()
+        .to_ascii_uppercase();
+
+    let mutated_template = format!("{}{}", &template_seq[..70], &template_seq[80..]);
+    let expected_overlap = &mutated_template[65..78];
+    let expected_mutant = &mutated_template[8..115];
+    assert!(stage1_left_seq.ends_with(expected_overlap));
+    assert!(stage1_right_seq.starts_with(expected_overlap));
+    assert_eq!(mutant_seq, expected_mutant.to_string());
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|line| line.contains("Overlap-extension deletion mutagenesis"))
+    );
+}
+
+#[test]
 fn test_design_primer_pairs_enforces_pair_constraints() {
     let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
     let mut state = ProjectState::default();

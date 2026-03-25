@@ -250,7 +250,9 @@ impl GentleEngine {
         // pair-scoped container.
         if matches!(
             op,
-            Operation::DesignPrimerPairs { .. } | Operation::DesignInsertionPrimerPairs { .. }
+            Operation::DesignPrimerPairs { .. }
+                | Operation::DesignInsertionPrimerPairs { .. }
+                | Operation::PcrOverlapExtensionMutagenesis { .. }
         ) {
             return;
         }
