@@ -489,11 +489,11 @@ Feature tree grouping:
     - confirmed junction support from seed-supported transitions
     - isoform ranking from thresholded cDNA assignments
   - the Nanopore cDNA panel now shows the currently active RNA-read parameter
-    summaries even before export:
+    summaries even before export, including explicit overlap/order density:
     - hashing summary (`k-mer`, `hash stride`)
     - RNA-read dotplot summary (`word`, `step`, `mismatches`, `tile`)
   - RNA-read tuning is available directly in the same panel:
-    - `Dense 7-mer similarity preset` lowers hashing and dotplot strictness
+    - `Dense 9-mer similarity preset` lowers hashing and dotplot strictness
       together for weak-similarity investigation
     - editable RNA-read dotplot knobs under advanced settings drive the exact
       settings used by `Export dotplot...` and `Export dotplots for selected

@@ -3266,13 +3266,29 @@ mod tests {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, None, None);
         area.apply_rna_read_dense_similarity_preset();
-        assert_eq!(area.rna_reads_ui.kmer_len, "7");
+        assert_eq!(area.rna_reads_ui.kmer_len, "9");
         assert_eq!(area.rna_reads_ui.seed_stride_bp, "1");
-        assert_eq!(area.dotplot_ui.word_size, "7");
+        assert_eq!(area.dotplot_ui.word_size, "9");
         assert_eq!(area.dotplot_ui.step_bp, "1");
         assert_eq!(area.dotplot_ui.max_mismatches, "1");
         assert!(area.dotplot_ui.tile_bp.is_empty());
         assert!(area.rna_reads_ui.show_advanced);
+    }
+
+    #[test]
+    fn rna_read_overlap_summaries_state_overlap_and_order_depth() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.rna_reads_ui.kmer_len = "9".to_string();
+        area.rna_reads_ui.seed_stride_bp = "1".to_string();
+        area.dotplot_ui.word_size = "9".to_string();
+        area.dotplot_ui.step_bp = "3".to_string();
+        let hash = area.rna_read_hash_parameter_summary();
+        let dotplot = area.rna_read_dotplot_parameter_summary();
+        assert!(hash.contains("overlap by 8 bp"));
+        assert!(hash.contains("9 consecutive ordered windows"));
+        assert!(dotplot.contains("overlap by 6 bp"));
+        assert!(dotplot.contains("up to 3 consecutive ordered windows"));
     }
 
     #[test]
@@ -15381,9 +15397,9 @@ impl MainAreaDna {
                     });
                     ui.horizontal_wrapped(|ui| {
                         if ui
-                            .small_button("Dense 7-mer similarity preset")
+                            .small_button("Dense 9-mer similarity preset")
                             .on_hover_text(
-                                "Set RNA-read hashing to k=7/stride=1 and RNA-read dotplots to word=7/step=1/max mismatches=1, which is useful when exact longer seeds miss weak but still biologically interesting similarity.",
+                                "Set RNA-read hashing to k=9/stride=1 and RNA-read dotplots to word=9/step=1/max mismatches=1. This keeps dense ordered overlap while staying less promiscuous than 7-mers.",
                             )
                             .clicked()
                         {
@@ -16425,15 +16441,15 @@ impl MainAreaDna {
     }
 
     fn apply_rna_read_dense_similarity_preset(&mut self) {
-        self.rna_reads_ui.kmer_len = "7".to_string();
+        self.rna_reads_ui.kmer_len = "9".to_string();
         self.rna_reads_ui.seed_stride_bp = "1".to_string();
-        self.dotplot_ui.word_size = "7".to_string();
+        self.dotplot_ui.word_size = "9".to_string();
         self.dotplot_ui.step_bp = "1".to_string();
         self.dotplot_ui.max_mismatches = "1".to_string();
         self.dotplot_ui.tile_bp.clear();
         self.rna_reads_ui.show_advanced = true;
         self.op_status =
-            "Applied dense 7-mer similarity preset for RNA-read hashing and dotplots".to_string();
+            "Applied dense 9-mer similarity preset for RNA-read hashing and dotplots".to_string();
     }
 
     fn reset_rna_read_dotplot_parameters_to_defaults(&mut self) {
@@ -16446,23 +16462,69 @@ impl MainAreaDna {
             "Reset RNA-read dotplot parameters to the shared dotplot defaults".to_string();
     }
 
+    fn describe_ordered_window_overlap(window_len: usize, step: usize) -> String {
+        let safe_step = step.max(1);
+        let overlap_bp = window_len.saturating_sub(safe_step);
+        let windows_per_base = (window_len.saturating_add(safe_step).saturating_sub(1)) / safe_step;
+        if safe_step == 1 {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in {windows_per_base} consecutive ordered windows (dense sliding)"
+            )
+        } else if safe_step < window_len {
+            format!(
+                "adjacent windows overlap by {overlap_bp} bp; each interior base participates in up to {windows_per_base} consecutive ordered windows (subsampled sliding)"
+            )
+        } else if safe_step == window_len {
+            "adjacent windows do not overlap; each interior base participates in at most 1 ordered window (edge-touching sampling)".to_string()
+        } else {
+            format!(
+                "adjacent windows do not overlap and can leave up to {} bp unsampled between starts; each interior base participates in at most 1 ordered window (sparse sampling)",
+                safe_step - window_len
+            )
+        }
+    }
+
     fn rna_read_hash_parameter_summary(&self) -> String {
-        format!(
-            "Hashing now: k={} stride={} (full-read hashing; short/long window fields are compatibility no-ops)",
-            self.rna_reads_ui.kmer_len.trim(),
-            self.rna_reads_ui.seed_stride_bp.trim()
-        )
+        match (
+            self.rna_reads_ui.kmer_len.trim().parse::<usize>(),
+            self.rna_reads_ui.seed_stride_bp.trim().parse::<usize>(),
+        ) {
+            (Ok(kmer_len), Ok(seed_stride_bp)) if kmer_len > 0 && seed_stride_bp > 0 => format!(
+                "Hashing now: k={} stride={} | {} | full-read hashing; short/long window fields are compatibility no-ops",
+                kmer_len,
+                seed_stride_bp,
+                Self::describe_ordered_window_overlap(kmer_len, seed_stride_bp),
+            ),
+            _ => format!(
+                "Hashing now: k={} stride={} | enter valid integers to compute overlap/order density",
+                self.rna_reads_ui.kmer_len.trim(),
+                self.rna_reads_ui.seed_stride_bp.trim(),
+            ),
+        }
     }
 
     fn rna_read_dotplot_parameter_summary(&self) -> String {
         let tile = self.dotplot_ui.tile_bp.trim();
-        format!(
-            "RNA-read dotplots now: word={} step={} mismatches={} tile={}",
-            self.dotplot_ui.word_size.trim(),
-            self.dotplot_ui.step_bp.trim(),
-            self.dotplot_ui.max_mismatches.trim(),
-            if tile.is_empty() { "off" } else { tile }
-        )
+        match (
+            self.dotplot_ui.word_size.trim().parse::<usize>(),
+            self.dotplot_ui.step_bp.trim().parse::<usize>(),
+        ) {
+            (Ok(word_size), Ok(step_bp)) if word_size > 0 && step_bp > 0 => format!(
+                "RNA-read dotplots now: word={} step={} mismatches={} tile={} | {}",
+                word_size,
+                step_bp,
+                self.dotplot_ui.max_mismatches.trim(),
+                if tile.is_empty() { "off" } else { tile },
+                Self::describe_ordered_window_overlap(word_size, step_bp),
+            ),
+            _ => format!(
+                "RNA-read dotplots now: word={} step={} mismatches={} tile={} | enter valid integers to compute overlap/order density",
+                self.dotplot_ui.word_size.trim(),
+                self.dotplot_ui.step_bp.trim(),
+                self.dotplot_ui.max_mismatches.trim(),
+                if tile.is_empty() { "off" } else { tile }
+            ),
+        }
     }
 
     fn splicing_scope_description(
