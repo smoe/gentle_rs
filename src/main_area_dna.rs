@@ -18436,6 +18436,7 @@ impl MainAreaDna {
             report_id,
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![],
         });
     }
 
@@ -18459,6 +18460,7 @@ impl MainAreaDna {
             report_id,
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![],
         });
     }
 

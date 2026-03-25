@@ -3002,13 +3002,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "export-paths-tsv" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads export-paths-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                    "rna-reads export-paths-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]"
                         .to_string(),
                 );
             }
             let report_id = tokens[2].clone();
             let path = tokens[3].clone();
             let mut selection = RnaReadHitSelection::All;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3021,6 +3022,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         selection = parse_rna_read_hit_selection(&raw)?;
                     }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-paths-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads export-paths-tsv"
@@ -3032,18 +3042,20 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             })
         }
         "export-abundance-tsv" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads export-abundance-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                    "rna-reads export-abundance-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]"
                         .to_string(),
                 );
             }
             let report_id = tokens[2].clone();
             let path = tokens[3].clone();
             let mut selection = RnaReadHitSelection::All;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3056,6 +3068,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         selection = parse_rna_read_hit_selection(&raw)?;
                     }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-abundance-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads export-abundance-tsv"
@@ -3067,6 +3088,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             })
         }
         "export-score-density-svg" => {

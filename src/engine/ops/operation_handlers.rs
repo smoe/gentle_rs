@@ -6109,31 +6109,44 @@ impl GentleEngine {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => {
-                let export = self.export_rna_read_exon_paths_tsv(&report_id, &path, selection)?;
+                let export = self.export_rna_read_exon_paths_tsv(
+                    &report_id,
+                    &path,
+                    selection,
+                    &selected_record_indices,
+                )?;
                 result.messages.push(format!(
-                    "Exported RNA-read exon paths '{}' to '{}' (selection={}, rows={})",
+                    "Exported RNA-read exon paths '{}' to '{}' (selection={}, rows={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
                     export.selection.as_str(),
-                    export.row_count
+                    export.row_count,
+                    selected_record_indices.len()
                 ));
             }
             Operation::ExportRnaReadExonAbundanceTsv {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => {
-                let export =
-                    self.export_rna_read_exon_abundance_tsv(&report_id, &path, selection)?;
+                let export = self.export_rna_read_exon_abundance_tsv(
+                    &report_id,
+                    &path,
+                    selection,
+                    &selected_record_indices,
+                )?;
                 result.messages.push(format!(
-                    "Exported RNA-read exon abundance '{}' to '{}' (selection={}, selected_reads={}, exon_rows={}, transition_rows={})",
+                    "Exported RNA-read exon abundance '{}' to '{}' (selection={}, selected_reads={}, exon_rows={}, transition_rows={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
                     export.selection.as_str(),
                     export.selected_read_count,
                     export.exon_row_count,
-                    export.transition_row_count
+                    export.transition_row_count,
+                    selected_record_indices.len()
                 ));
             }
             Operation::ExportRnaReadScoreDensitySvg {

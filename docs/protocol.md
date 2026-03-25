@@ -561,8 +561,8 @@ Current draft operations:
 - `ExportRnaReadReport { report_id, path }`
 - `ExportRnaReadHitsFasta { report_id, path, selection, selected_record_indices? }`
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
-- `ExportRnaReadExonPathsTsv { report_id, path, selection }`
-- `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
+- `ExportRnaReadExonPathsTsv { report_id, path, selection, selected_record_indices? }`
+- `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices? }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
 - `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices? }`
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
@@ -2111,7 +2111,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         legacy mappings that do not carry template offsets
       - deterministic retained-hit re-ranking by alignment-aware retention rank
   - exact-subset export behavior:
-    - `ExportRnaReadHitsFasta` and `ExportRnaReadAlignmentsTsv` accept
+    - `ExportRnaReadHitsFasta`, `ExportRnaReadExonPathsTsv`,
+      `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadAlignmentsTsv` accept
       optional `selected_record_indices[]`
     - when present, the explicit 0-based stored `record_index` subset
       overrides the coarse `selection` preset
@@ -2182,8 +2183,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
-  - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
-  - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+  - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
+  - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
   - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`

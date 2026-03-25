@@ -13674,6 +13674,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             "rna_reads_paths",
             path_tsv.to_str().expect("path tsv"),
             RnaReadHitSelection::All,
+            &[],
         )
         .expect("export paths");
     assert_eq!(path_export.row_count, 1);
@@ -13690,6 +13691,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             "rna_reads_paths",
             abundance_tsv.to_str().expect("abundance tsv"),
             RnaReadHitSelection::All,
+            &[],
         )
         .expect("export abundance");
     assert_eq!(abundance_export.selected_read_count, 1);
@@ -13698,6 +13700,70 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
     assert!(abundance_text.contains("# seed_filter: k=10 stride=1"));
     assert!(abundance_text.contains("adjacent windows overlap by 9 bp"));
     assert!(abundance_text.contains("row_kind"));
+}
+
+#[test]
+fn test_export_rna_read_exon_paths_and_abundance_selected_record_indices_override_selection() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_subset_tables".to_string(),
+            seq_id: "seq_subset".to_string(),
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "read_alpha".to_string(),
+                    sequence: "AACCGG".to_string(),
+                    read_length_bp: 6,
+                    exon_path_transcript_id: "tx_alpha".to_string(),
+                    exon_path: "1:2".to_string(),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "read_beta".to_string(),
+                    sequence: "TTAACC".to_string(),
+                    read_length_bp: 6,
+                    exon_path_transcript_id: "tx_beta".to_string(),
+                    exon_path: "2:3".to_string(),
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert subset tables report");
+
+    let td = tempdir().expect("tempdir");
+    let paths_tsv = td.path().join("subset_paths.tsv");
+    let path_export = engine
+        .export_rna_read_exon_paths_tsv(
+            "rna_reads_subset_tables",
+            paths_tsv.to_str().expect("paths tsv"),
+            RnaReadHitSelection::All,
+            &[1],
+        )
+        .expect("export selected paths");
+    assert_eq!(path_export.row_count, 1);
+    let paths_text = fs::read_to_string(&paths_tsv).expect("read selected paths");
+    assert!(paths_text.contains("selected_record_indices=1"));
+    assert!(paths_text.contains("read_beta"));
+    assert!(!paths_text.contains("read_alpha"));
+
+    let abundance_tsv = td.path().join("subset_abundance.tsv");
+    let abundance_export = engine
+        .export_rna_read_exon_abundance_tsv(
+            "rna_reads_subset_tables",
+            abundance_tsv.to_str().expect("abundance tsv"),
+            RnaReadHitSelection::All,
+            &[1],
+        )
+        .expect("export selected abundance");
+    assert_eq!(abundance_export.selected_read_count, 1);
+    let abundance_text = fs::read_to_string(&abundance_tsv).expect("read selected abundance");
+    assert!(abundance_text.contains("selected_record_indices=1"));
+    assert!(abundance_text.contains("\ttransition\t\t2\t3\t"));
+    assert!(!abundance_text.contains("\ttransition\t\t1\t2\t"));
 }
 
 #[test]

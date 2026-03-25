@@ -1243,11 +1243,13 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
         selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsExportExonAbundanceTsv {
         report_id: String,
         path: String,
         selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsExportScoreDensitySvg {
         report_id: String,
@@ -6012,21 +6014,25 @@ impl ShellCommand {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => format!(
-                "export RNA-read exon paths from '{}' to '{}' (selection={})",
+                "export RNA-read exon paths from '{}' to '{}' (selection={}, selected_record_indices={})",
                 report_id,
                 path,
-                selection.as_str()
+                selection.as_str(),
+                selected_record_indices.len()
             ),
             Self::RnaReadsExportExonAbundanceTsv {
                 report_id,
                 path,
                 selection,
+                selected_record_indices,
             } => format!(
-                "export RNA-read exon abundance from '{}' to '{}' (selection={})",
+                "export RNA-read exon abundance from '{}' to '{}' (selection={}, selected_record_indices={})",
                 report_id,
                 path,
-                selection.as_str()
+                selection.as_str(),
+                selected_record_indices.len()
             ),
             Self::RnaReadsExportScoreDensitySvg {
                 report_id,
@@ -15066,9 +15072,15 @@ pub fn execute_shell_command_with_options(
             report_id,
             path,
             selection,
+            selected_record_indices,
         } => {
             let export = engine
-                .export_rna_read_exon_paths_tsv(report_id, path, *selection)
+                .export_rna_read_exon_paths_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15077,6 +15089,7 @@ pub fn execute_shell_command_with_options(
                     "report_id": export.report_id,
                     "path": export.path,
                     "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
                     "row_count": export.row_count,
                 }),
             }
@@ -15085,9 +15098,15 @@ pub fn execute_shell_command_with_options(
             report_id,
             path,
             selection,
+            selected_record_indices,
         } => {
             let export = engine
-                .export_rna_read_exon_abundance_tsv(report_id, path, *selection)
+                .export_rna_read_exon_abundance_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15096,6 +15115,7 @@ pub fn execute_shell_command_with_options(
                     "report_id": export.report_id,
                     "path": export.path,
                     "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
                     "selected_read_count": export.selected_read_count,
                     "exon_row_count": export.exon_row_count,
                     "transition_row_count": export.transition_row_count,

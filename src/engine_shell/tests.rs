@@ -8439,26 +8439,30 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_paths =
-        parse_shell_line("rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed")
+        parse_shell_line(
+            "rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed --record-indices 3,5",
+        )
             .expect("parse rna-reads export-paths-tsv");
     assert!(matches!(
         export_paths,
-        ShellCommand::RnaReadsExportExonPathsTsv { report_id, path, selection }
+        ShellCommand::RnaReadsExportExonPathsTsv { report_id, path, selection, selected_record_indices }
             if report_id == "tp73_reads"
                 && path == "paths.tsv"
                 && selection == RnaReadHitSelection::SeedPassed
+                && selected_record_indices == vec![3, 5]
     ));
 
     let export_abundance = parse_shell_line(
-        "rna-reads export-abundance-tsv tp73_reads abundance.tsv --selection aligned",
+        "rna-reads export-abundance-tsv tp73_reads abundance.tsv --selection aligned --record-indices 6,8",
     )
     .expect("parse rna-reads export-abundance-tsv");
     assert!(matches!(
         export_abundance,
-        ShellCommand::RnaReadsExportExonAbundanceTsv { report_id, path, selection }
+        ShellCommand::RnaReadsExportExonAbundanceTsv { report_id, path, selection, selected_record_indices }
             if report_id == "tp73_reads"
                 && path == "abundance.tsv"
                 && selection == RnaReadHitSelection::Aligned
+                && selected_record_indices == vec![6, 8]
     ));
 
     let export_score_density = parse_shell_line(
@@ -8991,11 +8995,19 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id: "rna_reads_test".to_string(),
             path: exported_paths.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![0],
         },
     )
     .expect("export rna-read exon paths");
     assert_eq!(export_paths_result.output["row_count"].as_u64(), Some(1));
+    assert_eq!(
+        export_paths_result.output["selected_record_indices"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
     let paths_text = fs::read_to_string(exported_paths).expect("read path sheet");
+    assert!(paths_text.contains("selected_record_indices=0"));
     assert!(paths_text.contains("exon_path"));
     assert!(paths_text.contains("reverse_complement_applied"));
     assert!(paths_text.contains("best_alignment_mode"));
@@ -9007,6 +9019,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id: "rna_reads_test".to_string(),
             path: exported_abundance.display().to_string(),
             selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![0],
         },
     )
     .expect("export rna-read abundance");
@@ -9014,7 +9027,14 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         export_abundance_result.output["selected_read_count"].as_u64(),
         Some(1)
     );
+    assert_eq!(
+        export_abundance_result.output["selected_record_indices"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
     let abundance_text = fs::read_to_string(exported_abundance).expect("read abundance sheet");
+    assert!(abundance_text.contains("selected_record_indices=0"));
     assert!(abundance_text.contains("row_kind"));
 
     let exported_density_svg = fasta_dir.path().join("score_density.svg");

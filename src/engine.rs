@@ -4577,12 +4577,16 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
     },
     ExportRnaReadExonAbundanceTsv {
         report_id: String,
         path: String,
         #[serde(default)]
         selection: RnaReadHitSelection,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
     },
     ExportRnaReadScoreDensitySvg {
         report_id: String,

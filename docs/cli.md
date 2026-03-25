@@ -1046,8 +1046,8 @@ Shared shell command:
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
-    - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
-    - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+    - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
+    - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
@@ -1058,6 +1058,8 @@ Shared shell command:
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
       exports an exact saved-report subset and overrides coarse `--selection`.
+    - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
+      accept the same `--record-indices` exact-subset override.
     - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
       scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path

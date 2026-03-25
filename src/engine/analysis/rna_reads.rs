@@ -909,6 +909,7 @@ impl GentleEngine {
         report_id: &str,
         path: &str,
         selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
     ) -> Result<RnaReadExonPathsExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -923,7 +924,9 @@ impl GentleEngine {
             message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
         })?;
         let mut writer = BufWriter::new(file);
-        for line in Self::rna_read_tsv_common_metadata_lines(&report, selection, &[]) {
+        for line in
+            Self::rna_read_tsv_common_metadata_lines(&report, selection, selected_record_indices)
+        {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -943,9 +946,17 @@ impl GentleEngine {
                 path
             ),
         })?;
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let mut row_count = 0usize;
         for hit in &report.hits {
-            if !Self::include_rna_read_hit_by_selection(hit, selection) {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
                 continue;
             }
             let (
@@ -1039,6 +1050,7 @@ impl GentleEngine {
         report_id: &str,
         path: &str,
         selection: RnaReadHitSelection,
+        selected_record_indices: &[usize],
     ) -> Result<RnaReadExonAbundanceExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -1056,7 +1068,9 @@ impl GentleEngine {
             ),
         })?;
         let mut writer = BufWriter::new(file);
-        for line in Self::rna_read_tsv_common_metadata_lines(&report, selection, &[]) {
+        for line in
+            Self::rna_read_tsv_common_metadata_lines(&report, selection, selected_record_indices)
+        {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -1078,9 +1092,17 @@ impl GentleEngine {
         })?;
         let mut exon_counts = BTreeMap::<usize, usize>::new();
         let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let mut selected_read_count = 0usize;
         for hit in &report.hits {
-            if !Self::include_rna_read_hit_by_selection(hit, selection) {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
                 continue;
             }
             selected_read_count = selected_read_count.saturating_add(1);
