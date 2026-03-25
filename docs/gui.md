@@ -1892,6 +1892,9 @@ Recommended flow:
    - click `Prepare Genome` for new installs or `Reinstall Selected...` for an
      already prepared genome; reinstall forces a fresh source download/index
      rebuild, and GENtle asks for confirmation because it can take some time
+   - when `Reinstall Selected...` is launched from the floating prepare window,
+     that confirmation prompt stays in the same window stack instead of opening
+     behind the specialist window
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
    - startup status now includes `makeblastdb` preflight diagnostics
      (found/missing/version/path) before heavy prepare work continues

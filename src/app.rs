@@ -508,6 +508,12 @@ enum PrepareGenomeDialogPrimaryAction {
     Reinstall,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreparedGenomeReinstallDialogHost {
+    Root,
+    PrepareDialog,
+}
+
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
@@ -1239,6 +1245,7 @@ struct PreparedGenomeReinstallRequest {
     scope: GenomeDialogScope,
     catalog_path: String,
     cache_dir: String,
+    dialog_host: PreparedGenomeReinstallDialogHost,
 }
 
 struct GenomeTrackImportTask {
@@ -6271,13 +6278,33 @@ Error: `{err}`"
         &mut self,
         genome_id: impl Into<String>,
         scope: GenomeDialogScope,
+        dialog_host: PreparedGenomeReinstallDialogHost,
     ) {
         self.pending_prepared_genome_reinstall = Some(PreparedGenomeReinstallRequest {
             genome_id: genome_id.into(),
             scope,
             catalog_path: self.genome_catalog_path.clone(),
             cache_dir: self.genome_cache_dir.clone(),
+            dialog_host,
         });
+    }
+
+    fn pending_prepared_genome_reinstall_targets_host(
+        &self,
+        dialog_host: PreparedGenomeReinstallDialogHost,
+    ) -> bool {
+        self.pending_prepared_genome_reinstall
+            .as_ref()
+            .is_some_and(|request| request.dialog_host == dialog_host)
+    }
+
+    fn dismiss_pending_prepared_genome_reinstall_for_host(
+        &mut self,
+        dialog_host: PreparedGenomeReinstallDialogHost,
+    ) {
+        if self.pending_prepared_genome_reinstall_targets_host(dialog_host) {
+            self.pending_prepared_genome_reinstall = None;
+        }
     }
 
     fn apply_prepared_genome_reinstall_request(&mut self, request: PreparedGenomeReinstallRequest) {
@@ -11502,7 +11529,11 @@ Error: `{err}`"
                         self.start_prepare_reference_genome();
                     }
                     PrepareGenomeDialogPrimaryAction::Reinstall => {
-                        self.queue_prepared_genome_reinstall(self.genome_id.clone(), scope);
+                        self.queue_prepared_genome_reinstall(
+                            self.genome_id.clone(),
+                            scope,
+                            PreparedGenomeReinstallDialogHost::PrepareDialog,
+                        );
                     }
                     PrepareGenomeDialogPrimaryAction::None => {}
                 }
@@ -11512,6 +11543,9 @@ Error: `{err}`"
                 .on_hover_text("Close this dialog")
                 .clicked()
             {
+                self.dismiss_pending_prepared_genome_reinstall_for_host(
+                    PreparedGenomeReinstallDialogHost::PrepareDialog,
+                );
                 self.show_reference_genome_prepare_dialog = false;
             }
             if self.genome_prepare_task.is_some() {
@@ -11577,21 +11611,44 @@ Error: `{err}`"
                     .show(ctx, |ui| {
                         self.render_reference_genome_prepare_contents(ui);
                     });
+                self.render_prepared_genome_reinstall_confirm_dialog(
+                    ctx,
+                    PreparedGenomeReinstallDialogHost::PrepareDialog,
+                );
                 self.show_reference_genome_prepare_dialog = open;
+                if !self.show_reference_genome_prepare_dialog {
+                    self.dismiss_pending_prepared_genome_reinstall_for_host(
+                        PreparedGenomeReinstallDialogHost::PrepareDialog,
+                    );
+                }
                 return;
             }
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.render_reference_genome_prepare_contents(ui);
             });
+            self.render_prepared_genome_reinstall_confirm_dialog(
+                ctx,
+                PreparedGenomeReinstallDialogHost::PrepareDialog,
+            );
 
             if Self::viewport_close_requested_or_shortcut(ctx) {
+                self.dismiss_pending_prepared_genome_reinstall_for_host(
+                    PreparedGenomeReinstallDialogHost::PrepareDialog,
+                );
                 self.show_reference_genome_prepare_dialog = false;
             }
         });
     }
 
-    fn render_prepared_genome_reinstall_confirm_dialog(&mut self, ctx: &egui::Context) {
+    fn render_prepared_genome_reinstall_confirm_dialog(
+        &mut self,
+        ctx: &egui::Context,
+        dialog_host: PreparedGenomeReinstallDialogHost,
+    ) {
+        if !self.pending_prepared_genome_reinstall_targets_host(dialog_host) {
+            return;
+        }
         let Some(request) = self.pending_prepared_genome_reinstall.clone() else {
             return;
         };
@@ -11606,7 +11663,9 @@ Error: `{err}`"
             request.cache_dir.trim().to_string()
         };
         egui::Window::new("Reinstall Prepared Genome")
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .collapsible(false)
+            .movable(false)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(format!(
@@ -12901,6 +12960,7 @@ Error: `{err}`"
                                                         self.queue_prepared_genome_reinstall(
                                                             inspection.genome_id.clone(),
                                                             scope,
+                                                            PreparedGenomeReinstallDialogHost::Root,
                                                         );
                                                     }
                                                 });
@@ -29864,7 +29924,10 @@ impl eframe::App for GENtleApp {
             self.render_genbank_dialog(ctx);
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
-            self.render_prepared_genome_reinstall_confirm_dialog(ctx);
+            self.render_prepared_genome_reinstall_confirm_dialog(
+                ctx,
+                PreparedGenomeReinstallDialogHost::Root,
+            );
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
             self.render_planning_dialog(ctx);
@@ -29935,8 +29998,9 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PrepareGenomeDialogPrimaryAction, PreparedGenomeReinstallRequest, ProjectAction,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        PrepareGenomeDialogPrimaryAction, PreparedGenomeReinstallDialogHost,
+        PreparedGenomeReinstallRequest, ProjectAction, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
@@ -32317,7 +32381,11 @@ mod tests {
         app.genome_catalog_path = "custom/helper_catalog.json".to_string();
         app.genome_cache_dir = "custom/helper_cache".to_string();
 
-        app.queue_prepared_genome_reinstall("Yeast Helper", app.genome_dialog_scope);
+        app.queue_prepared_genome_reinstall(
+            "Yeast Helper",
+            app.genome_dialog_scope,
+            PreparedGenomeReinstallDialogHost::PrepareDialog,
+        );
 
         let request = app
             .pending_prepared_genome_reinstall
@@ -32327,6 +32395,47 @@ mod tests {
         assert_eq!(request.scope, GenomeDialogScope::Helper);
         assert_eq!(request.catalog_path, "custom/helper_catalog.json");
         assert_eq!(request.cache_dir, "custom/helper_cache");
+        assert_eq!(
+            request.dialog_host,
+            PreparedGenomeReinstallDialogHost::PrepareDialog
+        );
+    }
+
+    #[test]
+    fn prepared_genome_reinstall_confirm_dialog_routes_to_requested_host() {
+        let mut app = GENtleApp::default();
+        app.queue_prepared_genome_reinstall(
+            "GRCh38",
+            GenomeDialogScope::Reference,
+            PreparedGenomeReinstallDialogHost::PrepareDialog,
+        );
+
+        assert!(app.pending_prepared_genome_reinstall_targets_host(
+            PreparedGenomeReinstallDialogHost::PrepareDialog
+        ));
+        assert!(!app.pending_prepared_genome_reinstall_targets_host(
+            PreparedGenomeReinstallDialogHost::Root
+        ));
+    }
+
+    #[test]
+    fn dismiss_pending_prepared_genome_reinstall_only_clears_matching_host() {
+        let mut app = GENtleApp::default();
+        app.queue_prepared_genome_reinstall(
+            "GRCh38",
+            GenomeDialogScope::Reference,
+            PreparedGenomeReinstallDialogHost::PrepareDialog,
+        );
+
+        app.dismiss_pending_prepared_genome_reinstall_for_host(
+            PreparedGenomeReinstallDialogHost::Root,
+        );
+        assert!(app.pending_prepared_genome_reinstall.is_some());
+
+        app.dismiss_pending_prepared_genome_reinstall_for_host(
+            PreparedGenomeReinstallDialogHost::PrepareDialog,
+        );
+        assert!(app.pending_prepared_genome_reinstall.is_none());
     }
 
     #[test]
@@ -32350,6 +32459,7 @@ mod tests {
             scope: GenomeDialogScope::Helper,
             catalog_path: "custom/helper_catalog.json".to_string(),
             cache_dir: "custom/helper_cache".to_string(),
+            dialog_host: PreparedGenomeReinstallDialogHost::Root,
         });
 
         assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
