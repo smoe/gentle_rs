@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-24
+Last updated: 2026-03-25
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -946,6 +946,16 @@ Notes:
      engine-owned transcript/CDS-aware translation contracts are implemented
      (explicit codon-table resolution plus frame/phase context); current dormant
      AA-row path is maintained as safe no-op
+   - translation-speed modeling is not yet implemented:
+     - it must become genome-aware/organism-aware rather than relying only on
+       the translation table used to decode codons
+     - translation of a sequence should be able to consult reference codon-usage
+       and translational-speed context for the relevant genome/host
+     - target use cases:
+       - bacterial protein-production work where codon choice can affect
+         expression/translation pace
+       - human interpretation workflows where presumed coding effects should be
+         compared against a human reference translation-speed baseline
    - tutorial/executable-guidance UX still needs an explicit per-step checklist
      with state-verifiable completion markers inside GUI walkthrough flows
      (including promoter cloning walkthroughs such as TP73)
