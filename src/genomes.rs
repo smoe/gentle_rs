@@ -37,7 +37,7 @@
 
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::parse_gbseq_xml_file;
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
@@ -801,6 +801,16 @@ impl GenomeCatalog {
                 annotation_parse_report = Some(report);
                 manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
             }
+            let fasta_index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
+            let gene_records = load_gene_index_file(&gene_index_path)?;
+            validate_annotation_gene_contigs_against_fasta_index(
+                genome_id,
+                &fasta_index,
+                &gene_records,
+                Path::new(&manifest.sequence_path),
+                Path::new(&manifest.fasta_index_path),
+                &gene_index_path,
+            )?;
             let blast_prefix_path = manifest
                 .blast_db_prefix
                 .as_deref()
@@ -873,9 +883,7 @@ impl GenomeCatalog {
                 manifest.annotation_source_type.clone().unwrap_or_else(|| {
                     classify_source_type_label(&manifest.annotation_source).to_string()
                 });
-            let cache_summary = load_fasta_index(Path::new(&manifest.fasta_index_path))
-                .map(|index| summarize_fasta_index(&index))
-                .unwrap_or_default();
+            let cache_summary = summarize_fasta_index(&fasta_index);
             return Ok(PrepareGenomeReport {
                 genome_id: genome_id.to_string(),
                 reused_existing: true,
@@ -1031,6 +1039,16 @@ impl GenomeCatalog {
                     },
                 )?)
             };
+        let fasta_index = load_fasta_index(&fasta_index_path)?;
+        let gene_records = load_gene_index_file(&gene_index_path)?;
+        validate_annotation_gene_contigs_against_fasta_index(
+            genome_id,
+            &fasta_index,
+            &gene_records,
+            &sequence_path,
+            &fasta_index_path,
+            &gene_index_path,
+        )?;
         forward_prepare_progress(
             on_progress,
             PrepareGenomeProgress {
@@ -1094,9 +1112,7 @@ impl GenomeCatalog {
         if let Some(report) = annotation_parse_report.as_ref() {
             warnings.extend(summarize_annotation_parse_warnings(report));
         }
-        let cache_summary = load_fasta_index(Path::new(&manifest.fasta_index_path))
-            .map(|index| summarize_fasta_index(&index))
-            .unwrap_or_default();
+        let cache_summary = summarize_fasta_index(&fasta_index);
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
@@ -1259,12 +1275,15 @@ impl GenomeCatalog {
                 format!(
                     "Chromosome/contig '{}' not found in genome '{}'. Tried aliases: {}. \
 Available contigs ({}): {}. This can happen when prepared sequence/annotation naming differs \
-or cache contents are stale; re-run PrepareGenome for this genome/cache.{}{}",
+or cache contents are stale; re-run PrepareGenome for this genome/cache. Prepared sequence='{}'; \
+FASTA index='{}'.{}{}",
                     chromosome,
                     resolved_genome_id,
                     tried_aliases.join(", "),
                     available.len(),
                     preview,
+                    manifest.sequence_path,
+                    manifest.fasta_index_path,
                     case_hint,
                     suggestions_hint
                 )
@@ -2579,6 +2598,61 @@ fn summarize_fasta_index(index: &HashMap<String, FastaIndexEntry>) -> PreparedSe
     }
 }
 
+fn validate_annotation_gene_contigs_against_fasta_index(
+    genome_id: &str,
+    fasta_index: &HashMap<String, FastaIndexEntry>,
+    gene_records: &[GenomeGeneRecord],
+    sequence_path: &Path,
+    fasta_index_path: &Path,
+    gene_index_path: &Path,
+) -> Result<(), String> {
+    let mut referenced_contigs = gene_records
+        .iter()
+        .map(|gene| gene.chromosome.trim())
+        .filter(|chromosome| !chromosome.is_empty())
+        .map(|chromosome| chromosome.to_string())
+        .collect::<Vec<_>>();
+    if referenced_contigs.is_empty() {
+        return Ok(());
+    }
+    referenced_contigs.sort_unstable();
+    referenced_contigs.dedup();
+
+    let mut missing = referenced_contigs
+        .iter()
+        .filter(|chromosome| {
+            !fasta_index
+                .keys()
+                .any(|candidate| chromosome_names_match(candidate, chromosome))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    missing.sort_unstable();
+    let preview_items = missing.iter().take(12).cloned().collect::<Vec<_>>();
+    let hidden = missing.len().saturating_sub(preview_items.len());
+    let mut preview = preview_items.join(", ");
+    if hidden > 0 {
+        preview.push_str(&format!(", ... (+{hidden} more)"));
+    }
+    Err(format!(
+        "Prepared genome '{}' is inconsistent: annotation gene index '{}' references contigs \
+missing from prepared sequence '{}' (missing {} of {} gene-bearing contigs: {}). FASTA \
+index='{}'. This often indicates truncated gzip decode, mismatched sequence/annotation \
+sources, or stale cache; reinstall or verify the configured sources.",
+        genome_id,
+        gene_index_path.display(),
+        sequence_path.display(),
+        missing.len(),
+        referenced_contigs.len(),
+        preview,
+        fasta_index_path.display()
+    ))
+}
+
 fn has_non_empty(value: &Option<String>) -> bool {
     value
         .as_ref()
@@ -3226,7 +3300,7 @@ where
                 File::create(&tmp_path)
                     .map_err(|e| format!("Could not create '{}': {e}", tmp_path.display()))?,
             );
-            let mut decoder = GzDecoder::new(BufReader::new(
+            let mut decoder = MultiGzDecoder::new(BufReader::new(
                 File::open(&compressed_path).map_err(|e| {
                     format!(
                         "Could not open downloaded gzip '{}' for decode: {e}",
@@ -3284,7 +3358,7 @@ where
 
     let copy_result = if is_gzip_source(source) {
         let progress_reader = ProgressReader::new(reader, |done| on_progress(done, total_bytes));
-        let mut decoder = GzDecoder::new(progress_reader);
+        let mut decoder = MultiGzDecoder::new(progress_reader);
         std::io::copy(&mut decoder, &mut writer)
             .map_err(|e| format!("Could not decompress '{source}': {e}"))
     } else {
@@ -4834,6 +4908,16 @@ mod tests {
         encoder.finish().unwrap();
     }
 
+    fn write_multi_member_gzip(path: &Path, members: &[&str]) {
+        File::create(path).unwrap();
+        for member in members {
+            let file = OpenOptions::new().append(true).open(path).unwrap();
+            let mut encoder = GzEncoder::new(file, Compression::default());
+            encoder.write_all(member.as_bytes()).unwrap();
+            encoder.finish().unwrap();
+        }
+    }
+
     fn file_url(path: &Path) -> String {
         format!("file://{}", path.display())
     }
@@ -5095,6 +5179,111 @@ mod tests {
     }
 
     #[test]
+    fn test_prepare_genome_reads_all_members_from_concatenated_gzip_sources() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_gz = root.join("celegans_concat.fa.gz");
+        let ann_gz = root.join("celegans_concat.gtf.gz");
+        write_multi_member_gzip(
+            &fasta_gz,
+            &[
+                ">I\nACGTACGTACGT\n",
+                ">III\nTTTTCCCCAAAA\n",
+                ">X\nGATTACA\n",
+            ],
+        );
+        write_multi_member_gzip(
+            &ann_gz,
+            &[
+                "III\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"WBGene00010001\"; gene_name \"abc-1\"; gene_biotype \"protein_coding\";\n",
+            ],
+        );
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let genome_id = "Caenorhabditis elegans concat test";
+        let catalog_json = format!(
+            r#"{{
+  "{genome_id}": {{
+    "description": "worm concatenated gzip test genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let report = catalog.prepare_genome_once(genome_id).unwrap();
+        assert_eq!(report.cached_contig_count, 3);
+        assert_eq!(report.cached_total_span_bp, 31);
+        assert_eq!(
+            report.cached_contig_preview,
+            vec!["I".to_string(), "III".to_string(), "X".to_string()]
+        );
+
+        let seq = catalog.get_sequence_region(genome_id, "III", 3, 8).unwrap();
+        assert_eq!(seq, "TTCCCC");
+        let genes = catalog.list_gene_regions(genome_id, None).unwrap();
+        assert!(genes.iter().any(|gene| gene.chromosome == "III"));
+    }
+
+    #[test]
+    fn test_prepare_genome_rejects_annotation_contigs_missing_from_sequence_cache() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">I\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "III\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"WBGene00020001\"; gene_name \"def-1\"; gene_biotype \"protein_coding\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let genome_id = "Synthetic mismatch genome";
+        let catalog_json = format!(
+            r#"{{
+  "{genome_id}": {{
+    "description": "synthetic mismatch genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let err = catalog
+            .prepare_genome_once(genome_id)
+            .expect_err("mismatched annotation contigs should fail prepare");
+        assert!(err.contains("annotation gene index"));
+        assert!(err.contains("III"));
+        assert!(err.contains("sequence.fa"));
+        assert!(err.contains("sequence.fa.fai"));
+    }
+
+    #[test]
     fn test_list_gene_transcript_records_from_gtf() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -5207,6 +5396,8 @@ mod tests {
         assert!(err.contains("Available contigs"));
         assert!(err.contains("chr1"));
         assert!(err.contains("PrepareGenome"));
+        assert!(err.contains("Prepared sequence='"));
+        assert!(err.contains("FASTA index='"));
     }
 
     #[test]

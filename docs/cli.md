@@ -2276,8 +2276,14 @@ Notes:
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
+- `PrepareGenome` now validates that gene-bearing contigs parsed from the
+  prepared annotation are present in the prepared FASTA index; truncated or
+  mismatched installs fail during preparation instead of only later during
+  extraction.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).
+- Missing-contig extraction errors now also report the prepared `sequence.fa`
+  and `sequence.fa.fai` paths for cache debugging.
 - For `ExtractGenomeGene`, `occurrence` is 1-based among matching records.
 - For `ExtendGenomeAnchor`, `side` is contextual to anchor strand.
   On anchor strand `-`, `5'` increases physical genomic position.

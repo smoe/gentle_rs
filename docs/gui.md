@@ -1906,6 +1906,10 @@ Recommended flow:
    - if a previous attempt already downloaded `sequence.fa` but annotation
      resolution fails (for example wrong GTF path), the next retry reuses the
      local FASTA instead of downloading it again
+   - preparation now validates that gene-bearing contigs from the parsed
+     annotation are actually present in the prepared FASTA index, so truncated
+     or mismatched caches fail early during `Prepare Genome` instead of only
+     surfacing later during extraction
 2. Extract a region when needed:
    - open `Retrieve Genomic Sequence...`
    - select the same `genome` from dropdown
@@ -1997,6 +2001,9 @@ Recommended flow:
    - when extraction fails with chromosome/contig mismatch, status messages now
      include tried aliases, available-contig preview, and suggested matching
      contigs (for example accession-style names such as `NC_000017.11`)
+   - those mismatch diagnostics also expose the prepared `sequence.fa` and
+     `sequence.fa.fai` paths so cache contents can be inspected directly during
+     debugging
    - when a credible suggestion exists, status output exposes a copyable
      `Suggested contig: '...'` line plus `Apply` / `Copy` actions for quick
      transfer into the `chr` field or clipboard
