@@ -445,6 +445,8 @@ order. Durable architecture constraints and decisions remain in
       (`docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json`)
     - batch primer design
       (`docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json`)
+    - overlap-extension substitution mutagenesis baseline
+      (`docs/examples/workflows/pcr_overlap_extension_substitution_offline.json`)
     - guide export and protocol handoff
       (`docs/examples/workflows/guides_export_csv_and_protocol.json`)
     - TP73 promoter luciferase assay planning
@@ -471,6 +473,9 @@ order. Durable architecture constraints and decisions remain in
     deterministic inner-overlap tail synthesis and graph-visible staged
     artifacts (outer/inner primers, stage-1 left/right products, stage-2 final
     mutant product, and stage-specific containers)
+    - insertion/replacement runs now also emit
+      `OpResult.protocol_cartoon_preview` metadata for
+      `pcr.oe.substitution` (geometry + deterministic template bindings)
   - engine operation `DesignQpcrAssays` now persists deterministic qPCR report
     payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
     records in project metadata

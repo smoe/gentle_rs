@@ -2246,6 +2246,31 @@ impl GentleEngine {
             ));
         }
 
+        if inserted_bp > 0 {
+            // Keep the context lane proportional to the configured overlap so
+            // the strip remains readable across short and long overlap designs.
+            let flank_bp = constraints.overlap_bp.saturating_mul(4).max(18);
+            let overlap_bp = best_design.overlap_sequence.len().max(1);
+            let insert_bp = inserted_bp;
+            let protocol = ProtocolCartoonKind::PcrOeSubstitution;
+            result.protocol_cartoon_preview = Some(ProtocolCartoonPreviewTelemetry {
+                protocol: protocol.id().to_string(),
+                flank_bp,
+                overlap_bp,
+                insert_bp,
+                bindings: crate::protocol_cartoon::pcr_oe_substitution_geometry_bindings(
+                    flank_bp, overlap_bp, insert_bp,
+                ),
+            });
+            result.messages.push(format!(
+                "Protocol cartoon preview attached: protocol='{}' flank_bp={} overlap_bp={} insert_bp={}",
+                protocol.id(),
+                flank_bp,
+                overlap_bp,
+                insert_bp
+            ));
+        }
+
         let mode = if deleted_bp == 0 {
             "insertion"
         } else if inserted_bp == 0 {
@@ -2337,6 +2362,7 @@ impl GentleEngine {
             changed_seq_ids: vec![],
             warnings: vec![],
             messages: vec![],
+            protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
         };

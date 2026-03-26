@@ -2041,6 +2041,11 @@ Operation progress/cancellation semantics:
     - three per-stage pool containers (left, right, final)
   - operation warnings include deterministic candidate-search limit notices when
     the combinatorial search budget is exhausted.
+  - insertion/replacement runs now also emit
+    `OpResult.protocol_cartoon_preview` for built-in protocol
+    `pcr.oe.substitution`, including deterministic
+    `flank_bp`/`overlap_bp`/`insert_bp` geometry and bound template overrides
+    (`gentle.protocol_cartoon_template_bindings.v1`) for adapter rendering.
 
 `DesignQpcrAssays` contract (implemented baseline):
 

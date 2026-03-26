@@ -5430,6 +5430,7 @@ impl GentleEngine {
             changed_seq_ids: vec![],
             warnings: vec![],
             messages: vec![],
+            protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
         };
@@ -5466,6 +5467,7 @@ impl GentleEngine {
             changed_seq_ids: vec![],
             warnings: vec![],
             messages: vec![],
+            protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
         };

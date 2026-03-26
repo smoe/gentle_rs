@@ -1,0 +1,80 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "pcr_overlap_extension_substitution_offline",
+  "title": "Overlap-extension PCR substitution on linear pGEX context (offline)",
+  "summary": "Loads linear pGEX FASTA and runs a deterministic overlap-extension substitution design that materializes staged PCR artifacts.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "tutorial",
+    "pcr",
+    "mutagenesis",
+    "overlap_extension",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_pcr_overlap_extension_substitution_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "pgex_linear"
+        }
+      },
+      {
+        "PcrOverlapExtensionMutagenesis": {
+          "template": "pgex_linear",
+          "edit_start_0based": 70,
+          "edit_end_0based_exclusive": 70,
+          "insert_sequence": "GGTACC",
+          "constraints": {
+            "overlap_bp": 16,
+            "outer_forward": {
+              "min_length": 20,
+              "max_length": 20,
+              "location_0based": 8,
+              "min_tm_c": 0.0,
+              "max_tm_c": 100.0,
+              "min_gc_fraction": 0.0,
+              "max_gc_fraction": 1.0,
+              "max_anneal_hits": 1000
+            },
+            "outer_reverse": {
+              "min_length": 20,
+              "max_length": 20,
+              "location_0based": 105,
+              "min_tm_c": 0.0,
+              "max_tm_c": 100.0,
+              "min_gc_fraction": 0.0,
+              "max_gc_fraction": 1.0,
+              "max_anneal_hits": 1000
+            },
+            "inner_forward": {
+              "min_length": 16,
+              "max_length": 16,
+              "location_0based": 88,
+              "min_tm_c": 0.0,
+              "max_tm_c": 100.0,
+              "min_gc_fraction": 0.0,
+              "max_gc_fraction": 1.0,
+              "max_anneal_hits": 1000
+            },
+            "inner_reverse": {
+              "min_length": 20,
+              "max_length": 20,
+              "location_0based": 45,
+              "min_tm_c": 0.0,
+              "max_tm_c": 100.0,
+              "min_gc_fraction": 0.0,
+              "max_gc_fraction": 1.0,
+              "max_anneal_hits": 1000
+            }
+          },
+          "output_prefix": "pgex_oe_sub"
+        }
+      }
+    ]
+  }
+}

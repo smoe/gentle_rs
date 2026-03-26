@@ -42,7 +42,7 @@ use crate::{
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
-    protocol_cartoon::ProtocolCartoonKind,
+    protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
@@ -5666,9 +5666,22 @@ pub struct OpResult {
     pub warnings: Vec<String>,
     pub messages: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol_cartoon_preview: Option<ProtocolCartoonPreviewTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_annotation_projection: Option<GenomeAnnotationProjectionTelemetry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_alignment: Option<SequenceAlignmentReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Optional protocol-cartoon preview payload emitted by operations that can
+/// project a deterministic mechanism strip from operation geometry.
+pub struct ProtocolCartoonPreviewTelemetry {
+    pub protocol: String,
+    pub flank_bp: usize,
+    pub overlap_bp: usize,
+    pub insert_bp: usize,
+    pub bindings: ProtocolCartoonTemplateBindings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

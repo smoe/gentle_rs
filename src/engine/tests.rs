@@ -1934,6 +1934,19 @@ fn test_pcr_overlap_extension_mutagenesis_insertion_materializes_staged_products
             .iter()
             .any(|line| line.contains("Overlap-extension insertion mutagenesis"))
     );
+    let preview = result
+        .protocol_cartoon_preview
+        .as_ref()
+        .expect("insertion mutagenesis should include cartoon preview");
+    assert_eq!(preview.protocol, "pcr.oe.substitution");
+    assert_eq!(preview.insert_bp, 6);
+    assert_eq!(preview.overlap_bp, expected_overlap.len());
+    assert_eq!(preview.flank_bp, 64);
+    assert_eq!(
+        preview.bindings.template_id.as_deref(),
+        Some("pcr.oe.substitution")
+    );
+    assert!(!preview.bindings.feature_overrides.is_empty());
 }
 
 #[test]
@@ -2024,6 +2037,10 @@ fn test_pcr_overlap_extension_mutagenesis_deletion_materializes_staged_products(
             .messages
             .iter()
             .any(|line| line.contains("Overlap-extension deletion mutagenesis"))
+    );
+    assert!(
+        result.protocol_cartoon_preview.is_none(),
+        "deletion mutagenesis should not attach substitution cartoon preview"
     );
 }
 

@@ -2736,4 +2736,32 @@ mod tests {
         assert!(state.sequences.contains_key("pgex_fasta_branch"));
         assert!(state.sequences.contains_key("pgex_fasta_branch_rc"));
     }
+
+    #[test]
+    fn oe_substitution_example_materializes_staged_pcr_artifacts() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "pcr_overlap_extension_substitution_offline")
+            .expect("example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let state =
+            run_example_workflow_for_project_state(&loaded.example, Path::new("."), run_dir.path())
+                .expect("workflow should produce project state");
+        assert!(state.sequences.contains_key("pgex_linear"));
+        let mut has_outer = false;
+        let mut has_stage1_left = false;
+        let mut has_stage1_right = false;
+        let mut has_mutant = false;
+        for seq_id in state.sequences.keys() {
+            has_outer |= seq_id.contains("pgex_oe_sub_outer_fwd");
+            has_stage1_left |= seq_id.contains("pgex_oe_sub_stage1_left");
+            has_stage1_right |= seq_id.contains("pgex_oe_sub_stage1_right");
+            has_mutant |= seq_id.contains("pgex_oe_sub_mutant");
+        }
+        assert!(has_outer, "expected outer primer artifact");
+        assert!(has_stage1_left, "expected stage-1 left artifact");
+        assert!(has_stage1_right, "expected stage-1 right artifact");
+        assert!(has_mutant, "expected mutant product artifact");
+    }
 }
