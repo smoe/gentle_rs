@@ -31,16 +31,16 @@ use crate::{
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
         DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DisplaySettings, DisplayTarget, Engine, EngineError,
-        ErrorCode, GenomeAnnotationScope, GenomeTrackImportProgress, GenomeTrackSource,
-        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RoutineDecisionTrace,
-        RoutineDecisionTraceComparison, RoutineDecisionTraceDisambiguationAnswer,
-        RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTraceExportEvent,
-        RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
-        SequenceGenomeAnchorSummary,
+        ErrorCode, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
+        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine,
+        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, OpResult, Operation,
+        OperationProgress, PlanningObjective, PlanningProfile, PlanningProfileScope,
+        PlanningSuggestionStatus, ProjectState, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
+        RenderSvgMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+        RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
+        RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -754,6 +754,9 @@ pub struct GENtleApp {
     genome_start_1based: String,
     genome_end_1based: String,
     genome_output_id: String,
+    genome_output_id_autofilled: bool,
+    genome_gene_extract_mode: GenomeGeneExtractMode,
+    genome_gene_promoter_upstream_bp: String,
     genome_annotation_scope: GenomeAnnotationScope,
     genome_max_annotation_features: String,
     genome_include_genomic_annotation: bool,
@@ -2079,6 +2082,9 @@ impl Default for GENtleApp {
             genome_start_1based: "1".to_string(),
             genome_end_1based: "1000".to_string(),
             genome_output_id: String::new(),
+            genome_output_id_autofilled: false,
+            genome_gene_extract_mode: GenomeGeneExtractMode::Gene,
+            genome_gene_promoter_upstream_bp: "1000".to_string(),
             genome_annotation_scope: GenomeAnnotationScope::Core,
             genome_max_annotation_features: String::new(),
             genome_include_genomic_annotation: true,
@@ -11502,8 +11508,14 @@ Error: `{err}`"
         self.genome_start_1based = gene.start_1based.to_string();
         self.genome_end_1based = gene.end_1based.to_string();
         self.genome_retrieve_contig_suggestions.clear();
-        if self.genome_output_id.trim().is_empty() {
-            self.genome_output_id = Self::default_retrieve_genome_output_id(&self.genome_id, gene);
+        if self.genome_output_id.trim().is_empty() || self.genome_output_id_autofilled {
+            self.genome_output_id = Self::default_retrieve_genome_output_id(
+                &self.genome_id,
+                gene,
+                self.genome_gene_extract_mode,
+                self.current_gene_promoter_upstream_bp(),
+            );
+            self.genome_output_id_autofilled = true;
         }
     }
 
@@ -11527,19 +11539,61 @@ Error: `{err}`"
         }
     }
 
-    fn default_retrieve_genome_output_id(genome_id: &str, gene: &GenomeGeneRecord) -> String {
+    fn default_retrieve_genome_output_id(
+        genome_id: &str,
+        gene: &GenomeGeneRecord,
+        extract_mode: GenomeGeneExtractMode,
+        promoter_upstream_bp: usize,
+    ) -> String {
         let label = gene
             .gene_name
             .as_deref()
             .or(gene.gene_id.as_deref())
             .unwrap_or("gene");
-        format!(
-            "{}_{}_{}_{}",
-            Self::normalize_output_id_token(genome_id),
-            Self::normalize_output_id_token(label),
-            gene.start_1based,
-            gene.end_1based
-        )
+        let genome_token = Self::normalize_output_id_token(genome_id);
+        let label_token = Self::normalize_output_id_token(label);
+        match extract_mode {
+            GenomeGeneExtractMode::Gene => format!(
+                "{}_{}_{}_{}",
+                genome_token, label_token, gene.start_1based, gene.end_1based
+            ),
+            GenomeGeneExtractMode::CodingWithPromoter => {
+                if promoter_upstream_bp == 0 {
+                    format!("{genome_token}_{label_token}_coding")
+                } else {
+                    format!(
+                        "{genome_token}_{label_token}_coding_promoter_{}bp",
+                        promoter_upstream_bp
+                    )
+                }
+            }
+        }
+    }
+
+    fn current_gene_promoter_upstream_bp(&self) -> usize {
+        self.genome_gene_promoter_upstream_bp
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0)
+    }
+
+    fn refresh_selected_gene_output_id_if_autofilled(&mut self) {
+        if !self.genome_output_id.trim().is_empty() && !self.genome_output_id_autofilled {
+            return;
+        }
+        let Some(selected_idx) = self.genome_selected_gene else {
+            return;
+        };
+        let Some(gene) = self.genome_genes.get(selected_idx) else {
+            return;
+        };
+        self.genome_output_id = Self::default_retrieve_genome_output_id(
+            &self.genome_id,
+            gene,
+            self.genome_gene_extract_mode,
+            self.current_gene_promoter_upstream_bp(),
+        );
+        self.genome_output_id_autofilled = true;
     }
 
     fn gene_record_matches_regex(gene: &GenomeGeneRecord, regex: &Regex) -> bool {
@@ -11703,6 +11757,27 @@ Error: `{err}`"
         } else {
             Some(self.genome_output_id.trim().to_string())
         };
+        let extract_mode = self.genome_gene_extract_mode;
+        let promoter_upstream_bp = if matches!(
+            extract_mode,
+            GenomeGeneExtractMode::CodingWithPromoter
+        ) {
+            if self.genome_gene_promoter_upstream_bp.trim().is_empty() {
+                0
+            } else {
+                match self.genome_gene_promoter_upstream_bp.trim().parse::<usize>() {
+                    Ok(parsed) => parsed,
+                    Err(_) => {
+                        self.genome_retrieve_status =
+                            "promoter bp before CDS must be a non-negative integer".to_string();
+                        self.genome_retrieve_contig_suggestions.clear();
+                        return;
+                    }
+                }
+            }
+        } else {
+            0
+        };
         self.sync_genome_annotation_scope_controls();
         let annotation_scope = self.genome_annotation_scope;
         let max_annotation_features = if self.genome_max_annotation_features.trim().is_empty() {
@@ -11722,6 +11797,9 @@ Error: `{err}`"
             gene_query,
             occurrence: Some(occurrence),
             output_id,
+            extract_mode: Some(extract_mode),
+            promoter_upstream_bp: matches!(extract_mode, GenomeGeneExtractMode::CodingWithPromoter)
+                .then_some(promoter_upstream_bp),
             annotation_scope: Some(annotation_scope),
             max_annotation_features,
             include_genomic_annotation: Some(self.genome_include_genomic_annotation),
@@ -13196,8 +13274,62 @@ Error: `{err}`"
                     }
                 });
                 ui.horizontal(|ui| {
+                    ui.label("selected gene extract");
+                    let previous_mode = self.genome_gene_extract_mode;
+                    egui::ComboBox::from_id_salt("retrieve_genome_gene_extract_mode")
+                        .selected_text(match self.genome_gene_extract_mode {
+                            GenomeGeneExtractMode::Gene => "gene span",
+                            GenomeGeneExtractMode::CodingWithPromoter => "CDS + promoter",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.genome_gene_extract_mode,
+                                GenomeGeneExtractMode::Gene,
+                                "gene span",
+                            );
+                            ui.selectable_value(
+                                &mut self.genome_gene_extract_mode,
+                                GenomeGeneExtractMode::CodingWithPromoter,
+                                "CDS + promoter",
+                            );
+                        })
+                        .response
+                        .on_hover_text(
+                            "Choose whether Extract Selected Gene uses the full gene span or the CDS span plus an additional 5' promoter flank",
+                        );
+                    ui.label("promoter bp before CDS");
+                    let promoter_changed = ui
+                        .add_enabled(
+                            matches!(
+                                self.genome_gene_extract_mode,
+                                GenomeGeneExtractMode::CodingWithPromoter
+                            ),
+                            egui::TextEdit::singleline(
+                                &mut self.genome_gene_promoter_upstream_bp,
+                            )
+                            .desired_width(120.0)
+                            .hint_text("0 = CDS only"),
+                        )
+                        .on_hover_text(
+                            "Additional bases to include on the gene's 5' side before the first coding base (strand-aware)",
+                        )
+                        .changed();
+                    if promoter_changed {
+                        self.genome_gene_promoter_upstream_bp
+                            .retain(|ch| ch.is_ascii_digit());
+                    }
+                    if self.genome_gene_extract_mode != previous_mode || promoter_changed {
+                        self.refresh_selected_gene_output_id_if_autofilled();
+                    }
+                });
+                ui.small(
+                    "Extract Selected Gene uses the mode above. Extract Region always uses the explicit chr/start/end interval.",
+                );
+                ui.horizontal(|ui| {
                     ui.label("output_id");
-                    ui.text_edit_singleline(&mut self.genome_output_id);
+                    if ui.text_edit_singleline(&mut self.genome_output_id).changed() {
+                        self.genome_output_id_autofilled = false;
+                    }
                     if ui
                         .checkbox(
                             &mut self.genome_include_genomic_annotation,
@@ -31191,19 +31323,27 @@ Error: `{err}`"
                 gene_query,
                 occurrence,
                 output_id,
+                extract_mode,
+                promoter_upstream_bp,
                 annotation_scope,
                 max_annotation_features,
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => format!(
-                "Extract genome gene: genome_id={}, gene_query={}, occurrence={}, output_id={}, annotation_scope={}, max_annotation_features={}, include_genomic_annotation={}, catalog_path={}, cache_dir={}",
+                "Extract genome gene: genome_id={}, gene_query={}, occurrence={}, output_id={}, extract_mode={}, promoter_upstream_bp={}, annotation_scope={}, max_annotation_features={}, include_genomic_annotation={}, catalog_path={}, cache_dir={}",
                 genome_id,
                 gene_query,
                 occurrence
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 output_id.clone().unwrap_or_else(|| "-".to_string()),
+                extract_mode
+                    .map(|mode| mode.as_str().to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                promoter_upstream_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
                 annotation_scope
                     .map(|scope| scope.as_str().to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -31581,9 +31721,9 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
-            FlexibilityModel, GenomeAnnotationProjectionTelemetry, GentleEngine, LineageEdge,
-            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
-            RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
+            FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
+            GentleEngine, LineageEdge, LineageNode, LinearSequenceLetterLayoutMode, OpResult,
+            Operation, ProjectState, RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             SequenceOrigin,
         },
@@ -35938,6 +36078,30 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         app.select_gene_record(0);
 
         assert_eq!(app.genome_output_id, "manual_output");
+    }
+
+    #[test]
+    fn select_gene_record_uses_coding_promoter_output_id_when_mode_is_enabled() {
+        let mut app = GENtleApp::default();
+        app.genome_id = "Human GRCh38 Ensembl 116".to_string();
+        app.genome_gene_extract_mode = GenomeGeneExtractMode::CodingWithPromoter;
+        app.genome_gene_promoter_upstream_bp = "2000".to_string();
+        app.genome_genes = vec![crate::genomes::GenomeGeneRecord {
+            chromosome: "20".to_string(),
+            start_1based: 33756336,
+            end_1based: 33766457,
+            strand: Some('+'),
+            gene_id: Some("ENSG00000101412".to_string()),
+            gene_name: Some("E2F1".to_string()),
+            biotype: Some("protein_coding".to_string()),
+        }];
+
+        app.select_gene_record(0);
+
+        assert_eq!(
+            app.genome_output_id,
+            "human_grch38_ensembl_116_e2f1_coding_promoter_2000bp"
+        );
     }
 
     #[test]

@@ -741,7 +741,7 @@
          ],
          "path": "genomes extract-gene",
          "summary": "Extract a named gene interval into a project sequence.",
-         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -871,7 +871,7 @@
          ],
          "path": "helpers extract-gene",
          "summary": "Extract helper-gene interval into a project sequence.",
-         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -2286,7 +2286,7 @@
          ],
          "path": "extract_genome_gene",
          "summary": "Apply ExtractGenomeGene operation.",
-         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir])"
+         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features], [extract_mode], [promoter_upstream_bp])"
       },
       {
          "aliases": [],
@@ -2650,7 +2650,7 @@
          ],
          "path": "extract_genome_gene",
          "summary": "Apply ExtractGenomeGene operation.",
-         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir])"
+         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features], [extract_mode], [promoter_upstream_bp])"
       },
       {
          "aliases": [],

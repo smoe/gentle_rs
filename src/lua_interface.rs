@@ -3,8 +3,8 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GentleEngine, Operation,
-    ProjectState, Workflow,
+    Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope,
+    GenomeGeneExtractMode, GentleEngine, Operation, ProjectState, Workflow,
 };
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
@@ -124,7 +124,7 @@ impl LuaInterface {
             "  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features]): Engine op helper"
         );
         println!(
-            "  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features]): Engine op helper"
+            "  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features], [extract_mode], [promoter_upstream_bp]): Engine op helper"
         );
         println!(
             "  - extend_genome_anchor(project, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir]): Engine op helper"
@@ -1087,6 +1087,8 @@ impl LuaInterface {
                     cache_dir,
                     annotation_scope,
                     max_annotation_features,
+                    extract_mode,
+                    promoter_upstream_bp,
                 ): (
                     Value,
                     String,
@@ -1095,6 +1097,8 @@ impl LuaInterface {
                     Option<String>,
                     Option<String>,
                     Option<String>,
+                    Option<String>,
+                    Option<usize>,
                     Option<String>,
                     Option<usize>,
                 )| {
@@ -1121,6 +1125,27 @@ impl LuaInterface {
                             Some(parsed)
                         }
                     };
+                    let parsed_extract_mode = match extract_mode
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        None => None,
+                        Some(raw) => {
+                            let parsed = match raw.to_ascii_lowercase().as_str() {
+                                "gene" => GenomeGeneExtractMode::Gene,
+                                "coding_with_promoter" => {
+                                    GenomeGeneExtractMode::CodingWithPromoter
+                                }
+                                other => {
+                                    return Err(Self::err(&format!(
+                                        "Invalid extract_mode '{other}' (expected gene|coding_with_promoter)"
+                                    )));
+                                }
+                            };
+                            Some(parsed)
+                        }
+                    };
                     let mut engine = GentleEngine::from_state(state);
                     let result = engine
                         .apply(Operation::ExtractGenomeGene {
@@ -1128,6 +1153,8 @@ impl LuaInterface {
                             gene_query,
                             occurrence,
                             output_id,
+                            extract_mode: parsed_extract_mode,
+                            promoter_upstream_bp,
                             annotation_scope: parsed_scope,
                             max_annotation_features,
                             include_genomic_annotation: None,

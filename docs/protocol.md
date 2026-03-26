@@ -576,7 +576,7 @@ Current draft operations:
   - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
   - for helper genome IDs containing `pUC18`/`pUC19`, the engine applies a deterministic fallback MCS `misc_feature` annotation when source annotation does not already include an MCS feature and exactly one canonical MCS motif is found.
   - source-derived and fallback MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names when recognizable.
-- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, extract_mode?, promoter_upstream_bp?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
   - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
   - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
   - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.

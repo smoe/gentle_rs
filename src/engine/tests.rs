@@ -6466,6 +6466,8 @@ fn test_prepare_genome_and_extract_region_operations() {
             gene_query: "MYGENE".to_string(),
             occurrence: None,
             output_id: Some("toy_gene".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: None,
             max_annotation_features: None,
             include_genomic_annotation: None,
@@ -6571,6 +6573,8 @@ fn test_extract_genome_gene_reports_alias_guidance_for_contig_mismatch() {
             gene_query: "MYGENE".to_string(),
             occurrence: None,
             output_id: Some("toy_gene".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: None,
             max_annotation_features: None,
             include_genomic_annotation: None,
@@ -6642,6 +6646,8 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
             gene_query: "MYGENE".to_string(),
             occurrence: None,
             output_id: Some("toy_gene".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: Some(GenomeAnnotationScope::Full),
             max_annotation_features: None,
             include_genomic_annotation: None,
@@ -6795,6 +6801,8 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
             gene_query: "NEG1".to_string(),
             occurrence: None,
             output_id: Some("toy_gene_neg".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: Some(GenomeAnnotationScope::Core),
             max_annotation_features: None,
             include_genomic_annotation: None,
@@ -6822,6 +6830,174 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .next()
         .unwrap_or_default();
     assert_eq!(first_genomic_start, "9");
+}
+
+#[test]
+fn test_extract_genome_gene_coding_with_promoter_extends_plus_strand_from_first_cds_base() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let ann = root.join("toy.gtf");
+    fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+    fs::write(
+        &ann,
+        concat!(
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+            "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+            "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+            "chr1\tsrc\tCDS\t4\t6\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+            "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+            "chr1\tsrc\tCDS\t9\t11\t.\t+\t2\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+        ),
+    )
+    .unwrap();
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        ann.display(),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).unwrap();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::ExtractGenomeGene {
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "MYGENE".to_string(),
+            occurrence: None,
+            output_id: Some("toy_gene_promoter".to_string()),
+            extract_mode: Some(GenomeGeneExtractMode::CodingWithPromoter),
+            promoter_upstream_bp: Some(2),
+            annotation_scope: None,
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+        })
+        .unwrap();
+
+    let loaded_gene = engine.state().sequences.get("toy_gene_promoter").unwrap();
+    assert_eq!(loaded_gene.get_forward_string(), "CGTACGTACG");
+    let provenance = engine
+        .state()
+        .metadata
+        .get("provenance")
+        .and_then(|value| value.as_object())
+        .and_then(|object| object.get("genome_extractions"))
+        .and_then(|value| value.as_array())
+        .expect("genome extraction provenance");
+    let entry = provenance
+        .iter()
+        .find(|entry| {
+            entry
+                .get("seq_id")
+                .and_then(|value| value.as_str())
+                .map(|value| value == "toy_gene_promoter")
+                .unwrap_or(false)
+        })
+        .expect("provenance entry for promoter extract");
+    assert_eq!(
+        entry.get("gene_extract_mode").and_then(|value| value.as_str()),
+        Some("coding_with_promoter")
+    );
+    assert_eq!(
+        entry
+            .get("promoter_upstream_bp")
+            .and_then(|value| value.as_u64()),
+        Some(2)
+    );
+}
+
+#[test]
+fn test_extract_genome_gene_coding_with_promoter_extends_minus_strand_on_five_prime_side() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let ann = root.join("toy.gtf");
+    fs::write(&fasta, ">chr1\nAAAACCCCGGGGTTTT\n").unwrap();
+    fs::write(
+        &ann,
+        concat!(
+            "chr1\tsrc\tgene\t1\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t1\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t1\t4\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\tCDS\t2\t4\t.\t-\t0\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t9\t12\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+            "chr1\tsrc\tCDS\t9\t11\t.\t-\t2\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+        ),
+    )
+    .unwrap();
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        ann.display(),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).unwrap();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::ExtractGenomeGene {
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "NEG1".to_string(),
+            occurrence: None,
+            output_id: Some("toy_gene_neg_promoter".to_string()),
+            extract_mode: Some(GenomeGeneExtractMode::CodingWithPromoter),
+            promoter_upstream_bp: Some(2),
+            annotation_scope: None,
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: None,
+        })
+        .unwrap();
+
+    let loaded_gene = engine
+        .state()
+        .sequences
+        .get("toy_gene_neg_promoter")
+        .unwrap();
+    assert_eq!(loaded_gene.get_forward_string(), "AAACCCCGGGGT");
 }
 
 #[test]
@@ -6878,6 +7054,8 @@ fn test_extract_genome_gene_include_annotation_false_disables_projection() {
             gene_query: "MYGENE".to_string(),
             occurrence: None,
             output_id: Some("toy_gene_no_annotation".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: None,
             max_annotation_features: None,
             include_genomic_annotation: Some(false),
@@ -6959,6 +7137,8 @@ fn test_extract_genome_gene_annotation_cap_falls_back_to_core() {
             gene_query: "MYGENE".to_string(),
             occurrence: None,
             output_id: Some("toy_gene_cap_fallback".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: Some(GenomeAnnotationScope::Full),
             max_annotation_features: Some(2),
             include_genomic_annotation: None,
@@ -8811,6 +8991,8 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
             gene_query: "bla".to_string(),
             occurrence: Some(1),
             output_id: Some("helper_bla".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
             annotation_scope: None,
             max_annotation_features: None,
             include_genomic_annotation: None,

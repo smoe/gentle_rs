@@ -6753,6 +6753,36 @@ fn parse_genomes_extract_gene_with_scope_and_cap() {
 }
 
 #[test]
+fn parse_genomes_extract_gene_with_coding_promoter_mode() {
+    let cmd = parse_shell_line(
+        "genomes extract-gene ToyGenome MYGENE --extract-mode coding_with_promoter --promoter-upstream-bp 2000 --output-id out",
+    )
+    .expect("parse genomes extract-gene with coding promoter mode");
+    match cmd {
+        ShellCommand::ReferenceExtractGene {
+            helper_mode,
+            genome_id,
+            gene_query,
+            output_id,
+            extract_mode,
+            promoter_upstream_bp,
+            ..
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(genome_id, "ToyGenome".to_string());
+            assert_eq!(gene_query, "MYGENE".to_string());
+            assert_eq!(output_id, Some("out".to_string()));
+            assert_eq!(
+                extract_mode,
+                Some(crate::engine::GenomeGeneExtractMode::CodingWithPromoter)
+            );
+            assert_eq!(promoter_upstream_bp, Some(2000));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_extract_gene_with_annotation_flag() {
     let cmd = parse_shell_line(
         "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",

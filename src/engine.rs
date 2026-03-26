@@ -2938,6 +2938,24 @@ impl GenomeAnnotationScope {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Interval policy for `ExtractGenomeGene`.
+pub enum GenomeGeneExtractMode {
+    #[default]
+    Gene,
+    CodingWithPromoter,
+}
+
+impl GenomeGeneExtractMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gene => "gene",
+            Self::CodingWithPromoter => "coding_with_promoter",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Dotplot comparison mode for `ComputeDotplot`.
 pub enum DotplotMode {
     #[default]
@@ -4370,6 +4388,10 @@ pub enum Operation {
         occurrence: Option<usize>,
         output_id: Option<SeqId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        extract_mode: Option<GenomeGeneExtractMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        promoter_upstream_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         annotation_scope: Option<GenomeAnnotationScope>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max_annotation_features: Option<usize>,
@@ -5302,6 +5324,10 @@ pub struct GenomeExtractionProvenance {
     pub end_1based: Option<usize>,
     pub gene_query: Option<String>,
     pub occurrence: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_extract_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_upstream_bp: Option<usize>,
     pub gene_id: Option<String>,
     pub gene_name: Option<String>,
     pub strand: Option<char>,
@@ -7867,6 +7893,100 @@ impl GentleEngine {
             "{}:{}-{} ({})",
             record.chromosome, record.start_1based, record.end_1based, label
         )
+    }
+
+    fn default_extract_genome_gene_output_id(
+        genome_id: &str,
+        gene: &GenomeGeneRecord,
+        extract_mode: GenomeGeneExtractMode,
+        promoter_upstream_bp: usize,
+    ) -> String {
+        let label = gene
+            .gene_name
+            .as_deref()
+            .or(gene.gene_id.as_deref())
+            .unwrap_or("gene");
+        let genome_token = Self::normalize_id_token(genome_id);
+        let label_token = Self::normalize_id_token(label);
+        match extract_mode {
+            GenomeGeneExtractMode::Gene => format!(
+                "{}_{}_{}_{}",
+                genome_token, label_token, gene.start_1based, gene.end_1based
+            ),
+            GenomeGeneExtractMode::CodingWithPromoter => {
+                if promoter_upstream_bp == 0 {
+                    format!("{genome_token}_{label_token}_coding")
+                } else {
+                    format!(
+                        "{genome_token}_{label_token}_coding_promoter_{}bp",
+                        promoter_upstream_bp
+                    )
+                }
+            }
+        }
+    }
+
+    fn resolve_extract_genome_gene_interval(
+        selected_gene: &GenomeGeneRecord,
+        transcript_records: &[GenomeTranscriptRecord],
+        extract_mode: GenomeGeneExtractMode,
+        promoter_upstream_bp: usize,
+    ) -> Result<(usize, usize), String> {
+        match extract_mode {
+            GenomeGeneExtractMode::Gene => {
+                Ok((selected_gene.start_1based, selected_gene.end_1based))
+            }
+            GenomeGeneExtractMode::CodingWithPromoter => {
+                let strand = selected_gene
+                    .strand
+                    .or_else(|| transcript_records.iter().filter_map(|record| record.strand).next())
+                    .ok_or_else(|| {
+                        format!(
+                            "Gene '{}' has no strand annotation; cannot resolve CDS/promoter interval",
+                            Self::genome_gene_display_label(selected_gene)
+                        )
+                    })?;
+                let mut cds_start_1based: Option<usize> = None;
+                let mut cds_end_1based: Option<usize> = None;
+                for record in transcript_records {
+                    for (start_1based, end_1based) in &record.cds_1based {
+                        cds_start_1based = Some(
+                            cds_start_1based
+                                .map(|current| current.min(*start_1based))
+                                .unwrap_or(*start_1based),
+                        );
+                        cds_end_1based = Some(
+                            cds_end_1based
+                                .map(|current| current.max(*end_1based))
+                                .unwrap_or(*end_1based),
+                        );
+                    }
+                }
+                let Some(cds_start_1based) = cds_start_1based else {
+                    return Err(format!(
+                        "Gene '{}' has no CDS annotation; extract_mode=coding_with_promoter requires CDS-bearing transcripts",
+                        Self::genome_gene_display_label(selected_gene)
+                    ));
+                };
+                let Some(cds_end_1based) = cds_end_1based else {
+                    return Err(format!(
+                        "Gene '{}' has no CDS annotation; extract_mode=coding_with_promoter requires CDS-bearing transcripts",
+                        Self::genome_gene_display_label(selected_gene)
+                    ));
+                };
+                if strand == '-' {
+                    Ok((
+                        cds_start_1based,
+                        cds_end_1based.saturating_add(promoter_upstream_bp),
+                    ))
+                } else {
+                    Ok((
+                        cds_start_1based.saturating_sub(promoter_upstream_bp).max(1),
+                        cds_end_1based,
+                    ))
+                }
+            }
+        }
     }
 
     fn normalize_genome_chromosome_token(raw: &str) -> String {

@@ -444,7 +444,7 @@ Exit methods:
     - Convenience wrapper around engine `PrepareGenome`.
 17. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features)`
+18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
@@ -699,7 +699,7 @@ Exit methods:
     - Convenience wrapper around engine `PrepareGenome`.
 17. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features)`
+18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
@@ -963,7 +963,7 @@ Shared shell command:
     - `genomes blast-cancel JOB_ID`
     - `genomes blast-list`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
     - `helpers validate-catalog [--catalog PATH]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -975,7 +975,7 @@ Shared shell command:
     - `helpers blast-cancel JOB_ID`
     - `helpers blast-list`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -1502,7 +1502,7 @@ Genome convenience commands:
   - legacy `--include-genomic-annotation` maps to `--annotation-scope core`.
   - legacy `--no-include-genomic-annotation` maps to `--annotation-scope none`.
   - Result payload includes `genome_annotation_projection` telemetry.
-- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
@@ -1553,7 +1553,7 @@ Helper convenience commands:
     annotation and exactly one canonical MCS motif is found.
   - MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names
     when recognizable from source/fallback annotation text.
-- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
   - pUC18/pUC19 helper extractions apply the same automatic MCS fallback
     annotation behavior when applicable (non-unique motif matches are warned and
@@ -2340,6 +2340,9 @@ Notes:
 - Missing-contig extraction errors now also report the prepared `sequence.fa`
   and `sequence.fa.fai` paths for cache debugging.
 - For `ExtractGenomeGene`, `occurrence` is 1-based among matching records.
+- `ExtractGenomeGene.extract_mode=coding_with_promoter` resolves the CDS span
+  from transcript `CDS` annotation and applies `promoter_upstream_bp`
+  strand-aware on the gene's 5' side.
 - For `ExtendGenomeAnchor`, `side` is contextual to anchor strand.
   On anchor strand `-`, `5'` increases physical genomic position.
 - For anchor-extension reads, genome ids can resolve through assembly-family

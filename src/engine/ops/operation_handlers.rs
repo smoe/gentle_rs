@@ -926,6 +926,8 @@ impl GentleEngine {
                 end_1based: Some(anchor.end_1based),
                 gene_query: None,
                 occurrence: None,
+                gene_extract_mode: None,
+                promoter_upstream_bp: None,
                 gene_id: None,
                 gene_name: None,
                 strand: None,
@@ -2449,6 +2451,8 @@ impl GentleEngine {
                         end_1based: Some(anchor.end_1based),
                         gene_query: None,
                         occurrence: None,
+                        gene_extract_mode: None,
+                        promoter_upstream_bp: None,
                         gene_id: None,
                         gene_name: None,
                         strand: None,
@@ -3218,6 +3222,8 @@ impl GentleEngine {
                     end_1based: Some(end_1based),
                     gene_query: None,
                     occurrence: None,
+                    gene_extract_mode: None,
+                    promoter_upstream_bp: None,
                     gene_id: None,
                     gene_name: None,
                     strand: None,
@@ -3240,6 +3246,8 @@ impl GentleEngine {
                 gene_query,
                 occurrence,
                 output_id,
+                extract_mode,
+                promoter_upstream_bp,
                 annotation_scope,
                 max_annotation_features,
                 include_genomic_annotation,
@@ -3316,59 +3324,14 @@ impl GentleEngine {
                         ),
                     });
                 };
-                let sequence = catalog
-                    .get_sequence_region_with_cache(
-                        &genome_id,
-                        &selected_gene.chromosome,
-                        selected_gene.start_1based,
-                        selected_gene.end_1based,
-                        cache_dir.as_deref(),
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load gene region {}:{}-{} from '{}': {}",
-                            selected_gene.chromosome,
-                            selected_gene.start_1based,
-                            selected_gene.end_1based,
-                            genome_id,
-                            e
-                        ),
-                    })?;
-                let gene_label = selected_gene
-                    .gene_name
-                    .as_ref()
-                    .or(selected_gene.gene_id.as_ref())
-                    .cloned()
-                    .unwrap_or_else(|| query.to_string());
-                let default_id = format!(
-                    "{}_{}_{}_{}",
-                    Self::normalize_id_token(&genome_id),
-                    Self::normalize_id_token(&gene_label),
-                    selected_gene.start_1based,
-                    selected_gene.end_1based
-                );
-                let base = output_id.unwrap_or(default_id);
-                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
-                let preferred_name = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .and_then(|dna| {
-                        dna.name()
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                            .map(str::to_string)
-                    })
-                    .unwrap_or_else(|| seq_id.clone());
-                if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
-                    || preferred_name.eq_ignore_ascii_case("<no name>")
-                {
-                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                        dna.set_name(seq_id.clone());
-                        Self::prepare_sequence(dna);
-                    }
+                let extract_mode = extract_mode.unwrap_or(GenomeGeneExtractMode::Gene);
+                let promoter_upstream_bp = promoter_upstream_bp.unwrap_or(0);
+                if matches!(extract_mode, GenomeGeneExtractMode::Gene) && promoter_upstream_bp > 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "promoter_upstream_bp requires extract_mode=coding_with_promoter"
+                            .to_string(),
+                    });
                 }
 
                 let mut transcript_records = match catalog.list_gene_transcript_records(
@@ -3383,8 +3346,9 @@ impl GentleEngine {
                     Ok(records) => records,
                     Err(e) => {
                         result.warnings.push(format!(
-                            "Could not inspect transcript/exon annotation for extracted gene '{}': {}",
-                            seq_id, e
+                            "Could not inspect transcript/exon annotation for gene '{}': {}",
+                            Self::genome_gene_display_label(selected_gene),
+                            e
                         ));
                         vec![]
                     }
@@ -3438,7 +3402,7 @@ impl GentleEngine {
                             if !records.is_empty() {
                                 result.warnings.push(format!(
                                     "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
-                                    seq_id,
+                                    Self::genome_gene_display_label(selected_gene),
                                     records.len()
                                 ));
                                 transcript_records = records;
@@ -3446,10 +3410,70 @@ impl GentleEngine {
                         }
                         Err(e) => {
                             result.warnings.push(format!(
-                                "Could not run transcript fallback for extracted gene '{}': {}",
-                                seq_id, e
+                                "Could not run transcript fallback for gene '{}': {}",
+                                Self::genome_gene_display_label(selected_gene),
+                                e
                             ));
                         }
+                    }
+                }
+
+                let (extract_start_1based, extract_end_1based) =
+                    Self::resolve_extract_genome_gene_interval(
+                        selected_gene,
+                        &transcript_records,
+                        extract_mode,
+                        promoter_upstream_bp,
+                    )
+                    .map_err(|message| EngineError {
+                        code: ErrorCode::NotFound,
+                        message,
+                    })?;
+                let sequence = catalog
+                    .get_sequence_region_with_cache(
+                        &genome_id,
+                        &selected_gene.chromosome,
+                        extract_start_1based,
+                        extract_end_1based,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load gene extraction interval {}:{}-{} from '{}': {}",
+                            selected_gene.chromosome,
+                            extract_start_1based,
+                            extract_end_1based,
+                            genome_id,
+                            e
+                        ),
+                    })?;
+                let default_id = Self::default_extract_genome_gene_output_id(
+                    &genome_id,
+                    selected_gene,
+                    extract_mode,
+                    promoter_upstream_bp,
+                );
+                let base = output_id.unwrap_or(default_id);
+                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                let preferred_name = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .and_then(|dna| {
+                        dna.name()
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| seq_id.clone());
+                if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
+                    || preferred_name.eq_ignore_ascii_case("<no name>")
+                {
+                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                        dna.set_name(seq_id.clone());
+                        Self::prepare_sequence(dna);
                     }
                 }
 
@@ -3460,8 +3484,8 @@ impl GentleEngine {
                     .map(|dna| dna.get_forward_string())
                     && let Some(exon_projection) = Self::build_exon_concatenated_projection(
                         &extracted_sequence,
-                        selected_gene.start_1based,
-                        selected_gene.end_1based,
+                        extract_start_1based,
+                        extract_end_1based,
                         selected_gene.strand,
                         &transcript_records,
                         EXON_CONCAT_SPACER_BP,
@@ -3484,11 +3508,11 @@ impl GentleEngine {
                             ("chromosome".into(), Some(selected_gene.chromosome.clone())),
                             (
                                 "genomic_start_1based".into(),
-                                Some(selected_gene.start_1based.to_string()),
+                                Some(extract_start_1based.to_string()),
                             ),
                             (
                                 "genomic_end_1based".into(),
-                                Some(selected_gene.end_1based.to_string()),
+                                Some(extract_end_1based.to_string()),
                             ),
                             (
                                 "synthetic_origin".into(),
@@ -3600,8 +3624,8 @@ impl GentleEngine {
                 let mut projection = Self::build_extract_region_annotation_projection(
                     &gene_records,
                     &transcript_records,
-                    selected_gene.start_1based,
-                    selected_gene.end_1based,
+                    extract_start_1based,
+                    extract_end_1based,
                     requested_scope,
                 );
                 let candidate_before_fallback = projection.feature_count();
@@ -3611,8 +3635,8 @@ impl GentleEngine {
                             let core_projection = Self::build_extract_region_annotation_projection(
                                 &gene_records,
                                 &transcript_records,
-                                selected_gene.start_1based,
-                                selected_gene.end_1based,
+                                extract_start_1based,
+                                extract_end_1based,
                                 GenomeAnnotationScope::Core,
                             );
                             if core_projection.feature_count() <= cap {
@@ -3705,10 +3729,16 @@ impl GentleEngine {
                     catalog_path: catalog_path.clone(),
                     cache_dir: cache_dir.clone(),
                     chromosome: Some(selected_gene.chromosome.clone()),
-                    start_1based: Some(selected_gene.start_1based),
-                    end_1based: Some(selected_gene.end_1based),
+                    start_1based: Some(extract_start_1based),
+                    end_1based: Some(extract_end_1based),
                     gene_query: Some(query.to_string()),
                     occurrence: Some(occurrence),
+                    gene_extract_mode: Some(extract_mode.as_str().to_string()),
+                    promoter_upstream_bp: matches!(
+                        extract_mode,
+                        GenomeGeneExtractMode::CodingWithPromoter
+                    )
+                    .then_some(promoter_upstream_bp),
                     gene_id: selected_gene.gene_id.clone(),
                     gene_name: selected_gene.gene_name.clone(),
                     strand: selected_gene.strand,
@@ -3723,13 +3753,15 @@ impl GentleEngine {
                 });
                 let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
                 result.messages.push(format!(
-                    "Extracted genome gene '{}' [{} match, occurrence {}] as '{}' from '{}' ({})",
+                    "Extracted genome gene '{}' [{} match, occurrence {}] as '{}' from '{}' ({}, extract_mode={}, promoter_upstream_bp={})",
                     query,
                     match_mode,
                     occurrence,
                     seq_id,
                     genome_id,
-                    Self::genome_gene_display_label(selected_gene)
+                    Self::genome_gene_display_label(selected_gene),
+                    extract_mode.as_str(),
+                    promoter_upstream_bp
                 ));
             }
             Operation::ExtendGenomeAnchor {
@@ -3944,6 +3976,8 @@ impl GentleEngine {
                     end_1based: Some(new_end_1based),
                     gene_query: None,
                     occurrence: None,
+                    gene_extract_mode: None,
+                    promoter_upstream_bp: None,
                     gene_id: None,
                     gene_name: None,
                     strand: anchor.strand,
@@ -4139,6 +4173,8 @@ impl GentleEngine {
                     end_1based: Some(anchor.end_1based),
                     gene_query: None,
                     occurrence: None,
+                    gene_extract_mode: None,
+                    promoter_upstream_bp: None,
                     gene_id: None,
                     gene_name: None,
                     strand: anchor.strand,

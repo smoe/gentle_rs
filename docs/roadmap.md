@@ -161,6 +161,11 @@ order. Durable architecture constraints and decisions remain in
 - `ExtractGenomeRegion` now supports `max_annotation_features` caps with
   deterministic fallback (`full -> core -> none`) and warning guidance for
   follow-up unrestricted transfer.
+- `ExtractGenomeGene` now supports interval selection via
+  `extract_mode=gene|coding_with_promoter` plus `promoter_upstream_bp`, so
+  GUI/CLI/scripting callers can retrieve CDS-spanning genomic context with an
+  explicit strand-aware 5' promoter flank instead of manually calculating
+  coordinates.
 - Shell/CLI `genomes/helpers extract-region` now expose
   `--annotation-scope`/`--max-annotation-features` while retaining legacy
   `--include-genomic-annotation` / `--no-include-genomic-annotation` flags for

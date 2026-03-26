@@ -792,13 +792,15 @@ impl JavaScriptInterface {
           			}
           		});
           	}
-          	function extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features) {
+          	function extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp) {
           		return apply_operation(state, {
           			ExtractGenomeGene: {
           				genome_id: genome_id,
           				gene_query: gene_query,
           				occurrence: occurrence ?? null,
           				output_id: output_id ?? null,
+          				extract_mode: extract_mode ?? null,
+          				promoter_upstream_bp: (promoter_upstream_bp === undefined || promoter_upstream_bp === null) ? null : Number(promoter_upstream_bp),
           				annotation_scope: annotation_scope ?? null,
           				max_annotation_features: (max_annotation_features === undefined || max_annotation_features === null) ? null : Number(max_annotation_features),
           				catalog_path: catalog_path ?? null,

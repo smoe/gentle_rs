@@ -3,9 +3,9 @@
 use gentle::{
     about,
     engine::{
-        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeTrackImportProgress, GentleEngine,
-        Operation, OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress,
-        TfbsProgress,
+        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress, ProjectState,
+        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -487,7 +487,7 @@ fn usage() {
   gentle_cli genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH]\n  \
@@ -500,7 +500,7 @@ fn usage() {
   gentle_cli helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
@@ -1785,13 +1785,15 @@ fn run() -> Result<(), String> {
                     if args.len() <= cmd_idx + 3 {
                         usage();
                         return Err(format!(
-                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                         ));
                     }
                     let genome_id = args[cmd_idx + 2].clone();
                     let gene_query = args[cmd_idx + 3].clone();
                     let mut occurrence: Option<usize> = None;
                     let mut output_id: Option<String> = None;
+                    let mut extract_mode: Option<GenomeGeneExtractMode> = None;
+                    let mut promoter_upstream_bp: Option<usize> = None;
                     let mut annotation_scope: Option<GenomeAnnotationScope> = None;
                     let mut max_annotation_features: Option<usize> = None;
                     let mut include_genomic_annotation: Option<bool> = None;
@@ -1822,6 +1824,47 @@ fn run() -> Result<(), String> {
                                     ));
                                 }
                                 output_id = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--extract-mode" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing VALUE after --extract-mode for {label} extract-gene"
+                                    ));
+                                }
+                                let parsed = match args[idx + 1]
+                                    .trim()
+                                    .to_ascii_lowercase()
+                                    .as_str()
+                                {
+                                    "gene" => GenomeGeneExtractMode::Gene,
+                                    "coding_with_promoter" => {
+                                        GenomeGeneExtractMode::CodingWithPromoter
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Invalid --extract-mode value '{}' for {label} extract-gene (expected gene|coding_with_promoter)",
+                                            other
+                                        ));
+                                    }
+                                };
+                                extract_mode = Some(parsed);
+                                idx += 2;
+                            }
+                            "--promoter-upstream-bp" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --promoter-upstream-bp for {label} extract-gene"
+                                    ));
+                                }
+                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --promoter-upstream-bp value '{}' for {label} extract-gene: {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                promoter_upstream_bp = Some(parsed);
                                 idx += 2;
                             }
                             "--annotation-scope" => {
@@ -1915,6 +1958,16 @@ fn run() -> Result<(), String> {
                             annotation_scope = Some(mapped_scope);
                         }
                     }
+                    if promoter_upstream_bp.is_some() && extract_mode.is_none() {
+                        extract_mode = Some(GenomeGeneExtractMode::CodingWithPromoter);
+                    }
+                    if matches!(extract_mode, Some(GenomeGeneExtractMode::Gene))
+                        && promoter_upstream_bp.unwrap_or(0) > 0
+                    {
+                        return Err(format!(
+                            "--promoter-upstream-bp requires --extract-mode coding_with_promoter for {label} extract-gene"
+                        ));
+                    }
                     let op_catalog_path = catalog_path
                         .filter(|v| !v.trim().is_empty())
                         .or_else(|| helper_mode.then_some(default_catalog.to_string()));
@@ -1925,6 +1978,8 @@ fn run() -> Result<(), String> {
                             gene_query,
                             occurrence,
                             output_id,
+                            extract_mode,
+                            promoter_upstream_bp,
                             annotation_scope,
                             max_annotation_features,
                             include_genomic_annotation,

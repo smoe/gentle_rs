@@ -32,14 +32,15 @@ use crate::{
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
         DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
-        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
-        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
+        GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignSideConstraint, ProjectState, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadHitSelection, RnaReadInputFormat,
@@ -801,6 +802,8 @@ pub enum ShellCommand {
         gene_query: String,
         occurrence: Option<usize>,
         output_id: Option<String>,
+        extract_mode: Option<GenomeGeneExtractMode>,
+        promoter_upstream_bp: Option<usize>,
         annotation_scope: Option<GenomeAnnotationScope>,
         max_annotation_features: Option<usize>,
         include_genomic_annotation: Option<bool>,
@@ -4879,6 +4882,8 @@ impl ShellCommand {
                 gene_query,
                 occurrence,
                 output_id,
+                extract_mode,
+                promoter_upstream_bp,
                 annotation_scope,
                 max_annotation_features,
                 include_genomic_annotation,
@@ -4894,6 +4899,12 @@ impl ShellCommand {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let extract_mode = extract_mode
+                    .map(|value| value.as_str().to_string())
+                    .unwrap_or_else(|| "gene(default)".to_string());
+                let promoter_upstream_bp = promoter_upstream_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 let scope = annotation_scope
                     .map(|value| value.as_str().to_string())
                     .or_else(|| {
@@ -4913,7 +4924,7 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', extract_mode={extract_mode}, promoter_upstream_bp={promoter_upstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceExtendAnchor {
@@ -8075,13 +8086,15 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "extract-gene" => {
             if tokens.len() < 4 {
                 return Err(format!(
-                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
             let gene_query = tokens[3].clone();
             let mut occurrence: Option<usize> = None;
             let mut output_id: Option<String> = None;
+            let mut extract_mode: Option<GenomeGeneExtractMode> = None;
+            let mut promoter_upstream_bp: Option<usize> = None;
             let mut annotation_scope: Option<GenomeAnnotationScope> = None;
             let mut max_annotation_features: Option<usize> = None;
             let mut include_genomic_annotation: Option<bool> = None;
@@ -8102,6 +8115,31 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                     "--output-id" => {
                         output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
+                    }
+                    "--extract-mode" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--extract-mode", label)?;
+                        let mode = match raw.trim().to_ascii_lowercase().as_str() {
+                            "gene" => GenomeGeneExtractMode::Gene,
+                            "coding_with_promoter" => {
+                                GenomeGeneExtractMode::CodingWithPromoter
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Invalid --extract-mode value '{other}' for {label} extract-gene (expected gene|coding_with_promoter)"
+                                ));
+                            }
+                        };
+                        extract_mode = Some(mode);
+                    }
+                    "--promoter-upstream-bp" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--promoter-upstream-bp", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --promoter-upstream-bp value '{raw}' for {label} extract-gene: {e}"
+                            )
+                        })?;
+                        promoter_upstream_bp = Some(parsed);
                     }
                     "--annotation-scope" => {
                         let raw = parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
@@ -8168,12 +8206,24 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     annotation_scope = Some(mapped_scope);
                 }
             }
+            if promoter_upstream_bp.is_some() && extract_mode.is_none() {
+                extract_mode = Some(GenomeGeneExtractMode::CodingWithPromoter);
+            }
+            if matches!(extract_mode, Some(GenomeGeneExtractMode::Gene))
+                && promoter_upstream_bp.unwrap_or(0) > 0
+            {
+                return Err(format!(
+                    "--promoter-upstream-bp requires --extract-mode coding_with_promoter for {label} extract-gene"
+                ));
+            }
             Ok(ShellCommand::ReferenceExtractGene {
                 helper_mode,
                 genome_id,
                 gene_query,
                 occurrence,
                 output_id,
+                extract_mode,
+                promoter_upstream_bp,
                 annotation_scope,
                 max_annotation_features,
                 include_genomic_annotation,
@@ -13026,6 +13076,8 @@ pub fn execute_shell_command_with_options(
             gene_query,
             occurrence,
             output_id,
+            extract_mode,
+            promoter_upstream_bp,
             annotation_scope,
             max_annotation_features,
             include_genomic_annotation,
@@ -13038,6 +13090,8 @@ pub fn execute_shell_command_with_options(
                     gene_query: gene_query.clone(),
                     occurrence: *occurrence,
                     output_id: output_id.clone(),
+                    extract_mode: *extract_mode,
+                    promoter_upstream_bp: *promoter_upstream_bp,
                     annotation_scope: *annotation_scope,
                     max_annotation_features: *max_annotation_features,
                     include_genomic_annotation: *include_genomic_annotation,

@@ -2117,6 +2117,12 @@ Recommended flow:
      - default (`annotation scope=core`) attaches gene + transcript context
      - `annotation scope=full` additionally attaches exon + CDS subfeatures
      - `annotation scope=none` (or unchecked include flag) disables transfer
+     - `selected gene extract` adds a second interval mode:
+       `CDS + promoter`
+     - `promoter bp before CDS` adds an explicit 5' flank before the first
+       coding base in a strand-aware way (`0 = CDS only`)
+     - `gene span` remains the default mode for backward-compatible full-gene
+       extraction
    - when transcript exon annotation is available, extraction also auto-creates
      an exon-concatenated synthetic companion sequence (`<seq_id>__exons`) with
      deterministic `N` spacers between merged exon blocks; this is useful as a
