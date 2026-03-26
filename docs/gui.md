@@ -2021,6 +2021,7 @@ standalone window/viewport (not embedded in the project canvas):
 
 - `Genome -> Prepare Reference Genome...`
 - `Genome -> Prepared References...`
+- `Genome -> Clear Caches...`
 - `Genome -> Retrieve Genomic Sequence...`
 - `Genome -> BLAST Genome Sequence...`
 - `Genome -> Prepare Helper Genome...`
@@ -2194,6 +2195,28 @@ Recommended flow:
      the explicit `Remove Cached Files + Re-download` option in the confirmation dialog
    - use `Remove Prepared...` on a row to delete just that prepared install from
      the cache; the catalog entry remains available
+   - use `Clear Caches...` from `Prepared References...` or `Genome -> Clear Caches...`
+     when you want one bulk/partial cleanup view across the active reference
+     cache, helper cache, or both
+   - `Clear Caches...` inspects only the selected known cache roots
+     (`cache_dir` settings for references/helpers) and does not scan the whole
+     workspace
+   - cleanup modes are intentionally conservative:
+     - `Remove BLAST databases only` removes only BLAST DB sidecars
+     - `Remove rebuildable indexes` removes BLAST DB sidecars plus
+       `sequence.fa.fai` and `genes.json`
+     - `Remove selected prepared installs` removes only the checked prepared
+       installs from the selected roots
+     - `Remove all prepared installs in cache` clears all prepared installs
+       under the selected roots
+   - orphaned remnants are always shown in inspection results but can be
+     removed only through the full-delete modes
+   - after a partial cleanup (`BLAST databases only` or `rebuildable indexes`),
+     the dialog can immediately offer `Rebuild from cached files` for the
+     affected prepared installs so the indexes can be restored without
+     re-downloading sources
+   - cleanup leaves project state files, catalog JSON, MCP/runtime files,
+     backdrop/runtime caches, and developer build artifacts (`target/`) alone
    - when the active catalog JSON is writable, rows also expose
      `Remove Catalog Entry...`; this edits only the catalog JSON and leaves any
      prepared cache untouched until `Remove Prepared...` is run explicitly
@@ -2353,6 +2376,9 @@ Notes:
   cache to keep retrieval responsive.
 - During preparation, GENtle also prepares a BLAST nucleotide index (if
   `makeblastdb` is available).
+- `Genome -> Clear Caches...` can later remove those rebuildable derived
+  artifacts without deleting the cached FASTA/annotation sources unless the
+  user explicitly chooses a full prepared-install deletion mode.
 - BLAST command-line searches use `blastn` and can be configured in
   `Configuration -> External Applications`.
 - HTTP downloads support resume/retry behavior and continue from partial files

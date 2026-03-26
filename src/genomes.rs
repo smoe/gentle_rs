@@ -56,6 +56,7 @@ use tempfile::NamedTempFile;
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
+pub const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
 pub const DEFAULT_BLASTN_BIN: &str = "blastn";
 pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
@@ -231,6 +232,171 @@ pub struct PreparedGenomeRemovalReport {
     pub cache_dir: String,
     pub install_dir: String,
     pub removed: bool,
+}
+
+/// Stable artifact-group categories used by prepared-cache inspection and cleanup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreparedCacheArtifactGroup {
+    CachedSources,
+    DerivedIndexes,
+    BlastDb,
+}
+
+impl PreparedCacheArtifactGroup {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CachedSources => "cached_sources",
+            Self::DerivedIndexes => "derived_indexes",
+            Self::BlastDb => "blast_db",
+        }
+    }
+}
+
+/// Inspection classification for entries discovered under a prepared-cache root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreparedCacheEntryKind {
+    PreparedInstall,
+    OrphanedRemnant,
+}
+
+impl PreparedCacheEntryKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PreparedInstall => "prepared_install",
+            Self::OrphanedRemnant => "orphaned_remnant",
+        }
+    }
+}
+
+/// Size/count summary for one artifact-group bucket in a prepared-cache entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparedCacheArtifactStat {
+    pub group: PreparedCacheArtifactGroup,
+    pub total_size_bytes: u64,
+    pub file_count: usize,
+}
+
+/// One discovered prepared-cache entry under a selected cache root.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedCacheInspectionEntry {
+    pub entry_id: String,
+    pub classification: PreparedCacheEntryKind,
+    pub cache_root: String,
+    pub path: String,
+    #[serde(default)]
+    pub artifact_stats: Vec<PreparedCacheArtifactStat>,
+    pub total_size_bytes: u64,
+    pub file_count: usize,
+}
+
+impl PreparedCacheInspectionEntry {
+    pub fn has_group(&self, group: PreparedCacheArtifactGroup) -> bool {
+        self.artifact_stats.iter().any(|stat| stat.group == group)
+    }
+
+    pub fn group_bytes(&self, group: PreparedCacheArtifactGroup) -> u64 {
+        self.artifact_stats
+            .iter()
+            .find(|stat| stat.group == group)
+            .map(|stat| stat.total_size_bytes)
+            .unwrap_or(0)
+    }
+
+    pub fn group_file_count(&self, group: PreparedCacheArtifactGroup) -> usize {
+        self.artifact_stats
+            .iter()
+            .find(|stat| stat.group == group)
+            .map(|stat| stat.file_count)
+            .unwrap_or(0)
+    }
+}
+
+/// Inspection report for one or more prepared-cache roots.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedCacheInspectionReport {
+    pub schema: String,
+    #[serde(default)]
+    pub cache_roots: Vec<String>,
+    #[serde(default)]
+    pub entries: Vec<PreparedCacheInspectionEntry>,
+    pub entry_count: usize,
+    pub total_size_bytes: u64,
+    pub total_file_count: usize,
+}
+
+/// Cleanup mode for conservative prepared-cache cleanup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreparedCacheCleanupMode {
+    BlastDbOnly,
+    DerivedIndexesOnly,
+    SelectedPreparedInstalls,
+    AllPreparedInCache,
+}
+
+impl PreparedCacheCleanupMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BlastDbOnly => "blast_db_only",
+            Self::DerivedIndexesOnly => "derived_indexes_only",
+            Self::SelectedPreparedInstalls => "selected_prepared_installs",
+            Self::AllPreparedInCache => "all_prepared_in_cache",
+        }
+    }
+
+    pub fn allows_orphaned_remnants(self) -> bool {
+        matches!(
+            self,
+            Self::SelectedPreparedInstalls | Self::AllPreparedInCache
+        )
+    }
+}
+
+/// Request payload for deterministic prepared-cache cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedCacheCleanupRequest {
+    pub mode: PreparedCacheCleanupMode,
+    #[serde(default)]
+    pub cache_roots: Vec<String>,
+    #[serde(default)]
+    pub prepared_ids: Vec<String>,
+    #[serde(default)]
+    pub include_orphaned_remnants: bool,
+}
+
+/// Per-entry cleanup result for prepared-cache cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedCacheCleanupItemReport {
+    pub entry_id: String,
+    pub classification: PreparedCacheEntryKind,
+    pub cache_root: String,
+    pub path: String,
+    pub removed: bool,
+    #[serde(default)]
+    pub removed_artifact_groups: Vec<PreparedCacheArtifactGroup>,
+    pub removed_bytes: u64,
+    pub removed_file_count: usize,
+    pub skipped_reason: Option<String>,
+}
+
+/// Cleanup report for prepared-cache cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedCacheCleanupReport {
+    pub schema: String,
+    pub mode: PreparedCacheCleanupMode,
+    #[serde(default)]
+    pub cache_roots: Vec<String>,
+    #[serde(default)]
+    pub selected_prepared_ids: Vec<String>,
+    pub include_orphaned_remnants: bool,
+    #[serde(default)]
+    pub results: Vec<PreparedCacheCleanupItemReport>,
+    pub entry_count: usize,
+    pub removed_item_count: usize,
+    pub removed_bytes: u64,
+    pub removed_file_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2990,6 +3156,592 @@ FASTA index='{}'.{}{}",
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PreparedCacheEntryArtifacts {
+    cached_sources: Vec<PathBuf>,
+    derived_indexes: Vec<PathBuf>,
+    blast_db: Vec<PathBuf>,
+}
+
+impl PreparedCacheEntryArtifacts {
+    fn stats(&self) -> Vec<PreparedCacheArtifactStat> {
+        let mut stats = vec![];
+        for (group, files) in [
+            (PreparedCacheArtifactGroup::CachedSources, &self.cached_sources),
+            (PreparedCacheArtifactGroup::DerivedIndexes, &self.derived_indexes),
+            (PreparedCacheArtifactGroup::BlastDb, &self.blast_db),
+        ] {
+            let (bytes, count) = summarize_paths(files);
+            if count > 0 {
+                stats.push(PreparedCacheArtifactStat {
+                    group,
+                    total_size_bytes: bytes,
+                    file_count: count,
+                });
+            }
+        }
+        stats
+    }
+
+    fn removable_groups_for_mode(
+        &self,
+        mode: PreparedCacheCleanupMode,
+    ) -> Vec<PreparedCacheArtifactGroup> {
+        match mode {
+            PreparedCacheCleanupMode::BlastDbOnly => {
+                if self.blast_db.is_empty() {
+                    vec![]
+                } else {
+                    vec![PreparedCacheArtifactGroup::BlastDb]
+                }
+            }
+            PreparedCacheCleanupMode::DerivedIndexesOnly => {
+                let mut groups = vec![];
+                if !self.derived_indexes.is_empty() {
+                    groups.push(PreparedCacheArtifactGroup::DerivedIndexes);
+                }
+                if !self.blast_db.is_empty() {
+                    groups.push(PreparedCacheArtifactGroup::BlastDb);
+                }
+                groups
+            }
+            PreparedCacheCleanupMode::SelectedPreparedInstalls
+            | PreparedCacheCleanupMode::AllPreparedInCache => vec![
+                PreparedCacheArtifactGroup::CachedSources,
+                PreparedCacheArtifactGroup::DerivedIndexes,
+                PreparedCacheArtifactGroup::BlastDb,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PreparedCacheDiscoveredEntry {
+    entry_id: String,
+    classification: PreparedCacheEntryKind,
+    cache_root: PathBuf,
+    path: PathBuf,
+    artifacts: PreparedCacheEntryArtifacts,
+    manifest_path: Option<PathBuf>,
+}
+
+impl PreparedCacheDiscoveredEntry {
+    fn inspection_entry(&self) -> PreparedCacheInspectionEntry {
+        let artifact_stats = self.artifacts.stats();
+        let total_size_bytes = artifact_stats
+            .iter()
+            .map(|stat| stat.total_size_bytes)
+            .sum::<u64>();
+        let file_count = artifact_stats
+            .iter()
+            .map(|stat| stat.file_count)
+            .sum::<usize>();
+        PreparedCacheInspectionEntry {
+            entry_id: self.entry_id.clone(),
+            classification: self.classification,
+            cache_root: canonical_or_display(&self.cache_root),
+            path: canonical_or_display(&self.path),
+            artifact_stats,
+            total_size_bytes,
+            file_count,
+        }
+    }
+}
+
+pub fn inspect_prepared_cache_roots(
+    cache_roots: &[String],
+) -> Result<PreparedCacheInspectionReport, String> {
+    let normalized_roots = normalize_cache_roots(cache_roots);
+    let mut entries = vec![];
+    for root in &normalized_roots {
+        entries.extend(discover_prepared_cache_entries(root)?);
+    }
+    entries.sort_by(|left, right| {
+        left.cache_root
+            .cmp(&right.cache_root)
+            .then_with(|| left.entry_id.cmp(&right.entry_id))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let inspection_entries = entries
+        .into_iter()
+        .map(|entry| entry.inspection_entry())
+        .collect::<Vec<_>>();
+    let total_size_bytes = inspection_entries
+        .iter()
+        .map(|entry| entry.total_size_bytes)
+        .sum::<u64>();
+    let total_file_count = inspection_entries
+        .iter()
+        .map(|entry| entry.file_count)
+        .sum::<usize>();
+    Ok(PreparedCacheInspectionReport {
+        schema: "gentle.prepared_cache_inspection.v1".to_string(),
+        cache_roots: normalized_roots
+            .iter()
+            .map(|root| canonical_or_display(root))
+            .collect(),
+        entry_count: inspection_entries.len(),
+        total_size_bytes,
+        total_file_count,
+        entries: inspection_entries,
+    })
+}
+
+pub fn clear_prepared_cache_roots(
+    request: &PreparedCacheCleanupRequest,
+) -> Result<PreparedCacheCleanupReport, String> {
+    let normalized_roots = normalize_cache_roots(&request.cache_roots);
+    let mut discovered = vec![];
+    for root in &normalized_roots {
+        discovered.extend(discover_prepared_cache_entries(root)?);
+    }
+    discovered.sort_by(|left, right| {
+        left.cache_root
+            .cmp(&right.cache_root)
+            .then_with(|| left.entry_id.cmp(&right.entry_id))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+
+    let selected_ids = request
+        .prepared_ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>();
+    if matches!(
+        request.mode,
+        PreparedCacheCleanupMode::BlastDbOnly
+            | PreparedCacheCleanupMode::DerivedIndexesOnly
+            | PreparedCacheCleanupMode::SelectedPreparedInstalls
+    ) && selected_ids.is_empty()
+    {
+        return Err(format!(
+            "Cleanup mode '{}' requires at least one prepared id",
+            request.mode.label()
+        ));
+    }
+
+    let mut results = vec![];
+    let mut removed_item_count = 0usize;
+    let mut removed_bytes = 0u64;
+    let mut removed_file_count = 0usize;
+    for entry in discovered {
+        let selected = if matches!(request.mode, PreparedCacheCleanupMode::AllPreparedInCache) {
+            true
+        } else {
+            selected_ids.iter().any(|id| id == &entry.entry_id)
+        };
+        if !selected {
+            continue;
+        }
+        let item = cleanup_discovered_prepared_cache_entry(
+            &entry,
+            request.mode,
+            request.include_orphaned_remnants,
+        )?;
+        if item.removed {
+            removed_item_count += 1;
+            removed_bytes = removed_bytes.saturating_add(item.removed_bytes);
+            removed_file_count = removed_file_count.saturating_add(item.removed_file_count);
+        }
+        results.push(item);
+    }
+    if results.is_empty()
+        && !matches!(request.mode, PreparedCacheCleanupMode::AllPreparedInCache)
+        && !selected_ids.is_empty()
+    {
+        return Err(format!(
+            "No prepared cache entries matched requested id(s): {}",
+            selected_ids.join(", ")
+        ));
+    }
+
+    Ok(PreparedCacheCleanupReport {
+        schema: "gentle.prepared_cache_cleanup.v1".to_string(),
+        mode: request.mode,
+        cache_roots: normalized_roots
+            .iter()
+            .map(|root| canonical_or_display(root))
+            .collect(),
+        selected_prepared_ids: selected_ids,
+        include_orphaned_remnants: request.include_orphaned_remnants
+            && request.mode.allows_orphaned_remnants(),
+        entry_count: results.len(),
+        removed_item_count,
+        removed_bytes,
+        removed_file_count,
+        results,
+    })
+}
+
+fn normalize_cache_roots(cache_roots: &[String]) -> Vec<PathBuf> {
+    let mut normalized = cache_roots
+        .iter()
+        .map(|root| root.trim())
+        .filter(|root| !root.is_empty())
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn discover_prepared_cache_entries(cache_root: &Path) -> Result<Vec<PreparedCacheDiscoveredEntry>, String> {
+    if !cache_root.exists() {
+        return Ok(vec![]);
+    }
+    if !cache_root.is_dir() {
+        return Err(format!(
+            "Prepared cache root '{}' is not a directory",
+            cache_root.display()
+        ));
+    }
+    let mut entries = vec![];
+    let mut dir_entries = fs::read_dir(cache_root)
+        .map_err(|e| format!("Could not read prepared cache root '{}': {e}", cache_root.display()))?
+        .flatten()
+        .collect::<Vec<_>>();
+    dir_entries.sort_by_key(|entry| entry.path());
+    for child in dir_entries {
+        let path = child.path();
+        let manifest_path = path.join("manifest.json");
+        if path.is_dir() && manifest_path.exists() {
+            let manifest = GenomeCatalog::load_manifest(&manifest_path)?;
+            let artifacts = artifacts_from_manifest(&path, &manifest, &manifest_path);
+            entries.push(PreparedCacheDiscoveredEntry {
+                entry_id: manifest.genome_id.clone(),
+                classification: PreparedCacheEntryKind::PreparedInstall,
+                cache_root: cache_root.to_path_buf(),
+                path,
+                artifacts,
+                manifest_path: Some(manifest_path),
+            });
+            continue;
+        }
+        if let Some(artifacts) = collect_orphaned_artifacts(&path) {
+            let entry_id = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| canonical_or_display(&path));
+            entries.push(PreparedCacheDiscoveredEntry {
+                entry_id,
+                classification: PreparedCacheEntryKind::OrphanedRemnant,
+                cache_root: cache_root.to_path_buf(),
+                path,
+                artifacts,
+                manifest_path: None,
+            });
+        }
+    }
+    Ok(entries)
+}
+
+fn artifacts_from_manifest(
+    install_dir: &Path,
+    manifest: &GenomeInstallManifest,
+    manifest_path: &Path,
+) -> PreparedCacheEntryArtifacts {
+    let mut artifacts = PreparedCacheEntryArtifacts::default();
+    collect_if_exists(&PathBuf::from(&manifest.sequence_path), &mut artifacts.cached_sources);
+    collect_if_exists(&PathBuf::from(&manifest.annotation_path), &mut artifacts.cached_sources);
+    collect_if_exists(&manifest_path.to_path_buf(), &mut artifacts.cached_sources);
+    collect_if_exists(
+        &PathBuf::from(&manifest.fasta_index_path),
+        &mut artifacts.derived_indexes,
+    );
+    let gene_index_path = manifest
+        .gene_index_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| install_dir.join("genes.json"));
+    collect_if_exists(&gene_index_path, &mut artifacts.derived_indexes);
+    let blast_prefix = manifest
+        .blast_db_prefix
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_blast_db_prefix(install_dir));
+    artifacts.blast_db = collect_blast_index_files(&blast_prefix);
+    artifacts
+}
+
+fn collect_if_exists(path: &PathBuf, out: &mut Vec<PathBuf>) {
+    if path.exists() {
+        out.push(path.clone());
+    }
+}
+
+fn collect_orphaned_artifacts(path: &Path) -> Option<PreparedCacheEntryArtifacts> {
+    let mut artifacts = PreparedCacheEntryArtifacts::default();
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let meta = fs::metadata(&current).ok()?;
+        if meta.is_dir() {
+            let children = fs::read_dir(&current).ok()?;
+            for child in children.flatten() {
+                stack.push(child.path());
+            }
+            continue;
+        }
+        if let Some(group) = classify_cache_artifact_file(&current) {
+            match group {
+                PreparedCacheArtifactGroup::CachedSources => artifacts.cached_sources.push(current),
+                PreparedCacheArtifactGroup::DerivedIndexes => {
+                    artifacts.derived_indexes.push(current)
+                }
+                PreparedCacheArtifactGroup::BlastDb => artifacts.blast_db.push(current),
+            }
+        }
+    }
+    if artifacts.cached_sources.is_empty()
+        && artifacts.derived_indexes.is_empty()
+        && artifacts.blast_db.is_empty()
+    {
+        None
+    } else {
+        artifacts.cached_sources.sort();
+        artifacts.derived_indexes.sort();
+        artifacts.blast_db.sort();
+        Some(artifacts)
+    }
+}
+
+fn classify_cache_artifact_file(path: &Path) -> Option<PreparedCacheArtifactGroup> {
+    let name = path.file_name()?.to_str()?;
+    if name == "manifest.json" || name == "sequence.fa" || name.starts_with("annotation.") {
+        return Some(PreparedCacheArtifactGroup::CachedSources);
+    }
+    if name == "sequence.fa.fai" || name == "genes.json" {
+        return Some(PreparedCacheArtifactGroup::DerivedIndexes);
+    }
+    let suffix = path.extension()?.to_str()?;
+    if is_blast_index_suffix(suffix) {
+        return Some(PreparedCacheArtifactGroup::BlastDb);
+    }
+    None
+}
+
+fn summarize_paths(paths: &[PathBuf]) -> (u64, usize) {
+    let mut bytes = 0u64;
+    let mut count = 0usize;
+    for path in paths {
+        if let Ok(meta) = fs::metadata(path) {
+            if meta.is_file() {
+                bytes = bytes.saturating_add(meta.len());
+                count += 1;
+            }
+        }
+    }
+    (bytes, count)
+}
+
+fn cleanup_discovered_prepared_cache_entry(
+    entry: &PreparedCacheDiscoveredEntry,
+    mode: PreparedCacheCleanupMode,
+    include_orphaned_remnants: bool,
+) -> Result<PreparedCacheCleanupItemReport, String> {
+    if entry.classification == PreparedCacheEntryKind::OrphanedRemnant
+        && !mode.allows_orphaned_remnants()
+    {
+        return Ok(PreparedCacheCleanupItemReport {
+            entry_id: entry.entry_id.clone(),
+            classification: entry.classification,
+            cache_root: canonical_or_display(&entry.cache_root),
+            path: canonical_or_display(&entry.path),
+            removed: false,
+            removed_artifact_groups: vec![],
+            removed_bytes: 0,
+            removed_file_count: 0,
+            skipped_reason: Some(
+                "orphaned remnants can only be removed through full-delete cleanup modes"
+                    .to_string(),
+            ),
+        });
+    }
+    if entry.classification == PreparedCacheEntryKind::OrphanedRemnant
+        && !include_orphaned_remnants
+        && matches!(mode, PreparedCacheCleanupMode::AllPreparedInCache)
+    {
+        return Ok(PreparedCacheCleanupItemReport {
+            entry_id: entry.entry_id.clone(),
+            classification: entry.classification,
+            cache_root: canonical_or_display(&entry.cache_root),
+            path: canonical_or_display(&entry.path),
+            removed: false,
+            removed_artifact_groups: vec![],
+            removed_bytes: 0,
+            removed_file_count: 0,
+            skipped_reason: Some(
+                "orphaned remnants were excluded from this cleanup request".to_string(),
+            ),
+        });
+    }
+
+    let mut removed_groups = vec![];
+    let mut removed_bytes = 0u64;
+    let mut removed_file_count = 0usize;
+    match mode {
+        PreparedCacheCleanupMode::BlastDbOnly => {
+            if entry.classification != PreparedCacheEntryKind::PreparedInstall {
+                return Ok(skipped_cleanup_item(entry, "partial cleanup applies only to manifest-backed prepared installs"));
+            }
+            for path in &entry.artifacts.blast_db {
+                let meta = fs::metadata(path).ok();
+                remove_optional_file(path, "BLAST index")?;
+                if let Some(meta) = meta {
+                    removed_bytes = removed_bytes.saturating_add(meta.len());
+                    if meta.is_file() {
+                        removed_file_count += 1;
+                    }
+                }
+            }
+            prune_empty_ancestor_dirs(&entry.artifacts.blast_db, &entry.path);
+            if let Some(manifest_path) = &entry.manifest_path {
+                clear_manifest_blast_metadata(manifest_path)?;
+            }
+            if !entry.artifacts.blast_db.is_empty() {
+                removed_groups.push(PreparedCacheArtifactGroup::BlastDb);
+            }
+        }
+        PreparedCacheCleanupMode::DerivedIndexesOnly => {
+            if entry.classification != PreparedCacheEntryKind::PreparedInstall {
+                return Ok(skipped_cleanup_item(entry, "partial cleanup applies only to manifest-backed prepared installs"));
+            }
+            for path in entry
+                .artifacts
+                .derived_indexes
+                .iter()
+                .chain(entry.artifacts.blast_db.iter())
+            {
+                let meta = fs::metadata(path).ok();
+                remove_optional_file(path, "derived cache artifact")?;
+                if let Some(meta) = meta {
+                    removed_bytes = removed_bytes.saturating_add(meta.len());
+                    if meta.is_file() {
+                        removed_file_count += 1;
+                    }
+                }
+            }
+            prune_empty_ancestor_dirs(&entry.artifacts.blast_db, &entry.path);
+            if let Some(manifest_path) = &entry.manifest_path {
+                clear_manifest_blast_metadata(manifest_path)?;
+            }
+            if !entry.artifacts.derived_indexes.is_empty() {
+                removed_groups.push(PreparedCacheArtifactGroup::DerivedIndexes);
+            }
+            if !entry.artifacts.blast_db.is_empty() {
+                removed_groups.push(PreparedCacheArtifactGroup::BlastDb);
+            }
+        }
+        PreparedCacheCleanupMode::SelectedPreparedInstalls
+        | PreparedCacheCleanupMode::AllPreparedInCache => {
+            let (bytes, files) = summarize_tree(&entry.path);
+            removed_bytes = bytes;
+            removed_file_count = files;
+            if entry.path.is_dir() {
+                fs::remove_dir_all(&entry.path).map_err(|e| {
+                    format!(
+                        "Could not remove prepared cache path '{}': {e}",
+                        entry.path.display()
+                    )
+                })?;
+            } else if entry.path.exists() {
+                fs::remove_file(&entry.path).map_err(|e| {
+                    format!(
+                        "Could not remove prepared cache file '{}': {e}",
+                        entry.path.display()
+                    )
+                })?;
+            }
+            removed_groups = entry.artifacts.removable_groups_for_mode(mode);
+        }
+    }
+    Ok(PreparedCacheCleanupItemReport {
+        entry_id: entry.entry_id.clone(),
+        classification: entry.classification,
+        cache_root: canonical_or_display(&entry.cache_root),
+        path: canonical_or_display(&entry.path),
+        removed: !removed_groups.is_empty() || matches!(mode, PreparedCacheCleanupMode::SelectedPreparedInstalls | PreparedCacheCleanupMode::AllPreparedInCache),
+        removed_artifact_groups: removed_groups,
+        removed_bytes,
+        removed_file_count,
+        skipped_reason: None,
+    })
+}
+
+fn skipped_cleanup_item(
+    entry: &PreparedCacheDiscoveredEntry,
+    reason: &str,
+) -> PreparedCacheCleanupItemReport {
+    PreparedCacheCleanupItemReport {
+        entry_id: entry.entry_id.clone(),
+        classification: entry.classification,
+        cache_root: canonical_or_display(&entry.cache_root),
+        path: canonical_or_display(&entry.path),
+        removed: false,
+        removed_artifact_groups: vec![],
+        removed_bytes: 0,
+        removed_file_count: 0,
+        skipped_reason: Some(reason.to_string()),
+    }
+}
+
+fn summarize_tree(path: &Path) -> (u64, usize) {
+    let Ok(meta) = fs::metadata(path) else {
+        return (0, 0);
+    };
+    if meta.is_file() {
+        return (meta.len(), 1);
+    }
+    let mut bytes = 0u64;
+    let mut files = 0usize;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(read_dir) = fs::read_dir(&current) {
+            for child in read_dir.flatten() {
+                let child_path = child.path();
+                if let Ok(meta) = fs::metadata(&child_path) {
+                    if meta.is_dir() {
+                        stack.push(child_path);
+                    } else if meta.is_file() {
+                        bytes = bytes.saturating_add(meta.len());
+                        files += 1;
+                    }
+                }
+            }
+        }
+    }
+    (bytes, files)
+}
+
+fn clear_manifest_blast_metadata(manifest_path: &Path) -> Result<(), String> {
+    let mut manifest = GenomeCatalog::load_manifest(manifest_path)?;
+    manifest.blast_index_executable = None;
+    manifest.blast_indexed_at_unix_ms = None;
+    GenomeCatalog::write_manifest(manifest_path, &manifest)
+}
+
+fn prune_empty_ancestor_dirs(paths: &[PathBuf], stop_at: &Path) {
+    for path in paths {
+        let mut current = path.parent();
+        while let Some(dir) = current {
+            if dir == stop_at {
+                break;
+            }
+            let is_empty = fs::read_dir(dir)
+                .ok()
+                .map(|mut iter| iter.next().is_none())
+                .unwrap_or(false);
+            if !is_empty {
+                break;
+            }
+            let _ = fs::remove_dir(dir);
+            current = dir.parent();
+        }
     }
 }
 
@@ -6580,6 +7332,55 @@ mod tests {
         format!("file://{}", path.display())
     }
 
+    fn write_prepared_cache_install(root: &Path, genome_id: &str) -> (PathBuf, PathBuf) {
+        let install_dir = root.join(sanitize_for_path(genome_id));
+        fs::create_dir_all(&install_dir).unwrap();
+        let sequence_path = install_dir.join("sequence.fa");
+        let annotation_path = install_dir.join("annotation.gtf");
+        let fasta_index_path = install_dir.join("sequence.fa.fai");
+        let gene_index_path = install_dir.join("genes.json");
+        let transcript_index_path = install_dir.join("transcripts.json");
+        let blast_prefix = install_dir.join("blastdb").join("genome");
+        fs::create_dir_all(blast_prefix.parent().unwrap()).unwrap();
+        fs::write(&sequence_path, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &annotation_path,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .unwrap();
+        fs::write(
+            &fasta_index_path,
+            "chr1\t8\t6\t8\t9\n",
+        )
+        .unwrap();
+        fs::write(&gene_index_path, "[]").unwrap();
+        fs::write(&transcript_index_path, "[]").unwrap();
+        fs::write(blast_prefix.with_extension("nhr"), "nhr").unwrap();
+        fs::write(blast_prefix.with_extension("nin"), "nin").unwrap();
+        fs::write(blast_prefix.with_extension("nsq"), "nsq").unwrap();
+        let manifest_path = install_dir.join("manifest.json");
+        let manifest = GenomeInstallManifest {
+            genome_id: genome_id.to_string(),
+            sequence_source: sequence_path.display().to_string(),
+            annotation_source: annotation_path.display().to_string(),
+            sequence_source_type: Some("local".to_string()),
+            annotation_source_type: Some("local".to_string()),
+            sequence_sha1: Some("seqsha".to_string()),
+            annotation_sha1: Some("annsha".to_string()),
+            sequence_path: canonical_or_display(&sequence_path),
+            annotation_path: canonical_or_display(&annotation_path),
+            fasta_index_path: canonical_or_display(&fasta_index_path),
+            gene_index_path: Some(canonical_or_display(&gene_index_path)),
+            transcript_index_path: Some(canonical_or_display(&transcript_index_path)),
+            blast_db_prefix: Some(canonical_or_display(&blast_prefix)),
+            blast_index_executable: Some("makeblastdb".to_string()),
+            blast_indexed_at_unix_ms: Some(123),
+            installed_at_unix_ms: 456,
+        };
+        GenomeCatalog::write_manifest(&manifest_path, &manifest).unwrap();
+        (install_dir, blast_prefix)
+    }
+
     fn write_toy_prepare_catalog(
         root: &Path,
         sequence_source: &Path,
@@ -9535,6 +10336,152 @@ mod tests {
             install_dir.exists(),
             "prepared cache should remain until Remove Prepared is requested explicitly"
         );
+    }
+
+    #[test]
+    fn test_inspect_prepared_cache_roots_handles_empty_root() {
+        let td = tempdir().unwrap();
+        let report = inspect_prepared_cache_roots(&[td.path().display().to_string()]).unwrap();
+        assert_eq!(report.schema, "gentle.prepared_cache_inspection.v1");
+        assert_eq!(report.entry_count, 0);
+        assert!(report.entries.is_empty());
+    }
+
+    #[test]
+    fn test_inspect_prepared_cache_roots_reports_manifest_backed_install() {
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (_install_dir, _blast_prefix) = write_prepared_cache_install(&root, "ToyGenome");
+        let report = inspect_prepared_cache_roots(&[root.display().to_string()]).unwrap();
+        assert_eq!(report.entry_count, 1);
+        let entry = &report.entries[0];
+        assert_eq!(
+            entry.classification,
+            PreparedCacheEntryKind::PreparedInstall
+        );
+        assert_eq!(entry.entry_id, "ToyGenome");
+        assert!(entry
+            .artifact_stats
+            .iter()
+            .any(|stat| stat.group == PreparedCacheArtifactGroup::CachedSources));
+        assert!(entry
+            .artifact_stats
+            .iter()
+            .any(|stat| stat.group == PreparedCacheArtifactGroup::DerivedIndexes));
+        assert!(entry
+            .artifact_stats
+            .iter()
+            .any(|stat| stat.group == PreparedCacheArtifactGroup::BlastDb));
+    }
+
+    #[test]
+    fn test_inspect_prepared_cache_roots_reports_orphaned_remnants() {
+        let td = tempdir().unwrap();
+        let orphan_dir = td.path().join("cache").join("orphaned");
+        fs::create_dir_all(orphan_dir.join("blastdb")).unwrap();
+        fs::write(orphan_dir.join("sequence.fa"), ">chr1\nACGT\n").unwrap();
+        fs::write(orphan_dir.join("genes.json"), "[]").unwrap();
+        fs::write(orphan_dir.join("blastdb").join("genome.nhr"), "nhr").unwrap();
+        let report =
+            inspect_prepared_cache_roots(&[td.path().join("cache").display().to_string()]).unwrap();
+        assert_eq!(report.entry_count, 1);
+        assert_eq!(
+            report.entries[0].classification,
+            PreparedCacheEntryKind::OrphanedRemnant
+        );
+    }
+
+    #[test]
+    fn test_clear_prepared_cache_blast_db_only_preserves_sources_and_indexes() {
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (install_dir, blast_prefix) = write_prepared_cache_install(&root, "ToyGenome");
+        let request = PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::BlastDbOnly,
+            cache_roots: vec![root.display().to_string()],
+            prepared_ids: vec!["ToyGenome".to_string()],
+            include_orphaned_remnants: false,
+        };
+        let report = clear_prepared_cache_roots(&request).unwrap();
+        assert_eq!(report.removed_item_count, 1);
+        assert!(!blast_prefix.with_extension("nhr").exists());
+        assert!(install_dir.join("sequence.fa").exists());
+        assert!(install_dir.join("sequence.fa.fai").exists());
+        assert!(install_dir.join("genes.json").exists());
+        let manifest =
+            GenomeCatalog::load_manifest(&install_dir.join("manifest.json")).unwrap();
+        assert!(manifest.blast_index_executable.is_none());
+        assert!(manifest.blast_indexed_at_unix_ms.is_none());
+    }
+
+    #[test]
+    fn test_clear_prepared_cache_derived_indexes_only_keeps_cached_sources() {
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (install_dir, blast_prefix) = write_prepared_cache_install(&root, "ToyGenome");
+        let request = PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
+            cache_roots: vec![root.display().to_string()],
+            prepared_ids: vec!["ToyGenome".to_string()],
+            include_orphaned_remnants: false,
+        };
+        let report = clear_prepared_cache_roots(&request).unwrap();
+        assert_eq!(report.removed_item_count, 1);
+        assert!(install_dir.join("sequence.fa").exists());
+        assert!(install_dir.join("annotation.gtf").exists());
+        assert!(install_dir.join("manifest.json").exists());
+        assert!(!install_dir.join("sequence.fa.fai").exists());
+        assert!(!install_dir.join("genes.json").exists());
+        assert!(!blast_prefix.with_extension("nsq").exists());
+    }
+
+    #[test]
+    fn test_clear_prepared_cache_selected_installs_removes_only_selected_entry() {
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (toya_dir, _) = write_prepared_cache_install(&root, "ToyA");
+        let (toyb_dir, _) = write_prepared_cache_install(&root, "ToyB");
+        let request = PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::SelectedPreparedInstalls,
+            cache_roots: vec![root.display().to_string()],
+            prepared_ids: vec!["ToyA".to_string()],
+            include_orphaned_remnants: false,
+        };
+        let report = clear_prepared_cache_roots(&request).unwrap();
+        assert_eq!(report.removed_item_count, 1);
+        assert!(!toya_dir.exists());
+        assert!(toyb_dir.exists());
+    }
+
+    #[test]
+    fn test_clear_prepared_cache_all_in_cache_optionally_includes_orphans() {
+        let td = tempdir().unwrap();
+        let root = td.path().join("cache");
+        let (install_dir, _) = write_prepared_cache_install(&root, "ToyGenome");
+        let orphan_dir = root.join("orphaned");
+        fs::create_dir_all(&orphan_dir).unwrap();
+        fs::write(orphan_dir.join("genes.json"), "[]").unwrap();
+        let without_orphans = clear_prepared_cache_roots(&PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::AllPreparedInCache,
+            cache_roots: vec![root.display().to_string()],
+            prepared_ids: vec![],
+            include_orphaned_remnants: false,
+        })
+        .unwrap();
+        assert_eq!(without_orphans.removed_item_count, 1);
+        assert!(!install_dir.exists());
+        assert!(orphan_dir.exists());
+
+        let _ = write_prepared_cache_install(&root, "ToyGenomeB");
+        let with_orphans = clear_prepared_cache_roots(&PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::AllPreparedInCache,
+            cache_roots: vec![root.display().to_string()],
+            prepared_ids: vec![],
+            include_orphaned_remnants: true,
+        })
+        .unwrap();
+        assert!(with_orphans.removed_item_count >= 2);
+        assert!(!orphan_dir.exists());
     }
 
     #[test]

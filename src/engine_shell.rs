@@ -53,8 +53,9 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
-        GenomeCatalog, GenomeGeneRecord,
+        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CACHE_DIR,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
+        PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
@@ -428,6 +429,34 @@ pub enum UiIntentTarget {
     BlastHelperSequence,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCleanupScope {
+    References,
+    Helpers,
+    Both,
+}
+
+impl CacheCleanupScope {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::References => "references",
+            Self::Helpers => "helpers",
+            Self::Both => "both",
+        }
+    }
+
+    fn default_cache_roots(self) -> Vec<String> {
+        match self {
+            Self::References => vec![DEFAULT_GENOME_CACHE_DIR.to_string()],
+            Self::Helpers => vec![DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()],
+            Self::Both => vec![
+                DEFAULT_GENOME_CACHE_DIR.to_string(),
+                DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
+            ],
+        }
+    }
+}
+
 impl UiIntentTarget {
     fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
@@ -613,6 +642,17 @@ pub enum ShellCommand {
     },
     GibsonApply {
         request_json: String,
+    },
+    CacheInspect {
+        scope: CacheCleanupScope,
+        cache_dirs: Vec<String>,
+    },
+    CacheClear {
+        mode: PreparedCacheCleanupMode,
+        scope: CacheCleanupScope,
+        cache_dirs: Vec<String>,
+        prepared_ids: Vec<String>,
+        include_orphans: bool,
     },
     RenderPoolGelSvg {
         inputs: Vec<String>,
@@ -4443,6 +4483,44 @@ impl ShellCommand {
             Self::GibsonApply { .. } => {
                 "apply Gibson assembly plan and create output sequences".to_string()
             }
+            Self::CacheInspect { scope, cache_dirs } => {
+                let roots = if cache_dirs.is_empty() {
+                    scope.default_cache_roots().join(",")
+                } else {
+                    cache_dirs.join(",")
+                };
+                format!(
+                    "inspect prepared cache roots for scope '{}' (roots='{}')",
+                    scope.label(),
+                    roots
+                )
+            }
+            Self::CacheClear {
+                mode,
+                scope,
+                cache_dirs,
+                prepared_ids,
+                include_orphans,
+            } => {
+                let roots = if cache_dirs.is_empty() {
+                    scope.default_cache_roots().join(",")
+                } else {
+                    cache_dirs.join(",")
+                };
+                let ids = if prepared_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    prepared_ids.join(",")
+                };
+                format!(
+                    "clear prepared caches mode='{}' scope='{}' roots='{}' prepared_ids='{}' include_orphans={}",
+                    mode.label(),
+                    scope.label(),
+                    roots,
+                    ids,
+                    include_orphans
+                )
+            }
             Self::RenderPoolGelSvg {
                 inputs,
                 output,
@@ -6499,6 +6577,19 @@ fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> S
         .unwrap_or_else(|| default_catalog_path(helper_mode).to_string())
 }
 
+fn effective_cache_cleanup_roots(scope: CacheCleanupScope, cache_dirs: &[String]) -> Vec<String> {
+    if cache_dirs.is_empty() {
+        scope.default_cache_roots()
+    } else {
+        cache_dirs
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .collect()
+    }
+}
+
 fn shell_now_unix_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -7577,6 +7668,115 @@ fn parse_blast_options_override(raw: &str, label: &str, flag: &str) -> Result<Va
 
 fn token_error(command: &str) -> String {
     format!("Invalid '{command}' usage. Try: help")
+}
+
+fn parse_cache_cleanup_scope_flag(
+    scope: &mut CacheCleanupScope,
+    token: &str,
+) -> Result<bool, String> {
+    match token {
+        "--references" => {
+            *scope = CacheCleanupScope::References;
+            Ok(true)
+        }
+        "--helpers" => {
+            *scope = CacheCleanupScope::Helpers;
+            Ok(true)
+        }
+        "--both" => {
+            *scope = CacheCleanupScope::Both;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "cache requires a subcommand (inspect|clear)".to_string()
+        );
+    }
+    match tokens[1].as_str() {
+        "inspect" => {
+            let mut scope = CacheCleanupScope::References;
+            let mut cache_dirs: Vec<String> = vec![];
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                if parse_cache_cleanup_scope_flag(&mut scope, tokens[idx].as_str())? {
+                    idx += 1;
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--cache-dir" => {
+                        cache_dirs.push(parse_option_path(tokens, &mut idx, "--cache-dir", "cache inspect")?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for cache inspect"));
+                    }
+                }
+            }
+            Ok(ShellCommand::CacheInspect { scope, cache_dirs })
+        }
+        "clear" => {
+            if tokens.len() < 3 {
+                return Err("cache clear requires MODE [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]".to_string());
+            }
+            let mode = match tokens[2].as_str() {
+                "blast-db-only" => PreparedCacheCleanupMode::BlastDbOnly,
+                "derived-indexes-only" => PreparedCacheCleanupMode::DerivedIndexesOnly,
+                "selected-prepared" => PreparedCacheCleanupMode::SelectedPreparedInstalls,
+                "all-prepared-in-cache" => PreparedCacheCleanupMode::AllPreparedInCache,
+                other => {
+                    return Err(format!(
+                        "Unsupported cache clear mode '{other}' (expected blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache)"
+                    ));
+                }
+            };
+            let mut scope = CacheCleanupScope::References;
+            let mut cache_dirs: Vec<String> = vec![];
+            let mut prepared_ids: Vec<String> = vec![];
+            let mut include_orphans = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                if parse_cache_cleanup_scope_flag(&mut scope, tokens[idx].as_str())? {
+                    idx += 1;
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--cache-dir" => {
+                        cache_dirs.push(parse_option_path(tokens, &mut idx, "--cache-dir", "cache clear")?);
+                    }
+                    "--prepared-id" => {
+                        prepared_ids.push(parse_option_path(tokens, &mut idx, "--prepared-id", "cache clear")?);
+                    }
+                    "--include-orphans" => {
+                        include_orphans = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for cache clear"));
+                    }
+                }
+            }
+            if !matches!(mode, PreparedCacheCleanupMode::AllPreparedInCache) && prepared_ids.is_empty() {
+                return Err(format!(
+                    "cache clear {} requires at least one --prepared-id",
+                    tokens[2]
+                ));
+            }
+            Ok(ShellCommand::CacheClear {
+                mode,
+                scope,
+                cache_dirs,
+                prepared_ids,
+                include_orphans,
+            })
+        }
+        other => Err(format!(
+            "Unknown cache subcommand '{other}' (expected inspect|clear)"
+        )),
+    }
 }
 
 fn parse_help_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -10483,6 +10683,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "cache" => parse_cache_command(tokens),
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "panels" => parse_panels_command(tokens),
@@ -11570,6 +11771,38 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: true,
                 output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::CacheInspect { scope, cache_dirs } => {
+            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
+            let report = GentleEngine::inspect_prepared_cache_roots(&cache_roots)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize prepared cache inspection report: {e}"))?,
+            }
+        }
+        ShellCommand::CacheClear {
+            mode,
+            scope,
+            cache_dirs,
+            prepared_ids,
+            include_orphans,
+        } => {
+            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
+            let request = PreparedCacheCleanupRequest {
+                mode: *mode,
+                cache_roots,
+                prepared_ids: prepared_ids.clone(),
+                include_orphaned_remnants: *include_orphans,
+            };
+            let report = GentleEngine::clear_prepared_cache_roots(&request)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize prepared cache cleanup report: {e}"))?,
             }
         }
         ShellCommand::RenderPoolGelSvg {

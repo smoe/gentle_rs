@@ -220,6 +220,32 @@ order. Durable architecture constraints and decisions remain in
 - Prepared tabular-annotation installs now also persist a transcript/exon/CDS
   sidecar index during prepare/reindex, and gene/region extraction reuses that
   sidecar instead of reparsing the full Ensembl GTF on each lookup.
+- Prepared-cache cleanup baseline is now available:
+  - GUI specialist: `Genome -> Clear Caches...`
+  - additional entry point from `Prepared References...`
+  - shared shell/CLI parity:
+    - `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
+    - `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache ...`
+  - conservative cleanup modes now distinguish:
+    - BLAST DB only
+    - rebuildable derived indexes
+    - selected prepared installs
+    - all prepared installs in selected cache roots
+  - partial cleanup results can now hand off directly to `Rebuild from cached
+    files`, which reuses the standard prepared-genome cached-files reindex
+    confirmation instead of inventing a separate rebuild path
+  - orphaned remnants are inspectable always but remain removable only through
+    explicit full-delete modes
+  - cleanup is rooted in known reference/helper cache dirs only and leaves
+    project state files, catalog JSON, MCP/runtime files, backdrop/runtime
+    caches, and `target/` untouched
+  - current limitations / follow-up:
+    - cache-cleanup GUI selection currently keys rows by prepared `entry_id`,
+      so duplicate ids across multiple selected roots are cleaned together
+      until path-keyed selection lands
+    - current deterministic coverage is strongest at shared engine/shell level;
+      a dedicated GUI cleanup-apply parity regression would still be worth
+      adding
 - Genome-catalog maintenance now has a shared baseline:
   - bundled `assets/genomes.json` now includes additional Ensembl templates for
     zebrafish, chimp, dog, and Drosophila, while fixing the rat pinned release

@@ -1,5 +1,5 @@
 {
-   "command_count": 251,
+   "command_count": 253,
    "commands": [
       {
          "aliases": [
@@ -341,6 +341,30 @@
          "path": "gibson apply",
          "summary": "Apply one destination-first Gibson plan and create primer/product sequence outputs.",
          "usage": "gibson apply PLAN_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cache inspect",
+         "summary": "Inspect prepared reference/helper cache roots and report installs, orphaned remnants, and artifact groups.",
+         "usage": "cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cache clear",
+         "summary": "Conservatively clear derived cache artifacts or prepared installs within selected reference/helper cache roots.",
+         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]"
       },
       {
          "aliases": [],

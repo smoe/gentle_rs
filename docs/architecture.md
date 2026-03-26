@@ -189,11 +189,28 @@ Discoverability rule:
 - Prepared-reference inspection must remain directly reachable from
   `Genome -> Prepared References...`, and searchable as
   `Prepared References` in Command Palette.
+- Prepared-cache cleanup must remain directly reachable from
+  `Genome -> Clear Caches...` and from within `Prepared References...` so users
+  can inspect and reclaim local prepared-cache disk usage without hunting for
+  filesystem paths manually.
 - Chromosome inspection currently lives inside `Prepared References...` as an
   embedded `Chromosome inspector` section (one proportional line per contig).
 - Configuration dialogs with staged edits must keep primary commit actions
   (`Cancel`/`Apply`) persistently visible (not scroll-hidden) and expose an
   explicit unapplied-changes indicator.
+
+Prepared cache cleanup rule:
+
+- Prepared-cache cleanup is conservative by design and must operate only on
+  explicit known cache roots (reference/helper `cache_dir` values), never by
+  scanning arbitrary workspace paths.
+- Partial cleanup modes are rebuild-oriented and may delete only derived
+  artifacts (`sequence.fa.fai`, `genes.json`, BLAST DB sidecars) while keeping
+  cached FASTA/annotation sources and manifests intact.
+- Project state files, catalog JSON, MCP/runtime files, backdrop/runtime
+  caches, and developer build artifacts (`target/`) are not treated as cache.
+- Orphaned remnants may be shown during inspection but require explicit
+  full-delete cleanup modes before removal.
 
 Operation graph-inspectability rule:
 
@@ -409,6 +426,9 @@ Practical rule:
 - Current GUI-only routing note:
   - reference/helper status dialogs (including `Prepared References...`) are
     opened via menu/command-palette actions in `src/app.rs`
+  - prepared-cache cleanup (`Genome -> Clear Caches...`) is a GUI specialist
+    over shared engine/cache-inspection helpers; adapters must not invent their
+    own filesystem cleanup rules
   - shared shell commands can query/prepare/extract, but cannot yet directly
     open/focus GUI dialogs
 
