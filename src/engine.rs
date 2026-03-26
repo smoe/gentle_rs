@@ -3549,6 +3549,61 @@ impl RnaReadAlignmentEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadAlignmentInspectionEffectFilter {
+    #[default]
+    AllAligned,
+    ConfirmedOnly,
+    DisagreementOnly,
+    ReassignedOnly,
+    NoPhase1Only,
+    SelectedOnly,
+}
+
+impl RnaReadAlignmentInspectionEffectFilter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllAligned => "all_aligned",
+            Self::ConfirmedOnly => "confirmed_only",
+            Self::DisagreementOnly => "disagreement_only",
+            Self::ReassignedOnly => "reassigned_only",
+            Self::NoPhase1Only => "no_phase1_only",
+            Self::SelectedOnly => "selected_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadAlignmentInspectionSortKey {
+    #[default]
+    Rank,
+    Identity,
+    Coverage,
+    Score,
+}
+
+impl RnaReadAlignmentInspectionSortKey {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Rank => "rank",
+            Self::Identity => "identity",
+            Self::Coverage => "coverage",
+            Self::Score => "score",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspectionSubsetSpec {
+    pub effect_filter: RnaReadAlignmentInspectionEffectFilter,
+    pub sort_key: RnaReadAlignmentInspectionSortKey,
+    pub search: String,
+    pub selected_record_indices: Vec<usize>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadMappedSupportExonAttribution {
@@ -3620,7 +3675,9 @@ pub struct RnaReadAlignmentInspection {
     pub selection: RnaReadHitSelection,
     pub row_count: usize,
     pub aligned_count: usize,
+    pub subset_match_count: usize,
     pub limit: usize,
+    pub subset_spec: RnaReadAlignmentInspectionSubsetSpec,
     pub align_min_identity_fraction: f64,
     pub max_secondary_mappings: usize,
     pub rows: Vec<RnaReadAlignmentInspectionRow>,

@@ -2242,6 +2242,24 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         offsets first and falls back to coarse genomic-span overlap only for
         legacy mappings that do not carry template offsets
       - deterministic retained-hit re-ranking by alignment-aware retention rank
+  - alignment inspection behavior:
+    - `rna-reads inspect-alignments` accepts coarse `selection` plus a
+      structured subset contract:
+      - `effect_filter = all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only`
+      - `sort_key = rank|identity|coverage|score`
+      - `search = free-text match over read ids, transcript ids/labels,
+        effect labels, and `#record_index` labels`
+      - `selected_record_indices[]` provides the explicit subset for
+        `selected_only`
+    - inspection payload now includes:
+      - `aligned_count`: aligned rows admitted by coarse `selection`
+      - `subset_match_count`: aligned rows matching the structured subset
+        before `limit`
+      - `row_count`: returned rows after `limit`
+      - `subset_spec`: normalized structured subset object echoed back in the
+        response for deterministic replay
+    - row `rank` remains the original alignment-aware retention rank even when
+      subset sorting reorders the returned rows
   - exact-subset export behavior:
     - `ExportRnaReadHitsFasta`, `ExportRnaReadExonPathsTsv`,
       `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadAlignmentsTsv` accept
@@ -2302,6 +2320,14 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         `aligned_without_phase1_assignment`)
       - mapped-support attribution arrays for the best mapping
         (`mapped_exon_support[]`, `mapped_junction_support[]`)
+    - top-level payload now also carries:
+      - `aligned_count`
+      - `subset_match_count`
+      - `row_count`
+      - `limit`
+      - normalized `subset_spec`
+        (`effect_filter`, `sort_key`, `search`,
+        `selected_record_indices[]`)
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
@@ -2315,7 +2341,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
-  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
+  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
@@ -2330,8 +2356,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       ROI-capture flag, read counters)
     - `rna-reads show-report` includes `summary` with the same provenance
       framing for one report
-    - `rna-reads inspect-alignments` returns top aligned rows ranked by
-      alignment-aware retention score (mapping + seed metrics)
+    - `rna-reads inspect-alignments` returns aligned rows ranked by
+      alignment-aware retention score (mapping + seed metrics), plus a
+      structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,
+      `selected_record_indices`) and `subset_match_count`
 - Alignment-TSV export:
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`

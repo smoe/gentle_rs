@@ -1454,7 +1454,7 @@
          ],
          "path": "rna-reads inspect-alignments",
          "summary": "Inspect ranked aligned hits from one RNA-read report.",
-         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]"
+         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
       },
       {
          "aliases": [],

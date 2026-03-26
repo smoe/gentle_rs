@@ -13601,6 +13601,54 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert_eq!(inspection.rows[1].phase1_primary_transcript_id, "tx_hi_id");
     assert!(inspection.rows[1].reverse_complement_applied);
 
+    let filtered = engine
+        .inspect_rna_read_alignments_with_subset(
+            "rna_reads_alignment_rank",
+            RnaReadHitSelection::All,
+            10,
+            Some(RnaReadAlignmentInspectionSubsetSpec {
+                effect_filter: RnaReadAlignmentInspectionEffectFilter::DisagreementOnly,
+                sort_key: RnaReadAlignmentInspectionSortKey::Score,
+                search: "aligned_hi_cov".to_string(),
+                selected_record_indices: vec![1, 1],
+            }),
+        )
+        .expect("inspect filtered alignment rows");
+    assert_eq!(filtered.aligned_count, 2);
+    assert_eq!(filtered.subset_match_count, 1);
+    assert_eq!(filtered.row_count, 1);
+    assert_eq!(
+        filtered.subset_spec.effect_filter,
+        RnaReadAlignmentInspectionEffectFilter::DisagreementOnly
+    );
+    assert_eq!(
+        filtered.subset_spec.sort_key,
+        RnaReadAlignmentInspectionSortKey::Score
+    );
+    assert_eq!(filtered.subset_spec.search, "aligned_hi_cov");
+    assert_eq!(filtered.subset_spec.selected_record_indices, vec![1]);
+    assert_eq!(filtered.rows[0].header_id, "aligned_hi_cov");
+    assert_eq!(filtered.rows[0].rank, 1);
+
+    let sorted = engine
+        .inspect_rna_read_alignments_with_subset(
+            "rna_reads_alignment_rank",
+            RnaReadHitSelection::All,
+            10,
+            Some(RnaReadAlignmentInspectionSubsetSpec {
+                effect_filter: RnaReadAlignmentInspectionEffectFilter::AllAligned,
+                sort_key: RnaReadAlignmentInspectionSortKey::Score,
+                search: String::new(),
+                selected_record_indices: vec![],
+            }),
+        )
+        .expect("inspect score-sorted alignment rows");
+    assert_eq!(sorted.subset_match_count, 2);
+    assert_eq!(sorted.rows[0].header_id, "aligned_hi_id");
+    assert_eq!(sorted.rows[0].rank, 2);
+    assert_eq!(sorted.rows[1].header_id, "aligned_hi_cov");
+    assert_eq!(sorted.rows[1].rank, 1);
+
     let td = tempdir().expect("tempdir");
     let tsv_path = td.path().join("alignment_rows.tsv");
     let tsv_export = engine
@@ -13619,7 +13667,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     let tsv_text = fs::read_to_string(&tsv_path).expect("read alignment tsv");
     assert!(tsv_text.contains("# report_id=rna_reads_alignment_rank"));
     assert!(tsv_text.contains(
-        "selection=all selected_record_indices=none limit=1 row_count=1 aligned_count=2"
+        "selection=all selected_record_indices=none subset_spec=none limit=1 row_count=1 aligned_count=2"
     ));
     assert!(tsv_text.contains("# seed_filter: k=10 stride=1"));
     assert!(tsv_text.contains("adjacent windows overlap by 9 bp"));

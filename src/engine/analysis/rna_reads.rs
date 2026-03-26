@@ -425,11 +425,149 @@ impl GentleEngine {
         }
     }
 
+    fn normalize_rna_read_alignment_inspection_subset_spec(
+        subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
+    ) -> RnaReadAlignmentInspectionSubsetSpec {
+        let mut subset_spec = subset_spec.unwrap_or_default();
+        subset_spec.search = subset_spec.search.trim().to_string();
+        subset_spec.selected_record_indices.sort_unstable();
+        subset_spec.selected_record_indices.dedup();
+        subset_spec
+    }
+
+    fn rna_read_alignment_effect_search_label(effect: RnaReadAlignmentEffect) -> &'static str {
+        match effect {
+            RnaReadAlignmentEffect::ConfirmedAssignment => "confirmed",
+            RnaReadAlignmentEffect::ReassignedTranscript => "reassigned",
+            RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment => "aligned_without_phase1",
+        }
+    }
+
+    fn rna_read_alignment_inspection_matches_filter(
+        row: &RnaReadAlignmentInspectionRow,
+        effect_filter: RnaReadAlignmentInspectionEffectFilter,
+        selected_record_indices: &[usize],
+    ) -> bool {
+        match effect_filter {
+            RnaReadAlignmentInspectionEffectFilter::AllAligned => true,
+            RnaReadAlignmentInspectionEffectFilter::ConfirmedOnly => {
+                row.alignment_effect == RnaReadAlignmentEffect::ConfirmedAssignment
+            }
+            RnaReadAlignmentInspectionEffectFilter::DisagreementOnly => {
+                row.alignment_effect != RnaReadAlignmentEffect::ConfirmedAssignment
+            }
+            RnaReadAlignmentInspectionEffectFilter::ReassignedOnly => {
+                row.alignment_effect == RnaReadAlignmentEffect::ReassignedTranscript
+            }
+            RnaReadAlignmentInspectionEffectFilter::NoPhase1Only => {
+                row.alignment_effect == RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
+            }
+            RnaReadAlignmentInspectionEffectFilter::SelectedOnly => selected_record_indices
+                .binary_search(&row.record_index)
+                .is_ok(),
+        }
+    }
+
+    fn rna_read_alignment_inspection_matches_search(
+        row: &RnaReadAlignmentInspectionRow,
+        search: &str,
+    ) -> bool {
+        let needle = search.trim().to_ascii_lowercase();
+        if needle.is_empty() {
+            return true;
+        }
+        let effect_label = Self::rna_read_alignment_effect_search_label(row.alignment_effect);
+        let effect_schema = row.alignment_effect.as_str();
+        let record_index_label = format!("#{}", row.record_index + 1);
+        let rank_label = row.rank.to_string();
+        [
+            row.header_id.as_str(),
+            row.phase1_primary_transcript_id.as_str(),
+            row.seed_chain_transcript_id.as_str(),
+            row.exon_path_transcript_id.as_str(),
+            row.exon_path.as_str(),
+            row.transcript_id.as_str(),
+            row.transcript_label.as_str(),
+            row.strand.as_str(),
+            row.selected_strand.as_str(),
+            row.origin_class.as_str(),
+            effect_label,
+            effect_schema,
+            record_index_label.as_str(),
+            rank_label.as_str(),
+        ]
+        .iter()
+        .any(|field| field.to_ascii_lowercase().contains(&needle))
+    }
+
+    fn compare_rna_read_alignment_inspection_rows(
+        left: &RnaReadAlignmentInspectionRow,
+        right: &RnaReadAlignmentInspectionRow,
+        sort_key: RnaReadAlignmentInspectionSortKey,
+    ) -> Ordering {
+        match sort_key {
+            RnaReadAlignmentInspectionSortKey::Rank => left
+                .rank
+                .cmp(&right.rank)
+                .then_with(|| left.record_index.cmp(&right.record_index)),
+            RnaReadAlignmentInspectionSortKey::Identity => right
+                .identity_fraction
+                .partial_cmp(&left.identity_fraction)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    right
+                        .query_coverage_fraction
+                        .partial_cmp(&left.query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| right.score.cmp(&left.score))
+                .then_with(|| left.rank.cmp(&right.rank)),
+            RnaReadAlignmentInspectionSortKey::Coverage => right
+                .query_coverage_fraction
+                .partial_cmp(&left.query_coverage_fraction)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    right
+                        .identity_fraction
+                        .partial_cmp(&left.identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| right.score.cmp(&left.score))
+                .then_with(|| left.rank.cmp(&right.rank)),
+            RnaReadAlignmentInspectionSortKey::Score => right
+                .score
+                .cmp(&left.score)
+                .then_with(|| {
+                    right
+                        .identity_fraction
+                        .partial_cmp(&left.identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right
+                        .query_coverage_fraction
+                        .partial_cmp(&left.query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| left.rank.cmp(&right.rank)),
+        }
+    }
+
     pub fn inspect_rna_read_alignments(
         &self,
         report_id: &str,
         selection: RnaReadHitSelection,
         limit: usize,
+    ) -> Result<RnaReadAlignmentInspection, EngineError> {
+        self.inspect_rna_read_alignments_with_subset(report_id, selection, limit, None)
+    }
+
+    pub fn inspect_rna_read_alignments_with_subset(
+        &self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        limit: usize,
+        subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
     ) -> Result<RnaReadAlignmentInspection, EngineError> {
         if limit == 0 {
             return Err(EngineError {
@@ -437,6 +575,7 @@ impl GentleEngine {
                 message: "RNA-read alignment inspection requires --limit >= 1".to_string(),
             });
         }
+        let subset_spec = Self::normalize_rna_read_alignment_inspection_subset_spec(subset_spec);
         let report = self.get_rna_read_report(report_id)?;
         let splicing_view = self
             .build_splicing_expert_view(&report.seq_id, report.seed_feature_id, report.scope)
@@ -495,12 +634,24 @@ impl GentleEngine {
         let aligned_count = ranked_rows.len();
         let mut rows = ranked_rows
             .into_iter()
-            .take(limit)
-            .map(|(_, row)| row)
+            .enumerate()
+            .map(|(idx, (_, mut row))| {
+                row.rank = idx + 1;
+                row
+            })
             .collect::<Vec<_>>();
-        for (idx, row) in rows.iter_mut().enumerate() {
-            row.rank = idx + 1;
-        }
+        rows.retain(|row| {
+            Self::rna_read_alignment_inspection_matches_filter(
+                row,
+                subset_spec.effect_filter,
+                &subset_spec.selected_record_indices,
+            ) && Self::rna_read_alignment_inspection_matches_search(row, &subset_spec.search)
+        });
+        rows.sort_by(|left, right| {
+            Self::compare_rna_read_alignment_inspection_rows(left, right, subset_spec.sort_key)
+        });
+        let subset_match_count = rows.len();
+        rows.truncate(limit);
         Ok(RnaReadAlignmentInspection {
             schema: RNA_READ_ALIGNMENT_INSPECTION_SCHEMA.to_string(),
             report_id: report.report_id,
@@ -508,7 +659,9 @@ impl GentleEngine {
             selection,
             row_count: rows.len(),
             aligned_count,
+            subset_match_count,
             limit,
+            subset_spec,
             align_min_identity_fraction: report.align_config.min_identity_fraction,
             max_secondary_mappings: report.align_config.max_secondary_mappings,
             rows,

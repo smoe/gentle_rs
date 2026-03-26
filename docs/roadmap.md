@@ -1288,8 +1288,11 @@ Status:
     seed metrics as tie-breakers) so downstream candidate ranking reflects
     mapping quality.
   - Added non-mutating alignment inspection route:
-    `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]`
-    returns ranked aligned-hit rows for report triage without mutating state.
+    `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]
+    [--effect-filter ...] [--sort ...] [--search TEXT]
+    [--record-indices i,j,k]` returns ranked aligned-hit rows for report triage
+    without mutating state, with a structured subset spec echoed in JSON for
+    reproducible agent-driven inspection.
   - `Mapped cDNA` inspection in Splicing Expert is now read-first by default:
     saved-report aligned rows expose phase-1 vs phase-2 comparison,
     deterministic effect labels (`confirmed`, `reassigned`, `no phase-1 tx`),

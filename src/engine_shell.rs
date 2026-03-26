@@ -41,10 +41,12 @@ use crate::{
         PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignSideConstraint, ProjectState, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor,
-        SplicingScopePreset, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
-        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     feature_location::collect_location_ranges_usize,
@@ -1222,6 +1224,10 @@ pub enum ShellCommand {
         report_id: String,
         selection: RnaReadHitSelection,
         limit: usize,
+        effect_filter: RnaReadAlignmentInspectionEffectFilter,
+        sort_key: RnaReadAlignmentInspectionSortKey,
+        search: String,
+        selected_record_indices: Vec<usize>,
     },
     RnaReadsExportReport {
         report_id: String,
@@ -5976,11 +5982,23 @@ impl ShellCommand {
                 report_id,
                 selection,
                 limit,
+                effect_filter,
+                sort_key,
+                search,
+                selected_record_indices,
             } => format!(
-                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={})",
+                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={}, effect_filter={}, sort_key={}, search='{}', selected_record_indices={})",
                 report_id,
                 selection.as_str(),
-                limit
+                limit,
+                effect_filter.as_str(),
+                sort_key.as_str(),
+                if search.trim().is_empty() {
+                    "<none>"
+                } else {
+                    search.trim()
+                },
+                selected_record_indices.len()
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",
@@ -15011,9 +15029,23 @@ pub fn execute_shell_command_with_options(
             report_id,
             selection,
             limit,
+            effect_filter,
+            sort_key,
+            search,
+            selected_record_indices,
         } => {
             let inspection = engine
-                .inspect_rna_read_alignments(report_id, *selection, *limit)
+                .inspect_rna_read_alignments_with_subset(
+                    report_id,
+                    *selection,
+                    *limit,
+                    Some(RnaReadAlignmentInspectionSubsetSpec {
+                        effect_filter: *effect_filter,
+                        sort_key: *sort_key,
+                        search: search.clone(),
+                        selected_record_indices: selected_record_indices.clone(),
+                    }),
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,

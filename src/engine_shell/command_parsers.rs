@@ -1707,6 +1707,48 @@ pub(super) fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelect
     }
 }
 
+pub(super) fn parse_rna_read_alignment_effect_filter(
+    raw: &str,
+) -> Result<RnaReadAlignmentInspectionEffectFilter, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all_aligned" | "all-aligned" | "all" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::AllAligned)
+        }
+        "confirmed_only" | "confirmed-only" | "confirmed" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::ConfirmedOnly)
+        }
+        "disagreement_only" | "disagreement-only" | "disagreement" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::DisagreementOnly)
+        }
+        "reassigned_only" | "reassigned-only" | "reassigned" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::ReassignedOnly)
+        }
+        "no_phase1_only" | "no-phase1-only" | "no_phase1" | "no-phase1" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::NoPhase1Only)
+        }
+        "selected_only" | "selected-only" | "selected" => {
+            Ok(RnaReadAlignmentInspectionEffectFilter::SelectedOnly)
+        }
+        other => Err(format!(
+            "Unsupported RNA-read alignment effect filter '{other}', expected all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only"
+        )),
+    }
+}
+
+pub(super) fn parse_rna_read_alignment_sort_key(
+    raw: &str,
+) -> Result<RnaReadAlignmentInspectionSortKey, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "rank" => Ok(RnaReadAlignmentInspectionSortKey::Rank),
+        "identity" => Ok(RnaReadAlignmentInspectionSortKey::Identity),
+        "coverage" => Ok(RnaReadAlignmentInspectionSortKey::Coverage),
+        "score" => Ok(RnaReadAlignmentInspectionSortKey::Score),
+        other => Err(format!(
+            "Unsupported RNA-read alignment sort key '{other}', expected rank|identity|coverage|score"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_read_record_indices(raw: &str) -> Result<Vec<usize>, String> {
     let mut indices = raw
         .split(',')
@@ -2846,7 +2888,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "inspect-alignments" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads inspect-alignments requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N]"
+                    "rna-reads inspect-alignments requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
                         .to_string(),
                 );
             }
@@ -2856,6 +2898,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             let mut selection = RnaReadHitSelection::Aligned;
             let mut limit = 50usize;
+            let mut effect_filter = RnaReadAlignmentInspectionEffectFilter::AllAligned;
+            let mut sort_key = RnaReadAlignmentInspectionSortKey::Rank;
+            let mut search = String::new();
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -2881,6 +2927,41 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             )
                         })?;
                     }
+                    "--effect-filter" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--effect-filter",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        effect_filter = parse_rna_read_alignment_effect_filter(&raw)?;
+                    }
+                    "--sort" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sort",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        sort_key = parse_rna_read_alignment_sort_key(&raw)?;
+                    }
+                    "--search" => {
+                        search = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--search",
+                            "rna-reads inspect-alignments",
+                        )?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads inspect-alignments"
@@ -2892,6 +2973,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 selection,
                 limit,
+                effect_filter,
+                sort_key,
+                search,
+                selected_record_indices,
             })
         }
         "export-report" => {

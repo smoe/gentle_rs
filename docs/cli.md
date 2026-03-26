@@ -228,7 +228,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `--record-indices i,j,k` (0-based stored `record_index` values);
       when provided, this overrides `--selection`.
   - `inspect-alignments`: non-mutating ranked alignment inspection
-    (`--selection` + `--limit`) over persisted report hits.
+    over persisted report hits, with optional structured subset controls:
+    `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
     downstream table-based triage.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
@@ -1045,7 +1046,7 @@ Shared shell command:
     - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
-    - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
+    - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
@@ -1057,7 +1058,10 @@ Shared shell command:
     - `rna-reads align-report` re-ranks retained hits by alignment-aware
       retention rank after mapping refresh.
     - `rna-reads inspect-alignments` returns ranked aligned rows suitable for
-      read-level inspection without mutating report payloads.
+      read-level inspection without mutating report payloads, and now echoes
+      the formal structured subset spec (`effect_filter`, `sort_key`,
+      `search`, `selected_record_indices`) plus `subset_match_count` in the
+      JSON payload so agent-driven inspection stays reproducible.
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
       exports an exact saved-report subset and overrides coarse `--selection`;

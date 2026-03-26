@@ -8394,15 +8394,20 @@ fn parse_rna_reads_commands() {
         ShellCommand::RnaReadsShowReport { report_id } if report_id == "tp73_reads"
     ));
 
-    let inspect =
-        parse_shell_line("rna-reads inspect-alignments tp73_reads --selection aligned --limit 25")
-            .expect("parse rna-reads inspect-alignments");
+    let inspect = parse_shell_line(
+        "rna-reads inspect-alignments tp73_reads --selection aligned --limit 25 --effect-filter disagreement_only --sort score --search tp53 --record-indices 2,7,9",
+    )
+    .expect("parse rna-reads inspect-alignments");
     assert!(matches!(
         inspect,
-        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit }
+        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit, effect_filter, sort_key, search, selected_record_indices }
             if report_id == "tp73_reads"
                 && selection == RnaReadHitSelection::Aligned
                 && limit == 25
+                && effect_filter == RnaReadAlignmentInspectionEffectFilter::DisagreementOnly
+                && sort_key == RnaReadAlignmentInspectionSortKey::Score
+                && search == "tp53"
+                && selected_record_indices == vec![2, 7, 9]
     ));
 
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
@@ -8926,6 +8931,10 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id: report_id.clone(),
             selection: RnaReadHitSelection::Aligned,
             limit: 10,
+            effect_filter: RnaReadAlignmentInspectionEffectFilter::SelectedOnly,
+            sort_key: RnaReadAlignmentInspectionSortKey::Score,
+            search: "read_1".to_string(),
+            selected_record_indices: vec![0],
         },
     )
     .expect("inspect rna-read alignments");
@@ -8936,6 +8945,28 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert_eq!(
         inspected.output["inspection"]["selection"].as_str(),
         Some("aligned")
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_spec"]["effect_filter"].as_str(),
+        Some("selected_only")
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_spec"]["sort_key"].as_str(),
+        Some("score")
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_spec"]["search"].as_str(),
+        Some("read_1")
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_spec"]["selected_record_indices"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_match_count"].as_u64(),
+        Some(0)
     );
 
     let exported_report = fasta_dir.path().join("report.json");
