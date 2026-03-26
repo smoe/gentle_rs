@@ -762,6 +762,11 @@ pub enum ShellCommand {
         helper_mode: bool,
         catalog_path: Option<String>,
     },
+    ReferenceUpdateEnsemblSpecs {
+        helper_mode: bool,
+        catalog_path: Option<String>,
+        output_catalog_path: Option<String>,
+    },
     ReferenceStatus {
         helper_mode: bool,
         genome_id: String,
@@ -784,6 +789,18 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
         timeout_seconds: Option<u64>,
+    },
+    ReferenceRemovePrepared {
+        helper_mode: bool,
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceRemoveCatalogEntry {
+        helper_mode: bool,
+        genome_id: String,
+        catalog_path: Option<String>,
+        output_catalog_path: Option<String>,
     },
     ReferenceExtractRegion {
         helper_mode: bool,
@@ -4809,6 +4826,22 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 format!("validate {label} catalog '{catalog}'")
             }
+            Self::ReferenceUpdateEnsemblSpecs {
+                helper_mode,
+                catalog_path,
+                output_catalog_path,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let output_catalog = output_catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "update {label} Ensembl specs from catalog '{catalog}' (output_catalog='{output_catalog}')"
+                )
+            }
             Self::ReferenceStatus {
                 helper_mode,
                 genome_id,
@@ -4863,6 +4896,38 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string());
                 format!(
                     "prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}', timeout='{timeout}')"
+                )
+            }
+            Self::ReferenceRemovePrepared {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "remove prepared {label} '{genome_id}' (catalog='{catalog}', cache='{cache}')"
+                )
+            }
+            Self::ReferenceRemoveCatalogEntry {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                output_catalog_path,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let output_catalog = output_catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "remove {label} catalog entry '{genome_id}' from '{catalog}' (output_catalog='{output_catalog}')"
                 )
             }
             Self::ReferenceExtractRegion {
@@ -7594,6 +7659,37 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 catalog_path,
             })
         }
+        "update-ensembl-specs" => {
+            let mut catalog_path: Option<String> = None;
+            let mut output_catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--output-catalog" => {
+                        output_catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-catalog",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} update-ensembl-specs"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceUpdateEnsemblSpecs {
+                helper_mode,
+                catalog_path,
+                output_catalog_path,
+            })
+        }
         "status" => {
             if tokens.len() < 3 {
                 return Err(format!(
@@ -7729,6 +7825,77 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 catalog_path,
                 cache_dir,
                 timeout_seconds,
+            })
+        }
+        "remove-prepared" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} remove-prepared requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} remove-prepared"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceRemovePrepared {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "remove-catalog-entry" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} remove-catalog-entry requires GENOME_ID [--catalog PATH] [--output-catalog PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut output_catalog_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--output-catalog" => {
+                        output_catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-catalog",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} remove-catalog-entry"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceRemoveCatalogEntry {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                output_catalog_path,
             })
         }
         "blast" => {
@@ -8417,7 +8584,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -12767,6 +12934,27 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::ReferenceUpdateEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+                resolved_catalog,
+                output_catalog_path.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "output_catalog_path": report.output_catalog_path,
+                    "report": report,
+                }),
+            }
+        }
         ShellCommand::ReferenceStatus {
             helper_mode,
             genome_id,
@@ -12877,6 +13065,52 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "binary_preflight": binary_preflight,
                     "result": op_result
+                }),
+            }
+        }
+        ShellCommand::ReferenceRemovePrepared {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::remove_prepared_reference_genome(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::ReferenceRemoveCatalogEntry {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::remove_reference_genome_catalog_entry(
+                resolved_catalog,
+                genome_id,
+                output_catalog_path.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "output_catalog_path": report.output_catalog_path,
+                    "report": report,
                 }),
             }
         }

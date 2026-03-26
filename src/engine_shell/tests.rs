@@ -7380,6 +7380,51 @@ fn parse_genomes_validate_catalog() {
 }
 
 #[test]
+fn parse_genomes_update_ensembl_specs() {
+    let cmd = parse_shell_line(
+        "genomes update-ensembl-specs --catalog assets/genomes.json --output-catalog exports/genomes.updated.json",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::ReferenceUpdateEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(catalog_path, Some("assets/genomes.json".to_string()));
+            assert_eq!(
+                output_catalog_path,
+                Some("exports/genomes.updated.json".to_string())
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_helpers_remove_catalog_entry() {
+    let cmd = parse_shell_line(
+        "helpers remove-catalog-entry HelperGenome --catalog helpers.json --output-catalog helpers.updated.json",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::ReferenceRemoveCatalogEntry {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            assert!(helper_mode);
+            assert_eq!(genome_id, "HelperGenome".to_string());
+            assert_eq!(catalog_path, Some("helpers.json".to_string()));
+            assert_eq!(output_catalog_path, Some("helpers.updated.json".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_genomes_validate_catalog_reports_valid() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
@@ -7417,6 +7462,171 @@ fn execute_genomes_validate_catalog_reports_valid() {
     assert!(!out.state_changed);
     assert_eq!(out.output["valid"].as_bool(), Some(true));
     assert_eq!(out.output["genome_count"].as_u64(), Some(1));
+}
+
+#[test]
+fn execute_genomes_update_ensembl_specs_with_no_templates_reports_no_updates() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display(),
+        cache.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceUpdateEnsemblSpecs {
+            helper_mode: false,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            output_catalog_path: None,
+        },
+    )
+    .expect("execute update-ensembl-specs");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["report"]["updates"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    assert_eq!(out.output["report"]["wrote_catalog"].as_bool(), Some(true));
+    assert_eq!(
+        out.output["report"]["output_catalog_path"].as_str(),
+        Some(catalog.to_string_lossy().as_ref())
+    );
+}
+
+#[test]
+fn execute_genomes_remove_prepared_reports_removed_and_status_clears() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">chr1\nACGTACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display(),
+        cache.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+    let catalog_path = catalog.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePrepare {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        },
+    )
+    .expect("prepare genome");
+
+    let removed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceRemovePrepared {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+        },
+    )
+    .expect("remove prepared genome");
+    assert!(!removed.state_changed);
+    assert_eq!(removed.output["report"]["removed"].as_bool(), Some(true));
+
+    let status = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceStatus {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path),
+            cache_dir: None,
+        },
+    )
+    .expect("status after remove");
+    assert_eq!(status.output["prepared"].as_bool(), Some(false));
+}
+
+#[test]
+fn execute_genomes_remove_catalog_entry_updates_catalog_file() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display(),
+        cache.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+    let catalog_path = catalog.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceRemoveCatalogEntry {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            output_catalog_path: None,
+        },
+    )
+    .expect("remove catalog entry");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["report"]["removed"].as_bool(), Some(true));
+
+    let genomes = GentleEngine::list_reference_genomes(Some(&catalog_path))
+        .expect("reload edited catalog");
+    assert!(genomes.is_empty());
 }
 
 #[test]

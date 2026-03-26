@@ -1,5 +1,5 @@
 {
-   "command_count": 235,
+   "command_count": 251,
    "commands": [
       {
          "aliases": [
@@ -659,6 +659,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "genomes update-ensembl-specs",
+         "summary": "Refresh explicit pinned Ensembl URLs/specs for catalog rows with template metadata.",
+         "usage": "genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "genomes status",
          "summary": "Inspect local availability and prep status for one genome.",
          "usage": "genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]"
@@ -697,9 +709,81 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "genomes remove-prepared",
+         "summary": "Delete one prepared genome install from cache without editing the catalog JSON.",
+         "usage": "genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes remove-catalog-entry",
+         "summary": "Delete one genome row from a writable catalog JSON without touching prepared cache files.",
+         "usage": "genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "genomes blast",
          "summary": "Run BLAST query against one reference genome (quick flags plus optional JSON override object).",
          "usage": "genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-start",
+         "summary": "Start one async BLAST query against a prepared reference genome cache.",
+         "usage": "genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-status",
+         "summary": "Inspect async reference-genome BLAST job status and optional final report.",
+         "usage": "genomes blast-status JOB_ID [--with-report]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-cancel",
+         "summary": "Request cooperative cancellation for one async reference-genome BLAST job.",
+         "usage": "genomes blast-cancel JOB_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-list",
+         "summary": "List known async reference-genome BLAST jobs in the current process.",
+         "usage": "genomes blast-list"
       },
       {
          "aliases": [],
@@ -755,7 +839,21 @@
          ],
          "path": "genomes extend-anchor",
          "summary": "Extend anchored genomic sequence by 5' or 3'.",
-         "usage": "genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "VerifyGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes verify-anchor",
+         "summary": "Re-check one anchored sequence against its prepared genome coordinates.",
+         "usage": "genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
       },
       {
          "aliases": [],
@@ -780,6 +878,18 @@
          "path": "helpers validate-catalog",
          "summary": "Validate helper genome catalog entries.",
          "usage": "helpers validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers update-ensembl-specs",
+         "summary": "Refresh explicit pinned Ensembl URLs/specs for helper catalog rows with template metadata.",
+         "usage": "helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]"
       },
       {
          "aliases": [],
@@ -827,9 +937,81 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "helpers remove-prepared",
+         "summary": "Delete one prepared helper install from cache without editing the catalog JSON.",
+         "usage": "helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers remove-catalog-entry",
+         "summary": "Delete one helper row from a writable catalog JSON without touching prepared cache files.",
+         "usage": "helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "helpers blast",
          "summary": "Run BLAST query against one helper genome (quick flags plus optional JSON override object).",
          "usage": "helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-start",
+         "summary": "Start one async BLAST query against a prepared helper genome cache.",
+         "usage": "helpers blast-start HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-status",
+         "summary": "Inspect async helper-genome BLAST job status and optional final report.",
+         "usage": "helpers blast-status JOB_ID [--with-report]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-cancel",
+         "summary": "Request cooperative cancellation for one async helper-genome BLAST job.",
+         "usage": "helpers blast-cancel JOB_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-list",
+         "summary": "List known async helper-genome BLAST jobs in the current process.",
+         "usage": "helpers blast-list"
       },
       {
          "aliases": [],
@@ -885,7 +1067,21 @@
          ],
          "path": "helpers extend-anchor",
          "summary": "Extend anchored helper sequence by 5' or 3'.",
-         "usage": "helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "VerifyGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers verify-anchor",
+         "summary": "Re-check one anchored sequence against its prepared helper coordinates.",
+         "usage": "helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
       },
       {
          "aliases": [],

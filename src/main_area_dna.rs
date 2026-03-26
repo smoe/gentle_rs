@@ -1948,6 +1948,7 @@ mod tests {
                 protocol_cartoon_preview: Some(preview.clone()),
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                sequencing_confirmation_report: None,
             },
             Instant::now(),
         );
