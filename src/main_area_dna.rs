@@ -18598,7 +18598,28 @@ impl MainAreaDna {
         });
     }
 
+    fn selected_rna_record_indices(&self) -> Vec<usize> {
+        self.rna_seed_selected_record_indices
+            .iter()
+            .copied()
+            .collect::<Vec<_>>()
+    }
+
     fn export_selected_rna_read_subset(&mut self, kind: RnaReadSelectedExportKind) {
+        let selected_record_indices = self.selected_rna_record_indices();
+        self.export_rna_read_subset_with_record_indices(
+            kind,
+            selected_record_indices,
+            kind.empty_selection_message(),
+        );
+    }
+
+    fn export_rna_read_subset_with_record_indices(
+        &mut self,
+        kind: RnaReadSelectedExportKind,
+        selected_record_indices: Vec<usize>,
+        empty_selection_message: &str,
+    ) {
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
         if report_id.is_empty() {
             let message = kind.missing_report_message().to_string();
@@ -18606,9 +18627,8 @@ impl MainAreaDna {
             self.op_error_popup = Some(message);
             return;
         }
-        let selected_record_indices = self.selected_rna_record_indices();
         if selected_record_indices.is_empty() {
-            let message = kind.empty_selection_message().to_string();
+            let message = empty_selection_message.to_string();
             self.op_status = message.clone();
             self.op_error_popup = Some(message);
             return;
@@ -18622,13 +18642,6 @@ impl MainAreaDna {
             path.display().to_string(),
             selected_record_indices,
         ));
-    }
-
-    fn selected_rna_record_indices(&self) -> Vec<usize> {
-        self.rna_seed_selected_record_indices
-            .iter()
-            .copied()
-            .collect::<Vec<_>>()
     }
 
     fn start_rna_read_interpretation(&mut self, op: Operation) {
@@ -20970,7 +20983,7 @@ impl MainAreaDna {
         if inspection.is_some() {
             ui.small(
                 egui::RichText::new(
-                    "Use the Audit buttons to jump from an aggregate row back to the exact aligned reads that contributed to it.",
+                    "Use Audit to jump from an aggregate row back to its exact aligned reads, or Export... to write that contributor subset directly.",
                 )
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
@@ -20993,13 +21006,14 @@ impl MainAreaDna {
                 .show(ui, |ui| {
                     egui::Grid::new(format!("rna_mapped_exon_support_grid_{}", progress.seq_id))
                         .striped(true)
-                        .num_columns(5)
+                        .num_columns(6)
                         .show(ui, |ui| {
                             ui.small("Exon span");
                             ui.small("Reads");
                             ui.small("Aligned %");
                             ui.small("Fraction");
                             ui.small("Audit");
+                            ui.small("Export");
                             ui.end_row();
                             for row in &progress.mapped_exon_support_frequencies {
                                 let contributors = exon_contributors
@@ -21025,13 +21039,32 @@ impl MainAreaDna {
                                 }
                                 if response.clicked() {
                                     self.focus_rna_read_alignment_effect_record_indices(
-                                        contributors,
+                                        contributors.clone(),
                                         &format!(
                                             "mapped exon {}..{}",
                                             row.start_1based, row.end_1based
                                         ),
                                     );
                                 }
+                                ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                    ui.menu_button("Export...", |ui| {
+                                        for export_kind in [
+                                            RnaReadSelectedExportKind::Fasta,
+                                            RnaReadSelectedExportKind::AlignmentsTsv,
+                                            RnaReadSelectedExportKind::ExonPathsTsv,
+                                            RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                        ] {
+                                            if ui.button(export_kind.menu_label()).clicked() {
+                                                self.export_rna_read_subset_with_record_indices(
+                                                    export_kind,
+                                                    contributors.clone(),
+                                                    "No aligned contributor rows are available to export for this mapped exon.",
+                                                );
+                                                ui.close();
+                                            }
+                                        }
+                                    });
+                                });
                                 ui.end_row();
                             }
                         });
@@ -21051,7 +21084,7 @@ impl MainAreaDna {
                         progress.seq_id
                     ))
                     .striped(true)
-                    .num_columns(6)
+                    .num_columns(7)
                     .show(ui, |ui| {
                         ui.small("Donor");
                         ui.small("Acceptor");
@@ -21059,6 +21092,7 @@ impl MainAreaDna {
                         ui.small("Aligned %");
                         ui.small("Fraction");
                         ui.small("Audit");
+                        ui.small("Export");
                         ui.end_row();
                         for row in &progress.mapped_junction_support_frequencies {
                             let contributors = junction_contributors
@@ -21085,13 +21119,32 @@ impl MainAreaDna {
                             }
                             if response.clicked() {
                                 self.focus_rna_read_alignment_effect_record_indices(
-                                    contributors,
+                                    contributors.clone(),
                                     &format!(
                                         "mapped junction {}->{}",
                                         row.donor_1based, row.acceptor_1based
                                     ),
                                 );
                             }
+                            ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                ui.menu_button("Export...", |ui| {
+                                    for export_kind in [
+                                        RnaReadSelectedExportKind::Fasta,
+                                        RnaReadSelectedExportKind::AlignmentsTsv,
+                                        RnaReadSelectedExportKind::ExonPathsTsv,
+                                        RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                    ] {
+                                        if ui.button(export_kind.menu_label()).clicked() {
+                                            self.export_rna_read_subset_with_record_indices(
+                                                export_kind,
+                                                contributors.clone(),
+                                                "No aligned contributor rows are available to export for this mapped junction.",
+                                            );
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            });
                             ui.end_row();
                         }
                     });
@@ -21122,7 +21175,7 @@ impl MainAreaDna {
                         progress.seq_id
                     ))
                     .striped(true)
-                    .num_columns(9)
+                    .num_columns(10)
                     .show(ui, |ui| {
                         ui.small("Transcript");
                         ui.small("Strand");
@@ -21133,6 +21186,7 @@ impl MainAreaDna {
                         ui.small("Best score");
                         ui.small("Secondary");
                         ui.small("Audit");
+                        ui.small("Export");
                         ui.end_row();
                         for row in &progress.mapped_isoform_support_rows {
                             let contributors = isoform_contributors
@@ -21174,10 +21228,29 @@ impl MainAreaDna {
                             }
                             if response.clicked() {
                                 self.focus_rna_read_alignment_effect_record_indices(
-                                    contributors,
+                                    contributors.clone(),
                                     &format!("mapped isoform {}", row.transcript_id),
                                 );
                             }
+                            ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                ui.menu_button("Export...", |ui| {
+                                    for export_kind in [
+                                        RnaReadSelectedExportKind::Fasta,
+                                        RnaReadSelectedExportKind::AlignmentsTsv,
+                                        RnaReadSelectedExportKind::ExonPathsTsv,
+                                        RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                    ] {
+                                        if ui.button(export_kind.menu_label()).clicked() {
+                                            self.export_rna_read_subset_with_record_indices(
+                                                export_kind,
+                                                contributors.clone(),
+                                                "No aligned contributor rows are available to export for this mapped isoform.",
+                                            );
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            });
                             ui.end_row();
                         }
                     });

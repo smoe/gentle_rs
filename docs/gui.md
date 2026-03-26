@@ -588,8 +588,12 @@ Feature tree grouping:
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are
         the aggregate interpretation surface once retained-read alignment has
         been run
-      - each mapped aggregate row now has an `Audit` button that jumps back to
-        the exact aligned reads contributing to that statistic
+      - each mapped aggregate row now has:
+        - `Audit (n)` to jump back to the exact aligned reads contributing to
+          that statistic
+        - `Export...` to write that same contributor subset directly as
+          FASTA, alignment TSV, exon-path TSV, or exon-abundance TSV without
+          leaving the aggregate table
       - mapped exon/junction support follows aligned transcript-template
         offsets, so alternative exons inside the genomic span are no longer
         counted unless the mapping actually traversed them
