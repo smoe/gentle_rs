@@ -124,6 +124,107 @@ fn parse_workflow_payload_keeps_whitespace() {
 }
 
 #[test]
+fn parse_seq_confirm_run_command() {
+    let cmd = parse_shell_line(
+        "seq-confirm run construct --reads read_a,read_b --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",
+    )
+    .expect("parse seq-confirm run");
+    match cmd {
+        ShellCommand::SeqConfirmRun {
+            expected_seq_id,
+            read_seq_ids,
+            targets,
+            alignment_mode,
+            min_identity_fraction,
+            min_target_coverage_fraction,
+            allow_reverse_complement,
+            report_id,
+            ..
+        } => {
+            assert_eq!(expected_seq_id, "construct");
+            assert_eq!(read_seq_ids, vec!["read_a", "read_b"]);
+            assert_eq!(targets.len(), 1);
+            assert_eq!(targets[0].kind, SequencingConfirmationTargetKind::Junction);
+            assert_eq!(targets[0].start_0based, 4);
+            assert_eq!(targets[0].end_0based_exclusive, 12);
+            assert_eq!(targets[0].junction_left_end_0based, Some(8));
+            assert_eq!(alignment_mode, PairwiseAlignmentMode::Local);
+            assert!((min_identity_fraction - 0.90).abs() < 1e-9);
+            assert!((min_target_coverage_fraction - 0.75).abs() < 1e-9);
+            assert!(!allow_reverse_complement);
+            assert_eq!(report_id.as_deref(), Some("construct_check"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_seq_confirm_run_returns_persisted_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_junction".to_string(),
+        DNAsequence::from_sequence("CCGTAACC").expect("read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmRun {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec!["read_junction".to_string()],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 4,
+                end_0based_exclusive: 12,
+                junction_left_end_0based: Some(8),
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_check".to_string()),
+        },
+    )
+    .expect("execute seq-confirm run");
+    assert!(run.state_changed);
+    assert_eq!(
+        run.output["report"]["report_id"].as_str(),
+        Some("construct_check")
+    );
+    assert_eq!(
+        run.output["report"]["overall_status"].as_str(),
+        Some("confirmed")
+    );
+    assert_eq!(
+        run.output["report"]["targets"][0]["status"].as_str(),
+        Some("confirmed")
+    );
+
+    let listed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmListReports {
+            expected_seq_id: Some("construct".to_string()),
+        },
+    )
+    .expect("list sequencing-confirmation reports");
+    assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+    assert_eq!(
+        listed.output["reports"][0]["overall_status"].as_str(),
+        Some("confirmed")
+    );
+}
+
+#[test]
 fn parse_workflow_json_payload_accepts_raw_workflow() {
     let payload = r#"{ "run_id": "raw", "ops": [] }"#;
     let workflow = parse_workflow_json_payload(payload).expect("parse raw workflow");

@@ -23,6 +23,24 @@ fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
 
+fn sequencing_confirmation_junction_target(
+    target_id: &str,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    junction_left_end_0based: usize,
+    label: &str,
+) -> SequencingConfirmationTargetSpec {
+    SequencingConfirmationTargetSpec {
+        target_id: target_id.to_string(),
+        label: label.to_string(),
+        kind: SequencingConfirmationTargetKind::Junction,
+        start_0based,
+        end_0based_exclusive,
+        junction_left_end_0based: Some(junction_left_end_0based),
+        required: true,
+    }
+}
+
 fn demo_blast_report() -> GenomeBlastReport {
     GenomeBlastReport {
         genome_id: "demo".to_string(),
@@ -11424,6 +11442,231 @@ fn test_align_sequences_local_reports_partial_coverage() {
     assert!(report.aligned_columns >= 4);
     assert!(report.query_coverage_fraction < 1.0);
     assert!(report.target_coverage_fraction < 1.0);
+}
+
+#[test]
+fn test_confirm_construct_reads_confirms_junction_target_and_lists_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_junction".to_string(),
+        DNAsequence::from_sequence("CCGTAACC").expect("read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec!["read_junction".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_confirm".to_string()),
+        })
+        .expect("confirm construct");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(report.report_id, "construct_confirm");
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.targets.len(), 1);
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.targets[0].support_read_ids, vec!["read_junction"]);
+    assert_eq!(report.reads.len(), 1);
+    assert_eq!(
+        report.reads[0].orientation,
+        SequencingReadOrientation::Forward
+    );
+    assert_eq!(report.reads[0].confirmed_target_ids, vec!["junction_1"]);
+
+    let fetched = engine
+        .get_sequencing_confirmation_report("construct_confirm")
+        .expect("stored report");
+    assert_eq!(
+        fetched.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    let summaries = engine.list_sequencing_confirmation_reports(Some("construct"));
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].report_id, "construct_confirm");
+    assert_eq!(
+        summaries[0].overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_supports_reverse_complement_reads() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_rc".to_string(),
+        DNAsequence::from_sequence("GGTTACGG").expect("reverse-complement read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec!["read_rc".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_rc".to_string()),
+        })
+        .expect("confirm construct from reverse-complement read");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(
+        report.reads[0].orientation,
+        SequencingReadOrientation::ReverseComplement
+    );
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::Confirmed
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_reports_insufficient_evidence_for_truncated_read() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_short".to_string(),
+        DNAsequence::from_sequence("CCGT").expect("short read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec!["read_short".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_short".to_string()),
+        })
+        .expect("confirm construct from truncated read");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::InsufficientEvidence
+    );
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::InsufficientEvidence
+    );
+    assert!(report.targets[0].support_read_ids.is_empty());
+    assert!(report.targets[0].contradicting_read_ids.is_empty());
+    assert_eq!(report.reads[0].covered_target_ids, vec!["junction_1"]);
+    assert!(report.targets[0].covered_bp < report.targets[0].target_length_bp);
+}
+
+#[test]
+fn test_export_sequencing_confirmation_support_tsv_writes_target_rows() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_junction".to_string(),
+        DNAsequence::from_sequence("CCGTAACC").expect("read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec!["read_junction".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_tsv".to_string()),
+        })
+        .expect("confirm construct");
+
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("support.tsv");
+    engine
+        .export_sequencing_confirmation_support_tsv(
+            "construct_tsv",
+            output.to_str().expect("utf-8 path"),
+        )
+        .expect("export sequencing-confirmation TSV");
+    let text = fs::read_to_string(output).expect("read TSV");
+    assert!(text.contains("report_id\texpected_seq_id\toverall_status"));
+    assert!(text.contains("construct_tsv\tconstruct\tconfirmed"));
+    assert!(text.contains("junction_1"));
 }
 
 #[test]

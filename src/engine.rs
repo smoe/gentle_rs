@@ -123,6 +123,11 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
+const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
+pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
+pub const SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA: &str =
+    "gentle.sequencing_confirmation_support_tsv.v1";
 pub const PLANNING_METADATA_KEY: &str = "planning";
 pub const PLANNING_PROFILE_SCHEMA: &str = "gentle.planning_profile.v1";
 pub const PLANNING_OBJECTIVE_SCHEMA: &str = "gentle.planning_objective.v1";
@@ -233,6 +238,8 @@ mod operation_handlers;
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
 mod sequence_ops;
+#[path = "engine/analysis/sequencing_confirmation.rs"]
+mod sequencing_confirmation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
@@ -2134,6 +2141,14 @@ struct PrimerDesignStore {
     qpcr_reports: HashMap<String, QpcrDesignReport>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct SequencingConfirmationReportStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: BTreeMap<String, SequencingConfirmationReport>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanningProfileScope {
@@ -3233,6 +3248,18 @@ fn default_pairwise_gap_extend() -> i32 {
     -1
 }
 
+fn default_sequencing_confirmation_alignment_mode() -> PairwiseAlignmentMode {
+    PairwiseAlignmentMode::Local
+}
+
+fn default_sequencing_confirmation_min_identity_fraction() -> f64 {
+    0.80
+}
+
+fn default_sequencing_confirmation_min_target_coverage_fraction() -> f64 {
+    1.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RnaReadAlignConfig {
@@ -4210,6 +4237,187 @@ pub struct SequenceAlignmentReport {
     pub cigar: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationStatus {
+    Confirmed,
+    Contradicted,
+    #[default]
+    InsufficientEvidence,
+}
+
+impl SequencingConfirmationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Contradicted => "contradicted",
+            Self::InsufficientEvidence => "insufficient_evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingReadOrientation {
+    #[default]
+    Forward,
+    ReverseComplement,
+}
+
+impl SequencingReadOrientation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::ReverseComplement => "reverse_complement",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationTargetKind {
+    #[default]
+    FullSpan,
+    Junction,
+    FeaturePresence,
+    ExpectedEdit,
+    RestrictionSite,
+}
+
+impl SequencingConfirmationTargetKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FullSpan => "full_span",
+            Self::Junction => "junction",
+            Self::FeaturePresence => "feature_presence",
+            Self::ExpectedEdit => "expected_edit",
+            Self::RestrictionSite => "restriction_site",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SequencingConfirmationTargetSpec {
+    pub target_id: String,
+    pub label: String,
+    pub kind: SequencingConfirmationTargetKind,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub junction_left_end_0based: Option<usize>,
+    pub required: bool,
+}
+
+impl Default for SequencingConfirmationTargetSpec {
+    fn default() -> Self {
+        Self {
+            target_id: String::new(),
+            label: String::new(),
+            kind: SequencingConfirmationTargetKind::FullSpan,
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            junction_left_end_0based: None,
+            required: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationDiscrepancyKind {
+    #[default]
+    Mismatch,
+    Insertion,
+    Deletion,
+}
+
+impl SequencingConfirmationDiscrepancyKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mismatch => "mismatch",
+            Self::Insertion => "insertion",
+            Self::Deletion => "deletion",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationDiscrepancy {
+    pub kind: SequencingConfirmationDiscrepancyKind,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub target_start_0based: usize,
+    pub target_end_0based_exclusive: usize,
+    pub query_bases: String,
+    pub target_bases: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationTargetResult {
+    pub target_id: String,
+    pub label: String,
+    pub kind: SequencingConfirmationTargetKind,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub junction_left_end_0based: Option<usize>,
+    pub required: bool,
+    pub status: SequencingConfirmationStatus,
+    pub covered_bp: usize,
+    pub target_length_bp: usize,
+    pub support_read_ids: Vec<String>,
+    pub contradicting_read_ids: Vec<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationReadResult {
+    pub read_seq_id: String,
+    pub orientation: SequencingReadOrientation,
+    pub usable: bool,
+    pub best_alignment: SequenceAlignmentReport,
+    pub covered_target_ids: Vec<String>,
+    pub confirmed_target_ids: Vec<String>,
+    pub contradicted_target_ids: Vec<String>,
+    pub discrepancies: Vec<SequencingConfirmationDiscrepancy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub expected_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub overall_status: SequencingConfirmationStatus,
+    pub alignment_mode: PairwiseAlignmentMode,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open: i32,
+    pub gap_extend: i32,
+    pub min_identity_fraction: f64,
+    pub min_target_coverage_fraction: f64,
+    pub allow_reverse_complement: bool,
+    pub read_seq_ids: Vec<String>,
+    pub target_count: usize,
+    pub reads: Vec<SequencingConfirmationReadResult>,
+    pub targets: Vec<SequencingConfirmationTargetResult>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationReportSummary {
+    pub report_id: String,
+    pub expected_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub overall_status: SequencingConfirmationStatus,
+    pub read_count: usize,
+    pub target_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct FlexibilityBinScore {
@@ -4689,6 +4897,46 @@ pub enum Operation {
         gap_open: i32,
         #[serde(default = "default_pairwise_gap_extend")]
         gap_extend: i32,
+    },
+    ConfirmConstructReads {
+        expected_seq_id: SeqId,
+        #[serde(default)]
+        read_seq_ids: Vec<SeqId>,
+        #[serde(default)]
+        targets: Vec<SequencingConfirmationTargetSpec>,
+        #[serde(default = "default_sequencing_confirmation_alignment_mode")]
+        alignment_mode: PairwiseAlignmentMode,
+        #[serde(default = "default_pairwise_match_score")]
+        match_score: i32,
+        #[serde(default = "default_pairwise_mismatch_score")]
+        mismatch_score: i32,
+        #[serde(default = "default_pairwise_gap_open")]
+        gap_open: i32,
+        #[serde(default = "default_pairwise_gap_extend")]
+        gap_extend: i32,
+        #[serde(default = "default_sequencing_confirmation_min_identity_fraction")]
+        min_identity_fraction: f64,
+        #[serde(default = "default_sequencing_confirmation_min_target_coverage_fraction")]
+        min_target_coverage_fraction: f64,
+        #[serde(default = "default_true")]
+        allow_reverse_complement: bool,
+        #[serde(default)]
+        report_id: Option<String>,
+    },
+    ListSequencingConfirmationReports {
+        #[serde(default)]
+        expected_seq_id: Option<SeqId>,
+    },
+    ShowSequencingConfirmationReport {
+        report_id: String,
+    },
+    ExportSequencingConfirmationReport {
+        report_id: String,
+        path: String,
+    },
+    ExportSequencingConfirmationSupportTsv {
+        report_id: String,
+        path: String,
     },
     InterpretRnaReads {
         seq_id: SeqId,
@@ -5697,6 +5945,8 @@ pub struct OpResult {
     pub genome_annotation_projection: Option<GenomeAnnotationProjectionTelemetry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_alignment: Option<SequenceAlignmentReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6458,6 +6708,11 @@ impl GentleEngine {
                 "ComputeFlexibilityTrack".to_string(),
                 "DeriveSplicingReferences".to_string(),
                 "AlignSequences".to_string(),
+                "ConfirmConstructReads".to_string(),
+                "ListSequencingConfirmationReports".to_string(),
+                "ShowSequencingConfirmationReport".to_string(),
+                "ExportSequencingConfirmationReport".to_string(),
+                "ExportSequencingConfirmationSupportTsv".to_string(),
                 "InterpretRnaReads".to_string(),
                 "AlignRnaReadReport".to_string(),
                 "ListRnaReadReports".to_string(),
@@ -7713,6 +7968,10 @@ impl GentleEngine {
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
                 | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
+                | Operation::ListSequencingConfirmationReports { .. }
+                | Operation::ShowSequencingConfirmationReport { .. }
+                | Operation::ExportSequencingConfirmationReport { .. }
+                | Operation::ExportSequencingConfirmationSupportTsv { .. }
                 | Operation::AlignSequences { .. }
         )
     }

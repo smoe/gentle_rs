@@ -45,7 +45,9 @@ use crate::{
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
+        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1197,6 +1199,34 @@ pub enum ShellCommand {
         mismatch_score: i32,
         gap_open: i32,
         gap_extend: i32,
+    },
+    SeqConfirmRun {
+        expected_seq_id: String,
+        read_seq_ids: Vec<String>,
+        targets: Vec<SequencingConfirmationTargetSpec>,
+        alignment_mode: PairwiseAlignmentMode,
+        match_score: i32,
+        mismatch_score: i32,
+        gap_open: i32,
+        gap_extend: i32,
+        min_identity_fraction: f64,
+        min_target_coverage_fraction: f64,
+        allow_reverse_complement: bool,
+        report_id: Option<String>,
+    },
+    SeqConfirmListReports {
+        expected_seq_id: Option<String>,
+    },
+    SeqConfirmShowReport {
+        report_id: String,
+    },
+    SeqConfirmExportReport {
+        report_id: String,
+        path: String,
+    },
+    SeqConfirmExportSupportTsv {
+        report_id: String,
+        path: String,
     },
     RnaReadsInterpret {
         seq_id: String,
@@ -5896,6 +5926,60 @@ impl ShellCommand {
                 gap_open,
                 gap_extend,
             ),
+            Self::SeqConfirmRun {
+                expected_seq_id,
+                read_seq_ids,
+                targets,
+                alignment_mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+                min_identity_fraction,
+                min_target_coverage_fraction,
+                allow_reverse_complement,
+                report_id,
+            } => format!(
+                "confirm construct '{}' from {} read(s) (targets={}, mode={}, match={}, mismatch={}, gap_open={}, gap_extend={}, min_identity={:.2}, min_target_coverage={:.2}, allow_rc={}, report_id='{}')",
+                expected_seq_id,
+                read_seq_ids.len(),
+                if targets.is_empty() {
+                    "default_full_span".to_string()
+                } else {
+                    targets.len().to_string()
+                },
+                alignment_mode.as_str(),
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+                min_identity_fraction,
+                min_target_coverage_fraction,
+                allow_reverse_complement,
+                report_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::SeqConfirmListReports { expected_seq_id } => format!(
+                "list sequencing-confirmation reports{}",
+                expected_seq_id
+                    .as_deref()
+                    .map(|value| format!(" for '{}'", value))
+                    .unwrap_or_default()
+            ),
+            Self::SeqConfirmShowReport { report_id } => {
+                format!("show sequencing-confirmation report '{}'", report_id)
+            }
+            Self::SeqConfirmExportReport { report_id, path } => format!(
+                "export sequencing-confirmation report '{}' to '{}'",
+                report_id, path
+            ),
+            Self::SeqConfirmExportSupportTsv { report_id, path } => format!(
+                "export sequencing-confirmation support TSV '{}' to '{}'",
+                report_id, path
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -6251,6 +6335,7 @@ impl ShellCommand {
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
                 | Self::SplicingRefsDerive { .. }
+                | Self::SeqConfirmRun { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
@@ -9756,6 +9841,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "transcripts" => parse_transcripts_command(tokens),
         "splicing-refs" | "splicing_refs" | "splicingrefs" => parse_splicing_refs_command(tokens),
         "align" => parse_align_command(tokens),
+        "seq-confirm" | "seq_confirm" | "seqconfirm" => parse_seq_confirm_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -14969,6 +15055,119 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "result": op_result,
                     "alignment": alignment,
+                }),
+            }
+        }
+        ShellCommand::SeqConfirmRun {
+            expected_seq_id,
+            read_seq_ids,
+            targets,
+            alignment_mode,
+            match_score,
+            mismatch_score,
+            gap_open,
+            gap_extend,
+            min_identity_fraction,
+            min_target_coverage_fraction,
+            allow_reverse_complement,
+            report_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ConfirmConstructReads {
+                    expected_seq_id: expected_seq_id.clone(),
+                    read_seq_ids: read_seq_ids.clone(),
+                    targets: targets.clone(),
+                    alignment_mode: *alignment_mode,
+                    match_score: *match_score,
+                    mismatch_score: *mismatch_score,
+                    gap_open: *gap_open,
+                    gap_extend: *gap_extend,
+                    min_identity_fraction: *min_identity_fraction,
+                    min_target_coverage_fraction: *min_target_coverage_fraction,
+                    allow_reverse_complement: *allow_reverse_complement,
+                    report_id: report_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_sequencing_confirmation_report(id).ok()
+            } else {
+                engine
+                    .list_sequencing_confirmation_reports(Some(expected_seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| {
+                        engine
+                            .get_sequencing_confirmation_report(row.report_id.as_str())
+                            .ok()
+                    })
+            };
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::SeqConfirmListReports { expected_seq_id } => {
+            let rows = engine.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
+            let summary_rows = rows
+                .iter()
+                .map(GentleEngine::format_sequencing_confirmation_report_summary_row)
+                .collect::<Vec<_>>();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_confirmation_report_list.v1",
+                    "report_count": rows.len(),
+                    "reports": rows,
+                    "summary_rows": summary_rows,
+                }),
+            }
+        }
+        ShellCommand::SeqConfirmShowReport { report_id } => {
+            let report = engine
+                .get_sequencing_confirmation_report(report_id)
+                .map_err(|e| e.to_string())?;
+            let summary =
+                GentleEngine::format_sequencing_confirmation_report_detail_summary(&report);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "summary": summary,
+                }),
+            }
+        }
+        ShellCommand::SeqConfirmExportReport { report_id, path } => {
+            let report = engine
+                .export_sequencing_confirmation_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_confirmation_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "overall_status": report.overall_status,
+                }),
+            }
+        }
+        ShellCommand::SeqConfirmExportSupportTsv { report_id, path } => {
+            let report = engine
+                .export_sequencing_confirmation_support_tsv(report_id, path)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA,
+                    "report_id": report.report_id,
+                    "path": path,
+                    "target_count": report.targets.len(),
                 }),
             }
         }

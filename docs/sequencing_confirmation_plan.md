@@ -1,6 +1,21 @@
 # Sequencing Confirmation Implementation Plan
 
-Status: planned
+Status: phase-1 called-read engine contract landed (2026-03-26)
+
+Current implementation snapshot:
+
+- shipped:
+  - shared-engine `ConfirmConstructReads` / `ListSequencingConfirmationReports`
+    / `ShowSequencingConfirmationReport` / export operations
+  - persisted sequencing-confirmation report store
+  - shared shell/CLI `seq-confirm` run/list/show/export routes
+  - deterministic regression coverage for forward, reverse-complement, and
+    truncated-read evidence cases
+- still pending from this plan:
+  - GUI specialist and visual review surface
+  - raw ABI/AB1/SCF trace import
+  - trace-aware confirmation refinement
+  - lineage/artifact projection for confirmation reports
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
 GENtle so construct validation from read evidence becomes a first-class,

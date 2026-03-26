@@ -2003,6 +2003,12 @@ Repeated multi-tool gaps to prioritize:
      constructs, and emit deterministic pass/fail evidence summaries
    - detailed implementation plan is tracked in
      `docs/sequencing_confirmation_plan.md`
+   - current shipped baseline:
+     - called-read construct confirmation reports are now available through the
+       shared engine/shell path for already-loaded sequences
+     - v1 target coverage supports full-span default confirmation plus explicit
+       interval/junction targets
+     - persisted report inspection/export exists before GUI specialist work
    - legacy `gentle-m` intake priority: do this before resurrecting broader
      legacy cloning conveniences because it most directly improves user trust
    - stage the work as:
@@ -2659,6 +2665,9 @@ Post-baseline follow-ups:
 - Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
 - Add sequencing-confirmation evidence contracts (read-aligned construct
   validation summaries) as a deterministic shared-engine path.
+  - baseline shipped: report store + shell/CLI list/show/export path for
+    called-read confirmation against expected construct sequences
+  - next: GUI specialist, trace import, and lineage/artifact projection parity
 - Detailed sequencing-confirmation design note:
   - `docs/sequencing_confirmation_plan.md`
 - Legacy `gentle-m` intake note:

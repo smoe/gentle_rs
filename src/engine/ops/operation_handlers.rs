@@ -2367,6 +2367,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            sequencing_confirmation_report: None,
         };
 
         match op {
@@ -6830,19 +6831,6 @@ impl GentleEngine {
                 gap_open,
                 gap_extend,
             } => {
-                if match_score <= 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "AlignSequences requires match_score > 0".to_string(),
-                    });
-                }
-                if gap_open > 0 || gap_extend > 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "AlignSequences requires gap_open and gap_extend to be <= 0"
-                            .to_string(),
-                    });
-                }
                 let query_dna =
                     self.state
                         .sequences
@@ -6859,133 +6847,24 @@ impl GentleEngine {
                             code: ErrorCode::NotFound,
                             message: format!("Sequence '{target_seq_id}' not found"),
                         })?;
-                let query_text = query_dna.get_forward_string().to_ascii_uppercase();
-                let target_text = target_dna.get_forward_string().to_ascii_uppercase();
-                let query_bytes = query_text.as_bytes();
-                let target_bytes = target_text.as_bytes();
-                let (query_span_start_0based, query_span_end_0based) = Self::resolve_analysis_span(
-                    query_bytes.len(),
+                let query_text = query_dna.get_forward_string();
+                let target_text = target_dna.get_forward_string();
+                let report = Self::compute_pairwise_alignment_report(
+                    &query_seq_id,
+                    query_text.as_str(),
                     query_span_start_0based,
                     query_span_end_0based,
-                )?;
-                let (target_span_start_0based, target_span_end_0based) =
-                    Self::resolve_analysis_span(
-                        target_bytes.len(),
-                        target_span_start_0based,
-                        target_span_end_0based,
-                    )?;
-                let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
-                let target_span = &target_bytes[target_span_start_0based..target_span_end_0based];
-
-                let score = |a: u8, b: u8| {
-                    if a.eq_ignore_ascii_case(&b) {
-                        match_score
-                    } else {
-                        mismatch_score
-                    }
-                };
-                let mut aligner =
-                    bio::alignment::pairwise::Aligner::new(gap_open, gap_extend, &score);
-                let alignment = match mode {
-                    PairwiseAlignmentMode::Global => aligner.global(query_span, target_span),
-                    PairwiseAlignmentMode::Local => aligner.local(query_span, target_span),
-                };
-
-                let mut matches = 0usize;
-                let mut mismatches = 0usize;
-                let mut insertions = 0usize;
-                let mut deletions = 0usize;
-                let mut cigar = String::new();
-                let mut run_len = 0usize;
-                let mut run_code = 'M';
-                for op in &alignment.operations {
-                    let code = match op {
-                        bio::alignment::AlignmentOperation::Match => {
-                            matches += 1;
-                            Some('=')
-                        }
-                        bio::alignment::AlignmentOperation::Subst => {
-                            mismatches += 1;
-                            Some('X')
-                        }
-                        bio::alignment::AlignmentOperation::Ins => {
-                            insertions += 1;
-                            Some('I')
-                        }
-                        bio::alignment::AlignmentOperation::Del => {
-                            deletions += 1;
-                            Some('D')
-                        }
-                        bio::alignment::AlignmentOperation::Xclip(_) => Some('S'),
-                        bio::alignment::AlignmentOperation::Yclip(_) => None,
-                    };
-                    let Some(code) = code else {
-                        continue;
-                    };
-                    if run_len == 0 {
-                        run_code = code;
-                        run_len = 1;
-                    } else if run_code == code {
-                        run_len += 1;
-                    } else {
-                        cigar.push_str(&format!("{run_len}{run_code}"));
-                        run_code = code;
-                        run_len = 1;
-                    }
-                }
-                if run_len > 0 {
-                    cigar.push_str(&format!("{run_len}{run_code}"));
-                }
-                if cigar.is_empty() {
-                    cigar = "*".to_string();
-                }
-
-                let aligned_columns = matches + mismatches + insertions + deletions;
-                let query_covered = alignment.xend.saturating_sub(alignment.xstart);
-                let target_covered = alignment.yend.saturating_sub(alignment.ystart);
-                let identity_fraction = if aligned_columns == 0 {
-                    0.0
-                } else {
-                    matches as f64 / aligned_columns as f64
-                };
-                let query_coverage_fraction = if query_span.is_empty() {
-                    0.0
-                } else {
-                    query_covered as f64 / query_span.len() as f64
-                };
-                let target_coverage_fraction = if target_span.is_empty() {
-                    0.0
-                } else {
-                    target_covered as f64 / target_span.len() as f64
-                };
-                let report = SequenceAlignmentReport {
-                    schema: SEQUENCE_ALIGNMENT_REPORT_SCHEMA.to_string(),
-                    mode,
-                    query_seq_id: query_seq_id.clone(),
-                    target_seq_id: target_seq_id.clone(),
-                    query_span_start_0based,
-                    query_span_end_0based,
+                    &target_seq_id,
+                    target_text.as_str(),
                     target_span_start_0based,
                     target_span_end_0based,
-                    aligned_query_start_0based: query_span_start_0based + alignment.xstart,
-                    aligned_query_end_0based_exclusive: query_span_start_0based + alignment.xend,
-                    aligned_target_start_0based: target_span_start_0based + alignment.ystart,
-                    aligned_target_end_0based_exclusive: target_span_start_0based + alignment.yend,
-                    score: alignment.score,
+                    mode,
                     match_score,
                     mismatch_score,
                     gap_open,
                     gap_extend,
-                    aligned_columns,
-                    matches,
-                    mismatches,
-                    insertions,
-                    deletions,
-                    identity_fraction,
-                    query_coverage_fraction,
-                    target_coverage_fraction,
-                    cigar,
-                };
+                )?
+                .report;
                 result.sequence_alignment = Some(report.clone());
                 result.messages.push(format!(
                     "Computed {} alignment '{}' vs '{}' (score={}, identity={:.3}, query_cov={:.3}, target_cov={:.3}, cigar={})",
@@ -6997,6 +6876,117 @@ impl GentleEngine {
                     report.query_coverage_fraction,
                     report.target_coverage_fraction,
                     report.cigar
+                ));
+            }
+            Operation::ConfirmConstructReads {
+                expected_seq_id,
+                read_seq_ids,
+                targets,
+                alignment_mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+                min_identity_fraction,
+                min_target_coverage_fraction,
+                allow_reverse_complement,
+                report_id,
+            } => {
+                let report = self.confirm_construct_reads(
+                    &expected_seq_id,
+                    &read_seq_ids,
+                    &targets,
+                    alignment_mode,
+                    match_score,
+                    mismatch_score,
+                    gap_open,
+                    gap_extend,
+                    min_identity_fraction,
+                    min_target_coverage_fraction,
+                    allow_reverse_complement,
+                    report_id.as_deref(),
+                )?;
+                result.sequencing_confirmation_report = Some(report.clone());
+                result.messages.push(format!(
+                    "Sequencing confirmation stored report '{}': {}",
+                    report.report_id,
+                    Self::format_sequencing_confirmation_report_detail_summary(&report)
+                ));
+                for target in report.targets.iter().take(8) {
+                    result.messages.push(format!(
+                        "  - {} [{}] {}",
+                        target.label,
+                        target.target_id,
+                        target.status.as_str()
+                    ));
+                }
+                if report.targets.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional target row(s) omitted",
+                        report.targets.len() - 8
+                    ));
+                }
+            }
+            Operation::ListSequencingConfirmationReports { expected_seq_id } => {
+                let rows = self.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
+                result.messages.push(format!(
+                    "Sequencing-confirmation reports: {} row(s){}",
+                    rows.len(),
+                    expected_seq_id
+                        .as_deref()
+                        .map(|s| format!(" (expected_seq_id='{}')", s))
+                        .unwrap_or_default()
+                ));
+                for row in rows.iter().take(8) {
+                    result.messages.push(format!(
+                        "  - {}",
+                        Self::format_sequencing_confirmation_report_summary_row(row)
+                    ));
+                }
+                if rows.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional report row(s) omitted",
+                        rows.len() - 8
+                    ));
+                }
+            }
+            Operation::ShowSequencingConfirmationReport { report_id } => {
+                let report = self.get_sequencing_confirmation_report(&report_id)?;
+                result.messages.push(format!(
+                    "Sequencing-confirmation report summary: {}",
+                    Self::format_sequencing_confirmation_report_detail_summary(&report)
+                ));
+                for target in report.targets.iter().take(8) {
+                    result.messages.push(format!(
+                        "  {} [{}] status={} coverage={}/{} support={} contradict={}",
+                        target.label,
+                        target.target_id,
+                        target.status.as_str(),
+                        target.covered_bp,
+                        target.target_length_bp,
+                        target.support_read_ids.len(),
+                        target.contradicting_read_ids.len()
+                    ));
+                }
+                if report.targets.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional target row(s) omitted",
+                        report.targets.len() - 8
+                    ));
+                }
+            }
+            Operation::ExportSequencingConfirmationReport { report_id, path } => {
+                let report = self.export_sequencing_confirmation_report(&report_id, &path)?;
+                result.messages.push(format!(
+                    "Exported sequencing-confirmation report '{}' to '{}'",
+                    report.report_id, path
+                ));
+            }
+            Operation::ExportSequencingConfirmationSupportTsv { report_id, path } => {
+                let report = self.export_sequencing_confirmation_support_tsv(&report_id, &path)?;
+                result.messages.push(format!(
+                    "Exported sequencing-confirmation support TSV '{}' to '{}'",
+                    report.report_id, path
                 ));
             }
             Operation::InterpretRnaReads {

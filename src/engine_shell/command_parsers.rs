@@ -2389,6 +2389,267 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
     }
 }
 
+pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "seq-confirm requires a subcommand: run, list-reports, show-report, export-report, export-support-tsv"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "run" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "seq-confirm run requires EXPECTED_SEQ_ID --reads ID[,ID...] [--read ID]... [--junction LEFT_END_0BASED]... [--junction-flank N] [--report-id ID] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement]"
+                        .to_string(),
+                );
+            }
+            let expected_seq_id = tokens[2].trim().to_string();
+            if expected_seq_id.is_empty() {
+                return Err("seq-confirm run EXPECTED_SEQ_ID must not be empty".to_string());
+            }
+            let mut read_seq_ids: Vec<String> = vec![];
+            let mut targets: Vec<SequencingConfirmationTargetSpec> = vec![];
+            let mut alignment_mode = PairwiseAlignmentMode::Local;
+            let mut match_score = 2i32;
+            let mut mismatch_score = -3i32;
+            let mut gap_open = -5i32;
+            let mut gap_extend = -1i32;
+            let mut min_identity_fraction = 0.80f64;
+            let mut min_target_coverage_fraction = 1.0f64;
+            let mut allow_reverse_complement = true;
+            let mut report_id: Option<String> = None;
+            let mut junction_flank = 12usize;
+            let mut junction_positions: Vec<usize> = vec![];
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--reads" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--reads", "seq-confirm run")?;
+                        let parsed = raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|value| value.to_string())
+                            .collect::<Vec<_>>();
+                        if parsed.is_empty() {
+                            return Err("--reads for seq-confirm run must include at least one ID"
+                                .to_string());
+                        }
+                        read_seq_ids.extend(parsed);
+                    }
+                    "--read" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--read", "seq-confirm run")?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--read for seq-confirm run must not be empty".to_string());
+                        }
+                        read_seq_ids.push(trimmed.to_string());
+                    }
+                    "--junction" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--junction", "seq-confirm run")?;
+                        let left_end = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --junction value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                        junction_positions.push(left_end);
+                    }
+                    "--junction-flank" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--junction-flank",
+                            "seq-confirm run",
+                        )?;
+                        junction_flank = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --junction-flank value '{raw}' for seq-confirm run: {e}"
+                            )
+                        })?;
+                        if junction_flank == 0 {
+                            return Err(
+                                "--junction-flank for seq-confirm run must be >= 1".to_string()
+                            );
+                        }
+                    }
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "seq-confirm run",
+                        )?);
+                    }
+                    "--mode" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--mode", "seq-confirm run")?;
+                        alignment_mode = parse_pairwise_alignment_mode(&raw)?;
+                    }
+                    "--match" | "--match-score" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "seq-confirm run")?;
+                        match_score = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                    }
+                    "--mismatch" | "--mismatch-score" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "seq-confirm run")?;
+                        mismatch_score = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                    }
+                    "--gap-open" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--gap-open", "seq-confirm run")?;
+                        gap_open = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid --gap-open value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                    }
+                    "--gap-extend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--gap-extend", "seq-confirm run")?;
+                        gap_extend = raw.parse::<i32>().map_err(|e| {
+                            format!("Invalid --gap-extend value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                    }
+                    "--min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-identity",
+                            "seq-confirm run",
+                        )?;
+                        min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!("Invalid --min-identity value '{raw}' for seq-confirm run: {e}")
+                        })?;
+                    }
+                    "--min-target-coverage" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-target-coverage",
+                            "seq-confirm run",
+                        )?;
+                        min_target_coverage_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-target-coverage value '{raw}' for seq-confirm run: {e}"
+                            )
+                        })?;
+                    }
+                    "--allow-reverse-complement" => {
+                        allow_reverse_complement = true;
+                        idx += 1;
+                    }
+                    "--no-reverse-complement" => {
+                        allow_reverse_complement = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for seq-confirm run"));
+                    }
+                }
+            }
+            if read_seq_ids.is_empty() {
+                return Err(
+                    "seq-confirm run requires at least one read via --reads or --read".to_string(),
+                );
+            }
+            if !junction_positions.is_empty() {
+                targets.extend(
+                    junction_positions
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, left_end)| SequencingConfirmationTargetSpec {
+                            target_id: format!("junction_{}", idx + 1),
+                            label: format!("Junction @ {left_end}"),
+                            kind: SequencingConfirmationTargetKind::Junction,
+                            start_0based: left_end.saturating_sub(junction_flank),
+                            end_0based_exclusive: left_end.saturating_add(junction_flank),
+                            junction_left_end_0based: Some(*left_end),
+                            required: true,
+                        }),
+                );
+            }
+            Ok(ShellCommand::SeqConfirmRun {
+                expected_seq_id,
+                read_seq_ids,
+                targets,
+                alignment_mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+                min_identity_fraction,
+                min_target_coverage_fraction,
+                allow_reverse_complement,
+                report_id,
+            })
+        }
+        "list-reports" => {
+            let mut expected_seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--expected" | "--expected-seq-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "seq-confirm list-reports")?;
+                        let trimmed = raw.trim();
+                        expected_seq_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        if expected_seq_id.is_none() && !other.starts_with('-') {
+                            expected_seq_id = Some(other.to_string());
+                            idx += 1;
+                        } else {
+                            return Err(format!(
+                                "Unknown option '{other}' for seq-confirm list-reports"
+                            ));
+                        }
+                    }
+                }
+            }
+            Ok(ShellCommand::SeqConfirmListReports { expected_seq_id })
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("seq-confirm show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::SeqConfirmShowReport {
+                report_id: tokens[2].trim().to_string(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err("seq-confirm export-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::SeqConfirmExportReport {
+                report_id: tokens[2].trim().to_string(),
+                path: tokens[3].clone(),
+            })
+        }
+        "export-support-tsv" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "seq-confirm export-support-tsv requires REPORT_ID OUTPUT.tsv".to_string(),
+                );
+            }
+            Ok(ShellCommand::SeqConfirmExportSupportTsv {
+                report_id: tokens[2].trim().to_string(),
+                path: tokens[3].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown seq-confirm subcommand '{other}' (expected run, list-reports, show-report, export-report, export-support-tsv)"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(

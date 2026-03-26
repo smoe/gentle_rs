@@ -5433,6 +5433,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            sequencing_confirmation_report: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
@@ -5470,6 +5471,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            sequencing_confirmation_report: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {

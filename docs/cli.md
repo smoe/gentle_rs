@@ -247,6 +247,34 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
     - or paste copied JSON directly:
       `gentle_cli workflow '{"run_id":"workflow_rna_reads_tp73_ncbi_cdna_srr32957124","ops":[{"InterpretRnaReads":{"seq_id":"tp73.ncbi","seed_feature_id":0,"profile":"nanopore_cdna_v1","input_path":"reads.fa.gz","input_format":"fasta","scope":"all_overlapping_both_strands","seed_filter":{"kmer_len":10,"short_full_hash_max_bp":420,"long_window_bp":140,"long_window_count":3,"min_seed_hit_fraction":0.30,"min_weighted_seed_hit_fraction":0.05,"min_unique_matched_kmers":12,"max_median_transcript_gap":4.0,"min_chain_consistency_fraction":0.40,"min_confirmed_exon_transitions":1,"min_transition_support_fraction":0.05,"cdna_poly_t_flip_enabled":true,"poly_t_prefix_min_bp":18},"align_config":{"band_width_bp":24,"min_identity_fraction":0.60,"max_secondary_mappings":0},"report_id":"cdna_reads"}}]}'`
 
+Sequencing-confirmation capability status (called-read phase-1):
+
+- `gentle_cli`: supported via shared-shell/direct commands:
+  - `seq-confirm run EXPECTED_SEQ_ID --reads ID[,ID...]`
+  - `seq-confirm list-reports [EXPECTED_SEQ_ID]`
+  - `seq-confirm show-report REPORT_ID`
+  - `seq-confirm export-report REPORT_ID OUTPUT.json`
+  - `seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv`
+  backed by `ConfirmConstructReads`, `ListSequencingConfirmationReports`,
+  `ShowSequencingConfirmationReport`, `ExportSequencingConfirmationReport`, and
+  `ExportSequencingConfirmationSupportTsv`.
+  Phase-1 scope:
+  - expected construct plus already-loaded read sequences
+  - default full-span confirmation when no explicit targets are supplied
+  - explicit junction targets via `--junction LEFT_END_0BASED`
+    and `--junction-flank N`
+  - forward and reverse-complement read evaluation through the same shared
+    engine report contract
+  Not yet included in this phase:
+  - ABI/AB1/SCF raw-trace import
+  - GUI specialist review surface
+  - lineage/artifact projection for confirmation reports
+- `gentle_js`: baseline support via `apply_operation` for the same operation
+  family.
+- `gentle_lua`: baseline support via `apply_operation` for the same operation
+  family.
+- `gentle_py`: baseline support via `op(...)` for the same operation family.
+
 Feature-expert SVG parity status:
 
 - `gentle_cli`: supported via direct commands and shared-shell command path
