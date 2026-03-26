@@ -735,6 +735,9 @@ order. Durable architecture constraints and decisions remain in
     - versioned root release notes for `v0.1.0-internal.2`
     - `docs/release.md` local pre-tag smoke checklist matching the
       `script-interfaces` packaging build
+    - task-oriented readiness matrices in `README.md`, `docs/gui.md`, and
+      `docs/tutorial/README.md` so biologist-facing users can distinguish
+      recommended, caveated, and exploratory paths without reading the roadmap
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:

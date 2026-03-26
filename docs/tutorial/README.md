@@ -51,6 +51,33 @@ If you want to use GENtle with agents, MCP, or the command line:
 - Use the agent interfaces tutorial:
   [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 
+## Confidence Map
+
+Treat the tutorial catalog as three confidence bands:
+
+### Recommended now
+
+- The generated executable tutorial hub:
+  [`docs/tutorial/generated/README.md`](./generated/README.md)
+- The single-insert Gibson specialist testing path, especially when paired
+  with the offline starter project and `gibson preview` parity check.
+- Tutorials that point back to shared exported artifacts or deterministic
+  workflows rather than screenshots alone.
+
+### Works with caveats
+
+- Manual/hybrid tutorials that are intentionally mapped to engine or CLI
+  routes, but still depend on live GUI wording and layout.
+- Multi-insert Gibson walkthrough work for preview/review, with the current
+  apply guardrail on destination opening still in force.
+
+### Exploratory / drift-prone
+
+- Purely manual GUI walkthroughs where screenshots and control labels can drift
+  faster than generated runtime chapters.
+- Topics whose underlying product areas are still explicitly marked as open
+  roadmap gaps rather than stable daily-use paths.
+
 ## Tutorial Catalog
 
 | Tutorial | Type | Status | Best for | Notes |

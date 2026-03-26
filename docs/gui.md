@@ -2,6 +2,41 @@
 
 This page documents the current graphical interface of GENtle.
 
+## What To Trust Today
+
+If you are opening GENtle as a biologist rather than as a contributor, use
+this as a confidence map for the current GUI surface.
+
+### Recommended now
+
+- Single-insert Gibson specialist work:
+  `Patterns -> Gibson...` for destination-first planning, preview, apply,
+  reopen-from-lineage, and SVG/cartoon export.
+- Core PCR / primer-pair / qPCR routes when you already know the intended task
+  and want deterministic execution plus inspectable outputs.
+- Prepared-genome retrieval/extraction flows once the reference has already
+  been prepared locally.
+- Visual explanation/export paths such as lineage SVG, protocol cartoons,
+  dotplots, and isoform architecture.
+
+### Works with caveats
+
+- Multi-insert Gibson preview is useful, but execution currently requires a
+  defined destination opening; `existing_termini` remains the single-fragment
+  handoff path.
+- Primer3-backed workflows are available, but the internal backend is still
+  the more predictable default while parity hardening continues.
+- Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
+  generated executable tutorials remain the stronger reproducibility baseline.
+
+### Exploratory / not yet first choice
+
+- Broader routine-family coverage outside the strongest current Gibson and
+  restriction-centered paths.
+- Direct GUI feature editing / transcript-boundary curation workflows.
+- guideRNA workflows, deeper assay families, and richer virtual-PCR /
+  off-target analysis paths.
+
 ## Start the GUI
 
 ```bash

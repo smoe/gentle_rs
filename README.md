@@ -23,6 +23,42 @@ Today, that already means GENtle can:
 - keep GUI, CLI, and automation routes aligned on the same deterministic
   contracts
 
+## What To Trust Today
+
+Use this as a task-oriented confidence map rather than assuming every visible
+menu item is equally mature.
+
+### Recommended now
+
+- Single-insert Gibson specialist work: destination-first planning, preview,
+  apply, reopen-from-lineage, and SVG/cartoon export.
+- Core PCR, primer-pair, and qPCR engine routes when you already know the task
+  and want deterministic execution plus an inspectable report trail.
+- Prepared-genome region/gene extraction and the linked visualization/export
+  paths once the reference has been prepared locally.
+- Explanation/export surfaces such as lineage SVG, protocol cartoons, dotplot
+  SVG, and isoform-architecture figures.
+
+### Works with caveats
+
+- Multi-insert Gibson preview/review is useful, but execution currently
+  requires a defined destination opening; `existing_termini` is still the
+  single-fragment handoff path.
+- Primer3-backed primer workflows are available, but the internal backend is
+  still the most deterministic default and deeper backend-parity work is
+  ongoing.
+- GUI-first and manual/hybrid tutorials are good learning aids, but generated
+  executable tutorials remain the higher-confidence reference when
+  reproducibility matters most.
+
+### Exploratory / not yet first choice
+
+- Broader cloning routine families outside the strongest current
+  Gibson/restriction baselines.
+- Direct GUI feature editing and exon/intron/transcript-boundary curation.
+- guideRNA workflows, richer virtual-PCR/off-target workflows, and deeper
+  assay families such as LAMP or KASP/PACE genotyping.
+
 ## Operations, Routines, and Specialists
 
 GENtle is intentionally layered so cloning logic stays deterministic without
