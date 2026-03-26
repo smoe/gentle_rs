@@ -2452,8 +2452,12 @@ mod tests {
     }
 
     fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaLinear {
+        test_renderer_with_features(vec![feature], sequence_len)
+    }
+
+    fn test_renderer_with_features(features: Vec<Feature>, sequence_len: usize) -> RenderDnaLinear {
         let mut dna = DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA");
-        dna.features_mut().push(feature);
+        dna.features_mut().extend(features);
         let dna = Arc::new(RwLock::new(dna));
         let display = Arc::new(RwLock::new(DnaDisplay::default()));
         let mut renderer = RenderDnaLinear::new(dna, display);
@@ -2573,6 +2577,48 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 1);
         let baseline = renderer.baseline_y();
         assert!(fp.rect.center().y > baseline);
+    }
+
+    #[test]
+    fn reverse_gene_and_mrna_stack_below_baseline_with_gene_nearer_dna() {
+        let gene = Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(120, 310),
+            qualifiers: vec![
+                ("label".into(), Some("NEG1".to_string())),
+                ("strand".into(), Some("-".to_string())),
+            ],
+        };
+        let mrna = Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Complement(Box::new(Location::Join(vec![
+                Location::simple_range(120, 180),
+                Location::simple_range(240, 310),
+            ]))),
+            qualifiers: vec![("label".into(), Some("TX_NEG".to_string()))],
+        };
+        let mut renderer = test_renderer_with_features(vec![gene, mrna], 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        let baseline = renderer.baseline_y();
+        let gene_fp = renderer
+            .features
+            .iter()
+            .find(|feature| feature.kind_upper == "GENE")
+            .expect("gene feature");
+        let mrna_fp = renderer
+            .features
+            .iter()
+            .find(|feature| feature.kind_upper == "MRNA")
+            .expect("mRNA feature");
+        assert!(gene_fp.is_reverse);
+        assert!(mrna_fp.is_reverse);
+        assert!(gene_fp.rect.center().y > baseline);
+        assert!(mrna_fp.rect.center().y > baseline);
+        assert!(mrna_fp.rect.center().y > gene_fp.rect.center().y);
     }
 
     #[test]

@@ -153,6 +153,12 @@ Sequence window screenshot:
 ![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)<br>
 *Figure: Sequence window with map and sequence panels.*
 
+Linear sequence-view strand placement:
+
+- Forward-strand gene/transcript features are rendered above the DNA baseline.
+- Reverse-strand gene/transcript features are rendered below the DNA baseline.
+- When overlapping lanes must stack on one side, the gene stays closer to the DNA and the corresponding transcript/mRNA is offset one lane farther out.
+
 Primary map modes (linear topology):
 
 - `Standard map`

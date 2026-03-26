@@ -6828,6 +6828,27 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
             cache_dir: None,
         })
         .unwrap();
+    let loaded_gene = engine
+        .state()
+        .sequences
+        .get("toy_gene_neg")
+        .expect("expected extracted negative-strand gene sequence");
+    let gene_feature = loaded_gene
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+        .expect("expected projected gene feature");
+    assert!(crate::feature_location::feature_is_reverse(gene_feature));
+    assert!(matches!(
+        gene_feature.location,
+        gb_io::seq::Location::Complement(_)
+    ));
+    let tx_feature = loaded_gene
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("expected projected transcript feature");
+    assert!(crate::feature_location::feature_is_reverse(tx_feature));
     let exon_concat = engine
         .state()
         .sequences

@@ -8598,17 +8598,12 @@ impl GentleEngine {
         if clipped_end < clipped_start {
             return None;
         }
-        let local_start_0based = clipped_start.saturating_sub(extracted_start_1based);
-        let local_end_exclusive = clipped_end
-            .saturating_sub(extracted_start_1based)
-            .saturating_add(1);
-        if local_end_exclusive <= local_start_0based {
-            return None;
-        }
-        let location = gb_io::seq::Location::simple_range(
-            local_start_0based as i64,
-            local_end_exclusive as i64,
-        );
+        let location = Self::genomic_interval_to_local_location(
+            extracted_start_1based,
+            clipped_start,
+            clipped_end,
+            record.strand,
+        )?;
         let mut qualifiers = vec![
             ("chromosome".into(), Some(record.chromosome.clone())),
             (
