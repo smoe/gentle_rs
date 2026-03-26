@@ -217,6 +217,9 @@ order. Durable architecture constraints and decisions remain in
   reindex keeps cached local sequence/annotation files, progress appears
   immediately when launched, and deleting cached downloads for a full refresh
   requires an explicit confirmation choice.
+- Prepared tabular-annotation installs now also persist a transcript/exon/CDS
+  sidecar index during prepare/reindex, and gene/region extraction reuses that
+  sidecar instead of reparsing the full Ensembl GTF on each lookup.
 - Genome-catalog maintenance now has a shared baseline:
   - bundled `assets/genomes.json` now includes additional Ensembl templates for
     zebrafish, chimp, dog, and Drosophila, while fixing the rat pinned release
