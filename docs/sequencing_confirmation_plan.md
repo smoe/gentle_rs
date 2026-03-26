@@ -228,6 +228,142 @@ Definition of done for this phase:
 5. Two reads covering different checkpoints can produce overall `confirmed`.
 6. JSON export is deterministic across repeated runs.
 
+### Default Policy Decisions For Phase 1
+
+To keep phase 1 buildable without reopening design on every edge case, use
+these defaults unless later tests force a change:
+
+- default alignment mode: `local`
+- default orientation policy: try forward first, then reverse complement when
+  `allow_reverse_complement=true`, and keep the better-scoring usable result
+- default target generation in GUI:
+  - full construct span
+  - all explicit user-selected checkpoints
+  - no automatic "all features" expansion until the report model is stable
+- contradiction rule:
+  - only covered contradictory evidence should mark a target as
+    `contradicted`
+  - missing coverage must remain `insufficient_evidence`
+- overall report status:
+  - `contradicted` if any required target is contradicted
+  - `confirmed` if all required targets are confirmed
+  - otherwise `insufficient_evidence`
+
+### Example Phase-1 Operation Payload
+
+```json
+{
+  "expected_seq_id": "p53_reporter_expected",
+  "read_seq_ids": ["read_m13_fwd", "read_sv40_rev"],
+  "report_id": "p53_reporter_seqconf_001",
+  "targets": [
+    {
+      "target_id": "left_junction",
+      "kind": "junction",
+      "label": "vector-insert left junction",
+      "left_end_0based_exclusive": 411,
+      "right_start_0based": 412
+    },
+    {
+      "target_id": "right_junction",
+      "kind": "junction",
+      "label": "insert-vector right junction",
+      "left_end_0based_exclusive": 1488,
+      "right_start_0based": 1489
+    }
+  ],
+  "allow_reverse_complement": true,
+  "mode": "local"
+}
+```
+
+### Example Phase-1 Report Shape
+
+```json
+{
+  "schema": "gentle.sequencing_confirmation_report.v1",
+  "report_id": "p53_reporter_seqconf_001",
+  "expected_seq_id": "p53_reporter_expected",
+  "overall_status": "confirmed",
+  "targets": [
+    {
+      "target_id": "left_junction",
+      "kind": "junction",
+      "status": "confirmed",
+      "supporting_read_ids": ["read_m13_fwd"],
+      "contradicting_read_ids": []
+    },
+    {
+      "target_id": "right_junction",
+      "kind": "junction",
+      "status": "confirmed",
+      "supporting_read_ids": ["read_sv40_rev"],
+      "contradicting_read_ids": []
+    }
+  ],
+  "reads": [
+    {
+      "read_seq_id": "read_m13_fwd",
+      "selected_orientation": "forward",
+      "usable_for_confirmation": true
+    },
+    {
+      "read_seq_id": "read_sv40_rev",
+      "selected_orientation": "reverse_complement",
+      "usable_for_confirmation": true
+    }
+  ],
+  "uncovered_intervals": [],
+  "warnings": []
+}
+```
+
+### Phase-1 File-By-File Checklist
+
+1. `src/engine.rs`
+   - add schema constants
+   - add report/store structs
+   - add operation enum variants
+   - add normalization helpers for `report_id`
+   - add list/get/export helpers mirroring primer/qPCR patterns
+2. `src/engine/ops/operation_handlers.rs`
+   - resolve reads and expected sequence
+   - compute per-read best orientation/alignment
+   - classify target rows and overall report status
+   - persist report
+   - emit artifact-facing messages/result payload
+3. `src/engine_shell/command_parsers.rs`
+   - parse `seq-confirm ...` commands
+4. `src/engine_shell.rs`
+   - add shared-shell execution and show/export output formatting
+5. `src/engine/tests.rs`
+   - add deterministic positive/negative/coverage-gap cases
+   - add export determinism test
+   - add report-store list/show coverage
+6. lineage/artifact path
+   - add graph-visible confirmation artifact node projection
+7. `docs/cli.md`
+   - add CLI contract and examples
+
+### Suggested Phase-1 Test Names
+
+- `test_confirm_construct_reads_confirms_single_junction_forward_read`
+- `test_confirm_construct_reads_accepts_reverse_complement_support`
+- `test_confirm_construct_reads_marks_truncated_target_as_insufficient_evidence`
+- `test_confirm_construct_reads_marks_covered_unexpected_indel_as_contradicted`
+- `test_confirm_construct_reads_combines_two_reads_into_overall_confirmed`
+- `test_export_sequencing_confirmation_report_is_deterministic`
+- `test_list_sequencing_confirmation_reports_orders_by_report_id`
+
+### Suggested Phase-1 Synthetic Fixtures
+
+- `test_files/sequencing/README.md`
+- `test_files/sequencing/expected_construct_simple.gb`
+- `test_files/sequencing/read_forward_perfect.fa`
+- `test_files/sequencing/read_reverse_perfect.fa`
+- `test_files/sequencing/read_truncated.fa`
+- `test_files/sequencing/read_junction_indel.fa`
+
 ## Phase 2: GUI Confirmation Specialist
 
 ### Deliverable
@@ -409,6 +545,16 @@ Preference order:
 6. GUI specialist
 7. trace import
 8. trace-aware confirmation enrichment
+
+## Phase-1 Exit Criteria Before Starting Trace Import
+
+Do not begin ABI/AB1/SCF intake until all of the following are true:
+
+1. phase-1 synthetic fixtures are committed with provenance notes
+2. report classification behavior is locked by deterministic tests
+3. CLI show/export routes are stable enough to support fixture-driven review
+4. GUI uses the stored engine report instead of recomputing confirmation logic
+5. confirmation artifacts are visible in lineage/history
 
 ## Risks
 
