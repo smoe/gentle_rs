@@ -3,8 +3,8 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope,
-    GenomeGeneExtractMode, GentleEngine, Operation, ProjectState, Workflow,
+    Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+    GentleEngine, Operation, ProjectState, Workflow,
 };
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;

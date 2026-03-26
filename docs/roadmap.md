@@ -1835,6 +1835,10 @@ Current baseline:
   through completion, adds active-step ETA for determinate byte-based work, and
   surfaces explicit reinstall-from-sources recovery when reindex detects an
   inconsistent cached install.
+- The prepare specialist window now scrolls vertically when its checklist/status
+  content exceeds the viewport height.
+- Testing gap: specialist-window scrolling still relies on manual GUI
+  verification; there is not yet a dedicated egui regression test for it.
 - Shell/agent UI-intent routing is implemented:
   - `ui intents`
   - `ui open|focus TARGET ...`

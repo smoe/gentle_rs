@@ -2080,6 +2080,8 @@ Recommended flow:
    - after a successful prepare/reindex/refresh, the full checklist remains
      visible and is explicitly marked complete instead of collapsing back to a
      raw phase line
+   - the specialist window itself now scrolls vertically, so long progress
+     checklists and status text remain reachable on smaller viewports
    - long-running indeterminate work such as BLAST indexing stays visible as an
      active checklist row instead of looking idle
    - if reindex discovers that the cached prepared files are internally

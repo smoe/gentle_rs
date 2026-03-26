@@ -36,8 +36,8 @@ use crate::{
         LineageMacroPortBinding, LinearSequenceLetterLayoutMode, OpResult, Operation,
         OperationProgress, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, ProjectState, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY,
-        RenderSvgMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode,
+        RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
@@ -11759,26 +11759,28 @@ Error: `{err}`"
             Some(self.genome_output_id.trim().to_string())
         };
         let extract_mode = self.genome_gene_extract_mode;
-        let promoter_upstream_bp = if matches!(
-            extract_mode,
-            GenomeGeneExtractMode::CodingWithPromoter
-        ) {
-            if self.genome_gene_promoter_upstream_bp.trim().is_empty() {
-                0
-            } else {
-                match self.genome_gene_promoter_upstream_bp.trim().parse::<usize>() {
-                    Ok(parsed) => parsed,
-                    Err(_) => {
-                        self.genome_retrieve_status =
-                            "promoter bp before CDS must be a non-negative integer".to_string();
-                        self.genome_retrieve_contig_suggestions.clear();
-                        return;
+        let promoter_upstream_bp =
+            if matches!(extract_mode, GenomeGeneExtractMode::CodingWithPromoter) {
+                if self.genome_gene_promoter_upstream_bp.trim().is_empty() {
+                    0
+                } else {
+                    match self
+                        .genome_gene_promoter_upstream_bp
+                        .trim()
+                        .parse::<usize>()
+                    {
+                        Ok(parsed) => parsed,
+                        Err(_) => {
+                            self.genome_retrieve_status =
+                                "promoter bp before CDS must be a non-negative integer".to_string();
+                            self.genome_retrieve_contig_suggestions.clear();
+                            return;
+                        }
                     }
                 }
-            }
-        } else {
-            0
-        };
+            } else {
+                0
+            };
         self.sync_genome_annotation_scope_controls();
         let annotation_scope = self.genome_annotation_scope;
         let max_annotation_features = if self.genome_max_annotation_features.trim().is_empty() {
@@ -12664,7 +12666,11 @@ Error: `{err}`"
                     .resizable(true)
                     .default_size(Vec2::new(760.0, 560.0))
                     .show(ctx, |ui| {
-                        close_requested = self.render_reference_genome_prepare_contents(ui);
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self.render_reference_genome_prepare_contents(ui);
+                            });
                     });
                 if close_requested {
                     open = false;
@@ -12689,7 +12695,11 @@ Error: `{err}`"
 
             let mut close_requested = false;
             egui::CentralPanel::default().show(ctx, |ui| {
-                close_requested = self.render_reference_genome_prepare_contents(ui);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_reference_genome_prepare_contents(ui);
+                    });
             });
             self.render_prepared_genome_reinstall_confirm_dialog(
                 ctx,

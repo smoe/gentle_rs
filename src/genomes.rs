@@ -1473,8 +1473,8 @@ impl GenomeCatalog {
                 }
                 let mut annotation_parse_report: Option<AnnotationParseReport> = None;
                 let annotation_path = Path::new(&manifest.annotation_path);
-                let wants_transcript_index =
-                    !is_genbank_annotation_path(annotation_path) && !is_xml_annotation_path(annotation_path);
+                let wants_transcript_index = !is_genbank_annotation_path(annotation_path)
+                    && !is_xml_annotation_path(annotation_path);
                 let gene_index_path = manifest
                     .gene_index_path
                     .as_ref()
@@ -1484,7 +1484,9 @@ impl GenomeCatalog {
                     .transcript_index_path
                     .as_ref()
                     .map(PathBuf::from)
-                    .or_else(|| wants_transcript_index.then(|| install_dir.join("transcripts.json")));
+                    .or_else(|| {
+                        wants_transcript_index.then(|| install_dir.join("transcripts.json"))
+                    });
                 let sequence_bytes = fs::metadata(&manifest.sequence_path)
                     .map(|meta| meta.len())
                     .unwrap_or(0);
@@ -1576,22 +1578,26 @@ impl GenomeCatalog {
                     && let Some(transcript_index_path) = transcript_index_path.as_ref()
                     && !transcript_index_path.exists()
                 {
-                    build_transcript_index_file(annotation_path, transcript_index_path, |done, total| {
-                        on_progress(prepare_genome_progress(
-                            genome_id,
-                            "index_genes",
-                            canonical_or_display(annotation_path),
-                            done,
-                            total,
-                            total.and_then(|t| {
-                                if t == 0 {
-                                    None
-                                } else {
-                                    Some((done as f64 / t as f64) * 100.0)
-                                }
-                            }),
-                        ))
-                    })?;
+                    build_transcript_index_file(
+                        annotation_path,
+                        transcript_index_path,
+                        |done, total| {
+                            on_progress(prepare_genome_progress(
+                                genome_id,
+                                "index_genes",
+                                canonical_or_display(annotation_path),
+                                done,
+                                total,
+                                total.and_then(|t| {
+                                    if t == 0 {
+                                        None
+                                    } else {
+                                        Some((done as f64 / t as f64) * 100.0)
+                                    }
+                                }),
+                            ))
+                        },
+                    )?;
                     manifest.transcript_index_path =
                         Some(canonical_or_display(transcript_index_path));
                 }
@@ -1761,8 +1767,9 @@ impl GenomeCatalog {
         let transcript_index_path = existing_paths
             .and_then(|manifest| manifest.transcript_index_path.as_ref().map(PathBuf::from))
             .or_else(|| {
-                (!is_genbank_annotation_path(&annotation_path) && !is_xml_annotation_path(&annotation_path))
-                    .then(|| install_dir.join("transcripts.json"))
+                (!is_genbank_annotation_path(&annotation_path)
+                    && !is_xml_annotation_path(&annotation_path))
+                .then(|| install_dir.join("transcripts.json"))
             });
         let blast_prefix_path = existing_paths
             .and_then(|manifest| manifest.blast_db_prefix.as_deref().map(PathBuf::from))
@@ -1918,8 +1925,8 @@ impl GenomeCatalog {
                 }),
             ))
         })?;
-        let wants_transcript_index =
-            !is_genbank_annotation_path(&annotation_path) && !is_xml_annotation_path(&annotation_path);
+        let wants_transcript_index = !is_genbank_annotation_path(&annotation_path)
+            && !is_xml_annotation_path(&annotation_path);
         let reuse_gene_index = !reindex_from_cached_files
             && !force_refresh_from_sources
             && non_empty_regular_file_exists(&gene_index_path);
@@ -1980,22 +1987,26 @@ impl GenomeCatalog {
                     ),
                 )?;
             } else {
-                build_transcript_index_file(&annotation_path, transcript_index_path, |done, total| {
-                    on_progress(prepare_genome_progress(
-                        genome_id,
-                        "index_genes",
-                        canonical_or_display(&annotation_path),
-                        done,
-                        total,
-                        total.and_then(|t| {
-                            if t == 0 {
-                                None
-                            } else {
-                                Some((done as f64 / t as f64) * 100.0)
-                            }
-                        }),
-                    ))
-                })?;
+                build_transcript_index_file(
+                    &annotation_path,
+                    transcript_index_path,
+                    |done, total| {
+                        on_progress(prepare_genome_progress(
+                            genome_id,
+                            "index_genes",
+                            canonical_or_display(&annotation_path),
+                            done,
+                            total,
+                            total.and_then(|t| {
+                                if t == 0 {
+                                    None
+                                } else {
+                                    Some((done as f64 / t as f64) * 100.0)
+                                }
+                            }),
+                        ))
+                    },
+                )?;
             }
         }
         let fasta_index = load_fasta_index(&fasta_index_path)?;
@@ -5597,7 +5608,9 @@ where
     if !on_progress(total_bytes.unwrap_or(bytes_read_total), total_bytes) {
         return Err(prepare_cancelled_error("transcript index completion"));
     }
-    Ok(finalize_transcript_records(transcripts.into_values().collect()))
+    Ok(finalize_transcript_records(
+        transcripts.into_values().collect(),
+    ))
 }
 
 fn finalize_transcript_records(accums: Vec<TranscriptAccum>) -> Vec<GenomeTranscriptRecord> {
@@ -7011,8 +7024,9 @@ mod tests {
             "__gentle_makeblastdb_missing_for_test__",
         );
         catalog.prepare_genome_once("ToyGenome").unwrap();
-        let manifest = GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
-            .unwrap();
+        let manifest =
+            GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
+                .unwrap();
         let transcript_index_path = manifest
             .transcript_index_path
             .as_ref()
