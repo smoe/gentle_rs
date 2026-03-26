@@ -1331,6 +1331,9 @@ Status:
     deterministic effect labels (`confirmed`, `reassigned`, `no phase-1 tx`),
     and per-read mapped exon/junction contribution details, while the old
     top-hit list remains a clearly labeled capped live preview.
+    The GUI `Read effects` table now fetches filtered rows through the same
+    engine-owned subset contract used by `rna-reads inspect-alignments`, so
+    GUI and shell inspection semantics stay aligned.
   - Added ranked alignment TSV export for downstream tabular analysis:
     `ExportRnaReadAlignmentsTsv` /
     `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv

@@ -555,6 +555,10 @@ Feature tree grouping:
       - sort controls support `rank`, `identity`, `coverage`, and `score`
       - search matches read ids, transcript ids/labels, effect labels, and
         `#record_index` labels
+      - the displayed `Read effects` table now comes from the same engine-backed
+        subset contract used by shared-shell `rna-reads inspect-alignments`, so
+        GUI filter/sort/search/selected semantics stay aligned with agent-facing
+        inspection JSON
       - quick-view buttons provide one-click shortcuts for:
         - `Show disagreements`
         - `Show max-score outliers`

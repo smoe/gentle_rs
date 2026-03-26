@@ -22,8 +22,10 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionRow, RnaReadExonSupportFrequency, RnaReadHitSelection,
+        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
         RnaReadInterpretationProfile, RnaReadInterpretationReport, RnaReadIsoformSupportRow,
         RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
@@ -3936,6 +3938,27 @@ mod tests {
             ),
             "filter=all aligned | sort=rank | search=<none>"
         );
+    }
+
+    #[test]
+    fn rna_read_alignment_effect_subset_struct_maps_to_engine_contract() {
+        let selected = BTreeSet::from([9usize, 2usize, 2usize]);
+        let subset = MainAreaDna::rna_read_alignment_effect_subset_struct(
+            super::RnaReadAlignmentEffectFilter::SelectedOnly,
+            " tp53 ",
+            super::RnaReadAlignmentEffectSortKey::Score,
+            &selected,
+        );
+        assert_eq!(
+            subset.effect_filter,
+            crate::engine::RnaReadAlignmentInspectionEffectFilter::SelectedOnly
+        );
+        assert_eq!(
+            subset.sort_key,
+            crate::engine::RnaReadAlignmentInspectionSortKey::Score
+        );
+        assert_eq!(subset.search, "tp53");
+        assert_eq!(subset.selected_record_indices, vec![2, 9]);
     }
 
     #[test]
@@ -17677,6 +17700,7 @@ impl MainAreaDna {
     fn current_saved_rna_read_alignment_inspection(
         &self,
         limit: usize,
+        subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
     ) -> Result<RnaReadAlignmentInspection, String> {
         let report_id = self.rna_reads_ui.report_id.trim();
         if report_id.is_empty() {
@@ -17689,7 +17713,12 @@ impl MainAreaDna {
             .read()
             .map_err(|_| "Engine lock poisoned while inspecting RNA-read alignments".to_string())?;
         guard
-            .inspect_rna_read_alignments(report_id, RnaReadHitSelection::All, limit.max(1))
+            .inspect_rna_read_alignments_with_subset(
+                report_id,
+                RnaReadHitSelection::All,
+                limit.max(1),
+                subset_spec,
+            )
             .map_err(|error| error.message)
     }
 
@@ -17767,6 +17796,66 @@ impl MainAreaDna {
         }
     }
 
+    fn engine_rna_read_alignment_effect_filter(
+        filter: RnaReadAlignmentEffectFilter,
+    ) -> RnaReadAlignmentInspectionEffectFilter {
+        match filter {
+            RnaReadAlignmentEffectFilter::AllAligned => {
+                RnaReadAlignmentInspectionEffectFilter::AllAligned
+            }
+            RnaReadAlignmentEffectFilter::ConfirmedOnly => {
+                RnaReadAlignmentInspectionEffectFilter::ConfirmedOnly
+            }
+            RnaReadAlignmentEffectFilter::DisagreementOnly => {
+                RnaReadAlignmentInspectionEffectFilter::DisagreementOnly
+            }
+            RnaReadAlignmentEffectFilter::ReassignedOnly => {
+                RnaReadAlignmentInspectionEffectFilter::ReassignedOnly
+            }
+            RnaReadAlignmentEffectFilter::NoPhase1Only => {
+                RnaReadAlignmentInspectionEffectFilter::NoPhase1Only
+            }
+            RnaReadAlignmentEffectFilter::SelectedOnly => {
+                RnaReadAlignmentInspectionEffectFilter::SelectedOnly
+            }
+        }
+    }
+
+    fn engine_rna_read_alignment_sort_key(
+        sort_key: RnaReadAlignmentEffectSortKey,
+    ) -> RnaReadAlignmentInspectionSortKey {
+        match sort_key {
+            RnaReadAlignmentEffectSortKey::Rank => RnaReadAlignmentInspectionSortKey::Rank,
+            RnaReadAlignmentEffectSortKey::Identity => RnaReadAlignmentInspectionSortKey::Identity,
+            RnaReadAlignmentEffectSortKey::Coverage => RnaReadAlignmentInspectionSortKey::Coverage,
+            RnaReadAlignmentEffectSortKey::Score => RnaReadAlignmentInspectionSortKey::Score,
+        }
+    }
+
+    fn current_rna_read_alignment_subset_spec(&self) -> RnaReadAlignmentInspectionSubsetSpec {
+        Self::rna_read_alignment_effect_subset_struct(
+            self.rna_read_alignment_effect_filter,
+            &self.rna_read_alignment_effect_search,
+            self.rna_read_alignment_effect_sort_key,
+            &self.rna_seed_selected_record_indices,
+        )
+    }
+
+    fn rna_read_alignment_effect_subset_struct(
+        filter: RnaReadAlignmentEffectFilter,
+        search: &str,
+        sort_key: RnaReadAlignmentEffectSortKey,
+        selected_record_indices: &BTreeSet<usize>,
+    ) -> RnaReadAlignmentInspectionSubsetSpec {
+        RnaReadAlignmentInspectionSubsetSpec {
+            effect_filter: Self::engine_rna_read_alignment_effect_filter(filter),
+            sort_key: Self::engine_rna_read_alignment_sort_key(sort_key),
+            search: search.trim().to_string(),
+            selected_record_indices: selected_record_indices.iter().copied().collect(),
+        }
+    }
+
+    #[cfg(test)]
     fn rna_read_alignment_effect_matches_filter(
         row: &RnaReadAlignmentInspectionRow,
         filter: RnaReadAlignmentEffectFilter,
@@ -17792,6 +17881,7 @@ impl MainAreaDna {
         }
     }
 
+    #[cfg(test)]
     fn rna_read_alignment_effect_matches_search(
         row: &RnaReadAlignmentInspectionRow,
         search: &str,
@@ -17822,6 +17912,7 @@ impl MainAreaDna {
         .any(|field| field.to_ascii_lowercase().contains(&needle))
     }
 
+    #[cfg(test)]
     fn compare_rna_read_alignment_effect_rows(
         left: &RnaReadAlignmentInspectionRow,
         right: &RnaReadAlignmentInspectionRow,
@@ -17875,6 +17966,7 @@ impl MainAreaDna {
         }
     }
 
+    #[cfg(test)]
     fn collect_visible_rna_read_alignment_effect_rows<'a>(
         inspection: &'a RnaReadAlignmentInspection,
         filter: RnaReadAlignmentEffectFilter,
@@ -20637,7 +20729,9 @@ impl MainAreaDna {
             );
             return;
         };
-        let inspection = match self.current_saved_rna_read_alignment_inspection(report.hits.len()) {
+        let inspection = match self
+            .current_saved_rna_read_alignment_inspection(report.hits.len(), None)
+        {
             Ok(inspection) => inspection,
             Err(message) => {
                 ui.small(egui::RichText::new(message).color(egui::Color32::from_rgb(180, 83, 9)));
@@ -20721,19 +20815,6 @@ impl MainAreaDna {
             self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::DisagreementOnly;
             self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
             self.rna_read_alignment_effect_search.clear();
-            let disagreement_rows = Self::collect_visible_rna_read_alignment_effect_rows(
-                &inspection,
-                self.rna_read_alignment_effect_filter,
-                &self.rna_read_alignment_effect_search,
-                &self.rna_seed_selected_record_indices,
-                self.rna_read_alignment_effect_sort_key,
-            );
-            self.rna_seed_highlight_record_index =
-                disagreement_rows.first().map(|row| row.record_index);
-            self.op_status = format!(
-                "Focused read effects on {} non-confirmed aligned row(s)",
-                disagreement_rows.len()
-            );
         }
         if focus_max_score_outliers || focus_rightmost_bin {
             let selected_record_indices = if focus_max_score_outliers {
@@ -20820,16 +20901,32 @@ impl MainAreaDna {
                 self.rna_read_alignment_effect_search.clear();
             }
         });
-        let displayed_rows = Self::collect_visible_rna_read_alignment_effect_rows(
-            &inspection,
-            self.rna_read_alignment_effect_filter,
-            &self.rna_read_alignment_effect_search,
-            &self.rna_seed_selected_record_indices,
-            self.rna_read_alignment_effect_sort_key,
-        );
+        let filtered_inspection = match self.current_saved_rna_read_alignment_inspection(
+            report.hits.len(),
+            Some(self.current_rna_read_alignment_subset_spec()),
+        ) {
+            Ok(inspection) => inspection,
+            Err(message) => {
+                ui.small(egui::RichText::new(message).color(egui::Color32::from_rgb(180, 83, 9)));
+                return;
+            }
+        };
+        if focus_disagreements {
+            self.rna_seed_highlight_record_index =
+                filtered_inspection.rows.first().map(|row| row.record_index);
+            self.op_status = format!(
+                "Focused read effects on {} non-confirmed aligned row(s)",
+                filtered_inspection.subset_match_count
+            );
+        }
+        if focus_max_score_outliers || focus_rightmost_bin {
+            self.rna_seed_highlight_record_index =
+                filtered_inspection.rows.first().map(|row| row.record_index);
+        }
+        let displayed_rows = filtered_inspection.rows.iter().collect::<Vec<_>>();
         let displayed_record_indices =
             Self::collect_rna_read_alignment_effect_record_indices(&displayed_rows);
-        let visible_count = displayed_record_indices.len();
+        let visible_count = filtered_inspection.subset_match_count;
         let filtered_subset_spec = Self::rna_read_alignment_effect_subset_spec(
             self.rna_read_alignment_effect_filter,
             &self.rna_read_alignment_effect_search,
@@ -20837,8 +20934,7 @@ impl MainAreaDna {
         );
         ui.small(format!(
             "Showing {} of {} aligned rows",
-            displayed_rows.len(),
-            inspection.rows.len()
+            filtered_inspection.subset_match_count, inspection.aligned_count
         ));
         ui.small(format!("Current filtered subset: {filtered_subset_spec}"));
 
@@ -21700,7 +21796,7 @@ impl MainAreaDna {
             progress.aligned
         ));
         let inspection = report.and_then(|report| {
-            self.current_saved_rna_read_alignment_inspection(report.hits.len())
+            self.current_saved_rna_read_alignment_inspection(report.hits.len(), None)
                 .ok()
         });
         let exon_contributors = inspection
