@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-25
+Last updated: 2026-03-26
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -128,6 +128,17 @@ order. Durable architecture constraints and decisions remain in
   - deterministic methods for `capabilities`, `state-summary`, `op`,
   `workflow`, and `shell`
   - no biology logic duplication (subprocess bridge only)
+- Debian-first container baseline is now available:
+  - authoritative image definition in repository `Dockerfile`
+  - GUI served through `Xvfb` + `openbox` + `x11vnc` + `noVNC`
+  - CLI/MCP/JS/Lua/Python wrapper available from the same image
+  - helper-tool coverage in container:
+    - Debian packages for `primer3`, `ncbi-blast+`, `python3-pybigwig`,
+      `novnc`, `x11vnc`, `xvfb`
+    - explicit container compatibility wrapper for `bigWigToBedGraph`
+    - explicit non-Debian exception for `rnapkin`
+  - user documentation lives in `docs/container.md`
+  - GHCR workflow now lives in `.github/workflows/container.yml`
 
 ### Biology/analysis capabilities already implemented
 
@@ -2613,6 +2624,15 @@ Post-baseline follow-ups:
 ### Phase E: integration polish and deferred policy items
 
 - Add cross-application clipboard interoperability through versioned contracts.
+- Continue OCI distribution follow-up for the shipped Debian-first container:
+  - validate Linux/Apptainer pull path against the published OCI tag in CI or
+    release smoke documentation
+  - pin the non-Debian `rnapkin` install source/version in the Dockerfile once
+    release policy is fixed
+  - decide whether release attachments should also include an exported
+    `docker-archive` or `.sif`, or whether OCI-only remains sufficient
+  - keep a dedicated `.def` file deferred unless HPC-specific divergence
+    appears
 - Keep screenshot re-enable work as the final item and only after explicit
   endpoint-security exception/approval.
 - Keep first-class protein-sequence support deferred:

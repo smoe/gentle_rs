@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Compatibility wrapper for GENtle BigWig import inside the container.
+
+GENtle expects a UCSC-style `bigWigToBedGraph INPUT OUTPUT` executable.
+Debian ships `python3-pybigwig`, so the container provides this narrow wrapper
+instead of pulling an additional non-Debian binary distribution.
+"""
+
+from __future__ import annotations
+
+import math
+import sys
+
+import pyBigWig
+
+
+def _format_value(value: float) -> str:
+    if math.isfinite(value) and value.is_integer():
+        return str(int(value))
+    return f"{value:.12g}"
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        print(
+            "Usage: bigWigToBedGraph INPUT.bigWig OUTPUT.bedGraph",
+            file=sys.stderr,
+        )
+        return 2
+
+    input_path, output_path = argv[1], argv[2]
+
+    try:
+        with pyBigWig.open(input_path) as bigwig:
+            chroms = bigwig.chroms()
+            if chroms is None:
+                raise RuntimeError(f"No chromosome table found in '{input_path}'")
+            with open(output_path, "w", encoding="utf-8") as out_handle:
+                for chrom in chroms:
+                    intervals = bigwig.intervals(chrom)
+                    if not intervals:
+                        continue
+                    for start, end, value in intervals:
+                        out_handle.write(
+                            f"{chrom}\t{start}\t{end}\t{_format_value(float(value))}\n"
+                        )
+    except Exception as exc:  # pragma: no cover - wrapper is exercised at runtime.
+        print(f"bigWigToBedGraph wrapper failed: {exc}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

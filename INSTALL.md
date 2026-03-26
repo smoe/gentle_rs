@@ -124,17 +124,72 @@ Clone the repository and move into the project directory:
 ```sh
 git clone https://github.com/smoe/gentle_rs.git
 cd gentle_rs
-<<<<<<< HEAD
 ```
 
 ## First local build check
 
 Run a first local build check:
 
+```sh
 cargo check
 ```
 
 If this succeeds, your core contributor toolchain is in place.
+
+## Alternative: run GENtle through Docker
+
+If you do not want to prepare a local Rust toolchain first, GENtle can also be
+run through the Debian-first container image.
+
+This route is currently aimed at macOS and Linux hosts.
+
+### Build the image locally
+
+From the repository root:
+
+```sh
+docker build -t gentle:local .
+```
+
+The image includes:
+
+- the GUI
+- `gentle_cli`
+- the MCP server
+- the embedded JavaScript and Lua shells
+- the Python wrapper path
+- external helper-tool support already wired into GENtle
+
+### Start the GUI in a browser
+
+```sh
+docker run --rm -it \
+  -p 6080:6080 \
+  -v "$(pwd)":/work \
+  gentle:local
+```
+
+Then open:
+
+- <http://localhost:6080/vnc.html?autoconnect=1&resize=scale>
+
+### Run the CLI from the image
+
+```sh
+docker run --rm -it \
+  -v "$(pwd)":/work \
+  gentle:local cli capabilities
+```
+
+### Linux users who prefer Apptainer / Singularity
+
+GENtle currently keeps the Dockerfile as the single maintained image
+definition. Linux users can consume the same OCI image from Apptainer instead
+of maintaining a separate `.def` recipe.
+
+See:
+
+- `docs/container.md`
 
 ## Run GENtle
 
@@ -189,6 +244,12 @@ Example:
 ```sh
 cargo run --bin gentle_cli -- --version
 ```
+
+Container note:
+
+- the Docker image provides the same shared-entrypoint routes through
+  `gui-web`, `cli`, `mcp`, `js`, and `lua`
+- full details live in `docs/container.md`
 
 ## First successful run checklist
 
@@ -260,3 +321,5 @@ Environment-variable overrides are also supported:
   using the workflows that require them.
 - If you are on Windows and run into avoidable tool-availability issues,
   WSL can be a practical development environment for GENtle.
+- If you prefer containerized execution on macOS or Linux, use
+  `docs/container.md` as the primary runtime guide.

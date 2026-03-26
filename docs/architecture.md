@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-24
+Last updated: 2026-03-26
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -241,6 +241,36 @@ Rules:
   logic into a dedicated Python build path
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
+
+### Container/distribution policy
+
+GENtle's container distribution should stay Dockerfile-first and Debian-first.
+
+Rules:
+
+- maintain one primary OCI image definition (`Dockerfile`) rather than
+  parallel Dockerfile + Apptainer/Singularity recipes by default
+- the primary image should include complete end-user functionality:
+  - GUI
+  - CLI
+  - MCP server
+  - embedded JS/Lua shells in release-style container builds
+  - Python wrapper availability
+  - helper-tool integrations already expected by the engine (`blastn`,
+    `makeblastdb`, `primer3`, BigWig conversion, RNA structure)
+- prefer Debian packages whenever available; the Rust toolchain in container
+  builder stages should come from Debian `rust-all`
+- non-Debian additions are acceptable only as narrow, explicit exceptions when
+  a shipped GENtle feature would otherwise be unavailable in the image
+- cross-platform GUI container access should default to browser-served
+  Linux desktop export (`Xvfb` + lightweight WM + VNC/noVNC) rather than
+  host-specific X11 forwarding as the primary documented path
+- Linux/Apptainer support should consume the same OCI image whenever possible
+  (`docker://` / `docker-archive://`) rather than creating a separate
+  packaging logic path prematurely
+- GitHub/container-registry publishing is a release/distribution concern; it
+  should publish the same OCI artifact that local Docker and Linux Apptainer
+  users consume
 
 ## 3. Implementation status and roadmap
 
