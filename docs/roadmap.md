@@ -476,6 +476,10 @@ order. Durable architecture constraints and decisions remain in
     - insertion/replacement runs now also emit
       `OpResult.protocol_cartoon_preview` metadata for
       `pcr.oe.substitution` (geometry + deterministic template bindings)
+    - GUI primer panel now surfaces the last captured
+      `OpResult.protocol_cartoon_preview` payload, including one-click
+      render/export of the bound protocol-cartoon SVG for operation-level
+      inspection/handoff
   - engine operation `DesignQpcrAssays` now persists deterministic qPCR report
     payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
     records in project metadata

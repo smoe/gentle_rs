@@ -28,6 +28,7 @@ use crate::{
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
         SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
+        ProtocolCartoonPreviewTelemetry,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -49,6 +50,10 @@ use crate::{
     },
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
+    protocol_cartoon::{
+        ProtocolCartoonKind, protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
+        resolve_protocol_cartoon_template_with_bindings,
+    },
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
@@ -1057,6 +1062,7 @@ mod tests {
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
             LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+            ProtocolCartoonPreviewTelemetry,
             RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
             RnaReadHitSelection, RnaReadInterpretProgress, RnaReadInterpretationHit,
             RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadMappingHit,
@@ -1068,6 +1074,7 @@ mod tests {
             SplicingExpertView, SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
+        protocol_cartoon::pcr_oe_substitution_geometry_bindings,
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
     use serde_json::json;
@@ -1076,7 +1083,7 @@ mod tests {
         fs,
         path::Path,
         sync::{Arc, RwLock},
-        time::Duration,
+        time::{Duration, Instant},
     };
     use tempfile::{TempDir, tempdir};
 
@@ -1756,6 +1763,60 @@ mod tests {
             .parameters
             .max_fragments_per_container;
         assert_eq!(max_fragments, 12345);
+    }
+
+    #[test]
+    fn protocol_cartoon_preview_svg_render_resolves_bound_oe_geometry() {
+        let preview = ProtocolCartoonPreviewTelemetry {
+            protocol: "pcr.oe.substitution".to_string(),
+            flank_bp: 80,
+            overlap_bp: 11,
+            insert_bp: 72,
+            bindings: pcr_oe_substitution_geometry_bindings(80, 11, 72),
+        };
+        let svg = MainAreaDna::render_protocol_cartoon_preview_svg(&preview)
+            .expect("render protocol cartoon preview svg");
+        assert!(svg.starts_with("<svg"));
+        assert!(!svg.contains("Invalid protocol cartoon"));
+    }
+
+    #[test]
+    fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
+        let mut area = make_primer_batch_area();
+        let preview = ProtocolCartoonPreviewTelemetry {
+            protocol: "pcr.oe.substitution".to_string(),
+            flank_bp: 64,
+            overlap_bp: 29,
+            insert_bp: 6,
+            bindings: pcr_oe_substitution_geometry_bindings(64, 29, 6),
+        };
+        area.handle_operation_success(
+            super::OpResult {
+                op_id: "op-preview".to_string(),
+                created_seq_ids: vec![],
+                changed_seq_ids: vec![],
+                warnings: vec![],
+                messages: vec!["preview attached".to_string()],
+                protocol_cartoon_preview: Some(preview.clone()),
+                genome_annotation_projection: None,
+                sequence_alignment: None,
+            },
+            Instant::now(),
+        );
+        assert_eq!(area.last_protocol_cartoon_preview_op_id, "op-preview");
+        assert_eq!(
+            area.last_protocol_cartoon_preview
+                .as_ref()
+                .map(|row| row.protocol.as_str()),
+            Some("pcr.oe.substitution")
+        );
+        let captured = area
+            .last_protocol_cartoon_preview
+            .as_ref()
+            .expect("captured preview");
+        assert_eq!(captured.flank_bp, 64);
+        assert_eq!(captured.overlap_bp, 29);
+        assert_eq!(captured.insert_bp, 6);
     }
 
     #[test]
@@ -4774,6 +4835,8 @@ pub struct MainAreaDna {
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
     primer3_preflight_status: String,
+    last_protocol_cartoon_preview: Option<ProtocolCartoonPreviewTelemetry>,
+    last_protocol_cartoon_preview_op_id: String,
     extract_from: String,
     extract_to: String,
     extract_output_id: String,
@@ -5115,6 +5178,8 @@ impl MainAreaDna {
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
             primer3_preflight_status: String::new(),
+            last_protocol_cartoon_preview: None,
+            last_protocol_cartoon_preview_op_id: String::new(),
             extract_from: "0".to_string(),
             extract_to: "0".to_string(),
             extract_output_id: String::new(),
@@ -21987,6 +22052,10 @@ impl MainAreaDna {
     }
 
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
+        if let Some(preview) = result.protocol_cartoon_preview.as_ref() {
+            self.last_protocol_cartoon_preview = Some(preview.clone());
+            self.last_protocol_cartoon_preview_op_id = result.op_id.clone();
+        }
         if !result.created_seq_ids.is_empty() {
             self.last_created_seq_ids = result.created_seq_ids.clone();
             self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
@@ -24784,6 +24853,83 @@ impl MainAreaDna {
         }
     }
 
+    fn render_protocol_cartoon_preview_svg(
+        preview: &ProtocolCartoonPreviewTelemetry,
+    ) -> Result<String, String> {
+        let protocol = ProtocolCartoonKind::parse_id(&preview.protocol).ok_or_else(|| {
+            format!(
+                "Unknown protocol-cartoon id '{}' in preview payload",
+                preview.protocol
+            )
+        })?;
+        let template = protocol_cartoon_template_for_kind(&protocol);
+        let spec = resolve_protocol_cartoon_template_with_bindings(&template, &preview.bindings)
+            .map_err(|e| {
+                format!(
+                    "Could not resolve protocol-cartoon preview '{}' with bindings: {e}",
+                    preview.protocol
+                )
+            })?;
+        Ok(render_protocol_cartoon_spec_svg(&spec))
+    }
+
+    fn default_protocol_cartoon_preview_file_name(&self) -> String {
+        let protocol = self
+            .last_protocol_cartoon_preview
+            .as_ref()
+            .map(|preview| preview.protocol.trim())
+            .filter(|raw| !raw.is_empty())
+            .unwrap_or("protocol_cartoon");
+        let protocol_token = Self::sanitize_export_name_component(protocol, "protocol_cartoon");
+        let op_token = Self::sanitize_export_name_component(
+            &self.last_protocol_cartoon_preview_op_id,
+            "op",
+        );
+        format!("{protocol_token}.{op_token}.preview.svg")
+    }
+
+    fn export_protocol_cartoon_preview_svg_dialog(&mut self) {
+        let Some(preview) = self.last_protocol_cartoon_preview.as_ref() else {
+            self.op_status =
+                "No protocol-cartoon preview is available yet; run an OE mutagenesis operation first"
+                    .to_string();
+            return;
+        };
+        let default_name = self.default_protocol_cartoon_preview_file_name();
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Protocol-cartoon preview export canceled".to_string();
+            return;
+        };
+        let svg = match Self::render_protocol_cartoon_preview_svg(preview) {
+            Ok(svg) => svg,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Exported protocol-cartoon preview '{}' (op={}) to {}",
+                    preview.protocol,
+                    self.last_protocol_cartoon_preview_op_id,
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not write protocol-cartoon preview SVG to '{}': {}",
+                    path.display(),
+                    err
+                );
+            }
+        }
+    }
+
     fn list_qpcr_design_reports(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -25087,6 +25233,44 @@ impl MainAreaDna {
             "Template: {} (reports are persisted in project metadata)",
             template
         ));
+        ui.group(|ui| {
+            ui.label("Protocol cartoon preview (last operation)");
+            if let Some(preview) = self.last_protocol_cartoon_preview.as_ref() {
+                let op_label = if self.last_protocol_cartoon_preview_op_id.trim().is_empty() {
+                    "-".to_string()
+                } else {
+                    self.last_protocol_cartoon_preview_op_id.clone()
+                };
+                ui.monospace(format!(
+                    "protocol={} | op={} | flank={} bp | overlap={} bp | insert={} bp",
+                    preview.protocol, op_label, preview.flank_bp, preview.overlap_bp, preview.insert_bp
+                ));
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Render + Export SVG...")
+                        .on_hover_text(
+                            "Render this protocol-cartoon preview from bound template geometry and export as SVG",
+                        )
+                        .clicked()
+                    {
+                        self.export_protocol_cartoon_preview_svg_dialog();
+                    }
+                    if ui
+                        .button("Clear preview")
+                        .on_hover_text("Clear currently cached protocol-cartoon preview payload")
+                        .clicked()
+                    {
+                        self.last_protocol_cartoon_preview = None;
+                        self.last_protocol_cartoon_preview_op_id.clear();
+                        self.op_status = "Cleared protocol-cartoon preview payload".to_string();
+                    }
+                });
+            } else {
+                ui.small(
+                    "No preview payload captured yet. OE mutagenesis insertion/replacement operations attach one automatically.",
+                );
+            }
+        });
         ui.group(|ui| {
             ui.label("Primer backend and Primer3 preflight");
             ui.horizontal(|ui| {
