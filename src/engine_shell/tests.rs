@@ -7418,7 +7418,10 @@ fn parse_helpers_remove_catalog_entry() {
             assert!(helper_mode);
             assert_eq!(genome_id, "HelperGenome".to_string());
             assert_eq!(catalog_path, Some("helpers.json".to_string()));
-            assert_eq!(output_catalog_path, Some("helpers.updated.json".to_string()));
+            assert_eq!(
+                output_catalog_path,
+                Some("helpers.updated.json".to_string())
+            );
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -7503,9 +7506,7 @@ fn execute_genomes_update_ensembl_specs_with_no_templates_reports_no_updates() {
     .expect("execute update-ensembl-specs");
     assert!(!out.state_changed);
     assert_eq!(
-        out.output["report"]["updates"]
-            .as_array()
-            .map(Vec::len),
+        out.output["report"]["updates"].as_array().map(Vec::len),
         Some(0)
     );
     assert_eq!(out.output["report"]["wrote_catalog"].as_bool(), Some(true));
@@ -7624,8 +7625,8 @@ fn execute_genomes_remove_catalog_entry_updates_catalog_file() {
     assert!(!out.state_changed);
     assert_eq!(out.output["report"]["removed"].as_bool(), Some(true));
 
-    let genomes = GentleEngine::list_reference_genomes(Some(&catalog_path))
-        .expect("reload edited catalog");
+    let genomes =
+        GentleEngine::list_reference_genomes(Some(&catalog_path)).expect("reload edited catalog");
     assert!(genomes.is_empty());
 }
 
@@ -8646,7 +8647,7 @@ fn parse_transcripts_derive_command() {
 #[test]
 fn parse_rna_reads_commands() {
     let interpret = parse_shell_line(
-            "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --short-max-bp 420 --long-window-bp 140 --long-window-count 3 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
+            "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --seed-stride-bp 1 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
         )
         .expect("parse rna-reads interpret");
     match interpret {
@@ -8675,9 +8676,7 @@ fn parse_rna_reads_commands() {
             assert!(target_gene_ids.is_empty());
             assert!(!roi_seed_capture_enabled);
             assert_eq!(seed_filter.kmer_len, 9);
-            assert_eq!(seed_filter.short_full_hash_max_bp, 420);
-            assert_eq!(seed_filter.long_window_bp, 140);
-            assert_eq!(seed_filter.long_window_count, 3);
+            assert_eq!(seed_filter.seed_stride_bp, 1);
             assert!((seed_filter.min_seed_hit_fraction - 0.30).abs() < f64::EPSILON);
             assert!((seed_filter.min_weighted_seed_hit_fraction - 0.05).abs() < f64::EPSILON);
             assert_eq!(seed_filter.min_unique_matched_kmers, 12);

@@ -3141,9 +3141,6 @@ pub struct RnaReadSeedFilterConfig {
     pub kmer_len: usize,
     #[serde(default = "default_rna_seed_stride_bp")]
     pub seed_stride_bp: usize,
-    pub short_full_hash_max_bp: usize,
-    pub long_window_bp: usize,
-    pub long_window_count: usize,
     pub min_seed_hit_fraction: f64,
     #[serde(default = "default_min_weighted_seed_hit_fraction")]
     pub min_weighted_seed_hit_fraction: f64,
@@ -3168,9 +3165,6 @@ impl Default for RnaReadSeedFilterConfig {
         Self {
             kmer_len: 10,
             seed_stride_bp: 1,
-            short_full_hash_max_bp: 420,
-            long_window_bp: 140,
-            long_window_count: 3,
             min_seed_hit_fraction: 0.30,
             min_weighted_seed_hit_fraction: 0.05,
             min_unique_matched_kmers: 12,

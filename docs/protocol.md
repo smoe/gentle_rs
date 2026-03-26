@@ -2203,8 +2203,6 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - full-read hashing is always used for every read
     - seed-start density is controlled by `seed_stride_bp`
     - default density is one start per base (`seed_stride_bp=1`)
-    - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
-      remain compatibility fields and currently have no runtime effect
   - sparse-origin behavior:
     - `origin_mode` accepts `single_gene|multi_gene_sparse` (default
       `single_gene`)

@@ -32,20 +32,19 @@ use crate::{
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
         DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
-        GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignSideConstraint, ProjectState, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
@@ -6063,7 +6062,7 @@ impl ShellCommand {
                 checkpoint_every_reads,
                 resume_from_checkpoint,
             } => format!(
-                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, origin_mode={}, report_mode={}, target_genes={}, roi_seed_capture={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}', checkpoint_path='{}', checkpoint_every_reads={}, resume_from_checkpoint={})",
+                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, origin_mode={}, report_mode={}, target_genes={}, roi_seed_capture={}, k={}, seed_stride_bp={}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}', checkpoint_path='{}', checkpoint_every_reads={}, resume_from_checkpoint={})",
                 input_path,
                 seq_id,
                 seed_feature_id,
@@ -6075,9 +6074,7 @@ impl ShellCommand {
                 target_gene_ids.len(),
                 roi_seed_capture_enabled,
                 seed_filter.kmer_len,
-                seed_filter.short_full_hash_max_bp,
-                seed_filter.long_window_bp,
-                seed_filter.long_window_count,
+                seed_filter.seed_stride_bp,
                 seed_filter.min_seed_hit_fraction,
                 seed_filter.min_weighted_seed_hit_fraction,
                 seed_filter.min_unique_matched_kmers,
@@ -8372,9 +8369,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         let raw = parse_option_path(tokens, &mut idx, "--extract-mode", label)?;
                         let mode = match raw.trim().to_ascii_lowercase().as_str() {
                             "gene" => GenomeGeneExtractMode::Gene,
-                            "coding_with_promoter" => {
-                                GenomeGeneExtractMode::CodingWithPromoter
-                            }
+                            "coding_with_promoter" => GenomeGeneExtractMode::CodingWithPromoter,
                             other => {
                                 return Err(format!(
                                     "Invalid --extract-mode value '{other}' for {label} extract-gene (expected gene|coding_with_promoter)"

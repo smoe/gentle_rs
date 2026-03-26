@@ -22,16 +22,15 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport, RnaReadIsoformSupportRow,
-        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
-        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry,
-        SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsProgress, Workflow,
+        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
+        RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadOriginMode,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
+        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -588,9 +587,6 @@ struct RnaReadInterpretOpsUiState {
     kmer_len: String,
     #[serde(default = "default_rna_seed_stride_bp_text")]
     seed_stride_bp: String,
-    short_full_hash_max_bp: String,
-    long_window_bp: String,
-    long_window_count: String,
     min_seed_hit_fraction: String,
     min_weighted_seed_hit_fraction: String,
     min_unique_matched_kmers: String,
@@ -768,9 +764,6 @@ impl Default for RnaReadInterpretOpsUiState {
             poly_t_prefix_min_bp: "18".to_string(),
             kmer_len: "10".to_string(),
             seed_stride_bp: "1".to_string(),
-            short_full_hash_max_bp: "420".to_string(),
-            long_window_bp: "140".to_string(),
-            long_window_count: "3".to_string(),
             min_seed_hit_fraction: "0.30".to_string(),
             min_weighted_seed_hit_fraction: "0.05".to_string(),
             min_unique_matched_kmers: "12".to_string(),
@@ -1161,9 +1154,8 @@ mod tests {
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
             ProtocolCartoonPreviewTelemetry, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
             RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInterpretProgress,
-            RnaReadInterpretationHit,
-            RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadMappingHit,
-            SplicingScopePreset,
+            RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadIsoformSupportRow,
+            RnaReadMappingHit, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -3433,8 +3425,6 @@ mod tests {
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.rna_reads_ui.kmer_len, "10");
         assert_eq!(decoded.rna_reads_ui.seed_stride_bp, "1");
-        assert_eq!(decoded.rna_reads_ui.short_full_hash_max_bp, "420");
-        assert_eq!(decoded.rna_reads_ui.long_window_bp, "140");
         assert_eq!(decoded.rna_reads_ui.min_seed_hit_fraction, "0.30");
         assert_eq!(decoded.rna_reads_ui.min_unique_matched_kmers, "12");
         assert_eq!(decoded.rna_reads_ui.min_chain_consistency_fraction, "0.40");
@@ -3603,7 +3593,7 @@ mod tests {
         assert_eq!(area.rna_reads_ui.seed_stride_bp, "1");
         assert_eq!(area.dotplot_ui.word_size, "9");
         assert_eq!(area.dotplot_ui.step_bp, "1");
-        assert_eq!(area.dotplot_ui.max_mismatches, "1");
+        assert_eq!(area.dotplot_ui.max_mismatches, "0");
         assert!(area.dotplot_ui.tile_bp.is_empty());
         assert!(area.rna_reads_ui.show_advanced);
     }
@@ -16262,7 +16252,7 @@ impl MainAreaDna {
                         if ui
                             .small_button("Dense 9-mer similarity preset")
                             .on_hover_text(
-                                "Set RNA-read hashing to k=9/stride=1 and RNA-read dotplots to word=9/step=1/max mismatches=1. This keeps dense ordered overlap while staying less promiscuous than 7-mers.",
+                                "Set RNA-read hashing to exact dense 9-mers (k=9/stride=1) and RNA-read dotplots to exact dense 9-mers too (word=9/step=1/max mismatches=0).",
                             )
                             .clicked()
                         {
@@ -16301,13 +16291,6 @@ impl MainAreaDna {
                         }
                     });
                     if self.rna_reads_ui.show_advanced {
-                        ui.small(
-                            egui::RichText::new(
-                                "Phase-1 note: full-read hashing is always used; hash stride is active, while short/long window fields remain compatibility no-ops.",
-                            )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                        );
-                        ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
                             ui.label("k-mer").on_hover_text(
                                 "Seed length used for phase-1 hash matching.",
@@ -16331,44 +16314,6 @@ impl MainAreaDna {
                                 )
                                 .on_hover_text(
                                     "Phase-1 hash-density knob. Default 1 = one seed start per base.",
-                                )
-                                .changed();
-                            ui.label("short<").on_hover_text(
-                                "Compatibility field in phase-1 (no runtime effect).",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.short_full_hash_max_bp,
-                                    )
-                                    .desired_width(54.0),
-                                )
-                                .on_hover_text(
-                                    "Legacy short-read threshold retained for compatibility; ignored in full-read hashing mode.",
-                                )
-                                .changed();
-                            ui.label("long window").on_hover_text(
-                                "Compatibility field in phase-1 (no runtime effect).",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_bp)
-                                        .desired_width(54.0),
-                                )
-                                .on_hover_text(
-                                    "Legacy sampling window size retained for compatibility; ignored in full-read hashing mode.",
-                                )
-                                .changed();
-                            ui.label("count").on_hover_text(
-                                "Compatibility field in phase-1 (no runtime effect).",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_count)
-                                        .desired_width(42.0),
-                                )
-                                .on_hover_text(
-                                    "Legacy number of windows retained for compatibility; ignored in full-read hashing mode.",
                                 )
                                 .changed();
                             ui.label("min hit").on_hover_text(
@@ -16511,8 +16456,8 @@ impl MainAreaDna {
                                     "Default 1 = every possible start; larger values make the dotplot sparser and faster.",
                                 )
                                 .changed();
-                            ui.label("dotplot mismatches").on_hover_text(
-                                "Allowed mismatches per exported dotplot word. Raising this can rescue weak similarity that would otherwise produce empty plots.",
+                            ui.label("dotplot mismatches (0=exact)").on_hover_text(
+                                "Allowed mismatches per exported dotplot word. Keep this at 0 for exact words only; raise it only when you deliberately want a more tolerant, slower search.",
                             );
                             persist_ui_state |= ui
                                 .add(
@@ -16522,7 +16467,7 @@ impl MainAreaDna {
                                     .desired_width(52.0),
                                 )
                                 .on_hover_text(
-                                    "0 = exact words only; 1 often helps for noisy cDNA-vs-genome comparisons.",
+                                    "0 = exact words only. Increasing this allows inexact word matches and usually slows the dotplot search.",
                                 )
                                 .changed();
                             ui.label("dotplot tile").on_hover_text(
@@ -17308,11 +17253,11 @@ impl MainAreaDna {
         self.rna_reads_ui.seed_stride_bp = "1".to_string();
         self.dotplot_ui.word_size = "9".to_string();
         self.dotplot_ui.step_bp = "1".to_string();
-        self.dotplot_ui.max_mismatches = "1".to_string();
+        self.dotplot_ui.max_mismatches = "0".to_string();
         self.dotplot_ui.tile_bp.clear();
         self.rna_reads_ui.show_advanced = true;
         self.op_status =
-            "Applied dense 9-mer similarity preset for RNA-read hashing and dotplots".to_string();
+            "Applied dense exact 9-mer preset for RNA-read hashing and dotplots".to_string();
     }
 
     fn reset_rna_read_dotplot_parameters_to_defaults(&mut self) {
@@ -17353,7 +17298,7 @@ impl MainAreaDna {
             self.rna_reads_ui.seed_stride_bp.trim().parse::<usize>(),
         ) {
             (Ok(kmer_len), Ok(seed_stride_bp)) if kmer_len > 0 && seed_stride_bp > 0 => format!(
-                "Hashing now: k={} stride={} | {} | full-read hashing; short/long window fields are compatibility no-ops",
+                "Hashing now: k={} stride={} | {}",
                 kmer_len,
                 seed_stride_bp,
                 Self::describe_ordered_window_overlap(kmer_len, seed_stride_bp),
@@ -17373,10 +17318,15 @@ impl MainAreaDna {
             self.dotplot_ui.step_bp.trim().parse::<usize>(),
         ) {
             (Ok(word_size), Ok(step_bp)) if word_size > 0 && step_bp > 0 => format!(
-                "RNA-read dotplots now: word={} step={} mismatches={} tile={} | {}",
+                "RNA-read dotplots now: word={} step={} mismatches={} ({}) tile={} | {}",
                 word_size,
                 step_bp,
                 self.dotplot_ui.max_mismatches.trim(),
+                if self.dotplot_ui.max_mismatches.trim() == "0" {
+                    "exact words only"
+                } else {
+                    "inexact words allowed"
+                },
                 if tile.is_empty() { "off" } else { tile },
                 Self::describe_ordered_window_overlap(word_size, step_bp),
             ),
@@ -18980,16 +18930,6 @@ impl MainAreaDna {
         }
         let seed_stride_bp =
             Self::parse_positive_usize_text(&self.rna_reads_ui.seed_stride_bp, "seed_stride_bp")?;
-        let short_full_hash_max_bp = Self::parse_positive_usize_text(
-            &self.rna_reads_ui.short_full_hash_max_bp,
-            "short_full_hash_max_bp",
-        )?;
-        let long_window_bp =
-            Self::parse_positive_usize_text(&self.rna_reads_ui.long_window_bp, "long_window_bp")?;
-        let long_window_count = Self::parse_positive_usize_text(
-            &self.rna_reads_ui.long_window_count,
-            "long_window_count",
-        )?;
         let min_seed_hit_fraction = match Self::parse_required_f64_text(
             &self.rna_reads_ui.min_seed_hit_fraction,
             "min_seed_hit_fraction",
@@ -19111,9 +19051,6 @@ impl MainAreaDna {
             seed_filter: RnaReadSeedFilterConfig {
                 kmer_len,
                 seed_stride_bp,
-                short_full_hash_max_bp,
-                long_window_bp,
-                long_window_count,
                 min_seed_hit_fraction,
                 min_weighted_seed_hit_fraction,
                 min_unique_matched_kmers,

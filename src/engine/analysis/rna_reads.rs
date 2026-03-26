@@ -2466,10 +2466,7 @@ impl GentleEngine {
         Some(bits)
     }
 
-    pub(super) fn sampled_read_windows(
-        read_len: usize,
-        _seed_filter: &RnaReadSeedFilterConfig,
-    ) -> Vec<(usize, usize)> {
+    pub(super) fn full_read_hash_windows(read_len: usize) -> Vec<(usize, usize)> {
         if read_len == 0 {
             return vec![];
         }
@@ -4998,8 +4995,7 @@ impl GentleEngine {
                 cumulative_read_bases_processed.saturating_add(normalized_sequence.len() as u64);
             Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
             let seed_started = Instant::now();
-            let windows =
-                Self::sampled_read_windows(normalized_sequence.len(), &report.seed_filter);
+            let windows = Self::full_read_hash_windows(normalized_sequence.len());
             let mut tested_kmers = 0usize;
             let mut matched_kmers = 0usize;
             let mut matched_seed_bits = HashSet::<u32>::new();
@@ -6039,7 +6035,7 @@ impl GentleEngine {
                 cumulative_read_bases_processed = cumulative_read_bases_processed
                     .saturating_add(normalized_sequence.len() as u64);
                 Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
-                let windows = Self::sampled_read_windows(normalized_sequence.len(), seed_filter);
+                let windows = Self::full_read_hash_windows(normalized_sequence.len());
                 let mut tested_kmers = 0usize;
                 let mut matched_kmers = 0usize;
                 let mut matched_seed_bits = HashSet::<u32>::new();

@@ -2661,7 +2661,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
-                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
                         .to_string(),
                 );
             }
@@ -2804,42 +2804,16 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             format!("Invalid --kmer-len value '{raw}' for rna-reads interpret: {e}")
                         })?;
                     }
-                    "--short-max-bp" => {
+                    "--seed-stride-bp" => {
                         let raw = parse_option_path(
                             tokens,
                             &mut idx,
-                            "--short-max-bp",
+                            "--seed-stride-bp",
                             "rna-reads interpret",
                         )?;
-                        seed_filter.short_full_hash_max_bp = raw.parse::<usize>().map_err(|e| {
+                        seed_filter.seed_stride_bp = raw.parse::<usize>().map_err(|e| {
                             format!(
-                                "Invalid --short-max-bp value '{raw}' for rna-reads interpret: {e}"
-                            )
-                        })?;
-                    }
-                    "--long-window-bp" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--long-window-bp",
-                            "rna-reads interpret",
-                        )?;
-                        seed_filter.long_window_bp = raw.parse::<usize>().map_err(|e| {
-                            format!(
-                                "Invalid --long-window-bp value '{raw}' for rna-reads interpret: {e}"
-                            )
-                        })?;
-                    }
-                    "--long-window-count" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--long-window-count",
-                            "rna-reads interpret",
-                        )?;
-                        seed_filter.long_window_count = raw.parse::<usize>().map_err(|e| {
-                            format!(
-                                "Invalid --long-window-count value '{raw}' for rna-reads interpret: {e}"
+                                "Invalid --seed-stride-bp value '{raw}' for rna-reads interpret: {e}"
                             )
                         })?;
                     }

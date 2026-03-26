@@ -6935,7 +6935,9 @@ fn test_extract_genome_gene_coding_with_promoter_extends_plus_strand_from_first_
         })
         .expect("provenance entry for promoter extract");
     assert_eq!(
-        entry.get("gene_extract_mode").and_then(|value| value.as_str()),
+        entry
+            .get("gene_extract_mode")
+            .and_then(|value| value.as_str()),
         Some("coding_with_promoter")
     );
     assert_eq!(
@@ -13414,7 +13416,7 @@ fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
      -> (bool, f64, f64, usize, usize, usize, usize) {
         let (normalized, _) =
             GentleEngine::normalize_rna_read_sequence_for_scoring(sequence, &seed_filter);
-        let windows = GentleEngine::sampled_read_windows(normalized.len(), &seed_filter);
+        let windows = GentleEngine::full_read_hash_windows(normalized.len());
         let mut tested_kmers = 0usize;
         let mut matched_kmers = 0usize;
         let mut matched_seed_bits = HashSet::<u32>::new();
@@ -13595,26 +13597,38 @@ fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
 }
 
 #[test]
-fn test_sampled_read_windows_phase1_hashes_full_read() {
-    let cfg = RnaReadSeedFilterConfig {
-        short_full_hash_max_bp: 420,
-        long_window_bp: 140,
-        long_window_count: 3,
-        ..RnaReadSeedFilterConfig::default()
-    };
+fn test_full_read_hash_windows_phase1_hashes_full_read() {
     assert_eq!(
-        GentleEngine::sampled_read_windows(0, &cfg),
+        GentleEngine::full_read_hash_windows(0),
         Vec::<(usize, usize)>::new()
     );
-    assert_eq!(GentleEngine::sampled_read_windows(37, &cfg), vec![(0, 37)]);
-    assert_eq!(
-        GentleEngine::sampled_read_windows(420, &cfg),
-        vec![(0, 420)]
-    );
-    assert_eq!(
-        GentleEngine::sampled_read_windows(1200, &cfg),
-        vec![(0, 1200)]
-    );
+    assert_eq!(GentleEngine::full_read_hash_windows(37), vec![(0, 37)]);
+    assert_eq!(GentleEngine::full_read_hash_windows(420), vec![(0, 420)]);
+    assert_eq!(GentleEngine::full_read_hash_windows(1200), vec![(0, 1200)]);
+}
+
+#[test]
+fn test_rna_read_seed_filter_config_ignores_removed_legacy_window_fields_in_json() {
+    let config: RnaReadSeedFilterConfig = serde_json::from_value(serde_json::json!({
+        "kmer_len": 9,
+        "seed_stride_bp": 1,
+        "short_full_hash_max_bp": 420,
+        "long_window_bp": 140,
+        "long_window_count": 3,
+        "min_seed_hit_fraction": 0.30,
+        "min_weighted_seed_hit_fraction": 0.05,
+        "min_unique_matched_kmers": 12,
+        "max_median_transcript_gap": 4.0,
+        "min_chain_consistency_fraction": 0.40,
+        "min_confirmed_exon_transitions": 1,
+        "min_transition_support_fraction": 0.05,
+        "cdna_poly_t_flip_enabled": true,
+        "poly_t_prefix_min_bp": 18
+    }))
+    .expect("legacy JSON with removed window fields should still deserialize");
+    assert_eq!(config.kmer_len, 9);
+    assert_eq!(config.seed_stride_bp, 1);
+    assert!((config.min_seed_hit_fraction - 0.30).abs() < f64::EPSILON);
 }
 
 #[test]
