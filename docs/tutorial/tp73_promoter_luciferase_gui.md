@@ -207,12 +207,12 @@ Background references:
 GUI:
 
 1. open construct preview sequence
-2. set one ROI around the planned promoter/vector junction
-3. use DNA-window `PCR ROI -> Add current selection to queue`
-4. optionally select one or more features and use `PCR ROI -> Add selected feature(s) to queue`
-5. open Engine Operations panel -> `Primer and qPCR design reports`
-6. run `Design Primer Pairs for queued regions` (or `Design Primer Pairs` for one ROI only)
-7. optionally run `Design qPCR Assays`
+2. open `Patterns -> PCR Designer...` (or command palette `PCR Designer`)
+3. in linear map mode, paint one `ROI` (green) around the planned promoter/vector junction
+4. paint one `Upstream` (red) and one `Downstream` (blue) primer window, then use `Add ROI to Queue` (or `Shift+drag` on ROI for immediate queue append)
+5. optionally select one or more features and use DNA-window fallback `PCR ROI -> Add selected feature(s) to queue`
+6. in the right pane `Design primer pairs`, set shared constraints/report base and run `Design Primer Pairs for queued regions` (or one-shot `Design Primer Pairs` for single ROI)
+7. optionally run `Design qPCR Assays` from Engine Ops when quantitative assays are needed
 8. review/export results (`Show` / `Export` / `Open` in PCR batch results, or report helpers by `report_id`)
 
 For a dedicated selection-first walkthrough (multi-region queueing, optional
