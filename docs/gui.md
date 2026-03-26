@@ -575,9 +575,12 @@ Feature tree grouping:
         - mapped exon/junction contribution spans
         - direct actions (`Copy highlighted FASTA`, `Materialize highlighted`,
           `Export dotplot...`)
-      - selected-row actions now also include exact saved-report export:
-        - `Export selected FASTA...`
-        - `Export selected alignments...`
+      - selected-row actions now also include an `Export selected...` menu for
+        exact saved-report subset export:
+        - `FASTA...`
+        - `Alignments TSV...`
+        - `Exon paths TSV...`
+        - `Exon abundance TSV...`
         - after using `Audit`, these exports write exactly the contributor
           reads behind the chosen mapped exon/junction/isoform row
     - `Aggregate support`

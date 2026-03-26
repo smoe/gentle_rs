@@ -544,6 +544,101 @@ enum RnaReadAlignmentEffectSortKey {
     Score,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RnaReadSelectedExportKind {
+    Fasta,
+    AlignmentsTsv,
+    ExonPathsTsv,
+    ExonAbundanceTsv,
+}
+
+impl RnaReadSelectedExportKind {
+    fn menu_label(self) -> &'static str {
+        match self {
+            Self::Fasta => "FASTA...",
+            Self::AlignmentsTsv => "Alignments TSV...",
+            Self::ExonPathsTsv => "Exon paths TSV...",
+            Self::ExonAbundanceTsv => "Exon abundance TSV...",
+        }
+    }
+
+    fn missing_report_message(self) -> &'static str {
+        match self {
+            Self::Fasta => "Set a Report ID first to export selected reads",
+            Self::AlignmentsTsv => "Set a Report ID first to export selected aligned rows",
+            Self::ExonPathsTsv => "Set a Report ID first to export selected exon paths",
+            Self::ExonAbundanceTsv => "Set a Report ID first to export selected exon abundance",
+        }
+    }
+
+    fn empty_selection_message(self) -> &'static str {
+        match self {
+            Self::Fasta => "Select one or more reads first to export selected FASTA",
+            Self::AlignmentsTsv => "Select one or more aligned rows first to export them as TSV",
+            Self::ExonPathsTsv => {
+                "Select one or more aligned rows first to export their exon paths"
+            }
+            Self::ExonAbundanceTsv => {
+                "Select one or more aligned rows first to export their exon abundance"
+            }
+        }
+    }
+
+    fn default_file_name(self, report_id: &str) -> String {
+        match self {
+            Self::Fasta => format!("{report_id}_selected_reads.fa"),
+            Self::AlignmentsTsv => format!("{report_id}_selected_alignments.tsv"),
+            Self::ExonPathsTsv => format!("{report_id}_selected_exon_paths.tsv"),
+            Self::ExonAbundanceTsv => format!("{report_id}_selected_exon_abundance.tsv"),
+        }
+    }
+
+    fn configure_dialog(self, default_name: &str) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new().set_file_name(default_name);
+        match self {
+            Self::Fasta => dialog.add_filter("FASTA", &["fa", "fasta"]),
+            Self::AlignmentsTsv | Self::ExonPathsTsv | Self::ExonAbundanceTsv => {
+                dialog.add_filter("TSV", &["tsv", "txt"])
+            }
+        }
+    }
+
+    fn build_operation(
+        self,
+        report_id: String,
+        path: String,
+        selected_record_indices: Vec<usize>,
+    ) -> Operation {
+        match self {
+            Self::Fasta => Operation::ExportRnaReadHitsFasta {
+                report_id,
+                path,
+                selection: RnaReadHitSelection::Aligned,
+                selected_record_indices,
+            },
+            Self::AlignmentsTsv => Operation::ExportRnaReadAlignmentsTsv {
+                report_id,
+                path,
+                selection: RnaReadHitSelection::Aligned,
+                limit: None,
+                selected_record_indices,
+            },
+            Self::ExonPathsTsv => Operation::ExportRnaReadExonPathsTsv {
+                report_id,
+                path,
+                selection: RnaReadHitSelection::Aligned,
+                selected_record_indices,
+            },
+            Self::ExonAbundanceTsv => Operation::ExportRnaReadExonAbundanceTsv {
+                report_id,
+                path,
+                selection: RnaReadHitSelection::Aligned,
+                selected_record_indices,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct RnaReadAlignmentEffectSummary {
     aligned_rows: usize,
@@ -958,8 +1053,9 @@ mod tests {
             LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
             RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-            RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationReport,
-            RnaReadIsoformSupportRow, RnaReadMappingHit, SplicingScopePreset,
+            RnaReadHitSelection, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadMappingHit,
+            SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -3346,6 +3442,51 @@ mod tests {
             super::RnaReadAlignmentEffectSortKey::Rank
         );
         assert!(area.rna_read_alignment_effect_search.is_empty());
+    }
+
+    #[test]
+    fn rna_read_selected_export_operations_preserve_exact_record_indices() {
+        let selected_record_indices = vec![2usize, 5usize, 9usize];
+
+        let exon_paths = super::RnaReadSelectedExportKind::ExonPathsTsv.build_operation(
+            "report1".to_string(),
+            "/tmp/paths.tsv".to_string(),
+            selected_record_indices.clone(),
+        );
+        match exon_paths {
+            Operation::ExportRnaReadExonPathsTsv {
+                report_id,
+                path,
+                selection,
+                selected_record_indices,
+            } => {
+                assert_eq!(report_id, "report1");
+                assert_eq!(path, "/tmp/paths.tsv");
+                assert_eq!(selection, RnaReadHitSelection::Aligned);
+                assert_eq!(selected_record_indices, vec![2, 5, 9]);
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+
+        let abundance = super::RnaReadSelectedExportKind::ExonAbundanceTsv.build_operation(
+            "report2".to_string(),
+            "/tmp/abundance.tsv".to_string(),
+            selected_record_indices,
+        );
+        match abundance {
+            Operation::ExportRnaReadExonAbundanceTsv {
+                report_id,
+                path,
+                selection,
+                selected_record_indices,
+            } => {
+                assert_eq!(report_id, "report2");
+                assert_eq!(path, "/tmp/abundance.tsv");
+                assert_eq!(selection, RnaReadHitSelection::Aligned);
+                assert_eq!(selected_record_indices, vec![2, 5, 9]);
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
     }
 
     #[test]
@@ -18381,41 +18522,6 @@ impl MainAreaDna {
         });
     }
 
-    fn export_selected_rna_hits_fasta(&mut self) {
-        let report_id = self.rna_reads_ui.report_id.trim().to_string();
-        if report_id.is_empty() {
-            let message = "Set a Report ID first to export selected reads".to_string();
-            self.op_status = message.clone();
-            self.op_error_popup = Some(message);
-            return;
-        }
-        let selected_record_indices = self
-            .rna_seed_selected_record_indices
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        if selected_record_indices.is_empty() {
-            let message = "Select one or more reads first to export selected FASTA".to_string();
-            self.op_status = message.clone();
-            self.op_error_popup = Some(message);
-            return;
-        }
-        let default_name = format!("{report_id}_selected_reads.fa");
-        let Some(path) = rfd::FileDialog::new()
-            .set_file_name(&default_name)
-            .add_filter("FASTA", &["fa", "fasta"])
-            .save_file()
-        else {
-            return;
-        };
-        self.apply_operation_with_feedback(Operation::ExportRnaReadHitsFasta {
-            report_id,
-            path: path.display().to_string(),
-            selection: RnaReadHitSelection::Aligned,
-            selected_record_indices,
-        });
-    }
-
     fn export_rna_read_exon_paths_tsv(&mut self) {
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
         if report_id.is_empty() {
@@ -18492,40 +18598,37 @@ impl MainAreaDna {
         });
     }
 
-    fn export_selected_rna_read_alignments_tsv(&mut self) {
+    fn export_selected_rna_read_subset(&mut self, kind: RnaReadSelectedExportKind) {
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
         if report_id.is_empty() {
-            let message = "Set a Report ID first to export selected aligned rows".to_string();
+            let message = kind.missing_report_message().to_string();
             self.op_status = message.clone();
             self.op_error_popup = Some(message);
             return;
         }
-        let selected_record_indices = self
-            .rna_seed_selected_record_indices
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
+        let selected_record_indices = self.selected_rna_record_indices();
         if selected_record_indices.is_empty() {
-            let message = "Select one or more aligned rows first to export them as TSV".to_string();
+            let message = kind.empty_selection_message().to_string();
             self.op_status = message.clone();
             self.op_error_popup = Some(message);
             return;
         }
-        let default_name = format!("{report_id}_selected_alignments.tsv");
-        let Some(path) = rfd::FileDialog::new()
-            .set_file_name(&default_name)
-            .add_filter("TSV", &["tsv", "txt"])
-            .save_file()
-        else {
+        let default_name = kind.default_file_name(&report_id);
+        let Some(path) = kind.configure_dialog(&default_name).save_file() else {
             return;
         };
-        self.apply_operation_with_feedback(Operation::ExportRnaReadAlignmentsTsv {
+        self.apply_operation_with_feedback(kind.build_operation(
             report_id,
-            path: path.display().to_string(),
-            selection: RnaReadHitSelection::Aligned,
-            limit: None,
+            path.display().to_string(),
             selected_record_indices,
-        });
+        ));
+    }
+
+    fn selected_rna_record_indices(&self) -> Vec<usize> {
+        self.rna_seed_selected_record_indices
+            .iter()
+            .copied()
+            .collect::<Vec<_>>()
     }
 
     fn start_rna_read_interpretation(&mut self, op: Operation) {
@@ -20091,18 +20194,6 @@ impl MainAreaDna {
                     Self::selected_rna_report_hits(report, &self.rna_seed_selected_record_indices);
                 self.copy_rna_report_hits_as_fasta(ui, &hits, "selected report reads");
             }
-            if ui
-                .add_enabled(
-                    selected_count > 0,
-                    egui::Button::new(format!("Export selected FASTA ({selected_count})...")),
-                )
-                .on_hover_text(
-                    "Export exactly the currently selected/audited saved-report reads as FASTA.",
-                )
-                .clicked()
-            {
-                self.export_selected_rna_hits_fasta();
-            }
             if ui.button("Copy highlighted FASTA").clicked() {
                 let hits = self
                     .selected_highlighted_rna_report_hit(report)
@@ -20110,20 +20201,29 @@ impl MainAreaDna {
                     .collect::<Vec<_>>();
                 self.copy_rna_report_hits_as_fasta(ui, &hits, "highlighted aligned read");
             }
-            if ui
-                .add_enabled(
-                    selected_count > 0,
-                    egui::Button::new(format!(
-                        "Export selected alignments ({selected_count})..."
-                    )),
-                )
-                .on_hover_text(
-                    "Export exactly the currently selected/audited aligned rows as TSV.",
-                )
-                .clicked()
-            {
-                self.export_selected_rna_read_alignments_tsv();
-            }
+            ui.menu_button(format!("Export selected ({selected_count})..."), |ui| {
+                if selected_count == 0 {
+                    ui.small("Select one or more aligned/audited rows first.");
+                    ui.separator();
+                }
+                for export_kind in [
+                    RnaReadSelectedExportKind::Fasta,
+                    RnaReadSelectedExportKind::AlignmentsTsv,
+                    RnaReadSelectedExportKind::ExonPathsTsv,
+                    RnaReadSelectedExportKind::ExonAbundanceTsv,
+                ] {
+                    if ui
+                        .add_enabled(
+                            selected_count > 0,
+                            egui::Button::new(export_kind.menu_label()),
+                        )
+                        .clicked()
+                    {
+                        self.export_selected_rna_read_subset(export_kind);
+                        ui.close();
+                    }
+                }
+            });
             if ui
                 .add_enabled(selected_count > 0, egui::Button::new("Materialize selected"))
                 .clicked()
