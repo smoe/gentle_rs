@@ -1316,8 +1316,7 @@ fn render_linear_molecule(
     let mut bottom_spans: Vec<(f32, f32, String)> = vec![];
     let mut top_nicks: Vec<f32> = vec![];
     let mut bottom_nicks: Vec<f32> = vec![];
-    let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String, bool, String, String)> =
-        vec![];
+    let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String, bool, String, String)> = vec![];
     for (feature_idx, feature) in molecule.features.iter().enumerate() {
         let slot_w = if feature_idx + 1 == molecule.features.len() {
             (shared_right - slot_cursor).max(0.5)
@@ -2211,6 +2210,176 @@ fn feature_length_override(
     }
 }
 
+/// Build deterministic geometry bindings for the built-in pair-PCR assay
+/// cartoon (`pcr.assay.pair`).
+///
+/// The three painted spans are mapped as:
+/// - `upstream_window_bp` -> forward-window width
+/// - `roi_bp` -> ROI width
+/// - `downstream_window_bp` -> reverse-window width
+///
+/// Primer-site and margin lengths in the "Primers" and "Product" rows are
+/// derived from window widths while preserving strictly positive feature
+/// lengths.
+pub fn pcr_assay_pair_geometry_bindings(
+    roi_bp: usize,
+    upstream_window_bp: usize,
+    downstream_window_bp: usize,
+) -> ProtocolCartoonTemplateBindings {
+    // Pair-PCR template baseline maxima (see `pcr_assay_pair_spec` constants).
+    const ROI_MAX_BP: usize = 120;
+    const WINDOW_MAX_BP: usize = 30;
+    const CONTEXT_MAX_BP: usize = 74;
+    const PRIMER_SITE_MAX_BP: usize = 18;
+
+    let roi_bp = roi_bp.clamp(1, ROI_MAX_BP);
+    let upstream_window_bp = upstream_window_bp.clamp(2, WINDOW_MAX_BP);
+    let downstream_window_bp = downstream_window_bp.clamp(2, WINDOW_MAX_BP);
+    let primer_site_limit = upstream_window_bp
+        .min(downstream_window_bp)
+        .saturating_sub(1)
+        .max(1);
+    let primer_site_bp = primer_site_limit.min(PRIMER_SITE_MAX_BP);
+    let forward_window_margin_bp = upstream_window_bp.saturating_sub(primer_site_bp).max(1);
+    let reverse_window_margin_bp = downstream_window_bp.saturating_sub(primer_site_bp).max(1);
+    let context_bp =
+        (upstream_window_bp.saturating_add(downstream_window_bp) / 2).clamp(1, CONTEXT_MAX_BP);
+
+    let mut feature_overrides: Vec<ProtocolCartoonTemplateFeatureBinding> = vec![];
+    let mut push = |event_id: &str, molecule_id: &str, feature_id: &str, length_bp: usize| {
+        feature_overrides.push(ProtocolCartoonTemplateFeatureBinding {
+            event_id: event_id.to_string(),
+            molecule_id: molecule_id.to_string(),
+            feature_id: feature_id.to_string(),
+            label: None,
+            length_bp: Some(length_bp.max(1)),
+            top_length_bp: Some(length_bp.max(1)),
+            bottom_length_bp: Some(length_bp.max(1)),
+            color_hex: None,
+            bottom_color_hex: None,
+            top_nick_after: None,
+            bottom_nick_after: None,
+        });
+    };
+
+    // Event 1: context + ROI.
+    push(
+        "context_roi",
+        "template_context",
+        "template_left_context",
+        context_bp,
+    );
+    push("context_roi", "template_context", "roi", roi_bp);
+    push(
+        "context_roi",
+        "template_context",
+        "template_right_context",
+        context_bp,
+    );
+
+    // Event 2: primer-window constraints around ROI.
+    push(
+        "primer_constraints",
+        "template_with_windows",
+        "template_left_context",
+        context_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_windows",
+        "forward_window",
+        upstream_window_bp,
+    );
+    push("primer_constraints", "template_with_windows", "roi", roi_bp);
+    push(
+        "primer_constraints",
+        "template_with_windows",
+        "reverse_window",
+        downstream_window_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_windows",
+        "template_right_context",
+        context_bp,
+    );
+
+    // Event 3: chosen primers within windows.
+    push(
+        "primers",
+        "primer_layout",
+        "template_left_context",
+        context_bp,
+    );
+    push(
+        "primers",
+        "primer_layout",
+        "forward_window_margin",
+        forward_window_margin_bp,
+    );
+    push(
+        "primers",
+        "primer_layout",
+        "forward_primer_site",
+        primer_site_bp,
+    );
+    push("primers", "primer_layout", "amplicon_roi", roi_bp);
+    push(
+        "primers",
+        "primer_layout",
+        "reverse_primer_site",
+        primer_site_bp,
+    );
+    push(
+        "primers",
+        "primer_layout",
+        "reverse_window_margin",
+        reverse_window_margin_bp,
+    );
+    push(
+        "primers",
+        "primer_layout",
+        "template_right_context",
+        context_bp,
+    );
+
+    // Event 4: accepted ROI-bounded amplicon.
+    push(
+        "product",
+        "accepted_amplicon",
+        "forward_primer_site",
+        primer_site_bp,
+    );
+    push("product", "accepted_amplicon", "amplicon_roi", roi_bp);
+    push(
+        "product",
+        "accepted_amplicon",
+        "reverse_primer_site",
+        primer_site_bp,
+    );
+
+    ProtocolCartoonTemplateBindings {
+        schema: protocol_cartoon_template_bindings_schema_id(),
+        template_id: Some(ProtocolCartoonKind::PcrAssayPair.id().to_string()),
+        defaults: ProtocolCartoonTemplateBindingsDefaults::default(),
+        event_overrides: vec![],
+        molecule_overrides: vec![],
+        feature_overrides,
+    }
+}
+
+/// Resolve the built-in pair-PCR template with explicit geometry bindings.
+pub fn pcr_assay_pair_spec_with_geometry(
+    roi_bp: usize,
+    upstream_window_bp: usize,
+    downstream_window_bp: usize,
+) -> Result<ProtocolCartoonSpec, String> {
+    let template = pcr_assay_pair_template();
+    let bindings =
+        pcr_assay_pair_geometry_bindings(roi_bp, upstream_window_bp, downstream_window_bp);
+    resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+}
+
 /// Build deterministic geometry bindings for the built-in overlap-extension
 /// substitution cartoon (`pcr.oe.substitution`).
 ///
@@ -2229,13 +2398,33 @@ pub fn pcr_oe_substitution_geometry_bindings(
 
     let mut feature_overrides: Vec<ProtocolCartoonTemplateFeatureBinding> = vec![];
     let mut push = |event_id: &str, molecule_id: &str, feature_id: &str, length_bp: usize| {
-        feature_overrides.push(feature_length_override(event_id, molecule_id, feature_id, length_bp));
+        feature_overrides.push(feature_length_override(
+            event_id,
+            molecule_id,
+            feature_id,
+            length_bp,
+        ));
     };
 
     // Figure 1 (setup): context and insert lengths.
-    push("starting_segments", "target_dna", "target_left_context", flank_bp);
-    push("starting_segments", "target_dna", "target_right_context", flank_bp);
-    push("starting_segments", "insert_dna", "insert_fragment_y", insert_bp);
+    push(
+        "starting_segments",
+        "target_dna",
+        "target_left_context",
+        flank_bp,
+    );
+    push(
+        "starting_segments",
+        "target_dna",
+        "target_right_context",
+        flank_bp,
+    );
+    push(
+        "starting_segments",
+        "insert_dna",
+        "insert_fragment_y",
+        insert_bp,
+    );
 
     // Figure 2 (primer design): flank and insert geometry + long overlap-bearing primers.
     push(
@@ -5201,6 +5390,24 @@ mod tests {
     }
 
     #[test]
+    fn pair_geometry_bindings_apply_to_windows_and_roi_lengths() {
+        let template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrAssayPair);
+        let bindings = pcr_assay_pair_geometry_bindings(180, 42, 65);
+        let spec = resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+            .expect("resolve pair bindings");
+
+        let constraints = event_by_id(&spec, "primer_constraints");
+        let windows = molecule_by_id(constraints, "template_with_windows");
+        assert_eq!(feature_by_id(windows, "forward_window").length_bp, 30);
+        assert_eq!(feature_by_id(windows, "roi").length_bp, 120);
+        assert_eq!(feature_by_id(windows, "reverse_window").length_bp, 30);
+
+        let product = event_by_id(&spec, "product");
+        let amplicon = molecule_by_id(product, "accepted_amplicon");
+        assert_eq!(feature_by_id(amplicon, "amplicon_roi").length_bp, 120);
+    }
+
+    #[test]
     fn oe_substitution_geometry_bindings_apply_to_core_features() {
         let template = protocol_cartoon_template_for_kind(&ProtocolCartoonKind::PcrOeSubstitution);
         let bindings = pcr_oe_substitution_geometry_bindings(150, 11, 72);
@@ -5220,9 +5427,15 @@ mod tests {
 
         let fig5 = event_by_id(&spec, "anneal_overlap_intermediate");
         let anneal = molecule_by_id(fig5, "annealed_overlap_product");
-        assert_eq!(feature_by_id(anneal, "left_genomic_top_only").length_bp, 150);
+        assert_eq!(
+            feature_by_id(anneal, "left_genomic_top_only").length_bp,
+            150
+        );
         assert_eq!(feature_by_id(anneal, "shared_blue_overlap").length_bp, 11);
-        assert_eq!(feature_by_id(anneal, "insert_green_bottom_only").length_bp, 72);
+        assert_eq!(
+            feature_by_id(anneal, "insert_green_bottom_only").length_bp,
+            72
+        );
         assert_eq!(feature_by_id(anneal, "shared_red_overlap").length_bp, 11);
     }
 

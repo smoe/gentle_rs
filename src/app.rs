@@ -129,6 +129,7 @@ static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
@@ -365,6 +366,10 @@ pub fn request_open_settings_from_native_menu() {
 pub fn request_open_graphics_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(true, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_pcr_design_from_native_menu() {
+    NATIVE_PCR_DESIGN_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn request_open_windows_from_native_menu() {
@@ -793,9 +798,11 @@ pub struct GENtleApp {
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
     show_gibson_dialog: bool,
+    show_pcr_design_dialog: bool,
     show_planning_dialog: bool,
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
+    pcr_design_seq_id: String,
     gibson_destination_seq_id: String,
     gibson_opening_mode: GibsonUiOpeningMode,
     gibson_opening_start_0based: String,
@@ -1874,6 +1881,7 @@ enum CommandPaletteAction {
     OpenBlastGenome,
     OpenGenomeTracks,
     OpenGibson,
+    OpenPcrDesign,
     OpenPlanning,
     OpenRoutineAssistant,
     OpenAgentAssistant,
@@ -2117,9 +2125,11 @@ impl Default for GENtleApp {
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
             show_gibson_dialog: false,
+            show_pcr_design_dialog: false,
             show_planning_dialog: false,
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
+            pcr_design_seq_id: String::new(),
             gibson_destination_seq_id: String::new(),
             gibson_opening_mode: GibsonUiOpeningMode::DefinedSite,
             gibson_opening_start_0based: String::new(),
@@ -2262,6 +2272,10 @@ impl GENtleApp {
 
     fn gibson_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Gibson Viewport")
+    }
+
+    fn pcr_design_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle PCR Designer Viewport")
     }
 
     fn planning_viewport_id() -> ViewportId {
@@ -3334,6 +3348,12 @@ Error: `{err}`"
             } else {
                 self.open_configuration_dialog();
             }
+        }
+    }
+
+    fn consume_native_pcr_design_request(&mut self) {
+        if NATIVE_PCR_DESIGN_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.open_pcr_design_dialog();
         }
     }
 
@@ -4802,6 +4822,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGibson,
             },
             CommandPaletteEntry {
+                title: "PCR Designer".to_string(),
+                detail: "Paint-first pair-PCR specialist with queue and live geometry".to_string(),
+                keywords: "pcr primer pair roi paint queue designer".to_string(),
+                action: CommandPaletteAction::OpenPcrDesign,
+            },
+            CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
@@ -4907,6 +4933,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
             CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
+            CommandPaletteAction::OpenPcrDesign => self.open_pcr_design_dialog(),
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
@@ -5196,6 +5223,8 @@ Error: `{err}`"
             "Track Import focus acquisition"
         } else if viewport_id == Self::gibson_viewport_id() {
             "Gibson focus acquisition"
+        } else if viewport_id == Self::pcr_design_viewport_id() {
+            "PCR Designer focus acquisition"
         } else if viewport_id == Self::planning_viewport_id() {
             "Planning focus acquisition"
         } else if viewport_id == Self::routine_assistant_viewport_id() {
@@ -5803,10 +5832,12 @@ Error: `{err}`"
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
         self.show_gibson_dialog = false;
+        self.show_pcr_design_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.show_agent_assistant_dialog = false;
         self.show_uniprot_dialog = false;
         self.show_genbank_dialog = false;
+        self.pcr_design_seq_id.clear();
         self.gibson_destination_seq_id.clear();
         self.gibson_opening_start_0based.clear();
         self.gibson_opening_end_0based_exclusive.clear();
@@ -6620,6 +6651,28 @@ Error: `{err}`"
         if self.gibson_output_id_hint.trim().is_empty() {
             self.refresh_gibson_output_id_hint_default();
         }
+    }
+
+    fn open_pcr_design_dialog(&mut self) {
+        if self.show_pcr_design_dialog {
+            self.queue_focus_viewport(Self::pcr_design_viewport_id());
+            return;
+        }
+        let target_seq_id = self
+            .active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+        let Some(seq_id) = target_seq_id else {
+            self.app_status =
+                "Cannot open PCR Designer: no active sequence window or project sequence"
+                    .to_string();
+            return;
+        };
+        if self.find_open_sequence_viewport_id(&seq_id).is_none() {
+            self.open_sequence_window(&seq_id);
+        }
+        self.pcr_design_seq_id = seq_id;
+        self.show_pcr_design_dialog = true;
     }
 
     fn open_gibson_dialog(&mut self) {
@@ -8756,6 +8809,7 @@ Error: `{err}`"
             UiIntentTarget::RetrieveGenomeSequence => self.open_reference_genome_retrieve_dialog(),
             UiIntentTarget::BlastGenomeSequence => self.open_reference_genome_blast_dialog(),
             UiIntentTarget::ImportGenomeTrack => self.open_genome_bed_track_dialog(),
+            UiIntentTarget::PcrDesign => self.open_pcr_design_dialog(),
             UiIntentTarget::AgentAssistant => self.open_agent_assistant_dialog(),
             UiIntentTarget::PrepareHelperGenome => self.open_helper_genome_prepare_dialog(),
             UiIntentTarget::RetrieveHelperSequence => self.open_helper_genome_retrieve_dialog(),
@@ -17286,6 +17340,120 @@ Error: `{err}`"
         }
     }
 
+    fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
+        ui.label("Selection-first pair-PCR specialist. Paint ROI/windows on the map and run deterministic primer-pair design queue operations.");
+        if self.pcr_design_seq_id.trim().is_empty() {
+            let target = self
+                .active_dna_window_context()
+                .map(|(seq_id, _)| seq_id)
+                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
+            if let Some(seq_id) = target {
+                self.pcr_design_seq_id = seq_id;
+            }
+        }
+        if self.pcr_design_seq_id.trim().is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                "No sequence is available. Load/open one sequence window first.",
+            );
+            return close_requested;
+        }
+        let seq_id = self.pcr_design_seq_id.trim().to_string();
+        if self.find_open_sequence_viewport_id(&seq_id).is_none() {
+            if ui
+                .button("Open target sequence window")
+                .on_hover_text("Open the sequence window used as PCR Designer context")
+                .clicked()
+            {
+                self.open_sequence_window(&seq_id);
+            }
+            ui.small(format!(
+                "Target sequence window '{}' is not open yet.",
+                seq_id
+            ));
+            return close_requested;
+        }
+        let mut rendered = false;
+        for window in self.windows.values() {
+            let Ok(mut guard) = window.write() else {
+                continue;
+            };
+            if guard.sequence_id().as_deref() == Some(seq_id.as_str()) {
+                guard.render_pcr_designer_specialist(ui, ctx);
+                rendered = true;
+                break;
+            }
+        }
+        if !rendered {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                format!(
+                    "Could not lock sequence window '{}' for PCR designer rendering.",
+                    seq_id
+                ),
+            );
+        }
+        close_requested
+    }
+
+    fn render_pcr_design_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_pcr_design_dialog {
+            return;
+        }
+        let mut open = self.show_pcr_design_dialog;
+        let title = if self.pcr_design_seq_id.trim().is_empty() {
+            "PCR Designer".to_string()
+        } else {
+            format!("PCR Designer — {}", self.pcr_design_seq_id.trim())
+        };
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1200.0, 840.0])
+            .with_min_inner_size([920.0, 620.0]);
+        ctx.show_viewport_immediate(Self::pcr_design_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::pcr_design_viewport_id());
+            if class == egui::ViewportClass::Embedded {
+                let mut close_requested = false;
+                egui::Window::new(title.clone())
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(1200.0, 840.0))
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self.render_pcr_design_contents(ui, ctx)
+                            });
+                    });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_pcr_design_contents(ui, ctx)
+                        });
+                });
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_pcr_design_dialog = open;
+    }
+
     fn render_planning_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Planning");
@@ -21135,6 +21303,18 @@ Error: `{err}`"
                     .to_string(),
             });
         }
+        if self.show_pcr_design_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::pcr_design_viewport_id()),
+                viewport_id: Self::pcr_design_viewport_id(),
+                title: if self.pcr_design_seq_id.trim().is_empty() {
+                    "PCR Designer".to_string()
+                } else {
+                    format!("PCR Designer — {}", self.pcr_design_seq_id.trim())
+                },
+                detail: "Paint-first pair-PCR specialist".to_string(),
+            });
+        }
         if self.show_planning_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::planning_viewport_id()),
@@ -21243,6 +21423,8 @@ Error: `{err}`"
             self.show_genome_bed_track_dialog = true;
         } else if viewport_id == Self::gibson_viewport_id() {
             self.show_gibson_dialog = true;
+        } else if viewport_id == Self::pcr_design_viewport_id() {
+            self.show_pcr_design_dialog = true;
         } else if viewport_id == Self::planning_viewport_id() {
             self.show_planning_dialog = true;
         } else if viewport_id == Self::routine_assistant_viewport_id() {
@@ -21759,6 +21941,16 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_gibson_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button("PCR Designer...")
+                    .on_hover_text(
+                        "Open paint-first pair-PCR specialist window (ROI + primer windows + queue)",
+                    )
+                    .clicked()
+                {
+                    self.open_pcr_design_dialog();
                     ui.close();
                 }
                 if ui
@@ -31155,6 +31347,7 @@ impl eframe::App for GENtleApp {
             about::install_native_app_windows_menu_bridge();
             self.consume_native_help_request();
             self.consume_native_settings_request();
+            self.consume_native_pcr_design_request();
             self.consume_native_windows_request();
             self.consume_active_viewport_report();
             if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
@@ -31309,6 +31502,7 @@ impl eframe::App for GENtleApp {
             self.render_pending_catalog_entry_removal_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
+            self.render_pcr_design_dialog(ctx);
             self.render_planning_dialog(ctx);
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
@@ -34189,6 +34383,13 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_pcr_designer_entry() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(entries.iter().any(|entry| entry.title == "PCR Designer"));
+    }
+
+    #[test]
     fn execute_command_palette_action_opens_routine_assistant_dialog() {
         let mut app = GENtleApp::default();
         app.routine_assistant_candidates
@@ -34224,6 +34425,41 @@ mod tests {
         );
 
         assert!(app.show_gibson_dialog);
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_pcr_design_dialog() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq1".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenPcrDesign,
+        );
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq1");
+    }
+
+    #[test]
+    fn open_pcr_design_dialog_focuses_existing_window_without_resetting_context() {
+        let mut app = GENtleApp::default();
+        app.show_pcr_design_dialog = true;
+        app.pcr_design_seq_id = "seq_context".to_string();
+
+        app.open_pcr_design_dialog();
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_context");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
     }
 
     #[test]

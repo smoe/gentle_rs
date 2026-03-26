@@ -514,6 +514,18 @@ order. Durable architecture constraints and decisions remain in
     action beside `Extract Sel` so the current linear selection can be queued
     without opening the menu first; the map area also shows an inline
     selection-ready hint when a non-empty span exists
+  - paint-first PCR coordinate UX baseline is now in place (pair-PCR v1):
+    - fixed semantic paint roles on linear DNA map:
+      ROI (green), upstream primer window (red), downstream primer window (blue)
+    - drag paints one interval for the selected role and shows live
+      `start..end (len bp)` overlay text
+    - `Shift+drag` on ROI immediately appends queue row metadata; `Option/Alt+drag`
+      preserves pan behavior with higher priority than paint
+    - post-drag action chip now exposes:
+      `Set PCR ROI`, `Add ROI to Queue`, `Open PCR Designer`
+    - pair-PCR live geometry preview in the primer panel now resolves through
+      `pcr_assay_pair_geometry_bindings(...)` with deterministic clamping to
+      baseline template maxima
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
@@ -528,6 +540,13 @@ order. Durable architecture constraints and decisions remain in
   - GUI primer/qPCR forms now include field-level hover help for ROI,
     side/pair constraints, and motif-format expectations (IUPAC + comma-separated
     examples), including `require ROI flanking`
+  - dedicated PCR Designer specialist window is now available:
+    - `Patterns -> PCR Designer...` and command palette `PCR Designer`
+    - sequence-context aware dedicated viewport with paint controls + map +
+      queue summary on left and pair-PCR constraints/run/report panel on right
+    - qPCR remains in the existing Engine Ops panel for this v1 scope
+    - shared-shell UI intents now include:
+      `ui open pcr-design` and `ui focus pcr-design`
   - single-run GUI `Design Primer Pairs` execution now runs asynchronously in a
     background worker to keep the sequence window responsive while Primer3 is
     running

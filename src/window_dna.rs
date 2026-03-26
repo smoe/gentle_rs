@@ -252,6 +252,10 @@ impl WindowDna {
         self.main_area.collect_open_auxiliary_window_entries()
     }
 
+    pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.main_area.render_pcr_designer_specialist(ui, ctx);
+    }
+
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
         self.main_area.set_pool_context(pool_seq_ids);
     }

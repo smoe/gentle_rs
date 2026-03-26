@@ -11,6 +11,7 @@
 //!   without becoming a second engine
 
 use crate::{
+    app::request_open_pcr_design_from_native_menu,
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     engine::{
@@ -20,15 +21,15 @@ use crate::{
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-        RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadOriginMode,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
-        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
-        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
-        ProtocolCartoonPreviewTelemetry,
+        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
+        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionRow, RnaReadExonSupportFrequency, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport, RnaReadIsoformSupportRow,
+        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
+        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry,
+        SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
+        TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -51,7 +52,8 @@ use crate::{
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
     protocol_cartoon::{
-        ProtocolCartoonKind, protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
+        ProtocolCartoonKind, pcr_assay_pair_geometry_bindings, pcr_assay_pair_spec_with_geometry,
+        protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
         resolve_protocol_cartoon_template_with_bindings,
     },
     render_dna::{RenderDna, RestrictionEnzymePosition},
@@ -312,6 +314,93 @@ impl PcrBatchResultRowUiState {
         } else {
             "copy:none"
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum PcrPaintRole {
+    #[default]
+    Roi,
+    UpstreamPrimerWindow,
+    DownstreamPrimerWindow,
+}
+
+impl PcrPaintRole {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Roi => "ROI",
+            Self::UpstreamPrimerWindow => "Upstream primer window",
+            Self::DownstreamPrimerWindow => "Downstream primer window",
+        }
+    }
+
+    fn short_label(self) -> &'static str {
+        match self {
+            Self::Roi => "ROI",
+            Self::UpstreamPrimerWindow => "Upstream",
+            Self::DownstreamPrimerWindow => "Downstream",
+        }
+    }
+
+    fn color(self) -> egui::Color32 {
+        match self {
+            Self::Roi => egui::Color32::from_rgb(68, 153, 88),
+            Self::UpstreamPrimerWindow => egui::Color32::from_rgb(198, 72, 78),
+            Self::DownstreamPrimerWindow => egui::Color32::from_rgb(72, 124, 186),
+        }
+    }
+
+    fn source_label(self) -> &'static str {
+        match self {
+            Self::Roi => "painted ROI",
+            Self::UpstreamPrimerWindow => "painted upstream window",
+            Self::DownstreamPrimerWindow => "painted downstream window",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Roi => "Green role. Drag on linear map to paint one PCR ROI interval.",
+            Self::UpstreamPrimerWindow => {
+                "Red role. Drag on linear map to paint one upstream primer-window interval."
+            }
+            Self::DownstreamPrimerWindow => {
+                "Blue role. Drag on linear map to paint one downstream primer-window interval."
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PcrPaintIntervalsUiState {
+    roi: Option<(usize, usize)>,
+    upstream_window: Option<(usize, usize)>,
+    downstream_window: Option<(usize, usize)>,
+}
+
+impl PcrPaintIntervalsUiState {
+    fn get(&self, role: PcrPaintRole) -> Option<(usize, usize)> {
+        match role {
+            PcrPaintRole::Roi => self.roi,
+            PcrPaintRole::UpstreamPrimerWindow => self.upstream_window,
+            PcrPaintRole::DownstreamPrimerWindow => self.downstream_window,
+        }
+    }
+
+    fn set(&mut self, role: PcrPaintRole, interval: Option<(usize, usize)>) {
+        match role {
+            PcrPaintRole::Roi => self.roi = interval,
+            PcrPaintRole::UpstreamPrimerWindow => self.upstream_window = interval,
+            PcrPaintRole::DownstreamPrimerWindow => self.downstream_window = interval,
+        }
+    }
+
+    fn clear_all(&mut self) {
+        self.roi = None;
+        self.upstream_window = None;
+        self.downstream_window = None;
     }
 }
 
@@ -787,6 +876,10 @@ struct EngineOpsUiState {
     #[serde(default)]
     pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
     #[serde(default)]
+    pcr_paint_role: PcrPaintRole,
+    #[serde(default)]
+    pcr_paint_intervals: PcrPaintIntervalsUiState,
+    #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
     #[serde(default = "default_primer_backend_auto")]
     primer_backend: PrimerDesignBackend,
@@ -1054,7 +1147,9 @@ struct EngineOpsUiState {
 
 #[cfg(test)]
 mod tests {
-    use super::{DnaPresentationMode, MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
+    use super::{
+        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, ViewSvgExportProfile,
+    };
     use crate::{
         dna_display::Selection,
         dna_sequence::DNAsequence,
@@ -1062,9 +1157,9 @@ mod tests {
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
             LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry,
-            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-            RnaReadHitSelection, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            ProtocolCartoonPreviewTelemetry, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+            RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInterpretProgress,
+            RnaReadInterpretationHit,
             RnaReadInterpretationReport, RnaReadIsoformSupportRow, RnaReadMappingHit,
             SplicingScopePreset,
         },
@@ -1639,6 +1734,57 @@ mod tests {
         assert_eq!(area.primer_design_ui.roi_start_0based, "15");
         assert_eq!(area.primer_design_ui.roi_end_0based, "75");
         assert!(area.show_engine_ops);
+    }
+
+    #[test]
+    fn painted_role_interval_updates_selected_role_only() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        area.apply_pcr_painted_interval_0based(PcrPaintRole::Roi, 20, 90, false);
+        area.apply_pcr_painted_interval_0based(PcrPaintRole::UpstreamPrimerWindow, 5, 30, false);
+        area.apply_pcr_painted_interval_0based(
+            PcrPaintRole::DownstreamPrimerWindow,
+            90,
+            130,
+            false,
+        );
+
+        assert_eq!(area.pcr_paint_intervals.roi, Some((20, 90)));
+        assert_eq!(area.pcr_paint_intervals.upstream_window, Some((5, 30)));
+        assert_eq!(area.pcr_paint_intervals.downstream_window, Some((90, 130)));
+    }
+
+    #[test]
+    fn shift_drag_roi_behavior_queues_region_immediately() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.pcr_paint_role = PcrPaintRole::Roi;
+
+        area.finalize_pcr_map_drag_paint(PcrPaintRole::Roi, 25, 80, true);
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 1);
+        let queued = &area.pcr_queued_regions_ui[0];
+        assert_eq!(queued.template, "seq1");
+        assert_eq!(queued.start_0based, 25);
+        assert_eq!(queued.end_0based_exclusive, 81);
+        assert_eq!(queued.source_label, "painted ROI (shift+drag)");
+    }
+
+    #[test]
+    fn painted_pair_geometry_requires_all_three_regions() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.apply_pcr_painted_interval_0based(PcrPaintRole::Roi, 20, 90, false);
+        area.apply_pcr_painted_interval_0based(PcrPaintRole::UpstreamPrimerWindow, 5, 30, false);
+        assert!(area.painted_pair_geometry_bp().is_none());
+        area.apply_pcr_painted_interval_0based(
+            PcrPaintRole::DownstreamPrimerWindow,
+            90,
+            120,
+            false,
+        );
+        assert_eq!(area.painted_pair_geometry_bp(), Some((70, 25, 30)));
     }
 
     #[test]
@@ -4831,6 +4977,10 @@ pub struct MainAreaDna {
     pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
     pcr_batch_create_extract_copies: bool,
     pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
+    pcr_paint_role: PcrPaintRole,
+    pcr_paint_intervals: PcrPaintIntervalsUiState,
+    pcr_paint_drag_interval: Option<(PcrPaintRole, usize, usize)>,
+    pcr_paint_last_drag_interval: Option<(PcrPaintRole, usize, usize)>,
     qpcr_design_ui: QpcrDesignOpsUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -5174,6 +5324,10 @@ impl MainAreaDna {
             pcr_queued_regions_ui: vec![],
             pcr_batch_create_extract_copies: false,
             pcr_batch_results_ui: vec![],
+            pcr_paint_role: PcrPaintRole::default(),
+            pcr_paint_intervals: PcrPaintIntervalsUiState::default(),
+            pcr_paint_drag_interval: None,
+            pcr_paint_last_drag_interval: None,
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -7411,6 +7565,7 @@ impl MainAreaDna {
                         ui.close();
                     }
                 });
+                self.render_pcr_paint_role_controls(ui, true);
             }
             if allow_derivation_tools {
                 if ui
@@ -8042,7 +8197,7 @@ impl MainAreaDna {
                 egui::CollapsingHeader::new("Primer and qPCR design reports")
                     .default_open(true)
                     .show(ui, |ui| {
-                        self.render_primer_design_ops(ui);
+                        self.render_primer_design_ops(ui, true);
                     });
 
                 egui::CollapsingHeader::new("Region extraction and engine settings")
@@ -9726,6 +9881,402 @@ impl MainAreaDna {
             return None;
         }
         Some((start, end_exclusive))
+    }
+
+    fn pcr_paint_interval_for_role(&self, role: PcrPaintRole) -> Option<(usize, usize)> {
+        self.pcr_paint_intervals.get(role)
+    }
+
+    fn set_pcr_paint_interval_for_role(
+        &mut self,
+        role: PcrPaintRole,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        let normalized = self.normalize_roi_range_0based(start, end_exclusive)?;
+        self.pcr_paint_intervals.set(role, Some(normalized));
+        Some(normalized)
+    }
+
+    fn clear_pcr_paint_interval_for_role(&mut self, role: PcrPaintRole) {
+        self.pcr_paint_intervals.set(role, None);
+    }
+
+    fn clear_all_pcr_paint_intervals(&mut self) {
+        self.pcr_paint_intervals.clear_all();
+    }
+
+    fn painted_pair_geometry_bp(&self) -> Option<(usize, usize, usize)> {
+        let roi = self.pcr_paint_intervals.roi?;
+        let upstream = self.pcr_paint_intervals.upstream_window?;
+        let downstream = self.pcr_paint_intervals.downstream_window?;
+        let roi_len = roi.1.saturating_sub(roi.0);
+        let upstream_len = upstream.1.saturating_sub(upstream.0);
+        let downstream_len = downstream.1.saturating_sub(downstream.0);
+        if roi_len == 0 || upstream_len == 0 || downstream_len == 0 {
+            return None;
+        }
+        Some((roi_len, upstream_len, downstream_len))
+    }
+
+    fn queue_painted_roi_from_interval(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+        source_label: &str,
+    ) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        match self.queue_pcr_region(&template, start, end_exclusive, source_label) {
+            Ok(true) => {
+                self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                self.show_engine_ops = true;
+                self.op_status = format!(
+                    "Queued PCR region from {source_label}: {start}..{end_exclusive} (0-based, end-exclusive)"
+                );
+                self.save_engine_ops_state();
+            }
+            Ok(false) => {
+                self.op_status = format!(
+                    "PCR region already queued for template '{}': {}..{}",
+                    template, start, end_exclusive
+                );
+            }
+            Err(message) => {
+                self.op_status = format!("Could not queue PCR region: {message}");
+            }
+        }
+    }
+
+    fn apply_pcr_painted_interval_0based(
+        &mut self,
+        role: PcrPaintRole,
+        start: usize,
+        end_exclusive: usize,
+        queue_immediately: bool,
+    ) {
+        let Some((start, end_exclusive)) =
+            self.set_pcr_paint_interval_for_role(role, start, end_exclusive)
+        else {
+            self.op_status = format!(
+                "Could not paint {} interval: invalid range {}..{}",
+                role.label(),
+                start,
+                end_exclusive
+            );
+            return;
+        };
+        self.pcr_paint_last_drag_interval = Some((role, start, end_exclusive));
+        if role == PcrPaintRole::Roi && queue_immediately {
+            self.queue_painted_roi_from_interval(start, end_exclusive, "painted ROI (shift+drag)");
+            self.pcr_paint_drag_interval = None;
+            return;
+        }
+        self.op_status = format!(
+            "Painted {} interval: {}..{} (len {} bp)",
+            role.label(),
+            start,
+            end_exclusive,
+            end_exclusive.saturating_sub(start)
+        );
+        self.save_engine_ops_state();
+    }
+
+    fn finalize_pcr_map_drag_paint(
+        &mut self,
+        role: PcrPaintRole,
+        anchor_bp: usize,
+        current_bp: usize,
+        queue_immediately: bool,
+    ) {
+        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if seq_len == 0 {
+            return;
+        }
+        let start = anchor_bp.min(current_bp).min(seq_len.saturating_sub(1));
+        let end_exclusive = anchor_bp.max(current_bp).saturating_add(1).min(seq_len);
+        if end_exclusive <= start {
+            return;
+        }
+        self.apply_pcr_painted_interval_0based(role, start, end_exclusive, queue_immediately);
+    }
+
+    fn handle_linear_map_drag_for_pcr_paint(
+        &mut self,
+        response: &egui::Response,
+        ctx: &egui::Context,
+    ) {
+        let option_pan_modifier =
+            ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
+        if response.drag_started() {
+            if option_pan_modifier {
+                self.linear_pan_drag_origin_bp = Some((
+                    self.current_linear_viewport().0,
+                    if ENABLE_LINEAR_VERTICAL_PAN {
+                        self.current_linear_vertical_offset_px()
+                    } else {
+                        0.0
+                    },
+                ));
+                self.linear_drag_selection_anchor_bp = None;
+                self.pcr_paint_drag_interval = None;
+            } else if let Some(pos) = response.interact_pointer_pos()
+                && let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
+            {
+                self.linear_drag_selection_anchor_bp = Some(bp);
+                self.linear_pan_drag_origin_bp = None;
+                self.update_linear_drag_selection(bp, bp);
+                self.pcr_paint_drag_interval =
+                    Some((self.pcr_paint_role, bp, bp.saturating_add(1)));
+                self.clear_feature_focus_keep_map_selection();
+            }
+        }
+        if response.dragged() {
+            if let Some((start_bp, start_vertical_offset_px)) = self.linear_pan_drag_origin_bp {
+                let (_, span_bp, sequence_length) = self.current_linear_viewport();
+                if sequence_length > span_bp {
+                    let delta_bp = ((-response.drag_delta().x / response.rect.width().max(1.0))
+                        * span_bp as f32)
+                        .round() as isize;
+                    let max_start = sequence_length.saturating_sub(span_bp) as isize;
+                    let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
+                    self.set_linear_viewport(new_start as usize, span_bp);
+                }
+                if ENABLE_LINEAR_VERTICAL_PAN {
+                    self.set_linear_vertical_offset_px(
+                        start_vertical_offset_px + response.drag_delta().y,
+                    );
+                }
+                self.pcr_paint_drag_interval = None;
+            } else if let (Some(anchor_bp), Some(pos)) = (
+                self.linear_drag_selection_anchor_bp,
+                response.interact_pointer_pos(),
+            ) && let Some(current_bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
+            {
+                self.update_linear_drag_selection(anchor_bp, current_bp);
+                self.pcr_paint_drag_interval = Some((
+                    self.pcr_paint_role,
+                    anchor_bp.min(current_bp),
+                    anchor_bp.max(current_bp).saturating_add(1),
+                ));
+                self.clear_feature_focus_keep_map_selection();
+            }
+        }
+        if response.drag_stopped() {
+            if self.linear_pan_drag_origin_bp.is_none()
+                && let Some(anchor_bp) = self.linear_drag_selection_anchor_bp
+            {
+                let queue_immediately =
+                    ctx.input(|i| i.modifiers.shift) && self.pcr_paint_role == PcrPaintRole::Roi;
+                if let Some(pos) = response.interact_pointer_pos()
+                    && let Some(current_bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
+                {
+                    self.finalize_pcr_map_drag_paint(
+                        self.pcr_paint_role,
+                        anchor_bp,
+                        current_bp,
+                        queue_immediately,
+                    );
+                } else if let Some((role, start, end_exclusive)) = self.pcr_paint_drag_interval {
+                    self.apply_pcr_painted_interval_0based(
+                        role,
+                        start,
+                        end_exclusive,
+                        queue_immediately,
+                    );
+                }
+            }
+            self.linear_drag_selection_anchor_bp = None;
+            self.linear_pan_drag_origin_bp = None;
+            self.pcr_paint_drag_interval = None;
+        }
+        if self.linear_pan_drag_origin_bp.is_some() && !ctx.input(|i| i.pointer.primary_down()) {
+            self.linear_pan_drag_origin_bp = None;
+        }
+    }
+
+    fn draw_pcr_paint_overlays(&self, ui: &mut egui::Ui, response: &egui::Response) {
+        if self.is_circular() {
+            return;
+        }
+        let (viewport_start, span_bp, sequence_length) = self.current_linear_viewport();
+        if span_bp == 0 || sequence_length == 0 {
+            return;
+        }
+        let viewport_end = viewport_start.saturating_add(span_bp).min(sequence_length);
+        let draw_interval = |role: PcrPaintRole, start: usize, end_exclusive: usize, alpha: u8| {
+            let clip_start = start.max(viewport_start);
+            let clip_end = end_exclusive.min(viewport_end);
+            if clip_end <= clip_start {
+                return;
+            }
+            let frac_start = (clip_start.saturating_sub(viewport_start)) as f32 / span_bp as f32;
+            let frac_end = (clip_end.saturating_sub(viewport_start)) as f32 / span_bp as f32;
+            let x0 = response.rect.left() + response.rect.width() * frac_start.clamp(0.0, 1.0);
+            let x1 = response.rect.left() + response.rect.width() * frac_end.clamp(0.0, 1.0);
+            let strip = egui::Rect::from_min_max(
+                egui::pos2(x0, response.rect.top() + 2.0),
+                egui::pos2(x1.max(x0 + 1.0), response.rect.top() + 12.0),
+            );
+            ui.painter().rect_filled(
+                strip,
+                2.0,
+                role.color()
+                    .linear_multiply((alpha as f32 / 255.0).clamp(0.0, 1.0)),
+            );
+        };
+        for role in [
+            PcrPaintRole::Roi,
+            PcrPaintRole::UpstreamPrimerWindow,
+            PcrPaintRole::DownstreamPrimerWindow,
+        ] {
+            if let Some((start, end_exclusive)) = self.pcr_paint_interval_for_role(role) {
+                draw_interval(role, start, end_exclusive, 120);
+            }
+        }
+        if let Some((role, start, end_exclusive)) = self.pcr_paint_drag_interval {
+            draw_interval(role, start, end_exclusive, 210);
+            let text = format!(
+                "{} {}..{} ({} bp)",
+                role.short_label(),
+                start,
+                end_exclusive,
+                end_exclusive.saturating_sub(start)
+            );
+            ui.painter().text(
+                response.rect.left_top() + egui::vec2(8.0, 16.0),
+                egui::Align2::LEFT_TOP,
+                text,
+                egui::TextStyle::Small.resolve(ui.style()),
+                role.color(),
+            );
+        }
+    }
+
+    fn render_pcr_paint_role_controls(&mut self, ui: &mut egui::Ui, include_clear_all: bool) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("PCR paint role:");
+            for role in [
+                PcrPaintRole::Roi,
+                PcrPaintRole::UpstreamPrimerWindow,
+                PcrPaintRole::DownstreamPrimerWindow,
+            ] {
+                let label = egui::RichText::new(role.short_label()).color(role.color());
+                let response = ui.selectable_value(&mut self.pcr_paint_role, role, label);
+                response.on_hover_text(role.hover_text());
+            }
+            if ui
+                .small_button("Clear role")
+                .on_hover_text("Clear currently selected paint role interval")
+                .clicked()
+            {
+                self.clear_pcr_paint_interval_for_role(self.pcr_paint_role);
+                self.op_status = format!("Cleared {}", self.pcr_paint_role.label());
+                self.save_engine_ops_state();
+            }
+            if include_clear_all
+                && ui
+                    .small_button("Clear all")
+                    .on_hover_text("Clear ROI/upstream/downstream painted intervals")
+                    .clicked()
+            {
+                self.clear_all_pcr_paint_intervals();
+                self.op_status = "Cleared all PCR paint intervals".to_string();
+                self.save_engine_ops_state();
+            }
+        });
+    }
+
+    fn render_pcr_paint_interval_summary(&self, ui: &mut egui::Ui) {
+        let draw_row = |ui: &mut egui::Ui, role: PcrPaintRole, span: Option<(usize, usize)>| {
+            ui.label(egui::RichText::new(role.label()).color(role.color()));
+            match span {
+                Some((start, end_exclusive)) => {
+                    ui.monospace(format!(
+                        "{}..{} ({} bp)",
+                        start,
+                        end_exclusive,
+                        end_exclusive.saturating_sub(start)
+                    ));
+                }
+                None => {
+                    ui.label("-");
+                }
+            }
+            ui.end_row();
+        };
+        egui::Grid::new("pcr_paint_interval_summary")
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                draw_row(ui, PcrPaintRole::Roi, self.pcr_paint_intervals.roi);
+                draw_row(
+                    ui,
+                    PcrPaintRole::UpstreamPrimerWindow,
+                    self.pcr_paint_intervals.upstream_window,
+                );
+                draw_row(
+                    ui,
+                    PcrPaintRole::DownstreamPrimerWindow,
+                    self.pcr_paint_intervals.downstream_window,
+                );
+            });
+    }
+
+    fn render_pcr_post_drag_actions(&mut self, ui: &mut egui::Ui) {
+        let Some((role, start, end_exclusive)) = self.pcr_paint_last_drag_interval else {
+            return;
+        };
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Painted {}: {}..{} ({} bp)",
+                        role.label(),
+                        start,
+                        end_exclusive,
+                        end_exclusive.saturating_sub(start)
+                    ))
+                    .color(role.color()),
+                );
+                if ui
+                    .small_button("Set PCR ROI")
+                    .on_hover_text("Copy this painted interval into pair-PCR ROI fields")
+                    .clicked()
+                {
+                    self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                    self.show_engine_ops = true;
+                    self.op_status = format!(
+                        "Set pair-PCR ROI from painted {} interval: {}..{}",
+                        role.label(),
+                        start,
+                        end_exclusive
+                    );
+                    self.save_engine_ops_state();
+                }
+                if ui
+                    .small_button("Add ROI to Queue")
+                    .on_hover_text("Queue this painted interval as one PCR batch region")
+                    .clicked()
+                {
+                    self.queue_painted_roi_from_interval(start, end_exclusive, role.source_label());
+                }
+                if ui
+                    .small_button("Open PCR Designer")
+                    .on_hover_text("Open dedicated PCR specialist window for this sequence context")
+                    .clicked()
+                {
+                    request_open_pcr_design_from_native_menu();
+                    self.op_status = "Requested dedicated PCR Designer window".to_string();
+                }
+                if ui.small_button("Dismiss").clicked() {
+                    self.pcr_paint_last_drag_interval = None;
+                }
+            });
+        });
     }
 
     fn set_primer_design_roi_fields_0based(&mut self, start: usize, end_exclusive: usize) {
@@ -24881,10 +25432,8 @@ impl MainAreaDna {
             .filter(|raw| !raw.is_empty())
             .unwrap_or("protocol_cartoon");
         let protocol_token = Self::sanitize_export_name_component(protocol, "protocol_cartoon");
-        let op_token = Self::sanitize_export_name_component(
-            &self.last_protocol_cartoon_preview_op_id,
-            "op",
-        );
+        let op_token =
+            Self::sanitize_export_name_component(&self.last_protocol_cartoon_preview_op_id, "op");
         format!("{protocol_token}.{op_token}.preview.svg")
     }
 
@@ -25222,7 +25771,44 @@ impl MainAreaDna {
         });
     }
 
-    fn render_primer_design_ops(&mut self, ui: &mut egui::Ui) {
+    fn render_live_pair_pcr_preview_from_paint(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.label("Live pair-PCR cartoon geometry (paint-first)");
+            self.render_pcr_paint_interval_summary(ui);
+            let Some((roi_bp, upstream_window_bp, downstream_window_bp)) =
+                self.painted_pair_geometry_bp()
+            else {
+                ui.small(
+                    "Paint ROI (green), upstream window (red), and downstream window (blue) on the linear map to activate this live preview.",
+                );
+                return;
+            };
+            ui.monospace(format!(
+                "roi={} bp | upstream={} bp | downstream={} bp",
+                roi_bp, upstream_window_bp, downstream_window_bp
+            ));
+            let bindings =
+                pcr_assay_pair_geometry_bindings(roi_bp, upstream_window_bp, downstream_window_bp);
+            ui.small(format!(
+                "deterministic bindings ready ({} feature overrides)",
+                bindings.feature_overrides.len()
+            ));
+            match pcr_assay_pair_spec_with_geometry(roi_bp, upstream_window_bp, downstream_window_bp)
+            {
+                Ok(_spec) => {
+                    ui.small("Pair-PCR cartoon spec resolves with current painted geometry.");
+                }
+                Err(err) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Could not resolve pair-PCR cartoon: {err}"),
+                    );
+                }
+            }
+        });
+    }
+
+    fn render_primer_design_ops(&mut self, ui: &mut egui::Ui, include_qpcr_section: bool) {
         let template = self.seq_id.clone().unwrap_or_default();
         if template.trim().is_empty() {
             ui.small("No active sequence selected.");
@@ -25634,6 +26220,7 @@ impl MainAreaDna {
                     "primer_pairs_pair_constraints",
                     &mut self.primer_design_ui.pair_constraints,
                 );
+                self.render_live_pair_pcr_preview_from_paint(ui);
                 Self::render_primer_side_constraint_editor(
                     ui,
                     "primer_pairs_forward",
@@ -25698,9 +26285,10 @@ impl MainAreaDna {
                 });
             });
 
-        egui::CollapsingHeader::new("Design qPCR assays")
-            .default_open(false)
-            .show(ui, |ui| {
+        if include_qpcr_section {
+            egui::CollapsingHeader::new("Design qPCR assays")
+                .default_open(false)
+                .show(ui, |ui| {
                 ui.small(
                     "Tip: queue multi-region primer workflows in `Design primer pairs`; qPCR remains optional for follow-up assays.",
                 );
@@ -25838,7 +26426,121 @@ impl MainAreaDna {
                         self.export_qpcr_design_report_dialog(&report_id);
                     }
                 });
+                });
+        }
+    }
+
+    fn render_pcr_queue_compact_table(&mut self, ui: &mut egui::Ui) {
+        ui.label("PCR region queue");
+        if self.pcr_queued_regions_ui.is_empty() {
+            ui.small("Queue is empty.");
+            return;
+        }
+        let mut remove_idx: Option<usize> = None;
+        egui::Grid::new("pcr_designer_queue_compact")
+            .striped(true)
+            .num_columns(6)
+            .show(ui, |ui| {
+                ui.strong("#");
+                ui.strong("source");
+                ui.strong("start");
+                ui.strong("end");
+                ui.strong("len");
+                ui.strong("remove");
+                ui.end_row();
+                for (idx, row) in self.pcr_queued_regions_ui.iter().enumerate() {
+                    ui.monospace(format!("{:02}", idx + 1));
+                    ui.label(&row.source_label);
+                    ui.monospace(format!("{}", row.start_0based));
+                    ui.monospace(format!("{}", row.end_0based_exclusive));
+                    ui.monospace(format!("{}", row.span_len_bp()));
+                    if ui.small_button("x").clicked() {
+                        remove_idx = Some(idx);
+                    }
+                    ui.end_row();
+                }
             });
+        if let Some(idx) = remove_idx {
+            self.remove_pcr_queued_region(idx);
+        }
+    }
+
+    fn render_pcr_designer_map_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let width = ui.available_width().max(320.0);
+        let response = ui.add_sized(egui::Vec2::new(width, 220.0), self.map_dna.to_owned());
+        if response.rect.width().is_finite() && response.rect.width() > 0.0 {
+            self.last_linear_map_width_px = response.rect.width();
+        }
+        if !self.is_circular() {
+            self.handle_linear_map_drag_for_pcr_paint(&response, ctx);
+            if self.linear_pan_drag_origin_bp.is_some() {
+                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+            }
+        } else {
+            ui.colored_label(
+                egui::Color32::from_rgb(170, 120, 50),
+                "Paint-first PCR interaction is available in linear map mode. Use existing ROI fallback actions for circular map mode.",
+            );
+        }
+        self.draw_pcr_paint_overlays(ui, &response);
+        self.render_pcr_post_drag_actions(ui);
+    }
+
+    pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.label(
+            "Paint-first pair-PCR designer. Drag on the linear DNA map with fixed semantic colors: ROI (green), upstream window (red), downstream window (blue).",
+        );
+        self.render_pcr_paint_role_controls(ui, true);
+        ui.small(
+            "Mouse shortcuts: drag paints selected role; Shift+drag on ROI queues immediately; Option/Alt+drag pans.",
+        );
+        ui.separator();
+        ui.columns(2, |columns| {
+            columns[0].heading("Paint + Queue");
+            self.render_pcr_designer_map_panel(&mut columns[0], ctx);
+            columns[0].separator();
+            self.render_pcr_paint_interval_summary(&mut columns[0]);
+            columns[0].horizontal(|ui| {
+                if ui
+                    .button("Queue painted ROI")
+                    .on_hover_text("Queue the currently painted ROI interval")
+                    .clicked()
+                {
+                    if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
+                        self.queue_painted_roi_from_interval(start, end_exclusive, "painted ROI");
+                    } else {
+                        self.op_status =
+                            "Paint an ROI interval first (green role) before queueing".to_string();
+                    }
+                }
+                if ui
+                    .button("Set form ROI from paint")
+                    .on_hover_text("Copy painted ROI interval into pair-PCR ROI form fields")
+                    .clicked()
+                {
+                    if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
+                        self.set_primer_design_roi_fields_0based(start, end_exclusive);
+                        self.op_status = format!(
+                            "Set pair-PCR ROI fields from painted interval: {}..{}",
+                            start, end_exclusive
+                        );
+                        self.save_engine_ops_state();
+                    } else {
+                        self.op_status =
+                            "Paint an ROI interval first (green role) before setting form ROI"
+                                .to_string();
+                    }
+                }
+            });
+            self.render_pcr_queue_compact_table(&mut columns[0]);
+
+            columns[1].heading("Constraints + Run");
+            egui::ScrollArea::vertical()
+                .id_salt("pcr_designer_pair_scroll")
+                .show(&mut columns[1], |ui| {
+                    self.render_primer_design_ops(ui, false);
+                });
+        });
     }
 
     fn parse_candidate_local_anchor(
@@ -27284,6 +27986,8 @@ impl MainAreaDna {
             pcr_queued_regions_ui: self.pcr_queued_regions_ui.clone(),
             pcr_batch_create_extract_copies: self.pcr_batch_create_extract_copies,
             pcr_batch_results_ui: self.pcr_batch_results_ui.clone(),
+            pcr_paint_role: self.pcr_paint_role,
+            pcr_paint_intervals: self.pcr_paint_intervals.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
@@ -27494,6 +28198,10 @@ impl MainAreaDna {
         self.pcr_queued_regions_ui = s.pcr_queued_regions_ui;
         self.pcr_batch_create_extract_copies = s.pcr_batch_create_extract_copies;
         self.pcr_batch_results_ui = s.pcr_batch_results_ui;
+        self.pcr_paint_role = s.pcr_paint_role;
+        self.pcr_paint_intervals = s.pcr_paint_intervals;
+        self.pcr_paint_drag_interval = None;
+        self.pcr_paint_last_drag_interval = None;
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {
@@ -30147,72 +30855,13 @@ impl MainAreaDna {
                 }
 
                 if !self.is_circular() {
-                    let option_pan_modifier =
-                        ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
-                    if response.drag_started() {
-                        if option_pan_modifier {
-                            self.linear_pan_drag_origin_bp = Some((
-                                self.current_linear_viewport().0,
-                                if ENABLE_LINEAR_VERTICAL_PAN {
-                                    self.current_linear_vertical_offset_px()
-                                } else {
-                                    0.0
-                                },
-                            ));
-                            self.linear_drag_selection_anchor_bp = None;
-                        } else if let Some(pos) = response.interact_pointer_pos() {
-                            if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
-                                self.linear_drag_selection_anchor_bp = Some(bp);
-                                self.linear_pan_drag_origin_bp = None;
-                                self.update_linear_drag_selection(bp, bp);
-                                self.clear_feature_focus_keep_map_selection();
-                            }
-                        }
-                    }
-                    if response.dragged() {
-                        if let Some((start_bp, start_vertical_offset_px)) =
-                            self.linear_pan_drag_origin_bp
-                        {
-                            let (_, span_bp, sequence_length) = self.current_linear_viewport();
-                            if sequence_length > span_bp {
-                                let delta_bp =
-                                    ((-response.drag_delta().x / response.rect.width().max(1.0))
-                                        * span_bp as f32)
-                                        .round() as isize;
-                                let max_start = sequence_length.saturating_sub(span_bp) as isize;
-                                let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
-                                self.set_linear_viewport(new_start as usize, span_bp);
-                            }
-                            if ENABLE_LINEAR_VERTICAL_PAN {
-                                self.set_linear_vertical_offset_px(
-                                    start_vertical_offset_px + response.drag_delta().y,
-                                );
-                            }
-                        } else if let (Some(anchor_bp), Some(pos)) = (
-                            self.linear_drag_selection_anchor_bp,
-                            response.interact_pointer_pos(),
-                        ) {
-                            if let Some(current_bp) =
-                                self.pointer_pos_to_linear_bp(response.rect, pos)
-                            {
-                                self.update_linear_drag_selection(anchor_bp, current_bp);
-                                self.clear_feature_focus_keep_map_selection();
-                            }
-                        }
-                    }
-                    if response.drag_stopped() {
-                        self.linear_drag_selection_anchor_bp = None;
-                        self.linear_pan_drag_origin_bp = None;
-                    }
-                    if self.linear_pan_drag_origin_bp.is_some()
-                        && !ctx.input(|i| i.pointer.primary_down())
-                    {
-                        self.linear_pan_drag_origin_bp = None;
-                    }
+                    self.handle_linear_map_drag_for_pcr_paint(&response, ctx);
                     if self.linear_pan_drag_origin_bp.is_some() {
                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
                     }
                 }
+                self.draw_pcr_paint_overlays(ui, &response);
+                self.render_pcr_post_drag_actions(ui);
 
                 if response.clicked() {
                     let additive = ctx.input(|i| i.modifiers.command);

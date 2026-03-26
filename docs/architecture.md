@@ -1225,6 +1225,16 @@ Primer-pair (PCR) design UI direction:
 - Keep `DesignPrimerPairs` as canonical engine operation and expand GUI around
   explicit pair-design workflows (amplicon intent + pair constraints +
   specificity tier + ranked reports).
+- Paint-first pair-PCR interaction is adapter/UI orchestration on top of the
+  existing `DesignPrimerPairs` contract:
+  - semantic paint roles are fixed (`ROI`, upstream window, downstream window)
+    and map to deterministic ROI/queue metadata, not to adapter-local biology
+    logic.
+  - painted state is GUI/session state; no engine operation schema changes are
+    introduced for this UX layer.
+- Dedicated PCR specialist routing should stay on shared UI-intent contracts
+  (`ui open pcr-design`, `ui focus pcr-design`) so GUI/agent adapters can
+  request the same sequence-context PCR workspace deterministically.
 - Pair-specificity stages that fan out into multiple BLAST checks must use the
   same async progress/cancel semantics as standalone BLAST.
 - Selected pair handoff into `Pcr`/`PcrAdvanced`/`PcrMutagenesis` should be

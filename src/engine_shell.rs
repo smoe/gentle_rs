@@ -419,6 +419,7 @@ pub enum UiIntentTarget {
     RetrieveGenomeSequence,
     BlastGenomeSequence,
     ImportGenomeTrack,
+    PcrDesign,
     AgentAssistant,
     PrepareHelperGenome,
     RetrieveHelperSequence,
@@ -445,6 +446,9 @@ impl UiIntentTarget {
             "import-genome-track" | "import_genome_track" | "genome-track" | "tracks-import" => {
                 Some(Self::ImportGenomeTrack)
             }
+            "pcr-design" | "pcr_design" | "pcr" | "pcr-designer" | "pcr_designer" => {
+                Some(Self::PcrDesign)
+            }
             "agent-assistant" | "agent_assistant" | "agent" => Some(Self::AgentAssistant),
             "prepare-helper-genome"
             | "prepare_helper_genome"
@@ -469,6 +473,7 @@ impl UiIntentTarget {
             Self::RetrieveGenomeSequence => "retrieve-genome-sequence",
             Self::BlastGenomeSequence => "blast-genome-sequence",
             Self::ImportGenomeTrack => "import-genome-track",
+            Self::PcrDesign => "pcr-design",
             Self::AgentAssistant => "agent-assistant",
             Self::PrepareHelperGenome => "prepare-helper-genome",
             Self::RetrieveHelperSequence => "retrieve-helper-sequence",
@@ -8834,7 +8839,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 UiIntentAction::Focus
             };
             let target = UiIntentTarget::parse(&tokens[2]).ok_or_else(|| {
-                "Unknown ui target. Expected one of: prepared-references, prepare-reference-genome, retrieve-genome-sequence, blast-genome-sequence, import-genome-track, agent-assistant, prepare-helper-genome, retrieve-helper-sequence, blast-helper-sequence".to_string()
+                "Unknown ui target. Expected one of: prepared-references, prepare-reference-genome, retrieve-genome-sequence, blast-genome-sequence, import-genome-track, pcr-design, agent-assistant, prepare-helper-genome, retrieve-helper-sequence, blast-helper-sequence".to_string()
             })?;
             let mut genome_id: Option<String> = None;
             let mut helper_mode = false;
@@ -12355,6 +12360,7 @@ pub fn execute_shell_command_with_options(
                     "retrieve-genome-sequence",
                     "blast-genome-sequence",
                     "import-genome-track",
+                    "pcr-design",
                     "agent-assistant",
                     "prepare-helper-genome",
                     "retrieve-helper-sequence",
