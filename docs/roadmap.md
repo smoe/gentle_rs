@@ -1955,12 +1955,34 @@ Repeated multi-tool gaps to prioritize:
 2. Auto-annotation library scan:
    - detect missing/plausible features from curated vector/feature libraries
    - keep machine-readable confidence/overlap diagnostics for automation
+   - legacy `gentle-m` confirms this is still valuable, but intake should be
+     report-first/apply-second rather than direct annotation side effects
+   - use `gentle-m` `src/AutoAnnotate.cpp` only as heuristic seed material; do
+     not port dialog/database behavior directly
 3. Sequencing confirmation workflow:
    - import read evidence (Sanger/NGS-aligned scope), map evidence to expected
      constructs, and emit deterministic pass/fail evidence summaries
+   - detailed implementation plan is tracked in
+     `docs/sequencing_confirmation_plan.md`
+   - legacy `gentle-m` intake priority: do this before resurrecting broader
+     legacy cloning conveniences because it most directly improves user trust
+   - stage the work as:
+     - called-sequence Sanger/amplicon confirmation first
+     - ABI/AB1/SCF raw-trace import and inspection second
+     - trace-aware confirmation integration third
+   - likely legacy code seeds:
+     - `gentle-m` `src/ABItype.cpp`
+     - `gentle-m` `src/SCFtype.cpp`
+     - `gentle-m` `src/TSequencingAssistantDialog.cpp`
+   - related follow-up from the same legacy intake:
+     sequencing-primer suggestion overlays should come immediately after the
+     core confirmation report path, not as an isolated UI feature
 4. Interactive cloning workspace model:
    - add explicit fragment/clipboard-style assembly workspace with end
      compatibility feedback, while execution still routes through shared ops
+   - the legacy ligation dialog remains informative as algorithm/reference
+     material (`gentle-m` `src/TLigationDialog.cpp`), but it is lower priority
+     than typed confirmation, primer, and annotation workflows
 5. CRISPR workflow closure:
    - extend existing guide-design baseline to include practical
      screening/confirmation workflow outputs
@@ -2598,6 +2620,14 @@ Post-baseline follow-ups:
 - Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
 - Add sequencing-confirmation evidence contracts (read-aligned construct
   validation summaries) as a deterministic shared-engine path.
+- Detailed sequencing-confirmation design note:
+  - `docs/sequencing_confirmation_plan.md`
+- Legacy `gentle-m` intake note:
+  - priority/rationale/code-mining plan is tracked in
+    `docs/legacy_gentle_m_intake.md`
+  - best near-term legacy carry-forward targets are:
+    sequencing confirmation, sequencing-primer overlays, silent-mutation
+    verification, and auto-annotation
 
 ### Phase D: visualization and workflow UX
 
