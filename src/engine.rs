@@ -4669,6 +4669,8 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
     },
     ExportRnaReadSampleSheet {
         path: String,
@@ -4686,6 +4688,8 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
     },
     ExportRnaReadExonAbundanceTsv {
         report_id: String,
@@ -4694,6 +4698,8 @@ pub enum Operation {
         selection: RnaReadHitSelection,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
     },
     ExportRnaReadScoreDensitySvg {
         report_id: String,
@@ -4710,6 +4716,8 @@ pub enum Operation {
         limit: Option<usize>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
     },
     ExportRnaReadAlignmentDotplotSvg {
         report_id: String,

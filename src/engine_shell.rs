@@ -1232,6 +1232,7 @@ pub enum ShellCommand {
         path: String,
         selection: RnaReadHitSelection,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
     },
     RnaReadsExportSampleSheet {
         path: String,
@@ -1244,12 +1245,14 @@ pub enum ShellCommand {
         path: String,
         selection: RnaReadHitSelection,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
     },
     RnaReadsExportExonAbundanceTsv {
         report_id: String,
         path: String,
         selection: RnaReadHitSelection,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
     },
     RnaReadsExportScoreDensitySvg {
         report_id: String,
@@ -1262,6 +1265,7 @@ pub enum ShellCommand {
         selection: RnaReadHitSelection,
         limit: Option<usize>,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
     },
     RnaReadsExportAlignmentDotplotSvg {
         report_id: String,
@@ -5987,12 +5991,14 @@ impl ShellCommand {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => format!(
-                "export RNA-read hits from '{}' to '{}' (selection={}, selected_record_indices={})",
+                "export RNA-read hits from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
                 report_id,
                 path,
                 selection.as_str(),
-                selected_record_indices.len()
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
             ),
             Self::RnaReadsExportSampleSheet {
                 path,
@@ -6015,24 +6021,28 @@ impl ShellCommand {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => format!(
-                "export RNA-read exon paths from '{}' to '{}' (selection={}, selected_record_indices={})",
+                "export RNA-read exon paths from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
                 report_id,
                 path,
                 selection.as_str(),
-                selected_record_indices.len()
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
             ),
             Self::RnaReadsExportExonAbundanceTsv {
                 report_id,
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => format!(
-                "export RNA-read exon abundance from '{}' to '{}' (selection={}, selected_record_indices={})",
+                "export RNA-read exon abundance from '{}' to '{}' (selection={}, selected_record_indices={}, subset_spec={})",
                 report_id,
                 path,
                 selection.as_str(),
-                selected_record_indices.len()
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
             ),
             Self::RnaReadsExportScoreDensitySvg {
                 report_id,
@@ -6050,15 +6060,17 @@ impl ShellCommand {
                 selection,
                 limit,
                 selected_record_indices,
+                subset_spec,
             } => format!(
-                "export RNA-read alignments TSV from '{}' to '{}' (selection={}, limit={}, selected_record_indices={})",
+                "export RNA-read alignments TSV from '{}' to '{}' (selection={}, limit={}, selected_record_indices={}, subset_spec={})",
                 report_id,
                 path,
                 selection.as_str(),
                 limit
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "all".to_string()),
-                selected_record_indices.len()
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none")
             ),
             Self::RnaReadsExportAlignmentDotplotSvg {
                 report_id,
@@ -15031,9 +15043,16 @@ pub fn execute_shell_command_with_options(
             path,
             selection,
             selected_record_indices,
+            subset_spec,
         } => {
             let written = engine
-                .export_rna_read_hits_fasta(report_id, path, *selection, selected_record_indices)
+                .export_rna_read_hits_fasta(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -15043,6 +15062,7 @@ pub fn execute_shell_command_with_options(
                     "path": path,
                     "selection": selection.as_str(),
                     "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
                     "written_records": written,
                 }),
             }
@@ -15073,6 +15093,7 @@ pub fn execute_shell_command_with_options(
             path,
             selection,
             selected_record_indices,
+            subset_spec,
         } => {
             let export = engine
                 .export_rna_read_exon_paths_tsv(
@@ -15080,6 +15101,7 @@ pub fn execute_shell_command_with_options(
                     path,
                     *selection,
                     selected_record_indices,
+                    subset_spec.as_deref(),
                 )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -15090,6 +15112,7 @@ pub fn execute_shell_command_with_options(
                     "path": export.path,
                     "selection": export.selection.as_str(),
                     "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
                     "row_count": export.row_count,
                 }),
             }
@@ -15099,6 +15122,7 @@ pub fn execute_shell_command_with_options(
             path,
             selection,
             selected_record_indices,
+            subset_spec,
         } => {
             let export = engine
                 .export_rna_read_exon_abundance_tsv(
@@ -15106,6 +15130,7 @@ pub fn execute_shell_command_with_options(
                     path,
                     *selection,
                     selected_record_indices,
+                    subset_spec.as_deref(),
                 )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -15116,6 +15141,7 @@ pub fn execute_shell_command_with_options(
                     "path": export.path,
                     "selection": export.selection.as_str(),
                     "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
                     "selected_read_count": export.selected_read_count,
                     "exon_row_count": export.exon_row_count,
                     "transition_row_count": export.transition_row_count,
@@ -15150,6 +15176,7 @@ pub fn execute_shell_command_with_options(
             selection,
             limit,
             selected_record_indices,
+            subset_spec,
         } => {
             let export = engine
                 .export_rna_read_alignments_tsv(
@@ -15158,6 +15185,7 @@ pub fn execute_shell_command_with_options(
                     *selection,
                     *limit,
                     selected_record_indices,
+                    subset_spec.as_deref(),
                 )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -15168,6 +15196,7 @@ pub fn execute_shell_command_with_options(
                     "path": export.path,
                     "selection": export.selection.as_str(),
                     "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
                     "row_count": export.row_count,
                     "aligned_count": export.aligned_count,
                     "limit": export.limit,

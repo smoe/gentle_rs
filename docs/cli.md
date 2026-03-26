@@ -1047,12 +1047,12 @@ Shared shell command:
     - `rna-reads show-report REPORT_ID`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
-    - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
+    - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
-    - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
-    - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k]`
+    - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+    - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
-    - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k]`
+    - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
     - `rna-reads align-report` re-ranks retained hits by alignment-aware
       retention rank after mapping refresh.
@@ -1060,15 +1060,19 @@ Shared shell command:
       read-level inspection without mutating report payloads.
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
-      exports an exact saved-report subset and overrides coarse `--selection`.
+      exports an exact saved-report subset and overrides coarse `--selection`;
+      `--subset-spec` records the formal subset definition that produced it.
     - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
-      accept the same `--record-indices` exact-subset override.
+      accept the same `--record-indices` exact-subset override plus optional
+      `--subset-spec` provenance.
     - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
       scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path
       annotations:
       - `--record-indices i,j,k` exports the exact saved-report subset and
         overrides coarse `--selection`
+      - `--subset-spec TEXT` records the formal subset definition in the FASTA
+        headers
       - `exon_path_tx=<transcript_id|none>`
       - `exon_path=<ordinal_path|none>` where `:` marks hash-confirmed adjacent
         exon transitions and `-` marks unconfirmed adjacency

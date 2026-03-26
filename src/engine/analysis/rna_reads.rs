@@ -285,6 +285,7 @@ impl GentleEngine {
         path: &str,
         selection: RnaReadHitSelection,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Result<usize, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let mut writer = BufWriter::new(File::create(path).map_err(|e| EngineError {
@@ -326,7 +327,7 @@ impl GentleEngine {
                 format!("{:.2}", hit.seed_median_transcript_gap)
             };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} msa_eligible={} msa_reason={} exon_path_tx={} exon_path={} exon_transitions={}/{} subset_spec={} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
@@ -359,6 +360,7 @@ impl GentleEngine {
                 },
                 hit.exon_transitions_confirmed,
                 hit.exon_transitions_total,
+                Self::format_subset_spec_for_metadata(subset_spec),
                 mapping_header
             );
             writeln!(writer, ">{header}").map_err(|e| EngineError {
@@ -520,6 +522,7 @@ impl GentleEngine {
         selection: RnaReadHitSelection,
         limit: Option<usize>,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Result<RnaReadAlignmentTsvExport, EngineError> {
         let path = path.trim();
         if path.is_empty() {
@@ -567,6 +570,7 @@ impl GentleEngine {
             selection,
             limit,
             selected_record_indices,
+            subset_spec,
         ) {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -910,6 +914,7 @@ impl GentleEngine {
         path: &str,
         selection: RnaReadHitSelection,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Result<RnaReadExonPathsExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -924,9 +929,12 @@ impl GentleEngine {
             message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
         })?;
         let mut writer = BufWriter::new(file);
-        for line in
-            Self::rna_read_tsv_common_metadata_lines(&report, selection, selected_record_indices)
-        {
+        for line in Self::rna_read_tsv_common_metadata_lines(
+            &report,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        ) {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -1051,6 +1059,7 @@ impl GentleEngine {
         path: &str,
         selection: RnaReadHitSelection,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Result<RnaReadExonAbundanceExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -1068,9 +1077,12 @@ impl GentleEngine {
             ),
         })?;
         let mut writer = BufWriter::new(file);
-        for line in
-            Self::rna_read_tsv_common_metadata_lines(&report, selection, selected_record_indices)
-        {
+        for line in Self::rna_read_tsv_common_metadata_lines(
+            &report,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        ) {
             writeln!(writer, "{line}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -1500,10 +1512,19 @@ impl GentleEngine {
         }
     }
 
+    fn format_subset_spec_for_metadata(subset_spec: Option<&str>) -> String {
+        subset_spec
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(Self::sanitize_tsv_cell)
+            .unwrap_or_else(|| "none".to_string())
+    }
+
     fn rna_read_tsv_common_metadata_lines(
         report: &RnaReadInterpretationReport,
         selection: RnaReadHitSelection,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Vec<String> {
         let target_gene_ids = if report.target_gene_ids.is_empty() {
             "none".to_string()
@@ -1512,11 +1533,12 @@ impl GentleEngine {
         };
         vec![
             format!(
-                "# report_id={} seq_id={} selection={} selected_record_indices={}",
+                "# report_id={} seq_id={} selection={} selected_record_indices={} subset_spec={}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&report.seq_id),
                 selection.as_str(),
                 Self::format_selected_record_indices_for_metadata(selected_record_indices),
+                Self::format_subset_spec_for_metadata(subset_spec),
             ),
             format!(
                 "# profile={} report_mode={} input_format={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
@@ -1541,18 +1563,24 @@ impl GentleEngine {
         selection: RnaReadHitSelection,
         limit: Option<usize>,
         selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
     ) -> Vec<String> {
         let limit_text = limit
             .map(|value| value.to_string())
             .unwrap_or_else(|| "all".to_string());
-        let mut lines =
-            Self::rna_read_tsv_common_metadata_lines(report, selection, selected_record_indices);
+        let mut lines = Self::rna_read_tsv_common_metadata_lines(
+            report,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        );
         lines[0] = format!(
-            "# report_id={} seq_id={} selection={} selected_record_indices={} limit={} row_count={} aligned_count={}",
+            "# report_id={} seq_id={} selection={} selected_record_indices={} subset_spec={} limit={} row_count={} aligned_count={}",
             Self::sanitize_tsv_cell(&inspection.report_id),
             Self::sanitize_tsv_cell(&inspection.seq_id),
             selection.as_str(),
             Self::format_selected_record_indices_for_metadata(selected_record_indices),
+            Self::format_subset_spec_for_metadata(subset_spec),
             limit_text,
             inspection.row_count,
             inspection.aligned_count,

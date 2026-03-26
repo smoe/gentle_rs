@@ -1747,8 +1747,12 @@ impl GentleEngine {
         };
 
         let mut outer_forward = constraints.outer_forward.clone();
-        outer_forward.end_0based =
-            Some(outer_forward.end_0based.unwrap_or(edit_start_0based).min(edit_start_0based));
+        outer_forward.end_0based = Some(
+            outer_forward
+                .end_0based
+                .unwrap_or(edit_start_0based)
+                .min(edit_start_0based),
+        );
         let mut outer_reverse = constraints.outer_reverse.clone();
         outer_reverse.start_0based = Some(
             outer_reverse
@@ -1764,8 +1768,12 @@ impl GentleEngine {
                 .max(edit_end_0based_exclusive),
         );
         let mut inner_reverse = constraints.inner_reverse.clone();
-        inner_reverse.end_0based =
-            Some(inner_reverse.end_0based.unwrap_or(edit_start_0based).min(edit_start_0based));
+        inner_reverse.end_0based = Some(
+            inner_reverse
+                .end_0based
+                .unwrap_or(edit_start_0based)
+                .min(edit_start_0based),
+        );
 
         for (label, side) in [
             ("outer_forward", &outer_forward),
@@ -1925,31 +1933,30 @@ impl GentleEngine {
                 score -= (anneal_hits.saturating_sub(1) as f64) * 25.0;
                 score
             };
-        let better_than =
-            |left: &OverlapExtensionDesign, right: &OverlapExtensionDesign| -> bool {
-                if (left.score - right.score).abs() > f64::EPSILON {
-                    return left.score > right.score;
-                }
-                (
-                    left.outer_forward.start_0based,
-                    left.inner_reverse.start_0based,
-                    left.inner_forward.start_0based,
-                    left.outer_reverse.start_0based,
-                    left.outer_forward.sequence.as_str(),
-                    left.inner_reverse_full.as_str(),
-                    left.inner_forward_full.as_str(),
-                    left.outer_reverse.sequence.as_str(),
-                ) < (
-                    right.outer_forward.start_0based,
-                    right.inner_reverse.start_0based,
-                    right.inner_forward.start_0based,
-                    right.outer_reverse.start_0based,
-                    right.outer_forward.sequence.as_str(),
-                    right.inner_reverse_full.as_str(),
-                    right.inner_forward_full.as_str(),
-                    right.outer_reverse.sequence.as_str(),
-                )
-            };
+        let better_than = |left: &OverlapExtensionDesign, right: &OverlapExtensionDesign| -> bool {
+            if (left.score - right.score).abs() > f64::EPSILON {
+                return left.score > right.score;
+            }
+            (
+                left.outer_forward.start_0based,
+                left.inner_reverse.start_0based,
+                left.inner_forward.start_0based,
+                left.outer_reverse.start_0based,
+                left.outer_forward.sequence.as_str(),
+                left.inner_reverse_full.as_str(),
+                left.inner_forward_full.as_str(),
+                left.outer_reverse.sequence.as_str(),
+            ) < (
+                right.outer_forward.start_0based,
+                right.inner_reverse.start_0based,
+                right.inner_forward.start_0based,
+                right.outer_reverse.start_0based,
+                right.outer_forward.sequence.as_str(),
+                right.inner_reverse_full.as_str(),
+                right.inner_forward_full.as_str(),
+                right.outer_reverse.sequence.as_str(),
+            )
+        };
 
         let max_evaluations = 250_000usize;
         let mut evaluated = 0usize;
@@ -2003,7 +2010,8 @@ impl GentleEngine {
                 }
 
                 for outer_forward_candidate in &outer_forward_candidates {
-                    if outer_forward_candidate.start_0based >= inner_reverse_candidate.start_0based {
+                    if outer_forward_candidate.start_0based >= inner_reverse_candidate.start_0based
+                    {
                         continue;
                     }
                     let outer_forward_anneal_len = outer_forward_candidate
@@ -2026,10 +2034,7 @@ impl GentleEngine {
                         else {
                             continue;
                         };
-                        if outer_forward_candidate
-                            .end_0based_exclusive
-                            > outer_reverse_start_mut
-                        {
+                        if outer_forward_candidate.end_0based_exclusive > outer_reverse_start_mut {
                             continue;
                         }
 
@@ -2098,10 +2103,12 @@ impl GentleEngine {
                             inner_reverse_candidate.tm_c,
                             inner_reverse_candidate.gc_fraction,
                             inner_reverse_candidate.anneal_hits,
-                        ) - (overlap_sequence.len().saturating_sub(constraints.overlap_bp) as f64)
+                        ) - (overlap_sequence
+                            .len()
+                            .saturating_sub(constraints.overlap_bp)
+                            as f64)
                             * 0.35
-                            - ((outer_forward_candidate.tm_c - outer_reverse_candidate.tm_c)
-                                .abs()
+                            - ((outer_forward_candidate.tm_c - outer_reverse_candidate.tm_c).abs()
                                 * 4.0)
                             - ((inner_forward_candidate.tm_c - inner_reverse_candidate.tm_c).abs()
                                 * 4.0);
@@ -7075,12 +7082,14 @@ impl GentleEngine {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => {
                 let count = self.export_rna_read_hits_fasta(
                     &report_id,
                     &path,
                     selection,
                     &selected_record_indices,
+                    subset_spec.as_deref(),
                 )?;
                 result.messages.push(format!(
                     "Exported {} RNA-read hit sequence(s) from '{}' to '{}' (selection={}, selected_record_indices={})",
@@ -7113,12 +7122,14 @@ impl GentleEngine {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => {
                 let export = self.export_rna_read_exon_paths_tsv(
                     &report_id,
                     &path,
                     selection,
                     &selected_record_indices,
+                    subset_spec.as_deref(),
                 )?;
                 result.messages.push(format!(
                     "Exported RNA-read exon paths '{}' to '{}' (selection={}, rows={}, selected_record_indices={})",
@@ -7134,12 +7145,14 @@ impl GentleEngine {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => {
                 let export = self.export_rna_read_exon_abundance_tsv(
                     &report_id,
                     &path,
                     selection,
                     &selected_record_indices,
+                    subset_spec.as_deref(),
                 )?;
                 result.messages.push(format!(
                     "Exported RNA-read exon abundance '{}' to '{}' (selection={}, selected_reads={}, exon_rows={}, transition_rows={}, selected_record_indices={})",
@@ -7179,6 +7192,7 @@ impl GentleEngine {
                 selection,
                 limit,
                 selected_record_indices,
+                subset_spec,
             } => {
                 let export = self.export_rna_read_alignments_tsv(
                     &report_id,
@@ -7186,6 +7200,7 @@ impl GentleEngine {
                     selection,
                     limit,
                     &selected_record_indices,
+                    subset_spec.as_deref(),
                 )?;
                 let limit_text = export
                     .limit

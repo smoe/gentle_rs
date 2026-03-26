@@ -8413,16 +8413,17 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_hits = parse_shell_line(
-        "rna-reads export-hits-fasta tp73_reads hits.fa --selection aligned --record-indices 4,9",
+        "rna-reads export-hits-fasta tp73_reads hits.fa --selection aligned --record-indices 4,9 --subset-spec filtered_tp53",
     )
     .expect("parse rna-reads export-hits-fasta");
     assert!(matches!(
         export_hits,
-        ShellCommand::RnaReadsExportHitsFasta { report_id, path, selection, selected_record_indices }
+        ShellCommand::RnaReadsExportHitsFasta { report_id, path, selection, selected_record_indices, subset_spec }
             if report_id == "tp73_reads"
                 && path == "hits.fa"
                 && selection == RnaReadHitSelection::Aligned
                 && selected_record_indices == vec![4, 9]
+                && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
     let export_sheet = parse_shell_line(
@@ -8440,29 +8441,31 @@ fn parse_rna_reads_commands() {
 
     let export_paths =
         parse_shell_line(
-            "rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed --record-indices 3,5",
+            "rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed --record-indices 3,5 --subset-spec filtered_tp53",
         )
             .expect("parse rna-reads export-paths-tsv");
     assert!(matches!(
         export_paths,
-        ShellCommand::RnaReadsExportExonPathsTsv { report_id, path, selection, selected_record_indices }
+        ShellCommand::RnaReadsExportExonPathsTsv { report_id, path, selection, selected_record_indices, subset_spec }
             if report_id == "tp73_reads"
                 && path == "paths.tsv"
                 && selection == RnaReadHitSelection::SeedPassed
                 && selected_record_indices == vec![3, 5]
+                && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
     let export_abundance = parse_shell_line(
-        "rna-reads export-abundance-tsv tp73_reads abundance.tsv --selection aligned --record-indices 6,8",
+        "rna-reads export-abundance-tsv tp73_reads abundance.tsv --selection aligned --record-indices 6,8 --subset-spec filtered_tp53",
     )
     .expect("parse rna-reads export-abundance-tsv");
     assert!(matches!(
         export_abundance,
-        ShellCommand::RnaReadsExportExonAbundanceTsv { report_id, path, selection, selected_record_indices }
+        ShellCommand::RnaReadsExportExonAbundanceTsv { report_id, path, selection, selected_record_indices, subset_spec }
             if report_id == "tp73_reads"
                 && path == "abundance.tsv"
                 && selection == RnaReadHitSelection::Aligned
                 && selected_record_indices == vec![6, 8]
+                && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
     let export_score_density = parse_shell_line(
@@ -8478,7 +8481,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_alignments_tsv = parse_shell_line(
-        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200 --record-indices 7,8",
+        "rna-reads export-alignments-tsv tp73_reads alignments.tsv --selection aligned --limit 200 --record-indices 7,8 --subset-spec filtered_tp53",
     )
     .expect("parse rna-reads export-alignments-tsv");
     assert!(matches!(
@@ -8488,12 +8491,14 @@ fn parse_rna_reads_commands() {
             path,
             selection,
             limit,
-            selected_record_indices
+            selected_record_indices,
+            subset_spec
         } if report_id == "tp73_reads"
             && path == "alignments.tsv"
             && selection == RnaReadHitSelection::Aligned
             && limit == Some(200)
             && selected_record_indices == vec![7, 8]
+            && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
     let export_alignment_dotplot = parse_shell_line(
@@ -8956,6 +8961,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             path: exported_hits.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![0],
+            subset_spec: Some("filter=all aligned | sort=rank | search=<none>".to_string()),
         },
     )
     .expect("export rna-read hits");
@@ -8963,8 +8969,13 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         export_hits_result.output["written_records"].as_u64(),
         Some(1)
     );
+    assert_eq!(
+        export_hits_result.output["subset_spec"].as_str(),
+        Some("filter=all aligned | sort=rank | search=<none>")
+    );
     let fasta_text = fs::read_to_string(exported_hits).expect("read exported hits");
     assert!(fasta_text.contains(">read_1"));
+    assert!(fasta_text.contains("subset_spec=filter=all aligned | sort=rank | search=<none>"));
     assert!(
         fasta_text.contains(" mode=") || fasta_text.contains(" best=none"),
         "FASTA headers should include alignment mode when a best mapping exists"
@@ -8996,6 +9007,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             path: exported_paths.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![0],
+            subset_spec: Some("filter=selected only | sort=score | search=tp53".to_string()),
         },
     )
     .expect("export rna-read exon paths");
@@ -9006,8 +9018,13 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .map(|values| values.len()),
         Some(1)
     );
+    assert_eq!(
+        export_paths_result.output["subset_spec"].as_str(),
+        Some("filter=selected only | sort=score | search=tp53")
+    );
     let paths_text = fs::read_to_string(exported_paths).expect("read path sheet");
     assert!(paths_text.contains("selected_record_indices=0"));
+    assert!(paths_text.contains("subset_spec=filter=selected only | sort=score | search=tp53"));
     assert!(paths_text.contains("exon_path"));
     assert!(paths_text.contains("reverse_complement_applied"));
     assert!(paths_text.contains("best_alignment_mode"));
@@ -9020,6 +9037,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             path: exported_abundance.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![0],
+            subset_spec: Some("filter=selected only | sort=score | search=tp53".to_string()),
         },
     )
     .expect("export rna-read abundance");
@@ -9033,8 +9051,13 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .map(|values| values.len()),
         Some(1)
     );
+    assert_eq!(
+        export_abundance_result.output["subset_spec"].as_str(),
+        Some("filter=selected only | sort=score | search=tp53")
+    );
     let abundance_text = fs::read_to_string(exported_abundance).expect("read abundance sheet");
     assert!(abundance_text.contains("selected_record_indices=0"));
+    assert!(abundance_text.contains("subset_spec=filter=selected only | sort=score | search=tp53"));
     assert!(abundance_text.contains("row_kind"));
 
     let exported_density_svg = fasta_dir.path().join("score_density.svg");
@@ -9061,6 +9084,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             selection: RnaReadHitSelection::Aligned,
             limit: Some(50),
             selected_record_indices: vec![0],
+            subset_spec: Some("filter=selected only | sort=score | search=tp53".to_string()),
         },
     )
     .expect("export rna-read alignments tsv");
@@ -9074,10 +9098,17 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .map(|values| values.len()),
         Some(1)
     );
+    assert_eq!(
+        export_alignments_result.output["subset_spec"].as_str(),
+        Some("filter=selected only | sort=score | search=tp53")
+    );
     let alignments_text = fs::read_to_string(exported_alignments_tsv).expect("read alignments tsv");
     assert!(alignments_text.contains("alignment_mode"));
     assert!(alignments_text.contains("identity_fraction"));
     assert!(alignments_text.contains("selected_record_indices=0"));
+    assert!(
+        alignments_text.contains("subset_spec=filter=selected only | sort=score | search=tp53")
+    );
 
     let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
     let export_alignment_dotplot_result = execute_shell_command(

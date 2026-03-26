@@ -608,6 +608,7 @@ impl RnaReadSelectedExportKind {
         report_id: String,
         path: String,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
     ) -> Operation {
         match self {
             Self::Fasta => Operation::ExportRnaReadHitsFasta {
@@ -615,6 +616,7 @@ impl RnaReadSelectedExportKind {
                 path,
                 selection: RnaReadHitSelection::Aligned,
                 selected_record_indices,
+                subset_spec,
             },
             Self::AlignmentsTsv => Operation::ExportRnaReadAlignmentsTsv {
                 report_id,
@@ -622,18 +624,21 @@ impl RnaReadSelectedExportKind {
                 selection: RnaReadHitSelection::Aligned,
                 limit: None,
                 selected_record_indices,
+                subset_spec,
             },
             Self::ExonPathsTsv => Operation::ExportRnaReadExonPathsTsv {
                 report_id,
                 path,
                 selection: RnaReadHitSelection::Aligned,
                 selected_record_indices,
+                subset_spec,
             },
             Self::ExonAbundanceTsv => Operation::ExportRnaReadExonAbundanceTsv {
                 report_id,
                 path,
                 selection: RnaReadHitSelection::Aligned,
                 selected_record_indices,
+                subset_spec,
             },
         }
     }
@@ -3452,6 +3457,7 @@ mod tests {
             "report1".to_string(),
             "/tmp/paths.tsv".to_string(),
             selected_record_indices.clone(),
+            Some("filter=disagreement only | sort=score | search=tp53".to_string()),
         );
         match exon_paths {
             Operation::ExportRnaReadExonPathsTsv {
@@ -3459,11 +3465,16 @@ mod tests {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => {
                 assert_eq!(report_id, "report1");
                 assert_eq!(path, "/tmp/paths.tsv");
                 assert_eq!(selection, RnaReadHitSelection::Aligned);
                 assert_eq!(selected_record_indices, vec![2, 5, 9]);
+                assert_eq!(
+                    subset_spec.as_deref(),
+                    Some("filter=disagreement only | sort=score | search=tp53")
+                );
             }
             other => panic!("unexpected operation: {other:?}"),
         }
@@ -3472,6 +3483,7 @@ mod tests {
             "report2".to_string(),
             "/tmp/abundance.tsv".to_string(),
             selected_record_indices,
+            None,
         );
         match abundance {
             Operation::ExportRnaReadExonAbundanceTsv {
@@ -3479,11 +3491,13 @@ mod tests {
                 path,
                 selection,
                 selected_record_indices,
+                subset_spec,
             } => {
                 assert_eq!(report_id, "report2");
                 assert_eq!(path, "/tmp/abundance.tsv");
                 assert_eq!(selection, RnaReadHitSelection::Aligned);
                 assert_eq!(selected_record_indices, vec![2, 5, 9]);
+                assert!(subset_spec.is_none());
             }
             other => panic!("unexpected operation: {other:?}"),
         }
@@ -3668,6 +3682,52 @@ mod tests {
                 .map(|row| row.record_index)
                 .collect::<Vec<_>>(),
             vec![1]
+        );
+    }
+
+    #[test]
+    fn collect_rna_read_alignment_effect_record_indices_preserves_display_order() {
+        let inspection = RnaReadAlignmentInspection {
+            rows: vec![
+                RnaReadAlignmentInspectionRow {
+                    record_index: 7,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+                RnaReadAlignmentInspectionRow {
+                    record_index: 2,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+                RnaReadAlignmentInspectionRow {
+                    record_index: 11,
+                    ..RnaReadAlignmentInspectionRow::default()
+                },
+            ],
+            ..RnaReadAlignmentInspection::default()
+        };
+        let rows = inspection.rows.iter().collect::<Vec<_>>();
+        assert_eq!(
+            MainAreaDna::collect_rna_read_alignment_effect_record_indices(&rows),
+            vec![7, 2, 11]
+        );
+    }
+
+    #[test]
+    fn rna_read_alignment_effect_subset_spec_is_formal_and_stable() {
+        assert_eq!(
+            MainAreaDna::rna_read_alignment_effect_subset_spec(
+                super::RnaReadAlignmentEffectFilter::DisagreementOnly,
+                "tp53",
+                super::RnaReadAlignmentEffectSortKey::Score,
+            ),
+            "filter=disagreement only | sort=score | search=tp53"
+        );
+        assert_eq!(
+            MainAreaDna::rna_read_alignment_effect_subset_spec(
+                super::RnaReadAlignmentEffectFilter::AllAligned,
+                "   ",
+                super::RnaReadAlignmentEffectSortKey::Rank,
+            ),
+            "filter=all aligned | sort=rank | search=<none>"
         );
     }
 
@@ -17220,6 +17280,26 @@ impl MainAreaDna {
         rows
     }
 
+    fn collect_rna_read_alignment_effect_record_indices(
+        rows: &[&RnaReadAlignmentInspectionRow],
+    ) -> Vec<usize> {
+        rows.iter().map(|row| row.record_index).collect::<Vec<_>>()
+    }
+
+    fn rna_read_alignment_effect_subset_spec(
+        filter: RnaReadAlignmentEffectFilter,
+        search: &str,
+        sort_key: RnaReadAlignmentEffectSortKey,
+    ) -> String {
+        let search = search.trim();
+        format!(
+            "filter={} | sort={} | search={}",
+            Self::rna_read_alignment_effect_filter_label(filter),
+            Self::rna_read_alignment_effect_sort_key_label(sort_key),
+            if search.is_empty() { "<none>" } else { search }
+        )
+    }
+
     fn focus_rna_read_alignment_effect_record_indices(
         &mut self,
         record_indices: Vec<usize>,
@@ -18519,6 +18599,7 @@ impl MainAreaDna {
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![],
+            subset_spec: None,
         });
     }
 
@@ -18543,6 +18624,7 @@ impl MainAreaDna {
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![],
+            subset_spec: None,
         });
     }
 
@@ -18567,6 +18649,7 @@ impl MainAreaDna {
             path: path.display().to_string(),
             selection: RnaReadHitSelection::All,
             selected_record_indices: vec![],
+            subset_spec: None,
         });
     }
 
@@ -18610,6 +18693,7 @@ impl MainAreaDna {
         self.export_rna_read_subset_with_record_indices(
             kind,
             selected_record_indices,
+            None,
             kind.empty_selection_message(),
         );
     }
@@ -18618,6 +18702,7 @@ impl MainAreaDna {
         &mut self,
         kind: RnaReadSelectedExportKind,
         selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
         empty_selection_message: &str,
     ) {
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
@@ -18641,6 +18726,7 @@ impl MainAreaDna {
             report_id,
             path.display().to_string(),
             selected_record_indices,
+            subset_spec,
         ));
     }
 
@@ -20125,15 +20211,20 @@ impl MainAreaDna {
             &self.rna_seed_selected_record_indices,
             self.rna_read_alignment_effect_sort_key,
         );
-        let displayed_record_indices = displayed_rows
-            .iter()
-            .map(|row| row.record_index)
-            .collect::<Vec<_>>();
+        let displayed_record_indices =
+            Self::collect_rna_read_alignment_effect_record_indices(&displayed_rows);
+        let visible_count = displayed_record_indices.len();
+        let filtered_subset_spec = Self::rna_read_alignment_effect_subset_spec(
+            self.rna_read_alignment_effect_filter,
+            &self.rna_read_alignment_effect_search,
+            self.rna_read_alignment_effect_sort_key,
+        );
         ui.small(format!(
             "Showing {} of {} aligned rows",
             displayed_rows.len(),
             inspection.rows.len()
         ));
+        ui.small(format!("Current filtered subset: {filtered_subset_spec}"));
 
         ui.horizontal_wrapped(|ui| {
             ui.menu_button("Selection tools", |ui| {
@@ -20159,11 +20250,11 @@ impl MainAreaDna {
                     );
                     ui.close();
                 }
-                if ui.button("Select displayed rows").clicked() {
+                if ui.button("Select filtered rows").clicked() {
                     self.rna_seed_selected_record_indices =
                         displayed_record_indices.iter().copied().collect::<BTreeSet<_>>();
                     self.op_status = format!(
-                        "Selected {} aligned read(s) from the current visible subset",
+                        "Selected {} aligned read(s) from the current filtered subset ({filtered_subset_spec})",
                         self.rna_seed_selected_record_indices.len()
                     );
                     ui.close();
@@ -20233,6 +20324,34 @@ impl MainAreaDna {
                         .clicked()
                     {
                         self.export_selected_rna_read_subset(export_kind);
+                        ui.close();
+                    }
+                }
+            });
+            ui.menu_button(format!("Export filtered ({visible_count})..."), |ui| {
+                if visible_count == 0 {
+                    ui.small("No aligned rows match the current filter/search.");
+                    ui.separator();
+                }
+                for export_kind in [
+                    RnaReadSelectedExportKind::Fasta,
+                    RnaReadSelectedExportKind::AlignmentsTsv,
+                    RnaReadSelectedExportKind::ExonPathsTsv,
+                    RnaReadSelectedExportKind::ExonAbundanceTsv,
+                ] {
+                    if ui
+                        .add_enabled(
+                            visible_count > 0,
+                            egui::Button::new(export_kind.menu_label()),
+                        )
+                        .clicked()
+                    {
+                        self.export_rna_read_subset_with_record_indices(
+                            export_kind,
+                            displayed_record_indices.clone(),
+                            Some(filtered_subset_spec.clone()),
+                            "No aligned rows match the current filter/search.",
+                        );
                         ui.close();
                     }
                 }
@@ -20379,7 +20498,7 @@ impl MainAreaDna {
             .find(|row| row.record_index == selected_record_index)
         else {
             ui.small(
-                "The currently highlighted read is outside the visible subset. Select a visible row or widen the filter/search.",
+                "The currently highlighted read is outside the current filtered subset. Select a row from the filtered table or widen the filter/search.",
             );
             return;
         };
@@ -21058,6 +21177,7 @@ impl MainAreaDna {
                                                 self.export_rna_read_subset_with_record_indices(
                                                     export_kind,
                                                     contributors.clone(),
+                                                    None,
                                                     "No aligned contributor rows are available to export for this mapped exon.",
                                                 );
                                                 ui.close();
@@ -21138,6 +21258,7 @@ impl MainAreaDna {
                                             self.export_rna_read_subset_with_record_indices(
                                                 export_kind,
                                                 contributors.clone(),
+                                                None,
                                                 "No aligned contributor rows are available to export for this mapped junction.",
                                             );
                                             ui.close();
@@ -21244,6 +21365,7 @@ impl MainAreaDna {
                                             self.export_rna_read_subset_with_record_indices(
                                                 export_kind,
                                                 contributors.clone(),
+                                                None,
                                                 "No aligned contributor rows are available to export for this mapped isoform.",
                                             );
                                             ui.close();

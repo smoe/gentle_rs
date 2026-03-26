@@ -13610,6 +13610,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
             RnaReadHitSelection::All,
             Some(1),
             &[],
+            None,
         )
         .expect("export alignment tsv");
     assert_eq!(tsv_export.row_count, 1);
@@ -13637,6 +13638,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
             RnaReadHitSelection::All,
             None,
             &[0],
+            Some("filter=selected only | sort=score | search=<none>"),
         )
         .expect("export selected alignment tsv");
     assert_eq!(selected_tsv_export.row_count, 1);
@@ -13644,6 +13646,9 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     let selected_tsv_text =
         fs::read_to_string(&selected_tsv_path).expect("read selected alignment tsv");
     assert!(selected_tsv_text.contains("selected_record_indices=0"));
+    assert!(
+        selected_tsv_text.contains("subset_spec=filter=selected only | sort=score | search=<none>")
+    );
     assert!(selected_tsv_text.contains("aligned_hi_id"));
     assert!(!selected_tsv_text.contains("aligned_hi_cov\t"));
 
@@ -13704,12 +13709,14 @@ fn test_export_rna_read_hits_fasta_selected_record_indices_override_selection() 
             fasta_path.to_str().expect("fasta path"),
             RnaReadHitSelection::Aligned,
             &[1],
+            Some("filter=selected only | sort=score | search=<none>"),
         )
         .expect("export selected fasta");
     assert_eq!(written, 1);
     let fasta_text = fs::read_to_string(&fasta_path).expect("read selected fasta");
     assert!(fasta_text.contains(">read_beta "));
     assert!(fasta_text.contains("record_index=1"));
+    assert!(fasta_text.contains("subset_spec=filter=selected only | sort=score | search=<none>"));
     assert!(!fasta_text.contains("read_alpha"));
 }
 
@@ -14187,6 +14194,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             path_tsv.to_str().expect("path tsv"),
             RnaReadHitSelection::All,
             &[],
+            None,
         )
         .expect("export paths");
     assert_eq!(path_export.row_count, 1);
@@ -14204,6 +14212,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             abundance_tsv.to_str().expect("abundance tsv"),
             RnaReadHitSelection::All,
             &[],
+            None,
         )
         .expect("export abundance");
     assert_eq!(abundance_export.selected_read_count, 1);
@@ -14254,11 +14263,13 @@ fn test_export_rna_read_exon_paths_and_abundance_selected_record_indices_overrid
             paths_tsv.to_str().expect("paths tsv"),
             RnaReadHitSelection::All,
             &[1],
+            Some("filter=disagreement only | sort=score | search=tp53"),
         )
         .expect("export selected paths");
     assert_eq!(path_export.row_count, 1);
     let paths_text = fs::read_to_string(&paths_tsv).expect("read selected paths");
     assert!(paths_text.contains("selected_record_indices=1"));
+    assert!(paths_text.contains("subset_spec=filter=disagreement only | sort=score | search=tp53"));
     assert!(paths_text.contains("read_beta"));
     assert!(!paths_text.contains("read_alpha"));
 
@@ -14269,11 +14280,15 @@ fn test_export_rna_read_exon_paths_and_abundance_selected_record_indices_overrid
             abundance_tsv.to_str().expect("abundance tsv"),
             RnaReadHitSelection::All,
             &[1],
+            Some("filter=disagreement only | sort=score | search=tp53"),
         )
         .expect("export selected abundance");
     assert_eq!(abundance_export.selected_read_count, 1);
     let abundance_text = fs::read_to_string(&abundance_tsv).expect("read selected abundance");
     assert!(abundance_text.contains("selected_record_indices=1"));
+    assert!(
+        abundance_text.contains("subset_spec=filter=disagreement only | sort=score | search=tp53")
+    );
     assert!(abundance_text.contains("\ttransition\t\t2\t3\t"));
     assert!(!abundance_text.contains("\ttransition\t\t1\t2\t"));
 }

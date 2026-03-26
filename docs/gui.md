@@ -560,9 +560,11 @@ Feature tree grouping:
         - `Show max-score outliers`
         - `Show rightmost score bin`
         - `Reset view`
-      - `Selection tools -> Select displayed rows` promotes the currently
-        visible filtered subset into the checkbox selection set for follow-up
+      - `Selection tools -> Select filtered rows` promotes the current
+        filter/search/sort subset into the checkbox selection set for follow-up
         alignment, FASTA copy, materialization, or dotplot export
+      - the panel now states the current formal subset specification directly
+        as `filter=... | sort=... | search=...`
       - one row per aligned retained read with:
         - phase-1 transcript guess
         - phase-2 aligned transcript
@@ -583,6 +585,12 @@ Feature tree grouping:
         - `Exon abundance TSV...`
         - after using `Audit`, these exports write exactly the contributor
           reads behind the chosen mapped exon/junction/isoform row
+      - an `Export filtered...` menu writes the exact current
+        filter/search/sort subset, so quick views/searches can be exported
+        reproducibly without first promoting them into the checkbox selection
+        set
+      - filtered exports now record that formal subset definition in their
+        provenance as `subset_spec=filter=... | sort=... | search=...`
     - `Aggregate support`
       - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are
