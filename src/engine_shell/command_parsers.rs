@@ -3123,7 +3123,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "inspect-alignments" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads inspect-alignments requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
+                    "rna-reads inspect-alignments requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-index N] [--score-bin-count M]"
                         .to_string(),
                 );
             }
@@ -3137,6 +3137,8 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut sort_key = RnaReadAlignmentInspectionSortKey::Rank;
             let mut search = String::new();
             let mut selected_record_indices: Vec<usize> = vec![];
+            let mut score_bin_index: Option<usize> = None;
+            let mut score_bin_count = 0usize;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3197,6 +3199,32 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         selected_record_indices = parse_rna_read_record_indices(&raw)?;
                     }
+                    "--score-bin-index" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--score-bin-index",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        score_bin_index = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --score-bin-index value '{raw}' for rna-reads inspect-alignments: {e}"
+                            )
+                        })?);
+                    }
+                    "--score-bin-count" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--score-bin-count",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        score_bin_count = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --score-bin-count value '{raw}' for rna-reads inspect-alignments: {e}"
+                            )
+                        })?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads inspect-alignments"
@@ -3212,6 +3240,8 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 sort_key,
                 search,
                 selected_record_indices,
+                score_bin_index,
+                score_bin_count,
             })
         }
         "export-report" => {

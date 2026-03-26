@@ -11095,6 +11095,35 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
 }
 
 #[test]
+fn test_preview_pair_dotplot_view_builds_transient_view() {
+    let view = GentleEngine::preview_pair_dotplot_view(
+        "read_1",
+        "ACGTACGT",
+        "roi_1",
+        "TTTACGTACGTTTT",
+        3,
+        11,
+        DotplotMode::PairForward,
+        4,
+        1,
+        0,
+        None,
+    )
+    .expect("preview pair dotplot view");
+    assert_eq!(view.schema, DOTPLOT_VIEW_SCHEMA);
+    assert_eq!(view.dotplot_id, "");
+    assert_eq!(view.seq_id, "read_1");
+    assert_eq!(view.reference_seq_id.as_deref(), Some("roi_1"));
+    assert_eq!(view.span_start_0based, 0);
+    assert_eq!(view.span_end_0based, 8);
+    assert_eq!(view.reference_span_start_0based, 3);
+    assert_eq!(view.reference_span_end_0based, 11);
+    assert_eq!(view.word_size, 4);
+    assert_eq!(view.step_bp, 1);
+    assert!(!view.points.is_empty());
+}
+
+#[test]
 fn test_compute_pair_reverse_complement_maps_expected_antidiagonal_hits() {
     let query = "ACGTTGCAAGTC";
     let reference = GentleEngine::reverse_complement(query);
@@ -14088,6 +14117,8 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 sort_key: RnaReadAlignmentInspectionSortKey::Score,
                 search: "aligned_hi_cov".to_string(),
                 selected_record_indices: vec![1, 1],
+                score_bin_index: None,
+                score_bin_count: 0,
             }),
         )
         .expect("inspect filtered alignment rows");
@@ -14104,6 +14135,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     );
     assert_eq!(filtered.subset_spec.search, "aligned_hi_cov");
     assert_eq!(filtered.subset_spec.selected_record_indices, vec![1]);
+    assert_eq!(filtered.subset_spec.score_bin_index, None);
     assert_eq!(filtered.rows[0].header_id, "aligned_hi_cov");
     assert_eq!(filtered.rows[0].rank, 1);
 
@@ -14117,6 +14149,8 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 sort_key: RnaReadAlignmentInspectionSortKey::Score,
                 search: String::new(),
                 selected_record_indices: vec![],
+                score_bin_index: None,
+                score_bin_count: 0,
             }),
         )
         .expect("inspect score-sorted alignment rows");
@@ -14125,6 +14159,33 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
     assert_eq!(sorted.rows[0].rank, 2);
     assert_eq!(sorted.rows[1].header_id, "aligned_hi_cov");
     assert_eq!(sorted.rows[1].rank, 1);
+
+    let target_score_bin_index =
+        ((inspection.rows[0].seed_hit_fraction.clamp(0.0, 1.0) * 40.0).floor() as usize).min(39);
+    let score_bin_filtered = engine
+        .inspect_rna_read_alignments_with_subset(
+            "rna_reads_alignment_rank",
+            RnaReadHitSelection::All,
+            10,
+            Some(RnaReadAlignmentInspectionSubsetSpec {
+                effect_filter: RnaReadAlignmentInspectionEffectFilter::AllAligned,
+                sort_key: RnaReadAlignmentInspectionSortKey::Rank,
+                search: String::new(),
+                selected_record_indices: vec![],
+                score_bin_index: Some(target_score_bin_index),
+                score_bin_count: 40,
+            }),
+        )
+        .expect("inspect score-bin filtered alignment rows");
+    assert_eq!(
+        score_bin_filtered.subset_spec.score_bin_index,
+        Some(target_score_bin_index)
+    );
+    assert_eq!(score_bin_filtered.subset_spec.score_bin_count, 40);
+    assert!(score_bin_filtered.rows.iter().all(|row| {
+        ((row.seed_hit_fraction.clamp(0.0, 1.0) * 40.0).floor() as usize).min(39)
+            == target_score_bin_index
+    }));
 
     let td = tempdir().expect("tempdir");
     let tsv_path = td.path().join("alignment_rows.tsv");

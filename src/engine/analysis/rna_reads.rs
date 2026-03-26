@@ -432,6 +432,13 @@ impl GentleEngine {
         subset_spec.search = subset_spec.search.trim().to_string();
         subset_spec.selected_record_indices.sort_unstable();
         subset_spec.selected_record_indices.dedup();
+        if let Some(score_bin_index) = subset_spec.score_bin_index {
+            subset_spec.score_bin_count = subset_spec.score_bin_count.max(1);
+            subset_spec.score_bin_index =
+                Some(score_bin_index.min(subset_spec.score_bin_count.saturating_sub(1)));
+        } else {
+            subset_spec.score_bin_count = 0;
+        }
         subset_spec
     }
 
@@ -498,6 +505,20 @@ impl GentleEngine {
         ]
         .iter()
         .any(|field| field.to_ascii_lowercase().contains(&needle))
+    }
+
+    fn rna_read_alignment_inspection_matches_score_bin(
+        row: &RnaReadAlignmentInspectionRow,
+        score_bin_index: Option<usize>,
+        score_bin_count: usize,
+    ) -> bool {
+        let Some(score_bin_index) = score_bin_index else {
+            return true;
+        };
+        let score_bin_count = score_bin_count.max(1);
+        let clamped = row.seed_hit_fraction.clamp(0.0, 1.0);
+        let scaled = (clamped * score_bin_count as f64).floor() as usize;
+        scaled.min(score_bin_count.saturating_sub(1)) == score_bin_index
     }
 
     fn compare_rna_read_alignment_inspection_rows(
@@ -646,6 +667,11 @@ impl GentleEngine {
                 subset_spec.effect_filter,
                 &subset_spec.selected_record_indices,
             ) && Self::rna_read_alignment_inspection_matches_search(row, &subset_spec.search)
+                && Self::rna_read_alignment_inspection_matches_score_bin(
+                    row,
+                    subset_spec.score_bin_index,
+                    subset_spec.score_bin_count,
+                )
         });
         rows.sort_by(|left, right| {
             Self::compare_rna_read_alignment_inspection_rows(left, right, subset_spec.sort_key)

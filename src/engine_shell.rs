@@ -1322,6 +1322,8 @@ pub enum ShellCommand {
         sort_key: RnaReadAlignmentInspectionSortKey,
         search: String,
         selected_record_indices: Vec<usize>,
+        score_bin_index: Option<usize>,
+        score_bin_count: usize,
     },
     RnaReadsExportReport {
         report_id: String,
@@ -6226,8 +6228,10 @@ impl ShellCommand {
                 sort_key,
                 search,
                 selected_record_indices,
+                score_bin_index,
+                score_bin_count,
             } => format!(
-                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={}, effect_filter={}, sort_key={}, search='{}', selected_record_indices={})",
+                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={}, effect_filter={}, sort_key={}, search='{}', selected_record_indices={}, score_bin_index={}, score_bin_count={})",
                 report_id,
                 selection.as_str(),
                 limit,
@@ -6238,7 +6242,11 @@ impl ShellCommand {
                 } else {
                     search.trim()
                 },
-                selected_record_indices.len()
+                selected_record_indices.len(),
+                score_bin_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "<none>".to_string()),
+                score_bin_count
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",
@@ -15754,6 +15762,8 @@ pub fn execute_shell_command_with_options(
             sort_key,
             search,
             selected_record_indices,
+            score_bin_index,
+            score_bin_count,
         } => {
             let inspection = engine
                 .inspect_rna_read_alignments_with_subset(
@@ -15765,6 +15775,8 @@ pub fn execute_shell_command_with_options(
                         sort_key: *sort_key,
                         search: search.clone(),
                         selected_record_indices: selected_record_indices.clone(),
+                        score_bin_index: *score_bin_index,
+                        score_bin_count: *score_bin_count,
                     }),
                 )
                 .map_err(|e| e.to_string())?;

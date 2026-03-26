@@ -1363,6 +1363,14 @@ Status:
     The GUI `Read effects` table now fetches filtered rows through the same
     engine-owned subset contract used by `rna-reads inspect-alignments`, so
     GUI and shell inspection semantics stay aligned.
+  - Score-density histogram bins in Splicing Expert are now actionable:
+    clicking a bar creates a formal `score_bin` subset, highlights that bin,
+    selects the corresponding saved-report reads, and focuses `Mapped cDNA ->
+    Read effects` on that reproducible subset instead of the old top-20-only
+    preview.
+  - Selected aligned reads in `Mapped cDNA -> Read effects` now have an inline
+    pairwise dotplot preview driven by the shared engine dotplot logic, so
+    manual inspection no longer starts with SVG export.
   - Added ranked alignment TSV export for downstream tabular analysis:
     `ExportRnaReadAlignmentsTsv` /
     `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv

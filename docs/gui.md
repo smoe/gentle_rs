@@ -468,8 +468,10 @@ Feature tree grouping:
       inferred isoform path, default `0.05`)
     - pass rule:
       `raw >= min hit AND weighted >= min weighted AND unique >= min(min unique, tested kmers) AND chain >= min chain AND median transcript gap <= max median gap AND confirmed transitions >= min transitions AND confirmed transition fraction >= min transition frac`
-  - legacy short/long window fields are kept for compatibility and currently
-    ignored (full-read hashing is always used in phase-1)
+  - phase-1 hashing now exposes only the real density controls:
+    `k-mer` and `hash stride`
+    - full-read hashing is always used in phase 1
+    - removed legacy short/long sampled-window knobs are no longer shown
   - alignment fields are active for phase-2 retained-read mapping:
     - `align band`
     - `min identity`
@@ -548,8 +550,16 @@ Feature tree grouping:
     - `Read effects` (default)
       - read-first inspection surface driven from the saved report /
         `inspect-alignments` payload, not from the capped live preview
-      - default table height targets about 12 visible aligned rows before
+      - default table height now targets about 15 visible aligned rows before
         scrolling
+      - the score-density histogram above is now part of the inspection loop:
+        clicking a bar highlights that bin and turns it into a formal
+        `score_bin` subset for `Read effects`
+        - the clicked bin also becomes the checkbox-selected saved-report
+          subset, so the table, exports, and follow-up alignment actions all
+          refer to the same explicit reads
+        - the current subset line now states `filter=... | score_bin=... |
+          sort=... | search=...`
       - filter controls let you focus on:
         - all aligned rows
         - `confirmed` rows only
@@ -565,16 +575,18 @@ Feature tree grouping:
         subset contract used by shared-shell `rna-reads inspect-alignments`, so
         GUI filter/sort/search/selected semantics stay aligned with agent-facing
         inspection JSON
-      - quick-view buttons provide one-click shortcuts for:
-        - `Show disagreements`
-        - `Show max-score outliers`
-        - `Show rightmost score bin`
+      - shortcut buttons provide one-click subsets for:
+        - `Disagreements`
+        - `Max-score ties`
+        - `Rightmost score bin`
         - `Reset view`
       - `Selection tools -> Select filtered rows` promotes the current
         filter/search/sort subset into the checkbox selection set for follow-up
         alignment, FASTA copy, materialization, or dotplot export
-      - the panel now states the current formal subset specification directly
-        as `filter=... | sort=... | search=...`
+      - the panel states both:
+        - the formal subset specification
+        - score-bin provenance (`N saved-report reads in bin X, M aligned rows
+          currently match`)
       - one row per aligned retained read with:
         - phase-1 transcript guess
         - phase-2 aligned transcript
@@ -585,6 +597,8 @@ Feature tree grouping:
         - phase-1 interpretation fields
         - phase-2 mapping metrics
         - mapped exon/junction contribution spans
+        - inline pairwise read-vs-ROI dotplot preview using the current
+          RNA-read dotplot parameters
         - direct actions (`Copy highlighted FASTA`, `Materialize highlighted`,
           `Export dotplot...`)
       - selected-row actions now also include an `Export selected...` menu for

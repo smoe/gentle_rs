@@ -3647,6 +3647,36 @@ mod tests {
             super::RnaReadAlignmentEffectSortKey::Rank
         );
         assert!(area.rna_read_alignment_effect_search.is_empty());
+        assert_eq!(area.rna_read_alignment_effect_score_bin_index, None);
+    }
+
+    #[test]
+    fn select_rna_read_report_score_bin_record_indices_matches_requested_bin() {
+        let report = RnaReadInterpretationReport {
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    seed_hit_fraction: 0.12,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 4,
+                    seed_hit_fraction: 0.88,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 7,
+                    seed_hit_fraction: 0.89,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            score_density_bins: vec![0; 40],
+            ..RnaReadInterpretationReport::default()
+        };
+        assert_eq!(
+            MainAreaDna::select_rna_read_report_score_bin_record_indices(&report, 35, 40),
+            vec![4, 7]
+        );
     }
 
     #[test]
@@ -3918,16 +3948,20 @@ mod tests {
                 super::RnaReadAlignmentEffectFilter::DisagreementOnly,
                 "tp53",
                 super::RnaReadAlignmentEffectSortKey::Score,
+                Some(39),
+                40,
             ),
-            "filter=disagreement only | sort=score | search=tp53"
+            "filter=disagreement only | score_bin=39/40 [0.975,1.000) | sort=score | search=tp53"
         );
         assert_eq!(
             MainAreaDna::rna_read_alignment_effect_subset_spec(
                 super::RnaReadAlignmentEffectFilter::AllAligned,
                 "   ",
                 super::RnaReadAlignmentEffectSortKey::Rank,
+                None,
+                40,
             ),
-            "filter=all aligned | sort=rank | search=<none>"
+            "filter=all aligned | score_bin=<none> | sort=rank | search=<none>"
         );
     }
 
@@ -3939,6 +3973,8 @@ mod tests {
             " tp53 ",
             super::RnaReadAlignmentEffectSortKey::Score,
             &selected,
+            Some(7),
+            40,
         );
         assert_eq!(
             subset.effect_filter,
@@ -3950,6 +3986,8 @@ mod tests {
         );
         assert_eq!(subset.search, "tp53");
         assert_eq!(subset.selected_record_indices, vec![2, 9]);
+        assert_eq!(subset.score_bin_index, Some(7));
+        assert_eq!(subset.score_bin_count, 40);
     }
 
     #[test]
@@ -5091,10 +5129,14 @@ pub struct MainAreaDna {
     rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter,
     rna_read_alignment_effect_sort_key: RnaReadAlignmentEffectSortKey,
     rna_read_alignment_effect_search: String,
+    rna_read_alignment_effect_score_bin_index: Option<usize>,
     rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
     rna_seed_template_audit_preview: Vec<RnaSeedHashTemplateAuditEntry>,
     rna_seed_highlight_record_index: Option<usize>,
     rna_seed_selected_record_indices: BTreeSet<usize>,
+    rna_read_inline_dotplot_cache_key: String,
+    rna_read_inline_dotplot_view: Option<DotplotView>,
+    rna_read_inline_dotplot_error: Option<String>,
     rna_seed_overlay_show_exons: bool,
     rna_seed_overlay_show_introns: bool,
     rna_seed_overlay_exonic_coords: bool,
@@ -5439,10 +5481,14 @@ impl MainAreaDna {
             rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter::AllAligned,
             rna_read_alignment_effect_sort_key: RnaReadAlignmentEffectSortKey::Rank,
             rna_read_alignment_effect_search: String::new(),
+            rna_read_alignment_effect_score_bin_index: None,
             rna_seed_catalog_preview: vec![],
             rna_seed_template_audit_preview: vec![],
             rna_seed_highlight_record_index: None,
             rna_seed_selected_record_indices: BTreeSet::new(),
+            rna_read_inline_dotplot_cache_key: String::new(),
+            rna_read_inline_dotplot_view: None,
+            rna_read_inline_dotplot_error: None,
             rna_seed_overlay_show_exons: true,
             rna_seed_overlay_show_introns: false,
             rna_seed_overlay_exonic_coords: false,
@@ -17784,11 +17830,17 @@ impl MainAreaDna {
     }
 
     fn current_rna_read_alignment_subset_spec(&self) -> RnaReadAlignmentInspectionSubsetSpec {
+        let score_bin_count = self
+            .current_saved_rna_read_report()
+            .map(|report| report.score_density_bins.len().max(40))
+            .unwrap_or(40);
         Self::rna_read_alignment_effect_subset_struct(
             self.rna_read_alignment_effect_filter,
             &self.rna_read_alignment_effect_search,
             self.rna_read_alignment_effect_sort_key,
             &self.rna_seed_selected_record_indices,
+            self.rna_read_alignment_effect_score_bin_index,
+            score_bin_count,
         )
     }
 
@@ -17797,12 +17849,16 @@ impl MainAreaDna {
         search: &str,
         sort_key: RnaReadAlignmentEffectSortKey,
         selected_record_indices: &BTreeSet<usize>,
+        score_bin_index: Option<usize>,
+        score_bin_count: usize,
     ) -> RnaReadAlignmentInspectionSubsetSpec {
         RnaReadAlignmentInspectionSubsetSpec {
             effect_filter: Self::engine_rna_read_alignment_effect_filter(filter),
             sort_key: Self::engine_rna_read_alignment_sort_key(sort_key),
             search: search.trim().to_string(),
             selected_record_indices: selected_record_indices.iter().copied().collect(),
+            score_bin_index,
+            score_bin_count: score_bin_count.max(1),
         }
     }
 
@@ -17949,11 +18005,17 @@ impl MainAreaDna {
         filter: RnaReadAlignmentEffectFilter,
         search: &str,
         sort_key: RnaReadAlignmentEffectSortKey,
+        score_bin_index: Option<usize>,
+        score_bin_count: usize,
     ) -> String {
         let search = search.trim();
+        let score_bin = score_bin_index
+            .map(|idx| Self::format_rna_read_score_bin_spec(idx, score_bin_count))
+            .unwrap_or_else(|| "<none>".to_string());
         format!(
-            "filter={} | sort={} | search={}",
+            "filter={} | score_bin={} | sort={} | search={}",
             Self::rna_read_alignment_effect_filter_label(filter),
+            score_bin,
             Self::rna_read_alignment_effect_sort_key_label(sort_key),
             if search.is_empty() { "<none>" } else { search }
         )
@@ -17969,12 +18031,33 @@ impl MainAreaDna {
         self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
         self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
         self.rna_read_alignment_effect_search.clear();
+        self.rna_read_alignment_effect_score_bin_index = None;
         self.rna_seed_selected_record_indices = record_indices.iter().copied().collect();
         self.rna_seed_highlight_record_index = record_indices.first().copied();
         self.op_status = format!(
             "Focused read effects on {} contributing read(s) from {source_label}",
             self.rna_seed_selected_record_indices.len()
         );
+    }
+
+    fn clear_rna_read_alignment_score_bin_focus(&mut self) {
+        self.rna_read_alignment_effect_score_bin_index = None;
+    }
+
+    fn rna_read_score_density_bin_bounds(bin_index: usize, bin_count: usize) -> (f64, f64) {
+        let bin_count = bin_count.max(1);
+        let left = bin_index.min(bin_count.saturating_sub(1)) as f64 / bin_count as f64;
+        let right = (bin_index.min(bin_count.saturating_sub(1)) + 1) as f64 / bin_count as f64;
+        (left, right)
+    }
+
+    fn format_rna_read_score_bin_spec(bin_index: usize, bin_count: usize) -> String {
+        let (left, right) = Self::rna_read_score_density_bin_bounds(bin_index, bin_count);
+        format!(
+            "{}/{} [{left:.3},{right:.3})",
+            bin_index.min(bin_count.saturating_sub(1)),
+            bin_count.max(1)
+        )
     }
 
     fn collect_rna_read_mapped_exon_contributors(
@@ -18140,6 +18223,27 @@ impl MainAreaDna {
         let Some(target_idx) = rightmost_idx else {
             return vec![];
         };
+        report
+            .hits
+            .iter()
+            .filter(|hit| {
+                Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                    == target_idx
+            })
+            .map(|hit| hit.record_index)
+            .collect::<Vec<_>>()
+    }
+
+    fn select_rna_read_report_score_bin_record_indices(
+        report: &RnaReadInterpretationReport,
+        target_idx: usize,
+        bin_count: usize,
+    ) -> Vec<usize> {
+        if report.hits.is_empty() {
+            return vec![];
+        }
+        let bin_count = bin_count.max(1);
+        let target_idx = target_idx.min(bin_count.saturating_sub(1));
         report
             .hits
             .iter()
@@ -18331,6 +18435,97 @@ impl MainAreaDna {
             DotplotMode::PairReverseComplement
         } else {
             DotplotMode::PairForward
+        }
+    }
+
+    fn rna_read_inline_dotplot_cache_key(
+        &self,
+        view: &SplicingExpertView,
+        hit: &RnaReadInterpretationHit,
+    ) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            self.rna_reads_ui.report_id.trim(),
+            hit.record_index,
+            view.seq_id,
+            view.region_start_1based,
+            view.region_end_1based,
+            self.dotplot_ui.word_size.trim(),
+            self.dotplot_ui.step_bp.trim(),
+            self.dotplot_ui.max_mismatches.trim(),
+            self.dotplot_ui.tile_bp.trim(),
+            Self::rna_read_dotplot_mode_from_hit(hit).as_str()
+        )
+    }
+
+    fn ensure_rna_read_alignment_effect_inline_dotplot(
+        &mut self,
+        view: &SplicingExpertView,
+        hit: &RnaReadInterpretationHit,
+    ) {
+        let cache_key = self.rna_read_inline_dotplot_cache_key(view, hit);
+        if self.rna_read_inline_dotplot_cache_key == cache_key {
+            return;
+        }
+        self.rna_read_inline_dotplot_cache_key = cache_key;
+        self.rna_read_inline_dotplot_view = None;
+        self.rna_read_inline_dotplot_error = None;
+
+        let reference_text = match self.dna.read() {
+            Ok(dna) => dna.get_forward_string(),
+            Err(_) => {
+                self.rna_read_inline_dotplot_error =
+                    Some("Sequence lock poisoned while preparing inline dotplot".to_string());
+                return;
+            }
+        };
+        let reference_span_start_0based = view.region_start_1based.saturating_sub(1);
+        let reference_span_end_0based = view.region_end_1based;
+        let reference_span_bp = reference_span_end_0based
+            .saturating_sub(reference_span_start_0based)
+            .max(1);
+        let requested_word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
+                .unwrap_or(7);
+        let requested_step_bp =
+            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
+                .unwrap_or(1);
+        let max_mismatches = Self::parse_optional_usize_text(
+            &self.dotplot_ui.max_mismatches,
+            "dotplot max_mismatches",
+        )
+        .ok()
+        .flatten()
+        .unwrap_or(0);
+        let tile_bp = Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp")
+            .ok()
+            .flatten()
+            .filter(|value| *value > 0);
+        let (word_size, step_bp) = Self::resolve_rna_read_sequence_dotplot_word_and_step(
+            hit.sequence.len(),
+            reference_span_bp,
+            requested_word_size,
+            requested_step_bp,
+        );
+        match GentleEngine::preview_pair_dotplot_view(
+            &format!("rna_read_r{}", hit.record_index + 1),
+            &hit.sequence,
+            &view.seq_id,
+            &reference_text,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            Self::rna_read_dotplot_mode_from_hit(hit),
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+        ) {
+            Ok(dotplot_view) => {
+                self.rna_read_inline_dotplot_view = Some(dotplot_view);
+            }
+            Err(error) => {
+                self.rna_read_inline_dotplot_error = Some(error.message);
+            }
         }
     }
 
@@ -19400,6 +19595,10 @@ impl MainAreaDna {
         self.rna_read_progress = None;
         self.rna_seed_highlight_record_index = None;
         self.rna_seed_selected_record_indices.clear();
+        self.rna_read_alignment_effect_score_bin_index = None;
+        self.rna_read_inline_dotplot_cache_key.clear();
+        self.rna_read_inline_dotplot_view = None;
+        self.rna_read_inline_dotplot_error = None;
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
         self.op_status = match &op {
@@ -20383,7 +20582,7 @@ impl MainAreaDna {
     }
 
     fn render_rna_read_score_density_plot(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         progress: &RnaReadInterpretProgress,
         use_log_scale: bool,
@@ -20401,7 +20600,7 @@ impl MainAreaDna {
             "Seed-hit score density across tested reads ({scale_label})"
         ));
         let desired = Vec2::new(ui.available_width().max(280.0), 120.0);
-        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click());
         let painter = ui.painter_at(rect);
         painter.rect_stroke(
             rect,
@@ -20433,7 +20632,11 @@ impl MainAreaDna {
         } else {
             max_count as f32
         };
-        let bin_w = rect.width() / progress.score_density_bins.len().max(1) as f32;
+        let bin_count = progress.score_density_bins.len().max(1);
+        let selected_bin_index = self
+            .rna_read_alignment_effect_score_bin_index
+            .map(|idx| idx.min(bin_count.saturating_sub(1)));
+        let bin_w = rect.width() / bin_count as f32;
         for (idx, count) in progress.score_density_bins.iter().enumerate() {
             if *count == 0 {
                 continue;
@@ -20457,7 +20660,21 @@ impl MainAreaDna {
                 egui::pos2(x0, axis_bottom - h),
                 egui::pos2(x1, axis_bottom - 0.6),
             );
-            painter.rect_filled(bar, 0.0, egui::Color32::from_rgb(16, 185, 129));
+            let is_selected = selected_bin_index == Some(idx);
+            let fill = if is_selected {
+                egui::Color32::from_rgb(5, 150, 105)
+            } else {
+                egui::Color32::from_rgb(16, 185, 129)
+            };
+            painter.rect_filled(bar, 0.0, fill);
+            if is_selected {
+                painter.rect_stroke(
+                    bar.expand(1.2),
+                    0.0,
+                    egui::Stroke::new(2.0, egui::Color32::from_rgb(8, 47, 73)),
+                    egui::StrokeKind::Inside,
+                );
+            }
             if (x1 - x0) >= 22.0 {
                 let label = Self::format_count_compact_km(*count);
                 if h >= 12.0 {
@@ -20515,26 +20732,54 @@ impl MainAreaDna {
             egui::FontId::monospace(9.0),
             egui::Color32::from_rgb(220, 38, 38),
         );
+        let mut pointed_bin: Option<usize> = None;
         if let Some(pointer) = response.hover_pos() {
             if pointer.x >= rect.left()
                 && pointer.x <= rect.right()
                 && pointer.y >= plot_top
                 && pointer.y <= axis_bottom
             {
-                let bin_count = progress.score_density_bins.len().max(1);
                 let mut idx =
                     ((pointer.x - rect.left()) / rect.width() * bin_count as f32).floor() as usize;
                 if idx >= bin_count {
                     idx = bin_count.saturating_sub(1);
                 }
+                pointed_bin = Some(idx);
                 if let Some(count) = progress.score_density_bins.get(idx) {
                     let left = idx as f64 / bin_count as f64;
                     let right = (idx + 1) as f64 / bin_count as f64;
                     response.clone().on_hover_ui_at_pointer(|ui| {
                         ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
                         ui.monospace(format!("count: {count}"));
+                        ui.small("Click to make this score bin the formal read-effects subset.");
                     });
                 }
+            }
+        }
+        if response.clicked()
+            && let Some(idx) = pointed_bin
+        {
+            let report = self.current_saved_rna_read_report();
+            if let Some(report) = report {
+                let selected_record_indices =
+                    Self::select_rna_read_report_score_bin_record_indices(&report, idx, bin_count);
+                self.rna_read_statistics_tab = RnaReadEvidenceSourceTab::MappedCdna;
+                self.rna_read_mapped_cdna_subview = RnaReadMappedCdnaSubview::ReadEffects;
+                self.rna_read_alignment_effect_score_bin_index = Some(idx);
+                self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
+                self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
+                self.rna_read_alignment_effect_search.clear();
+                self.rna_seed_selected_record_indices =
+                    selected_record_indices.iter().copied().collect();
+                self.rna_seed_highlight_record_index = selected_record_indices.first().copied();
+                self.op_status = format!(
+                    "Focused read effects on {} saved-report read(s) from score bin {}",
+                    selected_record_indices.len(),
+                    Self::format_rna_read_score_bin_spec(idx, bin_count)
+                );
+            } else {
+                self.op_status =
+                    "Save or load a Report ID before focusing a score-density bin".to_string();
             }
         }
         ui.small(format!(
@@ -20542,6 +20787,14 @@ impl MainAreaDna {
             progress.score_density_bins.len(),
             max_count
         ));
+        if let Some(idx) = selected_bin_index {
+            ui.small(format!(
+                "Selected score bin: {}",
+                Self::format_rna_read_score_bin_spec(idx, bin_count)
+            ));
+        } else {
+            ui.small("Selected score bin: <none>");
+        }
     }
 
     fn render_rna_read_statistics_tabs(
@@ -20604,7 +20857,7 @@ impl MainAreaDna {
 
     fn default_rna_read_effect_table_height(ui: &egui::Ui) -> f32 {
         let row_height = ui.text_style_height(&egui::TextStyle::Monospace).max(14.0) + 4.0;
-        (row_height * 12.0 + 32.0).clamp(240.0, 420.0)
+        (row_height * 15.0 + 36.0).clamp(320.0, 560.0)
     }
 
     fn render_rna_read_mapped_cdna_panels(
@@ -20658,6 +20911,9 @@ impl MainAreaDna {
         ui.small(
             "Read effects compare phase-1 thresholded interpretation against phase-2 pairwise transcript alignment for each aligned retained read.",
         );
+        ui.small(
+            "Workflow: 1) click a score-density bar above to define a formal score_bin subset, 2) refine with filter/search, 3) select a row to inspect the pairwise alignment and inline dotplot.",
+        );
         let Some(report) = report else {
             ui.small(
                 egui::RichText::new(
@@ -20705,9 +20961,9 @@ impl MainAreaDna {
         let mut focus_rightmost_bin = false;
         let mut reset_read_effect_view = false;
         ui.horizontal_wrapped(|ui| {
-            ui.small("Quick views:");
+            ui.small("Subset shortcuts:");
             if ui
-                .small_button("Show disagreements")
+                .small_button("Disagreements")
                 .on_hover_text(
                     "Focus non-confirmed aligned reads: transcript reassignments plus rows aligned without a phase-1 transcript assignment.",
                 )
@@ -20716,7 +20972,7 @@ impl MainAreaDna {
                 focus_disagreements = true;
             }
             if ui
-                .small_button("Show max-score outliers")
+                .small_button("Max-score ties")
                 .on_hover_text(
                     "Select only saved-report reads tied at the maximal phase-1 seed score, then show that subset in the read-effects table.",
                 )
@@ -20725,7 +20981,7 @@ impl MainAreaDna {
                 focus_max_score_outliers = true;
             }
             if ui
-                .small_button("Show rightmost score bin")
+                .small_button("Rightmost score bin")
                 .on_hover_text(
                     "Select the broader outlier subset from the rightmost non-empty score-density bin, then focus the table on that subset.",
                 )
@@ -20748,6 +21004,7 @@ impl MainAreaDna {
             self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::AllAligned;
             self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Rank;
             self.rna_read_alignment_effect_search.clear();
+            self.clear_rna_read_alignment_score_bin_focus();
         }
         if focus_disagreements {
             self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::DisagreementOnly;
@@ -20760,6 +21017,21 @@ impl MainAreaDna {
             } else {
                 Self::select_rna_read_report_rightmost_score_bin_record_indices(report)
             };
+            if focus_rightmost_bin {
+                let bin_count = report.score_density_bins.len().max(40);
+                let score_bin_index = selected_record_indices.first().and_then(|record_index| {
+                    report
+                        .hits
+                        .iter()
+                        .find(|hit| hit.record_index == *record_index)
+                        .map(|hit| {
+                            Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                        })
+                });
+                self.rna_read_alignment_effect_score_bin_index = score_bin_index;
+            } else {
+                self.clear_rna_read_alignment_score_bin_focus();
+            }
             self.rna_seed_selected_record_indices = selected_record_indices
                 .iter()
                 .copied()
@@ -20865,20 +21137,37 @@ impl MainAreaDna {
         let displayed_record_indices =
             Self::collect_rna_read_alignment_effect_record_indices(&displayed_rows);
         let visible_count = filtered_inspection.subset_match_count;
+        let score_bin_count = report.score_density_bins.len().max(40);
         let filtered_subset_spec = Self::rna_read_alignment_effect_subset_spec(
             self.rna_read_alignment_effect_filter,
             &self.rna_read_alignment_effect_search,
             self.rna_read_alignment_effect_sort_key,
+            self.rna_read_alignment_effect_score_bin_index,
+            score_bin_count,
         );
         ui.small(format!(
             "Showing {} of {} aligned rows",
             filtered_inspection.subset_match_count, inspection.aligned_count
         ));
         ui.small(format!("Current filtered subset: {filtered_subset_spec}"));
+        if let Some(score_bin_index) = self.rna_read_alignment_effect_score_bin_index {
+            let selected_from_bin = Self::select_rna_read_report_score_bin_record_indices(
+                report,
+                score_bin_index,
+                score_bin_count,
+            );
+            ui.small(format!(
+                "Score-bin provenance: {} saved-report read(s) in bin {}, {} aligned row(s) currently match the subset.",
+                selected_from_bin.len(),
+                Self::format_rna_read_score_bin_spec(score_bin_index, score_bin_count),
+                filtered_inspection.subset_match_count
+            ));
+        }
 
         ui.horizontal_wrapped(|ui| {
             ui.menu_button("Selection tools", |ui| {
                 if ui.button("Select max-score ties").clicked() {
+                    self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices =
                         Self::select_rna_read_report_max_score_record_indices(report)
                             .into_iter()
@@ -20890,10 +21179,24 @@ impl MainAreaDna {
                     ui.close();
                 }
                 if ui.button("Select rightmost score bin").clicked() {
+                    let bin_count = report.score_density_bins.len().max(40);
+                    let selected_record_indices =
+                        Self::select_rna_read_report_rightmost_score_bin_record_indices(report);
+                    self.rna_read_alignment_effect_score_bin_index =
+                        selected_record_indices.first().and_then(|record_index| {
+                            report
+                                .hits
+                                .iter()
+                                .find(|hit| hit.record_index == *record_index)
+                                .map(|hit| {
+                                    Self::rna_read_score_density_bin_index(
+                                        hit.seed_hit_fraction,
+                                        bin_count,
+                                    )
+                                })
+                        });
                     self.rna_seed_selected_record_indices =
-                        Self::select_rna_read_report_rightmost_score_bin_record_indices(report)
-                            .into_iter()
-                            .collect::<BTreeSet<_>>();
+                        selected_record_indices.into_iter().collect::<BTreeSet<_>>();
                     self.op_status = format!(
                         "Selected {} saved-report read(s) from the rightmost non-empty score bin",
                         self.rna_seed_selected_record_indices.len()
@@ -20901,6 +21204,7 @@ impl MainAreaDna {
                     ui.close();
                 }
                 if ui.button("Select filtered rows").clicked() {
+                    self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices =
                         displayed_record_indices.iter().copied().collect::<BTreeSet<_>>();
                     self.op_status = format!(
@@ -20910,6 +21214,7 @@ impl MainAreaDna {
                     ui.close();
                 }
                 if ui.button("Select aligned rows").clicked() {
+                    self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices = inspection
                         .rows
                         .iter()
@@ -20918,6 +21223,7 @@ impl MainAreaDna {
                     ui.close();
                 }
                 if ui.button("Clear selected").clicked() {
+                    self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices.clear();
                     ui.close();
                 }
@@ -21284,6 +21590,34 @@ impl MainAreaDna {
                 "Junctions: {}",
                 Self::format_rna_read_mapped_junction_support_compact(row)
             ));
+            ui.separator();
+            ui.label(egui::RichText::new("Inline dotplot").strong());
+            ui.small(
+                "This preview uses the current RNA-read dotplot word/step/mismatch/tile settings against the current splicing ROI.",
+            );
+            ui.small(self.rna_read_dotplot_parameter_summary());
+            self.ensure_rna_read_alignment_effect_inline_dotplot(view, hit);
+            if let Some(message) = self.rna_read_inline_dotplot_error.as_ref() {
+                ui.small(
+                    egui::RichText::new(message).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            } else if let Some(dotplot_view) = self.rna_read_inline_dotplot_view.clone() {
+                egui::ScrollArea::both()
+                    .id_salt(format!("rna_alignment_effect_dotplot_{}", row.record_index))
+                    .max_height(320.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        self.render_dotplot_density_ui(
+                            ui,
+                            &dotplot_view,
+                            None,
+                            self.dotplot_ui.display_density_threshold,
+                            self.dotplot_ui.display_intensity_gain,
+                        );
+                    });
+            } else {
+                ui.small("No inline dotplot preview is available for this read yet.");
+            }
             ui.separator();
             ui.label(egui::RichText::new("Sequence").strong());
             egui::ScrollArea::both()

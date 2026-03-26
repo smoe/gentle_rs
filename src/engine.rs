@@ -3643,6 +3643,8 @@ pub struct RnaReadAlignmentInspectionSubsetSpec {
     pub sort_key: RnaReadAlignmentInspectionSortKey,
     pub search: String,
     pub selected_record_indices: Vec<usize>,
+    pub score_bin_index: Option<usize>,
+    pub score_bin_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -10593,6 +10595,73 @@ impl GentleEngine {
             }
         }
         Ok((points, truncated))
+    }
+
+    /// Build a transient pairwise dotplot view without storing it in engine state.
+    ///
+    /// This reuses the same deterministic point-generation logic as
+    /// `Operation::ComputeDotplot`, but returns the resulting view directly so
+    /// UI surfaces can inspect a read/reference comparison inline before
+    /// deciding whether to export or persist it.
+    pub fn preview_pair_dotplot_view(
+        query_seq_id: &str,
+        query_text: &str,
+        reference_seq_id: &str,
+        reference_text: &str,
+        reference_span_start_0based: usize,
+        reference_span_end_0based: usize,
+        mode: DotplotMode,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
+    ) -> Result<DotplotView, EngineError> {
+        let query_text = query_text.trim().to_ascii_uppercase();
+        let reference_text = reference_text.trim().to_ascii_uppercase();
+        let query_bytes = query_text.as_bytes();
+        let reference_bytes = reference_text.as_bytes();
+        let (reference_span_start_0based, reference_span_end_0based) = Self::resolve_analysis_span(
+            reference_bytes.len(),
+            Some(reference_span_start_0based),
+            Some(reference_span_end_0based),
+        )?;
+        let (points, _truncated) = Self::compute_dotplot_points(
+            query_bytes,
+            &reference_bytes[reference_span_start_0based..reference_span_end_0based],
+            0,
+            reference_span_start_0based,
+            mode,
+            word_size,
+            step_bp,
+            max_mismatches,
+            MAX_DOTPLOT_POINTS,
+        )?;
+        let boxplot_bins = Self::compute_dotplot_boxplot_bins(
+            &points,
+            0,
+            query_bytes.len(),
+            DOTPLOT_BOXPLOT_DEFAULT_BINS,
+        );
+        Ok(DotplotView {
+            schema: DOTPLOT_VIEW_SCHEMA.to_string(),
+            dotplot_id: String::new(),
+            seq_id: query_seq_id.trim().to_string(),
+            reference_seq_id: Some(reference_seq_id.trim().to_string()),
+            generated_at_unix_ms: 0,
+            span_start_0based: 0,
+            span_end_0based: query_bytes.len(),
+            reference_span_start_0based,
+            reference_span_end_0based,
+            mode,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            point_count: points.len(),
+            points,
+            boxplot_bin_count: DOTPLOT_BOXPLOT_DEFAULT_BINS,
+            boxplot_bins,
+        })
     }
 
     fn compute_flexibility_track_bins(
