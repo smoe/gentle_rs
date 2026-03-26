@@ -43,7 +43,9 @@ fn location_contains_complement(location: &Location) -> bool {
         | Location::Order(parts)
         | Location::Bond(parts)
         | Location::OneOf(parts) => parts.iter().any(location_contains_complement),
-        Location::External(_, maybe_loc) => maybe_loc.as_deref().is_some_and(location_contains_complement),
+        Location::External(_, maybe_loc) => maybe_loc
+            .as_deref()
+            .is_some_and(location_contains_complement),
         Location::Range(_, _) | Location::Between(_, _) | Location::Gap(_) => false,
     }
 }

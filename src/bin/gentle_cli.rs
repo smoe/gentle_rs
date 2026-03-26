@@ -4106,7 +4106,10 @@ mod tests {
                 prepared_ids,
                 ..
             }) => {
-                assert_eq!(mode, gentle::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly);
+                assert_eq!(
+                    mode,
+                    gentle::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly
+                );
                 assert_eq!(scope.label(), "helpers");
                 assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
                 assert_eq!(prepared_ids, vec!["localproject".to_string()]);

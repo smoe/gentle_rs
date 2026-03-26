@@ -6611,12 +6611,12 @@ Error: `{err}`"
             GenomeDialogScope::Reference => CacheCleanupScope::References,
             GenomeDialogScope::Helper => CacheCleanupScope::Helpers,
         };
-        self.cache_cleanup_reference_cache_dir = if self.reference_genome_cache_dir.trim().is_empty()
-        {
-            DEFAULT_GENOME_CACHE_DIR.to_string()
-        } else {
-            self.reference_genome_cache_dir.trim().to_string()
-        };
+        self.cache_cleanup_reference_cache_dir =
+            if self.reference_genome_cache_dir.trim().is_empty() {
+                DEFAULT_GENOME_CACHE_DIR.to_string()
+            } else {
+                self.reference_genome_cache_dir.trim().to_string()
+            };
         self.cache_cleanup_helper_cache_dir = if self.helper_genome_cache_dir.trim().is_empty() {
             DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
         } else {
@@ -6652,10 +6652,7 @@ Error: `{err}`"
                 {
                     "Nothing to clean in selected cache roots".to_string()
                 } else {
-                    format!(
-                        "Inspected {} selected cache root(s).",
-                        roots.len()
-                    )
+                    format!("Inspected {} selected cache root(s).", roots.len())
                 };
             }
             Err(e) => {
@@ -6699,7 +6696,12 @@ Error: `{err}`"
         &self,
     ) -> (Vec<&PreparedCacheInspectionEntry>, u64, usize, String) {
         let Some(report) = &self.cache_cleanup_inspection else {
-            return (vec![], 0, 0, "Inspect selected cache roots first.".to_string());
+            return (
+                vec![],
+                0,
+                0,
+                "Inspect selected cache roots first.".to_string(),
+            );
         };
         let entries = report
             .entries
@@ -6711,13 +6713,12 @@ Error: `{err}`"
                             && entry.classification
                                 == crate::genomes::PreparedCacheEntryKind::OrphanedRemnant)
                 }
-                PreparedCacheCleanupMode::SelectedPreparedInstalls => self
-                    .cache_cleanup_selected_ids
-                    .contains(&entry.entry_id),
+                PreparedCacheCleanupMode::SelectedPreparedInstalls => {
+                    self.cache_cleanup_selected_ids.contains(&entry.entry_id)
+                }
                 PreparedCacheCleanupMode::BlastDbOnly
                 | PreparedCacheCleanupMode::DerivedIndexesOnly => {
-                    entry.classification
-                        == crate::genomes::PreparedCacheEntryKind::PreparedInstall
+                    entry.classification == crate::genomes::PreparedCacheEntryKind::PreparedInstall
                         && self.cache_cleanup_selected_ids.contains(&entry.entry_id)
                 }
             })
@@ -10089,12 +10090,127 @@ Error: `{err}`"
             .unwrap_or_default();
     }
 
+    fn reset_prepare_dialog_preview_state(&mut self) {
+        if self.genome_prepare_task.is_none() {
+            self.genome_prepare_steps.clear();
+            self.genome_prepare_progress = None;
+            self.genome_prepare_eta_baseline = None;
+            self.genome_prepare_failure_recovery = None;
+            self.genome_prepare_status.clear();
+        }
+    }
+
     fn clear_prepare_step_state(&mut self) {
         if self.genome_prepare_task.is_none() {
             self.genome_prepare_steps.clear();
             self.genome_prepare_progress = None;
             self.genome_prepare_eta_baseline = None;
         }
+    }
+
+    fn selected_prepared_genome_inspection(
+        &self,
+    ) -> Result<Option<PreparedGenomeInspection>, String> {
+        let genome_id = self.genome_id.trim();
+        if genome_id.is_empty() {
+            return Ok(None);
+        }
+        let catalog_path = self.genome_catalog_path_resolved();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
+        let cache_dir = self.genome_cache_dir_opt();
+        catalog.inspect_prepared_genome(genome_id, cache_dir.as_deref())
+    }
+
+    fn apply_prepared_genome_inspection_to_steps(
+        &mut self,
+        inspection: Option<&PreparedGenomeInspection>,
+    ) {
+        for step in &mut self.genome_prepare_steps {
+            step.status = PrepareGenomeUiStepStatus::Pending;
+            step.progress_fraction = None;
+            step.raw_phase = None;
+            step.bytes_done = None;
+            step.bytes_total = None;
+            step.eta_remaining = None;
+
+            let (completed, detail) = match (step.step_id, inspection) {
+                (PrepareGenomeStepId::ResetIndexes, Some(_)) => (
+                    false,
+                    Some("Will clear derived indexes before rebuilding".to_string()),
+                ),
+                (PrepareGenomeStepId::ResetIndexes, None) => (false, None),
+                (PrepareGenomeStepId::Sequence, Some(inspection)) => (
+                    inspection.sequence_present,
+                    Some(inspection.sequence_path.clone()),
+                ),
+                (PrepareGenomeStepId::Annotation, Some(inspection)) => (
+                    inspection.annotation_present,
+                    Some(inspection.annotation_path.clone()),
+                ),
+                (PrepareGenomeStepId::FastaIndex, Some(inspection)) => (
+                    inspection.fasta_index_ready,
+                    Some(inspection.fasta_index_path.clone()),
+                ),
+                (PrepareGenomeStepId::GeneIndex, Some(inspection)) => {
+                    let transcript_required = inspection.transcript_index_path.is_some();
+                    let completed = inspection.gene_index_ready
+                        && (!transcript_required || inspection.transcript_index_ready);
+                    let detail = inspection
+                        .transcript_index_path
+                        .clone()
+                        .unwrap_or_else(|| inspection.gene_index_path.clone());
+                    (completed, Some(detail))
+                }
+                (PrepareGenomeStepId::BlastIndex, Some(inspection)) => (
+                    inspection.blast_index_ready,
+                    inspection.blast_db_prefix.clone(),
+                ),
+                (_, None) => (false, None),
+            };
+
+            if completed {
+                step.status = PrepareGenomeUiStepStatus::Completed;
+                step.progress_fraction = Some(1.0);
+            }
+            step.detail = detail.unwrap_or_default();
+        }
+    }
+
+    fn ensure_prepare_step_preview_for_current_selection(
+        &mut self,
+        primary_action: PrepareGenomeDialogPrimaryAction,
+    ) {
+        if self.genome_prepare_task.is_some()
+            || !self.genome_prepare_steps.is_empty()
+            || self.genome_prepare_progress.is_some()
+        {
+            return;
+        }
+        let genome_id = self.genome_id.trim();
+        if genome_id.is_empty() || matches!(primary_action, PrepareGenomeDialogPrimaryAction::None)
+        {
+            return;
+        }
+        let mode = match primary_action {
+            PrepareGenomeDialogPrimaryAction::Prepare => GenomePrepareLaunchMode::Prepare,
+            PrepareGenomeDialogPrimaryAction::Reindex => {
+                GenomePrepareLaunchMode::ReindexCachedFiles
+            }
+            PrepareGenomeDialogPrimaryAction::None => return,
+        };
+        let catalog_path = self.genome_catalog_path_opt();
+        let cache_dir = self.genome_cache_dir_opt();
+        let plan = self
+            .prepare_plan_for_mode(
+                genome_id,
+                catalog_path.as_deref(),
+                cache_dir.as_deref(),
+                mode,
+            )
+            .ok();
+        self.reset_prepare_step_state_from_plan(plan);
+        let inspection = self.selected_prepared_genome_inspection().ok().flatten();
+        self.apply_prepared_genome_inspection_to_steps(inspection.as_ref());
     }
 
     fn format_duration_compact(duration: Duration) -> String {
@@ -10404,26 +10520,40 @@ Error: `{err}`"
         }
     }
 
-    fn animated_prepare_step_fraction(ui: &Ui) -> f32 {
-        let time = ui.ctx().input(|input| input.time) as f32;
-        (0.2 + ((time * 2.0).sin() + 1.0) * 0.3).clamp(0.15, 0.85)
-    }
-
     fn render_prepare_step_checklist(&self, ui: &mut Ui) {
         if self.genome_prepare_steps.is_empty() {
             return;
         }
         ui.separator();
         ui.strong("Planned steps");
-        if self.genome_prepare_task.is_none()
-            && self
+        if let Some((current_step, completed_steps, total_steps, overall, eta_remaining)) =
+            self.prepare_step_summary()
+        {
+            let running_step = self
                 .genome_prepare_steps
                 .iter()
-                .all(|step| step.status == PrepareGenomeUiStepStatus::Completed)
-        {
-            ui.colored_label(
-                egui::Color32::from_rgb(50, 135, 70),
-                "All planned steps completed.",
+                .find(|step| step.status == PrepareGenomeUiStepStatus::Running);
+            if let Some(_step) = running_step {
+                let mut summary = format!(
+                    "Current step: {} ({}/{})",
+                    current_step, completed_steps, total_steps
+                );
+                if let Some(eta) = eta_remaining {
+                    summary.push_str(&format!(" • ETA {}", Self::format_duration_compact(eta)));
+                }
+                ui.small(summary);
+            } else if completed_steps == total_steps {
+                ui.colored_label(
+                    egui::Color32::from_rgb(50, 135, 70),
+                    "All planned steps completed.",
+                );
+            } else {
+                ui.small(format!("Completed: {completed_steps}/{total_steps}"));
+            }
+            ui.add(
+                egui::ProgressBar::new(overall)
+                    .show_percentage()
+                    .text(format!("{completed_steps}/{total_steps} steps")),
             );
         }
         for step in &self.genome_prepare_steps {
@@ -10474,40 +10604,6 @@ Error: `{err}`"
                     });
                 }
             }
-            let fraction = match step.status {
-                PrepareGenomeUiStepStatus::Pending => 0.0,
-                PrepareGenomeUiStepStatus::Running => step
-                    .progress_fraction
-                    .unwrap_or_else(|| Self::animated_prepare_step_fraction(ui)),
-                PrepareGenomeUiStepStatus::Completed => 1.0,
-                PrepareGenomeUiStepStatus::Failed | PrepareGenomeUiStepStatus::Cancelled => {
-                    step.progress_fraction.unwrap_or(0.0)
-                }
-            };
-            let bar_text = match step.status {
-                PrepareGenomeUiStepStatus::Pending => "Pending",
-                PrepareGenomeUiStepStatus::Running if indeterminate_active => "Running",
-                PrepareGenomeUiStepStatus::Running => "In progress",
-                PrepareGenomeUiStepStatus::Completed => "Done",
-                PrepareGenomeUiStepStatus::Failed => "Failed",
-                PrepareGenomeUiStepStatus::Cancelled => "Cancelled",
-            };
-            ui.horizontal(|ui| {
-                ui.add_space(18.0);
-                let mut bar = egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).text(bar_text);
-                if matches!(
-                    step.status,
-                    PrepareGenomeUiStepStatus::Running
-                        | PrepareGenomeUiStepStatus::Completed
-                        | PrepareGenomeUiStepStatus::Failed
-                        | PrepareGenomeUiStepStatus::Cancelled
-                ) && step.progress_fraction.is_some()
-                    && (step.determinate_hint || step.status != PrepareGenomeUiStepStatus::Running)
-                {
-                    bar = bar.show_percentage();
-                }
-                ui.add(bar);
-            });
         }
     }
 
@@ -12722,13 +12818,17 @@ Error: `{err}`"
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
         }
+        let mut prepare_context_changed = false;
         ui.label(format!(
             "Download and index a {} once.",
             scope.description()
         ));
         ui.horizontal(|ui| {
             ui.label("catalog");
-            ui.text_edit_singleline(&mut self.genome_catalog_path);
+            let response = ui.text_edit_singleline(&mut self.genome_catalog_path);
+            if response.changed() {
+                prepare_context_changed = true;
+            }
             if ui
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
@@ -12739,12 +12839,16 @@ Error: `{err}`"
                     .pick_file()
                 {
                     self.genome_catalog_path = path.display().to_string();
+                    prepare_context_changed = true;
                 }
             }
         });
         ui.horizontal(|ui| {
             ui.label("cache_dir");
-            ui.text_edit_singleline(&mut self.genome_cache_dir);
+            let response = ui.text_edit_singleline(&mut self.genome_cache_dir);
+            if response.changed() {
+                prepare_context_changed = true;
+            }
             if ui
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
@@ -12752,6 +12856,7 @@ Error: `{err}`"
             {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.genome_cache_dir = path.display().to_string();
+                    prepare_context_changed = true;
                 }
             }
         });
@@ -12809,6 +12914,13 @@ Error: `{err}`"
             });
         if selection_changed {
             self.invalidate_genome_genes();
+            prepare_context_changed = true;
+        }
+        if prepare_context_changed && self.genome_prepare_task.is_none() {
+            if !selection_changed {
+                self.invalidate_genome_genes();
+            }
+            self.reset_prepare_dialog_preview_state();
         }
         match self.selected_genome_source_plan() {
             Ok(Some(plan)) => {
@@ -12828,6 +12940,9 @@ Error: `{err}`"
         let running = self.genome_prepare_task.is_some();
         let primary_action =
             Self::prepare_dialog_primary_action(&self.genome_id, &all_genomes, &preparable_set);
+        if !running {
+            self.ensure_prepare_step_preview_for_current_selection(primary_action);
+        }
         if matches!(primary_action, PrepareGenomeDialogPrimaryAction::Reindex) {
             ui.label(
                 "Selected genome is already prepared. Use the main action below to reindex it from cached local files.",
@@ -32352,8 +32467,7 @@ mod tests {
     use super::{
         APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
         BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
-        CacheCleanupScope,
-        CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
+        CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage,
@@ -32380,8 +32494,8 @@ mod tests {
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-            PreparedCacheArtifactGroup, PreparedCacheCleanupItemReport,
-            PreparedCacheCleanupMode, PreparedCacheCleanupReport, PreparedCacheEntryKind,
+            PreparedCacheArtifactGroup, PreparedCacheCleanupItemReport, PreparedCacheCleanupMode,
+            PreparedCacheCleanupReport, PreparedCacheEntryKind, PreparedGenomeInspection,
         },
         gibson_planning::{
             GibsonAssemblyPreview, GibsonCartoonPreview, GibsonDestinationOpeningSuggestion,
@@ -32452,6 +32566,39 @@ mod tests {
             catalog_path.display().to_string(),
             cache_dir.display().to_string(),
         )
+    }
+
+    fn make_prepared_genome_inspection() -> PreparedGenomeInspection {
+        PreparedGenomeInspection {
+            genome_id: "ToyGenome".to_string(),
+            install_dir: "/tmp/toy_install".to_string(),
+            manifest_path: "/tmp/toy_install/manifest.json".to_string(),
+            sequence_source_type: "remote_http".to_string(),
+            annotation_source_type: "remote_http".to_string(),
+            sequence_source: "https://example.invalid/sequence.fa.gz".to_string(),
+            annotation_source: "https://example.invalid/annotation.gtf.gz".to_string(),
+            sequence_path: "/tmp/toy_install/sequence.fa".to_string(),
+            annotation_path: "/tmp/toy_install/annotation.gtf".to_string(),
+            fasta_index_path: "/tmp/toy_install/sequence.fa.fai".to_string(),
+            gene_index_path: "/tmp/toy_install/genes.json".to_string(),
+            transcript_index_path: Some("/tmp/toy_install/transcripts.json".to_string()),
+            blast_db_prefix: Some("/tmp/toy_install/blastdb/genome".to_string()),
+            blast_index_ready: true,
+            sequence_sha1: None,
+            annotation_sha1: None,
+            sequence_present: true,
+            annotation_present: true,
+            fasta_index_ready: true,
+            gene_index_ready: true,
+            transcript_index_ready: true,
+            total_size_bytes: 1234,
+            installed_at_unix_ms: 0,
+            cached_contig_count: 7,
+            cached_total_span_bp: 1000,
+            cached_longest_contig: Some("chr1".to_string()),
+            cached_longest_contig_bp: Some(1000),
+            cached_contig_preview: vec!["chr1".to_string()],
+        }
     }
 
     fn make_test_app_with_open_windows(seq_ids: &[&str]) -> GENtleApp {
@@ -34943,7 +35090,10 @@ mod tests {
 
         assert!(app.show_cache_cleanup_dialog);
         assert_eq!(app.cache_cleanup_scope, CacheCleanupScope::Helpers);
-        assert_eq!(app.cache_cleanup_reference_cache_dir, "custom/reference_cache");
+        assert_eq!(
+            app.cache_cleanup_reference_cache_dir,
+            "custom/reference_cache"
+        );
         assert_eq!(app.cache_cleanup_helper_cache_dir, "custom/helper_cache");
         assert_eq!(
             app.cache_cleanup_mode,
@@ -35018,7 +35168,10 @@ mod tests {
         assert_eq!(candidates[0].scope, GenomeDialogScope::Helper);
         assert_eq!(candidates[0].catalog_path, "custom/helper_catalog.json");
         assert_eq!(candidates[0].cache_dir, "custom/helper_cache");
-        assert_eq!(candidates[0].dialog_host, PreparedGenomeReinstallDialogHost::Root);
+        assert_eq!(
+            candidates[0].dialog_host,
+            PreparedGenomeReinstallDialogHost::Root
+        );
         assert_eq!(candidates[1].genome_id, "Ref A");
         assert_eq!(candidates[1].scope, GenomeDialogScope::Reference);
         assert_eq!(candidates[1].catalog_path, "custom/reference_catalog.json");
@@ -36206,6 +36359,45 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(
             app.genome_prepare_steps[2].status,
             PrepareGenomeUiStepStatus::Pending
+        );
+    }
+
+    #[test]
+    fn apply_prepared_genome_inspection_marks_existing_outputs_complete() {
+        let mut app = GENtleApp::default();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::ResetIndexes,
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::Annotation,
+            PrepareGenomeStepId::FastaIndex,
+            PrepareGenomeStepId::GeneIndex,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+
+        let inspection = make_prepared_genome_inspection();
+        app.apply_prepared_genome_inspection_to_steps(Some(&inspection));
+
+        assert_eq!(
+            app.genome_prepare_steps
+                .iter()
+                .map(|step| step.status)
+                .collect::<Vec<_>>(),
+            vec![
+                PrepareGenomeUiStepStatus::Pending,
+                PrepareGenomeUiStepStatus::Completed,
+                PrepareGenomeUiStepStatus::Completed,
+                PrepareGenomeUiStepStatus::Completed,
+                PrepareGenomeUiStepStatus::Completed,
+                PrepareGenomeUiStepStatus::Completed,
+            ]
+        );
+        assert_eq!(
+            app.genome_prepare_steps[1].detail,
+            "/tmp/toy_install/sequence.fa"
+        );
+        assert_eq!(
+            app.genome_prepare_steps[4].detail,
+            "/tmp/toy_install/transcripts.json"
         );
     }
 

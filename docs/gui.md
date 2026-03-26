@@ -2098,8 +2098,12 @@ Recommended flow:
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
    - this runs in background and now shows the full ordered prepare plan up front
-   - each conceptual process gets its own row and progress bar:
-     sequence, annotation, FASTA index, gene index, BLAST index
+   - the checklist now uses a single overall progress bar; the individual rows
+     stay as status/check rows for sequence, annotation, FASTA index, gene
+     index, and BLAST index
+   - when the selected genome is already prepared, the idle checklist inspects
+     the prepared install and marks the artifacts that already exist before you
+     launch reindex/refresh
    - byte-based active steps now show `bytes: X / Y • ETA ...` once enough
      progress has been observed to make a stable estimate
    - completed rows stay checked until you close the prepare window or start a

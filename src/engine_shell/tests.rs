@@ -63,8 +63,7 @@ fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path
         "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\";\n",
     )
     .expect("annotation");
-    std::fs::write(install_dir.join("sequence.fa.fai"), "chr1\t8\t6\t8\t9\n")
-        .expect("fai");
+    std::fs::write(install_dir.join("sequence.fa.fai"), "chr1\t8\t6\t8\t9\n").expect("fai");
     std::fs::write(install_dir.join("genes.json"), "[]").expect("genes");
     std::fs::write(install_dir.join("blastdb").join("genome.nhr"), "nhr").expect("nhr");
     std::fs::write(install_dir.join("blastdb").join("genome.nin"), "nin").expect("nin");
@@ -131,8 +130,10 @@ fn parse_help_with_topic_and_options() {
 
 #[test]
 fn parse_cache_inspect_command() {
-    let cmd = parse_shell_line("cache inspect --both --cache-dir data/genomes --cache-dir data/helper_genomes")
-        .expect("parse cache inspect");
+    let cmd = parse_shell_line(
+        "cache inspect --both --cache-dir data/genomes --cache-dir data/helper_genomes",
+    )
+    .expect("parse cache inspect");
     match cmd {
         ShellCommand::CacheInspect { scope, cache_dirs } => {
             assert_eq!(scope.label(), "both");
@@ -156,7 +157,10 @@ fn parse_cache_clear_command() {
             prepared_ids,
             include_orphans,
         } => {
-            assert_eq!(mode, crate::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly);
+            assert_eq!(
+                mode,
+                crate::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly
+            );
             assert_eq!(scope.label(), "helpers");
             assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
             assert_eq!(prepared_ids, vec!["localproject".to_string()]);
@@ -7520,6 +7524,22 @@ fn parse_genomes_update_ensembl_specs() {
 }
 
 #[test]
+fn parse_genomes_preview_ensembl_specs() {
+    let cmd = parse_shell_line("genomes preview-ensembl-specs --catalog assets/genomes.json")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::ReferencePreviewEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(catalog_path, Some("assets/genomes.json".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_helpers_remove_catalog_entry() {
     let cmd = parse_shell_line(
         "helpers remove-catalog-entry HelperGenome --catalog helpers.json --output-catalog helpers.updated.json",
@@ -7630,6 +7650,53 @@ fn execute_genomes_update_ensembl_specs_with_no_templates_reports_no_updates() {
     assert_eq!(
         out.output["report"]["output_catalog_path"].as_str(),
         Some(catalog.to_string_lossy().as_ref())
+    );
+}
+
+#[test]
+fn execute_genomes_preview_ensembl_specs_with_no_templates_reports_no_updates() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display(),
+        cache.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePreviewEnsemblSpecs {
+            helper_mode: false,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute preview-ensembl-specs");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["preview"]["updates"].as_array().map(Vec::len),
+        Some(0)
+    );
+    assert_eq!(
+        out.output["preview"]["writable_catalog"].as_bool(),
+        Some(true)
     );
 }
 

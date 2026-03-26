@@ -1,5 +1,5 @@
 {
-   "command_count": 253,
+   "command_count": 255,
    "commands": [
       {
          "aliases": [
@@ -680,6 +680,17 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
+            "gui-shell"
+         ],
+         "path": "genomes preview-ensembl-specs",
+         "summary": "Preview Ensembl URL/spec refreshes for genome catalog rows with template metadata without writing changes.",
+         "usage": "genomes preview-ensembl-specs [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
             "gui-shell",
             "cli-direct"
          ],
@@ -902,6 +913,17 @@
          "path": "helpers validate-catalog",
          "summary": "Validate helper genome catalog entries.",
          "usage": "helpers validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "helpers preview-ensembl-specs",
+         "summary": "Preview Ensembl URL/spec refreshes for helper catalog rows with template metadata without writing changes.",
+         "usage": "helpers preview-ensembl-specs [--catalog PATH]"
       },
       {
          "aliases": [],

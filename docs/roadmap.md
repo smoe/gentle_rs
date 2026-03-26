@@ -1870,9 +1870,11 @@ Current baseline:
 - `Prepared References...` exists, includes the chromosome line inspector, and
   offers confirmed per-row reinstall for stale/partial prepared genomes.
 - `Prepare Reference Genome...` now keeps a structured per-step checklist visible
-  through completion, adds active-step ETA for determinate byte-based work, and
-  surfaces explicit reinstall-from-sources recovery when reindex detects an
-  inconsistent cached install.
+  through completion, uses one overall progress bar plus step-status rows,
+  adds active-step ETA for determinate byte-based work, inspects existing
+  prepared installs to mark already-complete artifacts up front, and surfaces
+  explicit reinstall-from-sources recovery when reindex detects an inconsistent
+  cached install.
 - The prepare specialist window now scrolls vertically when its checklist/status
   content exceeds the viewport height.
 - Testing gap: specialist-window scrolling still relies on manual GUI

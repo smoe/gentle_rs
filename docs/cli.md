@@ -25,6 +25,10 @@ Structured command glossary:
 - `docs/glossary.json` is the machine-readable command glossary used for
   per-command help rendering (`help ...`) and catalog export
   (`help --format json|markdown`).
+- Shell-only dry-run catalog preview routes are available through the shared
+  shell, for example:
+  - `gentle_cli shell 'genomes preview-ensembl-specs --catalog assets/genomes.json'`
+  - `gentle_cli shell 'helpers preview-ensembl-specs --catalog assets/helper_genomes.json'`
 
 Structured workflow examples:
 

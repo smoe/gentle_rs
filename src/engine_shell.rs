@@ -801,6 +801,10 @@ pub enum ShellCommand {
         helper_mode: bool,
         catalog_path: Option<String>,
     },
+    ReferencePreviewEnsemblSpecs {
+        helper_mode: bool,
+        catalog_path: Option<String>,
+    },
     ReferenceUpdateEnsemblSpecs {
         helper_mode: bool,
         catalog_path: Option<String>,
@@ -4905,6 +4909,16 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 format!("validate {label} catalog '{catalog}'")
             }
+            Self::ReferencePreviewEnsemblSpecs {
+                helper_mode,
+                catalog_path,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                format!("preview {label} Ensembl spec updates from catalog '{catalog}'")
+            }
             Self::ReferenceUpdateEnsemblSpecs {
                 helper_mode,
                 catalog_path,
@@ -7701,9 +7715,7 @@ fn parse_cache_cleanup_scope_flag(
 
 fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err(
-            "cache requires a subcommand (inspect|clear)".to_string()
-        );
+        return Err("cache requires a subcommand (inspect|clear)".to_string());
     }
     match tokens[1].as_str() {
         "inspect" => {
@@ -7717,7 +7729,12 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 match tokens[idx].as_str() {
                     "--cache-dir" => {
-                        cache_dirs.push(parse_option_path(tokens, &mut idx, "--cache-dir", "cache inspect")?);
+                        cache_dirs.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cache inspect",
+                        )?);
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for cache inspect"));
@@ -7753,10 +7770,20 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 match tokens[idx].as_str() {
                     "--cache-dir" => {
-                        cache_dirs.push(parse_option_path(tokens, &mut idx, "--cache-dir", "cache clear")?);
+                        cache_dirs.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cache clear",
+                        )?);
                     }
                     "--prepared-id" => {
-                        prepared_ids.push(parse_option_path(tokens, &mut idx, "--prepared-id", "cache clear")?);
+                        prepared_ids.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prepared-id",
+                            "cache clear",
+                        )?);
                     }
                     "--include-orphans" => {
                         include_orphans = true;
@@ -7767,7 +7794,9 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                 }
             }
-            if !matches!(mode, PreparedCacheCleanupMode::AllPreparedInCache) && prepared_ids.is_empty() {
+            if !matches!(mode, PreparedCacheCleanupMode::AllPreparedInCache)
+                && prepared_ids.is_empty()
+            {
                 return Err(format!(
                     "cache clear {} requires at least one --prepared-id",
                     tokens[2]
@@ -7860,6 +7889,27 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 }
             }
             Ok(ShellCommand::ReferenceValidateCatalog {
+                helper_mode,
+                catalog_path,
+            })
+        }
+        "preview-ensembl-specs" => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} preview-ensembl-specs"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferencePreviewEnsemblSpecs {
                 helper_mode,
                 catalog_path,
             })
@@ -8787,7 +8837,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -11787,8 +11837,9 @@ pub fn execute_shell_command_with_options(
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
-                output: serde_json::to_value(report)
-                    .map_err(|e| format!("Could not serialize prepared cache inspection report: {e}"))?,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize prepared cache inspection report: {e}")
+                })?,
             }
         }
         ShellCommand::CacheClear {
@@ -11805,12 +11856,13 @@ pub fn execute_shell_command_with_options(
                 prepared_ids: prepared_ids.clone(),
                 include_orphaned_remnants: *include_orphans,
             };
-            let report = GentleEngine::clear_prepared_cache_roots(&request)
-                .map_err(|e| e.to_string())?;
+            let report =
+                GentleEngine::clear_prepared_cache_roots(&request).map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
-                output: serde_json::to_value(report)
-                    .map_err(|e| format!("Could not serialize prepared cache cleanup report: {e}"))?,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize prepared cache cleanup report: {e}")
+                })?,
             }
         }
         ShellCommand::RenderPoolGelSvg {
@@ -13167,6 +13219,23 @@ pub fn execute_shell_command_with_options(
                     "genome_count": genomes.len(),
                     "validated_sources": genomes.len(),
                     "genomes": genomes,
+                }),
+            }
+        }
+        ShellCommand::ReferencePreviewEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let preview =
+                GentleEngine::preview_reference_genome_ensembl_catalog_updates(resolved_catalog)
+                    .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "preview": preview,
                 }),
             }
         }

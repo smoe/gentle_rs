@@ -3181,8 +3181,14 @@ impl PreparedCacheEntryArtifacts {
     fn stats(&self) -> Vec<PreparedCacheArtifactStat> {
         let mut stats = vec![];
         for (group, files) in [
-            (PreparedCacheArtifactGroup::CachedSources, &self.cached_sources),
-            (PreparedCacheArtifactGroup::DerivedIndexes, &self.derived_indexes),
+            (
+                PreparedCacheArtifactGroup::CachedSources,
+                &self.cached_sources,
+            ),
+            (
+                PreparedCacheArtifactGroup::DerivedIndexes,
+                &self.derived_indexes,
+            ),
             (PreparedCacheArtifactGroup::BlastDb, &self.blast_db),
         ] {
             let (bytes, count) = summarize_paths(files);
@@ -3401,7 +3407,9 @@ fn normalize_cache_roots(cache_roots: &[String]) -> Vec<PathBuf> {
     normalized
 }
 
-fn discover_prepared_cache_entries(cache_root: &Path) -> Result<Vec<PreparedCacheDiscoveredEntry>, String> {
+fn discover_prepared_cache_entries(
+    cache_root: &Path,
+) -> Result<Vec<PreparedCacheDiscoveredEntry>, String> {
     if !cache_root.exists() {
         return Ok(vec![]);
     }
@@ -3413,7 +3421,12 @@ fn discover_prepared_cache_entries(cache_root: &Path) -> Result<Vec<PreparedCach
     }
     let mut entries = vec![];
     let mut dir_entries = fs::read_dir(cache_root)
-        .map_err(|e| format!("Could not read prepared cache root '{}': {e}", cache_root.display()))?
+        .map_err(|e| {
+            format!(
+                "Could not read prepared cache root '{}': {e}",
+                cache_root.display()
+            )
+        })?
         .flatten()
         .collect::<Vec<_>>();
     dir_entries.sort_by_key(|entry| entry.path());
@@ -3458,8 +3471,14 @@ fn artifacts_from_manifest(
     manifest_path: &Path,
 ) -> PreparedCacheEntryArtifacts {
     let mut artifacts = PreparedCacheEntryArtifacts::default();
-    collect_if_exists(&PathBuf::from(&manifest.sequence_path), &mut artifacts.cached_sources);
-    collect_if_exists(&PathBuf::from(&manifest.annotation_path), &mut artifacts.cached_sources);
+    collect_if_exists(
+        &PathBuf::from(&manifest.sequence_path),
+        &mut artifacts.cached_sources,
+    );
+    collect_if_exists(
+        &PathBuf::from(&manifest.annotation_path),
+        &mut artifacts.cached_sources,
+    );
     collect_if_exists(&manifest_path.to_path_buf(), &mut artifacts.cached_sources);
     collect_if_exists(
         &PathBuf::from(&manifest.fasta_index_path),
@@ -3598,7 +3617,10 @@ fn cleanup_discovered_prepared_cache_entry(
     match mode {
         PreparedCacheCleanupMode::BlastDbOnly => {
             if entry.classification != PreparedCacheEntryKind::PreparedInstall {
-                return Ok(skipped_cleanup_item(entry, "partial cleanup applies only to manifest-backed prepared installs"));
+                return Ok(skipped_cleanup_item(
+                    entry,
+                    "partial cleanup applies only to manifest-backed prepared installs",
+                ));
             }
             for path in &entry.artifacts.blast_db {
                 let meta = fs::metadata(path).ok();
@@ -3620,7 +3642,10 @@ fn cleanup_discovered_prepared_cache_entry(
         }
         PreparedCacheCleanupMode::DerivedIndexesOnly => {
             if entry.classification != PreparedCacheEntryKind::PreparedInstall {
-                return Ok(skipped_cleanup_item(entry, "partial cleanup applies only to manifest-backed prepared installs"));
+                return Ok(skipped_cleanup_item(
+                    entry,
+                    "partial cleanup applies only to manifest-backed prepared installs",
+                ));
             }
             for path in entry
                 .artifacts
@@ -3676,7 +3701,12 @@ fn cleanup_discovered_prepared_cache_entry(
         classification: entry.classification,
         cache_root: canonical_or_display(&entry.cache_root),
         path: canonical_or_display(&entry.path),
-        removed: !removed_groups.is_empty() || matches!(mode, PreparedCacheCleanupMode::SelectedPreparedInstalls | PreparedCacheCleanupMode::AllPreparedInCache),
+        removed: !removed_groups.is_empty()
+            || matches!(
+                mode,
+                PreparedCacheCleanupMode::SelectedPreparedInstalls
+                    | PreparedCacheCleanupMode::AllPreparedInCache
+            ),
         removed_artifact_groups: removed_groups,
         removed_bytes,
         removed_file_count,
@@ -7361,11 +7391,7 @@ mod tests {
             "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
         )
         .unwrap();
-        fs::write(
-            &fasta_index_path,
-            "chr1\t8\t6\t8\t9\n",
-        )
-        .unwrap();
+        fs::write(&fasta_index_path, "chr1\t8\t6\t8\t9\n").unwrap();
         fs::write(&gene_index_path, "[]").unwrap();
         fs::write(&transcript_index_path, "[]").unwrap();
         fs::write(blast_prefix.with_extension("nhr"), "nhr").unwrap();
@@ -10374,18 +10400,24 @@ mod tests {
             PreparedCacheEntryKind::PreparedInstall
         );
         assert_eq!(entry.entry_id, "ToyGenome");
-        assert!(entry
-            .artifact_stats
-            .iter()
-            .any(|stat| stat.group == PreparedCacheArtifactGroup::CachedSources));
-        assert!(entry
-            .artifact_stats
-            .iter()
-            .any(|stat| stat.group == PreparedCacheArtifactGroup::DerivedIndexes));
-        assert!(entry
-            .artifact_stats
-            .iter()
-            .any(|stat| stat.group == PreparedCacheArtifactGroup::BlastDb));
+        assert!(
+            entry
+                .artifact_stats
+                .iter()
+                .any(|stat| stat.group == PreparedCacheArtifactGroup::CachedSources)
+        );
+        assert!(
+            entry
+                .artifact_stats
+                .iter()
+                .any(|stat| stat.group == PreparedCacheArtifactGroup::DerivedIndexes)
+        );
+        assert!(
+            entry
+                .artifact_stats
+                .iter()
+                .any(|stat| stat.group == PreparedCacheArtifactGroup::BlastDb)
+        );
     }
 
     #[test]
@@ -10422,8 +10454,7 @@ mod tests {
         assert!(install_dir.join("sequence.fa").exists());
         assert!(install_dir.join("sequence.fa.fai").exists());
         assert!(install_dir.join("genes.json").exists());
-        let manifest =
-            GenomeCatalog::load_manifest(&install_dir.join("manifest.json")).unwrap();
+        let manifest = GenomeCatalog::load_manifest(&install_dir.join("manifest.json")).unwrap();
         assert!(manifest.blast_index_executable.is_none());
         assert!(manifest.blast_indexed_at_unix_ms.is_none());
     }

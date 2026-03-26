@@ -12059,7 +12059,9 @@ impl MainAreaDna {
                 format!("{query_id} ({source})")
             }
         } else {
-            self.seq_id.clone().unwrap_or_else(|| "<no-seq-id>".to_string())
+            self.seq_id
+                .clone()
+                .unwrap_or_else(|| "<no-seq-id>".to_string())
         }
     }
 
@@ -18582,8 +18584,8 @@ impl MainAreaDna {
     ) -> Option<String> {
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
         if report_id.is_empty() {
-            self.op_status = "Load/save a Report ID before opening RNA-read dotplot workspace"
-                .to_string();
+            self.op_status =
+                "Load/save a Report ID before opening RNA-read dotplot workspace".to_string();
             return None;
         }
         let Some(engine) = self.engine.clone() else {
@@ -18592,8 +18594,12 @@ impl MainAreaDna {
         };
         let report_token = Self::sanitize_workflow_run_id_component(&report_id);
         let header_token = Self::sanitize_export_name_component(&hit.header_id, "read");
-        let preferred_seq_id =
-            format!("{}_dotplot_r{}_{}", report_token, hit.record_index + 1, header_token);
+        let preferred_seq_id = format!(
+            "{}_dotplot_r{}_{}",
+            report_token,
+            hit.record_index + 1,
+            header_token
+        );
         if engine
             .read()
             .ok()
