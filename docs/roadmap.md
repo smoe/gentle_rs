@@ -1371,6 +1371,10 @@ Status:
   - Selected aligned reads in `Mapped cDNA -> Read effects` now have an inline
     pairwise dotplot preview driven by the shared engine dotplot logic, so
     manual inspection no longer starts with SVG export.
+  - Selected aligned reads can now open the shared dotplot workspace as a live
+    RNA-read query override, so dotplot parameters can be adjusted in place for
+    the same read-vs-ROI comparison without respawning/exporting a separate
+    artifact.
   - Added ranked alignment TSV export for downstream tabular analysis:
     `ExportRnaReadAlignmentsTsv` /
     `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv

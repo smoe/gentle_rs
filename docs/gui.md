@@ -599,8 +599,20 @@ Feature tree grouping:
         - mapped exon/junction contribution spans
         - inline pairwise read-vs-ROI dotplot preview using the current
           RNA-read dotplot parameters
-        - direct actions (`Copy highlighted FASTA`, `Materialize highlighted`,
-          `Export dotplot...`)
+        - direct actions:
+          - `Copy highlighted FASTA`
+          - `Materialize highlighted`
+          - `Open interactive dotplot`
+          - `Export dotplot...`
+        - `Open interactive dotplot` opens the shared dotplot workspace on the
+          selected read-vs-ROI comparison and keeps it live:
+          - adjusting `word`, `step`, `mismatches`, or `tile` in the workspace
+            recomputes the same selected-read comparison in place
+          - the workspace header shows when the query axis is an RNA-read
+            override rather than the active genomic sequence
+          - crosshair-to-sequence selection sync is intentionally disabled for
+            those RNA-read override views so the genomic selection is not
+            misleadingly rewritten from read-local coordinates
       - selected-row actions now also include an `Export selected...` menu for
         exact saved-report subset export:
         - `FASTA...`

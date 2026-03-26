@@ -1566,6 +1566,34 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_query_context_prefers_override_sequence() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        assert_eq!(area.current_dotplot_query_seq_id().as_deref(), Some("seq1"));
+        assert!(!area.using_dotplot_query_override());
+        area.dotplot_query_override_seq_id = "read_query".to_string();
+        area.dotplot_query_override_source_label = "RNA-read #7".to_string();
+        assert_eq!(
+            area.current_dotplot_query_seq_id().as_deref(),
+            Some("read_query")
+        );
+        assert!(area.using_dotplot_query_override());
+        assert!(area.current_dotplot_query_label().contains("RNA-read #7"));
+    }
+
+    #[test]
+    fn dotplot_selection_sync_is_disabled_for_query_override_views() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let mut view = DotplotView::default();
+        view.seq_id = "seq1".to_string();
+        assert!(area.dotplot_selection_sync_enabled_for_view(&view));
+        area.dotplot_query_override_seq_id = "read_query".to_string();
+        view.seq_id = "read_query".to_string();
+        assert!(!area.dotplot_selection_sync_enabled_for_view(&view));
+    }
+
+    #[test]
     fn rna_read_dotplot_svg_default_filename_mentions_parameters() {
         let hit = RnaReadInterpretationHit {
             record_index: 6,
@@ -4983,6 +5011,8 @@ pub struct MainAreaDna {
     dna_presentation_mode: DnaPresentationMode,
     show_all_contextual_transcripts: bool,
     dotplot_ui: DotplotOpsUiState,
+    dotplot_query_override_seq_id: String,
+    dotplot_query_override_source_label: String,
     rna_reads_ui: RnaReadInterpretOpsUiState,
     show_engine_ops: bool,
     show_shell: bool,
@@ -5334,6 +5364,8 @@ impl MainAreaDna {
             dna_presentation_mode: DnaPresentationMode::Region,
             show_all_contextual_transcripts: false,
             dotplot_ui: DotplotOpsUiState::default(),
+            dotplot_query_override_seq_id: String::new(),
+            dotplot_query_override_source_label: String::new(),
             rna_reads_ui: RnaReadInterpretOpsUiState::default(),
             show_engine_ops: false,
             show_shell: false,
@@ -11998,8 +12030,73 @@ impl MainAreaDna {
         }
     }
 
+    fn dotplot_window_identity_seq_id(&self) -> Option<String> {
+        self.seq_id
+            .clone()
+            .or_else(|| self.current_dotplot_query_seq_id())
+    }
+
+    fn current_dotplot_query_seq_id(&self) -> Option<String> {
+        let override_id = self.dotplot_query_override_seq_id.trim();
+        if !override_id.is_empty() {
+            Some(override_id.to_string())
+        } else {
+            self.seq_id.clone()
+        }
+    }
+
+    fn using_dotplot_query_override(&self) -> bool {
+        !self.dotplot_query_override_seq_id.trim().is_empty()
+    }
+
+    fn current_dotplot_query_label(&self) -> String {
+        if self.using_dotplot_query_override() {
+            let query_id = self.dotplot_query_override_seq_id.trim();
+            let source = self.dotplot_query_override_source_label.trim();
+            if source.is_empty() {
+                query_id.to_string()
+            } else {
+                format!("{query_id} ({source})")
+            }
+        } else {
+            self.seq_id.clone().unwrap_or_else(|| "<no-seq-id>".to_string())
+        }
+    }
+
+    fn current_dotplot_query_length(&self) -> usize {
+        if let Some(query_seq_id) = self.current_dotplot_query_seq_id() {
+            if self.seq_id.as_deref() == Some(query_seq_id.as_str()) {
+                return self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+            }
+            return self
+                .engine
+                .as_ref()
+                .and_then(|engine| {
+                    engine.read().ok().and_then(|guard| {
+                        guard
+                            .state()
+                            .sequences
+                            .get(&query_seq_id)
+                            .map(|dna| dna.len())
+                    })
+                })
+                .unwrap_or(0);
+        }
+        0
+    }
+
+    fn clear_dotplot_query_override(&mut self) {
+        self.dotplot_query_override_seq_id.clear();
+        self.dotplot_query_override_source_label.clear();
+        self.invalidate_dotplot_cache();
+    }
+
+    fn dotplot_selection_sync_enabled_for_view(&self, view: &DotplotView) -> bool {
+        self.seq_id.as_deref() == Some(view.seq_id.as_str())
+    }
+
     fn dotplot_ids_for_active_sequence(&self) -> Vec<String> {
-        let Some(seq_id) = self.seq_id.as_deref() else {
+        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
             return vec![];
         };
         let Some(engine) = self.engine.as_ref() else {
@@ -12009,14 +12106,14 @@ impl MainAreaDna {
             return vec![];
         };
         guard
-            .list_dotplot_views(Some(seq_id))
+            .list_dotplot_views(Some(seq_id.as_str()))
             .into_iter()
             .map(|row| row.dotplot_id)
             .collect()
     }
 
     fn flexibility_track_ids_for_active_sequence(&self) -> Vec<String> {
-        let Some(seq_id) = self.seq_id.as_deref() else {
+        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
             return vec![];
         };
         let Some(engine) = self.engine.as_ref() else {
@@ -12026,7 +12123,7 @@ impl MainAreaDna {
             return vec![];
         };
         guard
-            .list_flexibility_tracks(Some(seq_id))
+            .list_flexibility_tracks(Some(seq_id.as_str()))
             .into_iter()
             .map(|row| row.track_id)
             .collect()
@@ -12334,7 +12431,7 @@ impl MainAreaDna {
     }
 
     fn default_dotplot_half_window_bp(&self) -> Option<usize> {
-        let query_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        let query_len = self.current_dotplot_query_length();
         if query_len == 0 {
             return None;
         }
@@ -12378,7 +12475,7 @@ impl MainAreaDna {
     }
 
     fn build_dotplot_compute_diagnostics(&self) -> Result<DotplotComputeDiagnostics, String> {
-        let Some(seq_id) = self.seq_id.clone() else {
+        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
             return Err("No active sequence selected for dotplot diagnostics".to_string());
         };
         let half_window_bp = self.resolve_dotplot_half_window_bp("dotplot half_window_bp")?;
@@ -12509,11 +12606,13 @@ impl MainAreaDna {
     }
 
     fn default_dotplot_span_for_view(&self, half_window_bp: usize) -> Option<(usize, usize)> {
-        let sequence_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        let sequence_len = self.current_dotplot_query_length();
         if sequence_len == 0 {
             return None;
         }
-        let center_0based = if self.is_circular() {
+        let center_0based = if self.using_dotplot_query_override() {
+            sequence_len / 2
+        } else if self.is_circular() {
             sequence_len / 2
         } else {
             let (start_bp, span_bp, _) = self.current_linear_viewport();
@@ -12529,7 +12628,7 @@ impl MainAreaDna {
     }
 
     fn ensure_dotplot_cache_current(&mut self) {
-        let Some(seq_id) = self.seq_id.clone() else {
+        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
             self.invalidate_dotplot_cache();
             return;
         };
@@ -12597,7 +12696,7 @@ impl MainAreaDna {
     }
 
     fn compute_primary_dotplot(&mut self) {
-        let Some(seq_id) = self.seq_id.clone() else {
+        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
             self.op_status = "No active sequence selected for dotplot computation".to_string();
             return;
         };
@@ -13287,6 +13386,7 @@ impl MainAreaDna {
             view.mode,
             DotplotMode::SelfForward | DotplotMode::SelfReverseComplement
         );
+        let selection_sync_enabled = self.dotplot_selection_sync_enabled_for_view(view);
 
         let query_span = view
             .span_end_0based
@@ -13467,7 +13567,9 @@ impl MainAreaDna {
             let x_cell = ((fx * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
             let y_cell = ((fy * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
             let cell_payload = cells.get(&(x_cell, y_cell)).cloned().unwrap_or((0, 0));
-            let click_hint = if is_self_mode {
+            let click_hint = if !selection_sync_enabled {
+                "Click to lock crosshair (sequence selection sync disabled for query override)"
+            } else if is_self_mode {
                 "Click to lock crosshair + sync sequence selection interval"
             } else {
                 "Click to lock crosshair + sync query selection from x-axis"
@@ -13500,7 +13602,9 @@ impl MainAreaDna {
             let y_bp = view.reference_span_start_0based
                 + (fy * reference_span_max as f32).round() as usize;
             self.dotplot_locked_crosshair_bp = Some((x_bp, y_bp));
-            self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true, view.mode);
+            if selection_sync_enabled {
+                self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true, view.mode);
+            }
         }
         if response.clicked_by(egui::PointerButton::Secondary) {
             self.dotplot_locked_crosshair_bp = None;
@@ -14768,6 +14872,30 @@ impl MainAreaDna {
                     });
 
                     ui.horizontal_wrapped(|ui| {
+                        if self.using_dotplot_query_override() {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "Query override: {}",
+                                    self.current_dotplot_query_label()
+                                ))
+                                .monospace()
+                                .size(self.feature_details_font_size()),
+                            )
+                            .on_hover_text(
+                                "This workspace is currently bound to a materialized RNA-read query sequence instead of the active genomic sequence window.",
+                            );
+                            if ui
+                                .small_button("Use active sequence as query")
+                                .on_hover_text(
+                                    "Clear the RNA-read query override and return the workspace to the active sequence window.",
+                                )
+                                .clicked()
+                            {
+                                self.clear_dotplot_query_override();
+                                save_state = true;
+                            }
+                            ui.separator();
+                        }
                         if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
                             let active_mode = self
                                 .dotplot_cached_view
@@ -14805,9 +14933,19 @@ impl MainAreaDna {
                                 .size(self.feature_details_font_size()),
                             );
                             if ui
-                                .small_button("Re-sync selection")
+                                .add_enabled(
+                                    self.dotplot_cached_view
+                                        .as_ref()
+                                        .map(|view| self.dotplot_selection_sync_enabled_for_view(view))
+                                        .unwrap_or(!self.using_dotplot_query_override()),
+                                    egui::Button::new("Re-sync selection"),
+                                )
                                 .on_hover_text(
-                                    "Apply locked crosshair selection to shared sequence selection (pair mode uses query/x axis)",
+                                    if self.using_dotplot_query_override() {
+                                        "Selection sync is disabled while the dotplot query is an RNA-read override rather than the active genomic sequence."
+                                    } else {
+                                        "Apply locked crosshair selection to shared sequence selection (pair mode uses query/x axis)"
+                                    },
                                 )
                                 .clicked()
                             {
@@ -14827,7 +14965,11 @@ impl MainAreaDna {
                             }
                         } else {
                             ui.small(
-                                "Hover inside dotplot for live crosshair. Click to lock and sync selection from the x/query axis. Right-click to clear.",
+                                if self.using_dotplot_query_override() {
+                                    "Hover inside dotplot for live crosshair. Click to lock the crosshair; sequence-selection sync is disabled for RNA-read query overrides. Right-click to clear."
+                                } else {
+                                    "Hover inside dotplot for live crosshair. Click to lock and sync selection from the x/query axis. Right-click to clear."
+                                },
                             );
                         }
                     });
@@ -15640,11 +15782,12 @@ impl MainAreaDna {
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         let mut entries = Vec::new();
         if self.show_dotplot_window {
-            if let Some(seq_id) = self.seq_id.as_deref() {
+            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
+                let query_label = self.current_dotplot_query_label();
                 entries.push((
-                    Self::dotplot_viewport_id(seq_id),
-                    Self::dotplot_window_title(seq_id),
-                    format!("Dotplot workspace for '{seq_id}'"),
+                    Self::dotplot_viewport_id(&viewport_seq_id),
+                    Self::dotplot_window_title(&query_label),
+                    format!("Dotplot workspace for '{query_label}'"),
                 ));
             }
         }
@@ -15683,12 +15826,12 @@ impl MainAreaDna {
         if !self.show_dotplot_window {
             return;
         }
-        let Some(seq_id) = self.seq_id.clone() else {
+        let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() else {
             self.show_dotplot_window = false;
             return;
         };
-        let title = Self::dotplot_window_title(&seq_id);
-        let viewport_id = Self::dotplot_viewport_id(&seq_id);
+        let title = Self::dotplot_window_title(&self.current_dotplot_query_label());
+        let viewport_id = Self::dotplot_viewport_id(&viewport_seq_id);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([1240.0, 820.0])
@@ -15697,7 +15840,10 @@ impl MainAreaDna {
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_dotplot_window;
                 egui::Window::new(title.clone())
-                    .id(egui::Id::new(format!("dotplot_window_embedded_{}", seq_id)))
+                    .id(egui::Id::new(format!(
+                        "dotplot_window_embedded_{}",
+                        viewport_seq_id
+                    )))
                     .open(&mut open)
                     .resizable(true)
                     .default_size(Vec2::new(1240.0, 820.0))
@@ -15705,7 +15851,10 @@ impl MainAreaDna {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
                         egui::ScrollArea::both()
-                            .id_salt(format!("dotplot_window_scroll_embedded_{}", seq_id))
+                            .id_salt(format!(
+                                "dotplot_window_scroll_embedded_{}",
+                                viewport_seq_id
+                            ))
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -15724,7 +15873,10 @@ impl MainAreaDna {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
                 egui::ScrollArea::both()
-                    .id_salt(format!("dotplot_window_scroll_viewport_{}", seq_id))
+                    .id_salt(format!(
+                        "dotplot_window_scroll_viewport_{}",
+                        viewport_seq_id
+                    ))
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -18422,6 +18574,158 @@ impl MainAreaDna {
             return;
         };
         self.materialize_rna_read_report_hits(vec![record_index], "highlighted report read");
+    }
+
+    fn ensure_materialized_rna_read_dotplot_query_sequence(
+        &mut self,
+        hit: &RnaReadInterpretationHit,
+    ) -> Option<String> {
+        let report_id = self.rna_reads_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            self.op_status = "Load/save a Report ID before opening RNA-read dotplot workspace"
+                .to_string();
+            return None;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return None;
+        };
+        let report_token = Self::sanitize_workflow_run_id_component(&report_id);
+        let header_token = Self::sanitize_export_name_component(&hit.header_id, "read");
+        let preferred_seq_id =
+            format!("{}_dotplot_r{}_{}", report_token, hit.record_index + 1, header_token);
+        if engine
+            .read()
+            .ok()
+            .and_then(|guard| {
+                guard
+                    .state()
+                    .sequences
+                    .contains_key(&preferred_seq_id)
+                    .then_some(())
+            })
+            .is_some()
+        {
+            return Some(preferred_seq_id);
+        }
+        let mut guard = match engine.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status =
+                    "Engine lock poisoned while materializing RNA-read dotplot query".to_string();
+                return None;
+            }
+        };
+        let result = match guard.apply(Operation::MaterializeRnaReadHitSequences {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::All,
+            selected_record_indices: vec![hit.record_index],
+            output_prefix: Some(format!("{report_token}_dotplot")),
+        }) {
+            Ok(result) => result,
+            Err(error) => {
+                self.op_status = error.message.clone();
+                self.op_error_popup = Some(error.message);
+                return None;
+            }
+        };
+        let seq_id = result
+            .created_seq_ids
+            .first()
+            .cloned()
+            .unwrap_or(preferred_seq_id);
+        self.last_created_seq_ids = result.created_seq_ids.clone();
+        self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
+        Some(seq_id)
+    }
+
+    fn open_rna_read_dotplot_workspace(
+        &mut self,
+        view: &SplicingExpertView,
+        hit: &RnaReadInterpretationHit,
+    ) {
+        let Some(query_seq_id) = self.ensure_materialized_rna_read_dotplot_query_sequence(hit)
+        else {
+            return;
+        };
+        let reference_span_start_0based = view.region_start_1based.saturating_sub(1);
+        let reference_span_end_0based = view.region_end_1based;
+        if reference_span_end_0based <= reference_span_start_0based {
+            self.op_status = "Splicing ROI is invalid for RNA-read dotplot workspace".to_string();
+            return;
+        }
+        let query_len = self
+            .engine
+            .as_ref()
+            .and_then(|engine| {
+                engine.read().ok().and_then(|guard| {
+                    guard
+                        .state()
+                        .sequences
+                        .get(&query_seq_id)
+                        .map(|dna| dna.len())
+                })
+            })
+            .unwrap_or(hit.sequence.len());
+        if query_len == 0 {
+            self.op_status = format!(
+                "RNA-read dotplot query '{}' is empty; workspace not opened",
+                query_seq_id
+            );
+            return;
+        }
+        let requested_word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
+                .unwrap_or(7);
+        let requested_step_bp =
+            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
+                .unwrap_or(1);
+        let reference_span_bp = reference_span_end_0based
+            .saturating_sub(reference_span_start_0based)
+            .max(1);
+        let adjusted_step_bp = Self::recommend_pair_dotplot_step(
+            query_len,
+            reference_span_bp,
+            requested_word_size,
+            requested_step_bp,
+        );
+        self.dotplot_query_override_seq_id = query_seq_id.clone();
+        self.dotplot_query_override_source_label = format!(
+            "RNA-read #{} {} from report {}",
+            hit.record_index + 1,
+            hit.header_id,
+            self.rna_reads_ui.report_id.trim()
+        );
+        self.dotplot_ui.mode = Self::rna_read_dotplot_mode_from_hit(hit);
+        self.dotplot_ui.reference_seq_id = view.seq_id.clone();
+        self.dotplot_ui.reference_span_start_0based = reference_span_start_0based.to_string();
+        self.dotplot_ui.reference_span_end_0based = reference_span_end_0based.to_string();
+        self.dotplot_ui.step_bp = adjusted_step_bp.to_string();
+        self.dotplot_ui.dotplot_id = format!(
+            "{}_vs_{}_r{}",
+            Self::normalize_operation_id_token(&query_seq_id),
+            Self::normalize_operation_id_token(&view.seq_id),
+            hit.record_index + 1
+        );
+        self.dotplot_locked_crosshair_bp = None;
+        self.dotplot_hover_crosshair_bp = None;
+        self.invalidate_dotplot_cache();
+        self.compute_primary_dotplot();
+        self.open_dotplot_window();
+        self.op_status = if adjusted_step_bp != requested_step_bp {
+            format!(
+                "Opened interactive dotplot workspace for RNA-read #{} with auto-adjusted step {} (requested {}).",
+                hit.record_index + 1,
+                adjusted_step_bp,
+                requested_step_bp
+            )
+        } else {
+            format!(
+                "Opened interactive dotplot workspace for RNA-read #{} ({})",
+                hit.record_index + 1,
+                hit.header_id
+            )
+        };
     }
 
     fn rna_read_dotplot_mode_from_hit(hit: &RnaReadInterpretationHit) -> DotplotMode {
@@ -21512,6 +21816,9 @@ impl MainAreaDna {
                 }
                 if ui.button("Materialize highlighted").clicked() {
                     self.materialize_highlighted_rna_read_report_hit();
+                }
+                if ui.button("Open interactive dotplot").clicked() {
+                    self.open_rna_read_dotplot_workspace(view, hit);
                 }
                 if ui.button("Export dotplot...").clicked() {
                     self.export_highlighted_rna_read_sequence_dotplot_svg(view, progress);
