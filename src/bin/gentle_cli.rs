@@ -589,6 +589,8 @@ fn usage() {
   gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
+  gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
+  gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shell help:\n  \
@@ -598,6 +600,7 @@ fn usage() {
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
+    "cache",
     "genomes",
     "helpers",
     "agents",
@@ -4054,6 +4057,59 @@ mod tests {
         match parsed {
             Some(ShellCommand::GibsonApply { request_json }) => {
                 assert_eq!(request_json, "@plan.json");
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cache_inspect() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cache".to_string(),
+            "inspect".to_string(),
+            "--both".to_string(),
+            "--cache-dir".to_string(),
+            "data/genomes".to_string(),
+            "--cache-dir".to_string(),
+            "data/helper_genomes".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::CacheInspect { scope, cache_dirs }) => {
+                assert_eq!(scope.label(), "both");
+                assert_eq!(cache_dirs.len(), 2);
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cache_clear() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cache".to_string(),
+            "clear".to_string(),
+            "derived-indexes-only".to_string(),
+            "--helpers".to_string(),
+            "--cache-dir".to_string(),
+            "data/helper_genomes".to_string(),
+            "--prepared-id".to_string(),
+            "localproject".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::CacheClear {
+                mode,
+                scope,
+                cache_dirs,
+                prepared_ids,
+                ..
+            }) => {
+                assert_eq!(mode, gentle::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly);
+                assert_eq!(scope.label(), "helpers");
+                assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
+                assert_eq!(prepared_ids, vec!["localproject".to_string()]);
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

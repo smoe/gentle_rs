@@ -496,6 +496,114 @@ Current invariants for the draft model:
   distinctness/design heuristics rather than treating it as biologically
   privileged just because it was user-supplied.
 
+### `gentle.prepared_cache_inspection.v1`
+
+Purpose:
+
+- provide one deterministic, non-mutating inspection payload for prepared
+  reference/helper cache roots,
+- let GUI, shared shell, and direct CLI report exactly what GENtle created
+  locally before any deletion happens.
+
+Current shared entry points:
+
+- `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
+- GUI specialist window: `Genome -> Clear Caches...`
+- `Prepared References... -> Clear Caches...`
+
+Top-level structure:
+
+- `schema`, `cache_roots[]`
+- `entries[]`
+- `entry_count`, `total_size_bytes`, `total_file_count`
+
+Entry structure:
+
+- `entry_id`
+- `classification`
+  - `prepared_install`
+  - `orphaned_remnant`
+- `cache_root`, `path`
+- `artifact_stats[]`
+  - `group`
+    - `cached_sources`
+    - `derived_indexes`
+    - `blast_db`
+  - `total_size_bytes`
+  - `file_count`
+- `total_size_bytes`, `file_count`
+
+Inspection rules:
+
+- inspection stays rooted in the selected cache roots only
+- default roots are adapter-facing conventions:
+  - references: `data/genomes`
+  - helpers: `data/helper_genomes`
+- orphaned remnants are inspectable even when they are not backed by a
+  manifest
+- catalog JSON, project state files, MCP/runtime files, backdrop/runtime
+  caches, and developer build artifacts are out of scope
+
+### `gentle.prepared_cache_cleanup.v1`
+
+Purpose:
+
+- provide one deterministic cleanup result payload for conservative prepared
+  cache deletion workflows,
+- keep partial rebuild/reindex cleanup and full prepared-install deletion on
+  the same shared contract across GUI/CLI/shell.
+
+Current shared entry points:
+
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache ...`
+- GUI specialist window: `Genome -> Clear Caches...`
+
+Top-level structure:
+
+- `schema`, `mode`, `cache_roots[]`
+- `selected_prepared_ids[]`
+- `include_orphaned_remnants`
+- `results[]`
+- `entry_count`, `removed_item_count`, `removed_bytes`, `removed_file_count`
+
+Per-entry result structure:
+
+- `entry_id`
+- `classification`
+  - `prepared_install`
+  - `orphaned_remnant`
+- `cache_root`, `path`
+- `removed`
+- `removed_artifact_groups[]`
+- `removed_bytes`, `removed_file_count`
+- `skipped_reason?`
+
+Cleanup modes:
+
+- `blast_db_only`
+  - remove only BLAST DB sidecars for selected manifest-backed installs
+- `derived_indexes_only`
+  - remove BLAST DB sidecars plus `sequence.fa.fai` and `genes.json`
+  - cached sources and manifests remain so reindex-from-cached-files still
+    works
+- `selected_prepared_installs`
+  - remove only explicitly selected prepared installs
+  - optional `include_orphaned_remnants` also removes orphaned remnants under
+    the same selected roots
+- `all_prepared_in_cache`
+  - remove all prepared installs under the selected roots
+  - optional `include_orphaned_remnants` extends that deletion to orphaned
+    remnants
+
+Cleanup rules:
+
+- `blast_db_only` and `derived_indexes_only` apply only to manifest-backed
+  prepared installs
+- orphaned remnants can only be deleted through the full-delete modes
+- cleanup never scans the whole workspace; it only touches the selected roots
+- cleanup does not treat catalog JSON, `.gentle_state.json`, MCP/runtime files,
+  backdrop/runtime caches, or `target/` as cache
+
 ## Core entities
 
 ### ProjectState

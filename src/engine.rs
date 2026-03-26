@@ -34,8 +34,10 @@ use crate::{
         EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeGeneRecord, GenomeSourcePlan,
         GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
         PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
-        blast_external_binary_preflight_report, build_genbank_efetch_url,
+        blast_external_binary_preflight_report,
+        build_genbank_efetch_url, clear_prepared_cache_roots, inspect_prepared_cache_roots,
         is_prepare_cancelled_error, validate_genbank_accession,
     },
     iupac_code::IupacCode,
@@ -7041,6 +7043,24 @@ impl GentleEngine {
                     genome_id, catalog_path, e
                 ),
             })
+    }
+
+    pub fn inspect_prepared_cache_roots(
+        cache_roots: &[String],
+    ) -> Result<PreparedCacheInspectionReport, EngineError> {
+        inspect_prepared_cache_roots(cache_roots).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not inspect prepared cache roots: {e}"),
+        })
+    }
+
+    pub fn clear_prepared_cache_roots(
+        request: &PreparedCacheCleanupRequest,
+    ) -> Result<PreparedCacheCleanupReport, EngineError> {
+        clear_prepared_cache_roots(request).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not clear prepared cache roots: {e}"),
+        })
     }
 
     pub fn list_helper_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {

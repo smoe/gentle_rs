@@ -884,6 +884,9 @@ cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (online)" --cache-d
 cargo run --bin gentle_cli -- helpers remove-prepared "Plasmid pUC19 (online)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (online)" --filter bla --limit 20
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- cache inspect --references --cache-dir data/genomes
+cargo run --bin gentle_cli -- cache clear derived-indexes-only --references --cache-dir data/genomes --prepared-id "Human GRCh38 Ensembl 116"
+cargo run --bin gentle_cli -- cache clear all-prepared-in-cache --both --include-orphans
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
 cargo run --bin gentle_cli -- candidates score-weighted sgrnas priority --term gc_fraction:0.7:max --term distance_to_seq_start_bp:0.3:min --normalize
@@ -1333,6 +1336,32 @@ Rendering export commands:
     on the assembled product, including new sites introduced by the insert.
   - Returns the standard mutating `OpResult`, including created sequence IDs,
     warnings, messages, and the operation ID used for provenance/reopen flows.
+- `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
+  - Calls the shared non-mutating prepared-cache inspection path.
+  - Returns one `gentle.prepared_cache_inspection.v1` payload with:
+    - selected cache roots
+    - manifest-backed prepared installs
+    - orphaned remnants under those roots
+    - per-entry artifact groups, byte totals, and file counts
+  - If no `--cache-dir` is given, default roots are:
+    - `--references`: `data/genomes`
+    - `--helpers`: `data/helper_genomes`
+    - `--both`: both roots above
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]`
+  - Calls the shared prepared-cache cleanup path.
+  - Returns one `gentle.prepared_cache_cleanup.v1` payload with exact affected
+    paths, removed byte totals, and per-entry cleanup results.
+  - `blast-db-only` and `derived-indexes-only` apply only to manifest-backed
+    prepared installs and require one or more `--prepared-id` values.
+  - `selected-prepared` removes only the named prepared installs and may also
+    remove orphaned remnants when `--include-orphans` is set.
+  - `all-prepared-in-cache` clears all prepared installs under the selected
+    roots and ignores `--prepared-id`.
+  - Cleanup is conservative by design:
+    - only selected known cache roots are touched
+    - catalog JSON and project state files remain unchanged
+    - `.gentle_state.json`, MCP/runtime files, backdrop/runtime caches, and
+      `target/` are out of scope
 - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
@@ -1563,6 +1592,18 @@ Helper convenience commands:
   - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes remove-prepared`, with helper-catalog default.
+- `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
+  - Lists prepared installs and orphaned remnants under the selected cache
+    roots with artifact-group byte totals.
+  - Default roots are `data/genomes` for references and
+    `data/helper_genomes` for helpers.
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]`
+  - Conservatively deletes derived cache artifacts or prepared installs inside
+    the selected roots only.
+  - Partial modes keep cached FASTA/annotation sources and manifests intact so
+    reindex-from-cached-files remains possible.
+  - Catalog JSON, `.gentle_state.json`, MCP/runtime files, backdrop/runtime
+    caches, and `target/` are not treated as cache.
 - `helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]`
   - Same behavior as `genomes remove-catalog-entry`, with helper-catalog default.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`

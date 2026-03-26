@@ -53,7 +53,8 @@ use crate::{
         GenomeBlastReport, GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord,
         GenomeSourcePlan, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
         PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-        PreparedGenomeInspection,
+        PreparedCacheArtifactGroup, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
     },
     gibson_planning::{
         GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
@@ -723,6 +724,7 @@ pub struct GENtleApp {
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
+    show_cache_cleanup_dialog: bool,
     show_uniprot_dialog: bool,
     show_genbank_dialog: bool,
     genome_dialog_scope: GenomeDialogScope,
@@ -741,6 +743,16 @@ pub struct GENtleApp {
     genome_prepare_eta_baseline: Option<PrepareGenomeEtaBaseline>,
     genome_prepare_failure_recovery: Option<PrepareGenomeFailureRecovery>,
     genome_prepare_status: String,
+    cache_cleanup_scope: CacheCleanupScope,
+    cache_cleanup_reference_cache_dir: String,
+    cache_cleanup_helper_cache_dir: String,
+    cache_cleanup_mode: PreparedCacheCleanupMode,
+    cache_cleanup_include_orphans: bool,
+    cache_cleanup_inspection: Option<PreparedCacheInspectionReport>,
+    cache_cleanup_selected_ids: HashSet<String>,
+    cache_cleanup_rebuild_candidates: Vec<PreparedGenomeReinstallRequest>,
+    cache_cleanup_status: String,
+    cache_cleanup_confirm_pending: bool,
     genome_prepare_timeout_secs: String,
     genome_gene_filter: String,
     genome_gene_filter_limit: usize,
@@ -1389,6 +1401,41 @@ struct PendingGenomeCatalogEntryRemovalRequest {
     genome_id: String,
     scope: GenomeDialogScope,
     catalog_path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CacheCleanupScope {
+    References,
+    Helpers,
+    Both,
+}
+
+impl CacheCleanupScope {
+    fn label(self) -> &'static str {
+        match self {
+            Self::References => "References",
+            Self::Helpers => "Helpers",
+            Self::Both => "Both",
+        }
+    }
+
+    fn roots(self, reference_cache_dir: &str, helper_cache_dir: &str) -> Vec<String> {
+        let reference = if reference_cache_dir.trim().is_empty() {
+            DEFAULT_GENOME_CACHE_DIR.to_string()
+        } else {
+            reference_cache_dir.trim().to_string()
+        };
+        let helper = if helper_cache_dir.trim().is_empty() {
+            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+        } else {
+            helper_cache_dir.trim().to_string()
+        };
+        match self {
+            Self::References => vec![reference],
+            Self::Helpers => vec![helper],
+            Self::Both => vec![reference, helper],
+        }
+    }
 }
 
 struct GenomeTrackImportTask {
@@ -2051,6 +2098,7 @@ impl Default for GENtleApp {
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
+            show_cache_cleanup_dialog: false,
             show_uniprot_dialog: false,
             show_genbank_dialog: false,
             genome_dialog_scope: GenomeDialogScope::Reference,
@@ -2069,6 +2117,16 @@ impl Default for GENtleApp {
             genome_prepare_eta_baseline: None,
             genome_prepare_failure_recovery: None,
             genome_prepare_status: String::new(),
+            cache_cleanup_scope: CacheCleanupScope::References,
+            cache_cleanup_reference_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
+            cache_cleanup_helper_cache_dir: DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
+            cache_cleanup_mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
+            cache_cleanup_include_orphans: false,
+            cache_cleanup_inspection: None,
+            cache_cleanup_selected_ids: HashSet::new(),
+            cache_cleanup_rebuild_candidates: vec![],
+            cache_cleanup_status: String::new(),
+            cache_cleanup_confirm_pending: false,
             genome_prepare_timeout_secs: default_prepare_timeout_secs_string(),
             genome_gene_filter: String::new(),
             genome_gene_filter_limit: 5000,
@@ -6545,6 +6603,269 @@ Error: `{err}`"
 
     fn open_reference_genome_inspector_dialog(&mut self) {
         self.show_reference_genome_inspector_dialog = true;
+    }
+
+    fn open_cache_cleanup_dialog(&mut self) {
+        self.sync_active_genome_scope_paths_from_fields();
+        self.cache_cleanup_scope = match self.genome_dialog_scope {
+            GenomeDialogScope::Reference => CacheCleanupScope::References,
+            GenomeDialogScope::Helper => CacheCleanupScope::Helpers,
+        };
+        self.cache_cleanup_reference_cache_dir = if self.reference_genome_cache_dir.trim().is_empty()
+        {
+            DEFAULT_GENOME_CACHE_DIR.to_string()
+        } else {
+            self.reference_genome_cache_dir.trim().to_string()
+        };
+        self.cache_cleanup_helper_cache_dir = if self.helper_genome_cache_dir.trim().is_empty() {
+            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+        } else {
+            self.helper_genome_cache_dir.trim().to_string()
+        };
+        self.cache_cleanup_mode = PreparedCacheCleanupMode::DerivedIndexesOnly;
+        self.cache_cleanup_include_orphans = false;
+        self.cache_cleanup_confirm_pending = false;
+        self.cache_cleanup_selected_ids.clear();
+        self.cache_cleanup_rebuild_candidates.clear();
+        self.show_cache_cleanup_dialog = true;
+        self.refresh_cache_cleanup_inspection();
+    }
+
+    fn cache_cleanup_selected_roots(&self) -> Vec<String> {
+        self.cache_cleanup_scope.roots(
+            &self.cache_cleanup_reference_cache_dir,
+            &self.cache_cleanup_helper_cache_dir,
+        )
+    }
+
+    fn refresh_cache_cleanup_inspection(&mut self) {
+        self.cache_cleanup_confirm_pending = false;
+        self.cache_cleanup_rebuild_candidates.clear();
+        let roots = self.cache_cleanup_selected_roots();
+        match GentleEngine::inspect_prepared_cache_roots(&roots) {
+            Ok(report) => {
+                self.cache_cleanup_inspection = Some(report);
+                self.cache_cleanup_status = if self
+                    .cache_cleanup_inspection
+                    .as_ref()
+                    .is_some_and(|report| report.entry_count == 0)
+                {
+                    "Nothing to clean in selected cache roots".to_string()
+                } else {
+                    format!(
+                        "Inspected {} selected cache root(s).",
+                        roots.len()
+                    )
+                };
+            }
+            Err(e) => {
+                self.cache_cleanup_inspection = None;
+                self.cache_cleanup_status = format!("Could not inspect prepared caches: {e}");
+            }
+        }
+    }
+
+    fn cache_cleanup_group_label(group: PreparedCacheArtifactGroup) -> &'static str {
+        match group {
+            PreparedCacheArtifactGroup::CachedSources => "sources",
+            PreparedCacheArtifactGroup::DerivedIndexes => "indexes",
+            PreparedCacheArtifactGroup::BlastDb => "blast",
+        }
+    }
+
+    fn format_cache_cleanup_groups(entry: &PreparedCacheInspectionEntry) -> String {
+        let mut labels = entry
+            .artifact_stats
+            .iter()
+            .map(|stat| Self::cache_cleanup_group_label(stat.group).to_string())
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.join(", ")
+    }
+
+    fn cache_cleanup_group_bytes(
+        entry: &PreparedCacheInspectionEntry,
+        group: PreparedCacheArtifactGroup,
+    ) -> u64 {
+        entry
+            .artifact_stats
+            .iter()
+            .find(|stat| stat.group == group)
+            .map(|stat| stat.total_size_bytes)
+            .unwrap_or(0)
+    }
+
+    fn cache_cleanup_preview_targets(
+        &self,
+    ) -> (Vec<&PreparedCacheInspectionEntry>, u64, usize, String) {
+        let Some(report) = &self.cache_cleanup_inspection else {
+            return (vec![], 0, 0, "Inspect selected cache roots first.".to_string());
+        };
+        let entries = report
+            .entries
+            .iter()
+            .filter(|entry| match self.cache_cleanup_mode {
+                PreparedCacheCleanupMode::AllPreparedInCache => {
+                    entry.classification == crate::genomes::PreparedCacheEntryKind::PreparedInstall
+                        || (self.cache_cleanup_include_orphans
+                            && entry.classification
+                                == crate::genomes::PreparedCacheEntryKind::OrphanedRemnant)
+                }
+                PreparedCacheCleanupMode::SelectedPreparedInstalls => self
+                    .cache_cleanup_selected_ids
+                    .contains(&entry.entry_id),
+                PreparedCacheCleanupMode::BlastDbOnly
+                | PreparedCacheCleanupMode::DerivedIndexesOnly => {
+                    entry.classification
+                        == crate::genomes::PreparedCacheEntryKind::PreparedInstall
+                        && self.cache_cleanup_selected_ids.contains(&entry.entry_id)
+                }
+            })
+            .collect::<Vec<_>>();
+        let bytes = entries
+            .iter()
+            .map(|entry| match self.cache_cleanup_mode {
+                PreparedCacheCleanupMode::BlastDbOnly => {
+                    Self::cache_cleanup_group_bytes(entry, PreparedCacheArtifactGroup::BlastDb)
+                }
+                PreparedCacheCleanupMode::DerivedIndexesOnly => {
+                    Self::cache_cleanup_group_bytes(
+                        entry,
+                        PreparedCacheArtifactGroup::DerivedIndexes,
+                    ) + Self::cache_cleanup_group_bytes(entry, PreparedCacheArtifactGroup::BlastDb)
+                }
+                PreparedCacheCleanupMode::SelectedPreparedInstalls
+                | PreparedCacheCleanupMode::AllPreparedInCache => entry.total_size_bytes,
+            })
+            .sum::<u64>();
+        let explanation = match self.cache_cleanup_mode {
+            PreparedCacheCleanupMode::BlastDbOnly => {
+                "This removes BLAST databases only; cached FASTA/annotation sources and rebuildable indexes remain."
+            }
+            PreparedCacheCleanupMode::DerivedIndexesOnly => {
+                "This removes rebuildable indexes (FASTA index, gene index, and BLAST DB) while keeping cached FASTA/annotation sources and manifests."
+            }
+            PreparedCacheCleanupMode::SelectedPreparedInstalls => {
+                "This removes the selected prepared install directories entirely. Cached sources inside those installs will be deleted too."
+            }
+            PreparedCacheCleanupMode::AllPreparedInCache => {
+                "This removes all prepared installs under the selected cache roots. Orphaned remnants are removed only when that checkbox is enabled."
+            }
+        }
+        .to_string();
+        (entries, bytes, report.cache_roots.len(), explanation)
+    }
+
+    fn cache_cleanup_root_matches(selected_root: &str, entry_root: &str) -> bool {
+        Path::new(selected_root.trim()) == Path::new(entry_root.trim())
+    }
+
+    fn cache_cleanup_scope_for_root(&self, cache_root: &str) -> Option<GenomeDialogScope> {
+        let reference_root = if self.cache_cleanup_reference_cache_dir.trim().is_empty() {
+            DEFAULT_GENOME_CACHE_DIR.to_string()
+        } else {
+            self.cache_cleanup_reference_cache_dir.trim().to_string()
+        };
+        let helper_root = if self.cache_cleanup_helper_cache_dir.trim().is_empty() {
+            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+        } else {
+            self.cache_cleanup_helper_cache_dir.trim().to_string()
+        };
+        let reference_matches = !matches!(self.cache_cleanup_scope, CacheCleanupScope::Helpers)
+            && Self::cache_cleanup_root_matches(&reference_root, cache_root);
+        let helper_matches = !matches!(self.cache_cleanup_scope, CacheCleanupScope::References)
+            && Self::cache_cleanup_root_matches(&helper_root, cache_root);
+        match (reference_matches, helper_matches) {
+            (true, false) => Some(GenomeDialogScope::Reference),
+            (false, true) => Some(GenomeDialogScope::Helper),
+            _ => None,
+        }
+    }
+
+    fn cache_cleanup_rebuild_candidates_from_report(
+        &self,
+        report: &crate::genomes::PreparedCacheCleanupReport,
+    ) -> Vec<PreparedGenomeReinstallRequest> {
+        if !matches!(
+            report.mode,
+            PreparedCacheCleanupMode::BlastDbOnly | PreparedCacheCleanupMode::DerivedIndexesOnly
+        ) {
+            return vec![];
+        }
+        let mut requests = report
+            .results
+            .iter()
+            .filter(|result| {
+                result.removed
+                    && matches!(
+                        result.classification,
+                        crate::genomes::PreparedCacheEntryKind::PreparedInstall
+                    )
+            })
+            .filter_map(|result| {
+                let scope = self.cache_cleanup_scope_for_root(&result.cache_root)?;
+                let (catalog_path, _) = self.scope_genome_paths_resolved(scope);
+                Some(PreparedGenomeReinstallRequest {
+                    genome_id: result.entry_id.clone(),
+                    scope,
+                    catalog_path,
+                    cache_dir: result.cache_root.clone(),
+                    dialog_host: PreparedGenomeReinstallDialogHost::Root,
+                })
+            })
+            .collect::<Vec<_>>();
+        requests.sort_by(|left, right| {
+            (
+                left.scope.description(),
+                left.genome_id.as_str(),
+                left.cache_dir.as_str(),
+            )
+                .cmp(&(
+                    right.scope.description(),
+                    right.genome_id.as_str(),
+                    right.cache_dir.as_str(),
+                ))
+        });
+        requests.dedup_by(|left, right| {
+            left.scope == right.scope
+                && left.genome_id == right.genome_id
+                && left.cache_dir == right.cache_dir
+        });
+        requests
+    }
+
+    fn queue_cache_cleanup_rebuild_candidate(&mut self, index: usize) {
+        if let Some(request) = self.cache_cleanup_rebuild_candidates.get(index).cloned() {
+            self.pending_prepared_genome_reinstall = Some(request);
+        }
+    }
+
+    fn apply_cache_cleanup(&mut self) {
+        let roots = self.cache_cleanup_selected_roots();
+        let request = PreparedCacheCleanupRequest {
+            mode: self.cache_cleanup_mode,
+            cache_roots: roots.clone(),
+            prepared_ids: self.cache_cleanup_selected_ids.iter().cloned().collect(),
+            include_orphaned_remnants: self.cache_cleanup_include_orphans,
+        };
+        match GentleEngine::clear_prepared_cache_roots(&request) {
+            Ok(report) => {
+                let rebuild_candidates = self.cache_cleanup_rebuild_candidates_from_report(&report);
+                let status = format!(
+                    "Cache cleanup removed {} item(s), reclaiming {}.",
+                    report.removed_item_count,
+                    Self::format_bytes_compact(report.removed_bytes)
+                );
+                self.cache_cleanup_confirm_pending = false;
+                self.cache_cleanup_selected_ids.clear();
+                self.refresh_cache_cleanup_inspection();
+                self.cache_cleanup_rebuild_candidates = rebuild_candidates;
+                self.cache_cleanup_status = status;
+            }
+            Err(e) => {
+                self.cache_cleanup_status = format!("Could not clear caches: {e}");
+            }
+        }
     }
 
     fn open_genome_bed_track_dialog(&mut self) {
@@ -14238,6 +14559,15 @@ Error: `{err}`"
                             inspections.len(),
                             Self::format_bytes_compact(total_size)
                         ));
+                        if ui
+                            .small_button("Clear Caches...")
+                            .on_hover_text(
+                                "Open the conservative prepared-cache cleanup specialist",
+                            )
+                            .clicked()
+                        {
+                            self.open_cache_cleanup_dialog();
+                        }
                         if !catalog_writable {
                             ui.small(
                                 "Catalog-entry removal is hidden here because the active catalog file is not writable.",
@@ -15435,6 +15765,304 @@ Error: `{err}`"
                 self.gibson_status = format!("Gibson apply failed: {err}");
             }
         }
+    }
+
+    fn render_cache_cleanup_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_cache_cleanup_dialog {
+            return;
+        }
+        let mut open = self.show_cache_cleanup_dialog;
+        let mut close_requested = false;
+        egui::Window::new("Clear Caches")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .show(ctx, |ui| {
+                let close_hover =
+                    Self::specialist_window_close_hover_text("Genome > Clear Caches");
+                if self.render_specialist_window_nav_with_close(
+                    ui,
+                    Some(("Close", close_hover.as_str())),
+                ) {
+                    close_requested = true;
+                    return;
+                }
+                ui.label(
+                    "Inspect and conservatively clean prepared genome/helper caches. Project state files, catalog JSON, MCP/runtime files, and build artifacts are out of scope.",
+                );
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("scope");
+                    for scope in [
+                        CacheCleanupScope::References,
+                        CacheCleanupScope::Helpers,
+                        CacheCleanupScope::Both,
+                    ] {
+                        let clicked = ui
+                            .radio_value(&mut self.cache_cleanup_scope, scope, scope.label())
+                            .clicked();
+                        if clicked {
+                            self.cache_cleanup_confirm_pending = false;
+                            self.cache_cleanup_rebuild_candidates.clear();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("reference cache");
+                    let edited = ui
+                        .text_edit_singleline(&mut self.cache_cleanup_reference_cache_dir)
+                        .changed();
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.cache_cleanup_reference_cache_dir = path.display().to_string();
+                        }
+                    }
+                    if edited {
+                        self.cache_cleanup_confirm_pending = false;
+                        self.cache_cleanup_rebuild_candidates.clear();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("helper cache");
+                    let edited = ui
+                        .text_edit_singleline(&mut self.cache_cleanup_helper_cache_dir)
+                        .changed();
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.cache_cleanup_helper_cache_dir = path.display().to_string();
+                        }
+                    }
+                    if edited {
+                        self.cache_cleanup_confirm_pending = false;
+                        self.cache_cleanup_rebuild_candidates.clear();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Inspect")
+                        .on_hover_text("Inspect prepared installs and orphaned remnants in the selected cache roots")
+                        .clicked()
+                    {
+                        self.refresh_cache_cleanup_inspection();
+                    }
+                    ui.small(format!(
+                        "Selected roots: {}",
+                        self.cache_cleanup_selected_roots().join(", ")
+                    ));
+                });
+                ui.separator();
+                ui.label("Cleanup mode");
+                let modes = [
+                    (
+                        PreparedCacheCleanupMode::DerivedIndexesOnly,
+                        "Remove rebuildable indexes",
+                    ),
+                    (
+                        PreparedCacheCleanupMode::BlastDbOnly,
+                        "Remove BLAST databases only",
+                    ),
+                    (
+                        PreparedCacheCleanupMode::SelectedPreparedInstalls,
+                        "Remove selected prepared installs",
+                    ),
+                    (
+                        PreparedCacheCleanupMode::AllPreparedInCache,
+                        "Remove all prepared installs in cache",
+                    ),
+                ];
+                for (mode, label) in modes {
+                    if ui
+                        .radio_value(&mut self.cache_cleanup_mode, mode, label)
+                        .clicked()
+                    {
+                        self.cache_cleanup_confirm_pending = false;
+                        self.cache_cleanup_rebuild_candidates.clear();
+                    }
+                }
+                let include_orphans_enabled = self.cache_cleanup_mode.allows_orphaned_remnants();
+                let include_changed = ui
+                    .add_enabled(
+                        include_orphans_enabled,
+                        egui::Checkbox::new(
+                            &mut self.cache_cleanup_include_orphans,
+                            "Include orphaned remnants",
+                        ),
+                    )
+                    .changed();
+                if include_changed {
+                    self.cache_cleanup_confirm_pending = false;
+                    self.cache_cleanup_rebuild_candidates.clear();
+                }
+                if !include_orphans_enabled {
+                    self.cache_cleanup_include_orphans = false;
+                }
+                ui.separator();
+                ui.label("Discovered items");
+                if let Some(report) = &self.cache_cleanup_inspection {
+                    if report.entries.is_empty() {
+                        ui.small("Nothing to clean in selected cache roots.");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(260.0)
+                            .show(ui, |ui| {
+                                egui::Grid::new("cache_cleanup_grid")
+                                    .striped(true)
+                                    .num_columns(7)
+                                    .show(ui, |ui| {
+                                        ui.strong("");
+                                        ui.strong("Id");
+                                        ui.strong("Kind");
+                                        ui.strong("Cache root");
+                                        ui.strong("Bytes");
+                                        ui.strong("Artifacts");
+                                        ui.strong("Path");
+                                        ui.end_row();
+                                        for entry in &report.entries {
+                                            let can_select = self.cache_cleanup_mode
+                                                != PreparedCacheCleanupMode::AllPreparedInCache;
+                                            let mut selected = self
+                                                .cache_cleanup_selected_ids
+                                                .contains(&entry.entry_id);
+                                            if ui
+                                                .add_enabled(
+                                                    can_select,
+                                                    egui::Checkbox::new(&mut selected, ""),
+                                                )
+                                                .changed()
+                                            {
+                                                self.cache_cleanup_confirm_pending = false;
+                                                self.cache_cleanup_rebuild_candidates.clear();
+                                                if selected {
+                                                    self.cache_cleanup_selected_ids
+                                                        .insert(entry.entry_id.clone());
+                                                } else {
+                                                    self.cache_cleanup_selected_ids
+                                                        .remove(&entry.entry_id);
+                                                }
+                                            }
+                                            ui.label(&entry.entry_id);
+                                            ui.label(match entry.classification {
+                                                crate::genomes::PreparedCacheEntryKind::PreparedInstall => {
+                                                    "prepared install"
+                                                }
+                                                crate::genomes::PreparedCacheEntryKind::OrphanedRemnant => {
+                                                    "orphaned remnant"
+                                                }
+                                            });
+                                            ui.label(
+                                                Path::new(&entry.cache_root)
+                                                    .file_name()
+                                                    .and_then(|value| value.to_str())
+                                                    .unwrap_or(entry.cache_root.as_str()),
+                                            );
+                                            ui.label(Self::format_bytes_compact(
+                                                entry.total_size_bytes,
+                                            ));
+                                            ui.label(Self::format_cache_cleanup_groups(entry));
+                                            ui.label(
+                                                egui::RichText::new(entry.path.clone())
+                                                    .small()
+                                                    .monospace(),
+                                            );
+                                            ui.end_row();
+                                        }
+                                    });
+                            });
+                    }
+                    let (targets, preview_bytes, root_count, explanation) =
+                        self.cache_cleanup_preview_targets();
+                    let target_count = targets.len();
+                    let has_targets = target_count > 0;
+                    let roots_text = self.cache_cleanup_selected_roots().join(", ");
+                    ui.separator();
+                    ui.label("Preview");
+                    ui.small(format!(
+                        "Targets: {} item(s) across {} selected cache root(s) | reclaimable: {}",
+                        target_count,
+                        root_count,
+                        Self::format_bytes_compact(preview_bytes)
+                    ));
+                    ui.small(explanation);
+                    ui.small(format!("Roots: {roots_text}"));
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                has_targets,
+                                egui::Button::new("Review Cleanup"),
+                            )
+                            .on_hover_text("Arm the confirm step for the current cleanup preview")
+                            .clicked()
+                        {
+                            self.cache_cleanup_confirm_pending = true;
+                        }
+                        if ui
+                            .add_enabled(
+                                self.cache_cleanup_confirm_pending && has_targets,
+                                egui::Button::new("Confirm Cleanup"),
+                            )
+                            .on_hover_text("Delete the currently previewed cache artifacts")
+                            .clicked()
+                        {
+                            self.apply_cache_cleanup();
+                        }
+                        if ui.button("Cancel").clicked() {
+                            close_requested = true;
+                        }
+                    });
+                    if !self.cache_cleanup_rebuild_candidates.is_empty() {
+                        ui.separator();
+                        ui.label("Rebuild from cached files");
+                        ui.small(
+                            "These prepared installs kept their cached FASTA/annotation sources. Reindex them through the existing cached-files rebuild flow if you want the indexes back now.",
+                        );
+                        for index in 0..self.cache_cleanup_rebuild_candidates.len() {
+                            let request = self.cache_cleanup_rebuild_candidates[index].clone();
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        self.genome_prepare_task.is_none(),
+                                        egui::Button::new(format!(
+                                            "Rebuild '{}'",
+                                            request.genome_id
+                                        )),
+                                    )
+                                    .on_hover_text(
+                                        "Open the standard cached-files reindex confirmation for this prepared install.",
+                                    )
+                                    .clicked()
+                                {
+                                    self.queue_cache_cleanup_rebuild_candidate(index);
+                                }
+                                ui.small(format!(
+                                    "{} | cache {}",
+                                    request.scope.description(),
+                                    request.cache_dir
+                                ));
+                            });
+                        }
+                        if self.genome_prepare_task.is_some() {
+                            ui.small(
+                                "Finish or cancel the running genome prepare task before launching another rebuild.",
+                            );
+                        }
+                    }
+                } else {
+                    ui.small("Inspect selected cache roots to preview removable items.");
+                }
+                if !self.cache_cleanup_status.trim().is_empty() {
+                    ui.separator();
+                    ui.monospace(self.cache_cleanup_status.clone());
+                }
+            });
+        self.show_cache_cleanup_dialog = open && !close_requested;
     }
 
     fn render_gibson_preview_svg(
@@ -21951,6 +22579,16 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_reference_genome_inspector_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button("Clear Caches...")
+                    .on_hover_text(
+                        "Inspect and conservatively remove prepared genome/helper cache artifacts",
+                    )
+                    .clicked()
+                {
+                    self.open_cache_cleanup_dialog();
                     ui.close();
                 }
                 if ui
@@ -31644,6 +32282,7 @@ impl eframe::App for GENtleApp {
             self.render_genbank_dialog(ctx);
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
+            self.render_cache_cleanup_dialog(ctx);
             self.render_prepared_genome_reinstall_confirm_dialog(
                 ctx,
                 PreparedGenomeReinstallDialogHost::Root,
@@ -31713,6 +32352,7 @@ mod tests {
     use super::{
         APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
         BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
+        CacheCleanupScope,
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
@@ -31740,6 +32380,8 @@ mod tests {
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
+            PreparedCacheArtifactGroup, PreparedCacheCleanupItemReport,
+            PreparedCacheCleanupMode, PreparedCacheCleanupReport, PreparedCacheEntryKind,
         },
         gibson_planning::{
             GibsonAssemblyPreview, GibsonCartoonPreview, GibsonDestinationOpeningSuggestion,
@@ -34286,6 +34928,125 @@ mod tests {
         assert_eq!(app.genome_gene_filter_page, 0);
         assert!(app.genome_biotype_filter.is_empty());
         assert!(app.genome_retrieve_contig_suggestions.is_empty());
+    }
+
+    #[test]
+    fn open_cache_cleanup_dialog_prefills_from_active_scope() {
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_prepare_dialog();
+        app.genome_catalog_path = "custom/helper_catalog.json".to_string();
+        app.genome_cache_dir = "custom/helper_cache".to_string();
+        app.sync_active_genome_scope_paths_from_fields();
+        app.reference_genome_cache_dir = "custom/reference_cache".to_string();
+
+        app.open_cache_cleanup_dialog();
+
+        assert!(app.show_cache_cleanup_dialog);
+        assert_eq!(app.cache_cleanup_scope, CacheCleanupScope::Helpers);
+        assert_eq!(app.cache_cleanup_reference_cache_dir, "custom/reference_cache");
+        assert_eq!(app.cache_cleanup_helper_cache_dir, "custom/helper_cache");
+        assert_eq!(
+            app.cache_cleanup_mode,
+            PreparedCacheCleanupMode::DerivedIndexesOnly
+        );
+    }
+
+    #[test]
+    fn cache_cleanup_rebuild_candidates_follow_partial_cleanup_results() {
+        let mut app = GENtleApp::default();
+        app.reference_genome_catalog_path = "custom/reference_catalog.json".to_string();
+        app.reference_genome_cache_dir = "custom/reference_cache".to_string();
+        app.helper_genome_catalog_path = "custom/helper_catalog.json".to_string();
+        app.helper_genome_cache_dir = "custom/helper_cache".to_string();
+        app.cache_cleanup_scope = CacheCleanupScope::Both;
+        app.cache_cleanup_reference_cache_dir = "custom/reference_cache".to_string();
+        app.cache_cleanup_helper_cache_dir = "custom/helper_cache".to_string();
+        let report = PreparedCacheCleanupReport {
+            schema: "gentle.prepared_cache_cleanup.v1".to_string(),
+            mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
+            cache_roots: vec![
+                "custom/reference_cache".to_string(),
+                "custom/helper_cache".to_string(),
+            ],
+            selected_prepared_ids: vec!["Ref A".to_string(), "Helper B".to_string()],
+            include_orphaned_remnants: false,
+            results: vec![
+                PreparedCacheCleanupItemReport {
+                    entry_id: "Ref A".to_string(),
+                    classification: PreparedCacheEntryKind::PreparedInstall,
+                    cache_root: "custom/reference_cache".to_string(),
+                    path: "custom/reference_cache/ref_a".to_string(),
+                    removed: true,
+                    removed_artifact_groups: vec![PreparedCacheArtifactGroup::DerivedIndexes],
+                    removed_bytes: 12,
+                    removed_file_count: 2,
+                    skipped_reason: None,
+                },
+                PreparedCacheCleanupItemReport {
+                    entry_id: "Helper B".to_string(),
+                    classification: PreparedCacheEntryKind::PreparedInstall,
+                    cache_root: "custom/helper_cache".to_string(),
+                    path: "custom/helper_cache/helper_b".to_string(),
+                    removed: true,
+                    removed_artifact_groups: vec![PreparedCacheArtifactGroup::BlastDb],
+                    removed_bytes: 8,
+                    removed_file_count: 1,
+                    skipped_reason: None,
+                },
+                PreparedCacheCleanupItemReport {
+                    entry_id: "orphan".to_string(),
+                    classification: PreparedCacheEntryKind::OrphanedRemnant,
+                    cache_root: "custom/reference_cache".to_string(),
+                    path: "custom/reference_cache/orphan".to_string(),
+                    removed: true,
+                    removed_artifact_groups: vec![],
+                    removed_bytes: 4,
+                    removed_file_count: 1,
+                    skipped_reason: None,
+                },
+            ],
+            entry_count: 3,
+            removed_item_count: 3,
+            removed_bytes: 24,
+            removed_file_count: 4,
+        };
+
+        let candidates = app.cache_cleanup_rebuild_candidates_from_report(&report);
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].genome_id, "Helper B");
+        assert_eq!(candidates[0].scope, GenomeDialogScope::Helper);
+        assert_eq!(candidates[0].catalog_path, "custom/helper_catalog.json");
+        assert_eq!(candidates[0].cache_dir, "custom/helper_cache");
+        assert_eq!(candidates[0].dialog_host, PreparedGenomeReinstallDialogHost::Root);
+        assert_eq!(candidates[1].genome_id, "Ref A");
+        assert_eq!(candidates[1].scope, GenomeDialogScope::Reference);
+        assert_eq!(candidates[1].catalog_path, "custom/reference_catalog.json");
+        assert_eq!(candidates[1].cache_dir, "custom/reference_cache");
+    }
+
+    #[test]
+    fn queue_cache_cleanup_rebuild_candidate_sets_pending_reinstall_request() {
+        let mut app = GENtleApp::default();
+        app.cache_cleanup_rebuild_candidates = vec![PreparedGenomeReinstallRequest {
+            genome_id: "Ref A".to_string(),
+            scope: GenomeDialogScope::Reference,
+            catalog_path: "custom/reference_catalog.json".to_string(),
+            cache_dir: "custom/reference_cache".to_string(),
+            dialog_host: PreparedGenomeReinstallDialogHost::Root,
+        }];
+
+        app.queue_cache_cleanup_rebuild_candidate(0);
+
+        let request = app
+            .pending_prepared_genome_reinstall
+            .as_ref()
+            .expect("pending rebuild request");
+        assert_eq!(request.genome_id, "Ref A");
+        assert_eq!(request.scope, GenomeDialogScope::Reference);
+        assert_eq!(request.catalog_path, "custom/reference_catalog.json");
+        assert_eq!(request.cache_dir, "custom/reference_cache");
+        assert_eq!(request.dialog_host, PreparedGenomeReinstallDialogHost::Root);
     }
 
     #[test]

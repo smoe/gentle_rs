@@ -54,6 +54,44 @@ fn primer3_fixture_path(name: &str) -> String {
     )
 }
 
+fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path::PathBuf {
+    let install_dir = root.join(genome_id.to_ascii_lowercase());
+    std::fs::create_dir_all(install_dir.join("blastdb")).expect("create install dir");
+    std::fs::write(install_dir.join("sequence.fa"), ">chr1\nACGTACGT\n").expect("sequence");
+    std::fs::write(
+        install_dir.join("annotation.gtf"),
+        "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\";\n",
+    )
+    .expect("annotation");
+    std::fs::write(install_dir.join("sequence.fa.fai"), "chr1\t8\t6\t8\t9\n")
+        .expect("fai");
+    std::fs::write(install_dir.join("genes.json"), "[]").expect("genes");
+    std::fs::write(install_dir.join("blastdb").join("genome.nhr"), "nhr").expect("nhr");
+    std::fs::write(install_dir.join("blastdb").join("genome.nin"), "nin").expect("nin");
+    std::fs::write(install_dir.join("blastdb").join("genome.nsq"), "nsq").expect("nsq");
+    let manifest = serde_json::json!({
+        "genome_id": genome_id,
+        "sequence_source": install_dir.join("sequence.fa").display().to_string(),
+        "annotation_source": install_dir.join("annotation.gtf").display().to_string(),
+        "sequence_source_type": "local",
+        "annotation_source_type": "local",
+        "sequence_path": install_dir.join("sequence.fa").display().to_string(),
+        "annotation_path": install_dir.join("annotation.gtf").display().to_string(),
+        "fasta_index_path": install_dir.join("sequence.fa.fai").display().to_string(),
+        "gene_index_path": install_dir.join("genes.json").display().to_string(),
+        "blast_db_prefix": install_dir.join("blastdb").join("genome").display().to_string(),
+        "blast_index_executable": "makeblastdb",
+        "blast_indexed_at_unix_ms": 123,
+        "installed_at_unix_ms": 456
+    });
+    std::fs::write(
+        install_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).expect("serialize manifest"),
+    )
+    .expect("manifest");
+    install_dir
+}
+
 #[cfg(unix)]
 fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
@@ -89,6 +127,85 @@ fn parse_help_with_topic_and_options() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_cache_inspect_command() {
+    let cmd = parse_shell_line("cache inspect --both --cache-dir data/genomes --cache-dir data/helper_genomes")
+        .expect("parse cache inspect");
+    match cmd {
+        ShellCommand::CacheInspect { scope, cache_dirs } => {
+            assert_eq!(scope.label(), "both");
+            assert_eq!(cache_dirs.len(), 2);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cache_clear_command() {
+    let cmd = parse_shell_line(
+        "cache clear derived-indexes-only --helpers --cache-dir data/helper_genomes --prepared-id localproject",
+    )
+    .expect("parse cache clear");
+    match cmd {
+        ShellCommand::CacheClear {
+            mode,
+            scope,
+            cache_dirs,
+            prepared_ids,
+            include_orphans,
+        } => {
+            assert_eq!(mode, crate::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly);
+            assert_eq!(scope.label(), "helpers");
+            assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
+            assert_eq!(prepared_ids, vec!["localproject".to_string()]);
+            assert!(!include_orphans);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_cache_inspect_and_clear_are_structured() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path().join("cache");
+    let install_dir = write_shell_prepared_cache_install(&root, "ToyGenome");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let inspect = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CacheInspect {
+            scope: crate::engine_shell::CacheCleanupScope::References,
+            cache_dirs: vec![root.display().to_string()],
+        },
+    )
+    .expect("inspect cache");
+    assert!(!inspect.state_changed);
+    assert_eq!(
+        inspect.output["schema"].as_str(),
+        Some("gentle.prepared_cache_inspection.v1")
+    );
+    assert_eq!(inspect.output["entry_count"].as_u64(), Some(1));
+
+    let clear = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CacheClear {
+            mode: crate::genomes::PreparedCacheCleanupMode::DerivedIndexesOnly,
+            scope: crate::engine_shell::CacheCleanupScope::References,
+            cache_dirs: vec![root.display().to_string()],
+            prepared_ids: vec!["ToyGenome".to_string()],
+            include_orphans: false,
+        },
+    )
+    .expect("clear cache");
+    assert!(!clear.state_changed);
+    assert_eq!(
+        clear.output["schema"].as_str(),
+        Some("gentle.prepared_cache_cleanup.v1")
+    );
+    assert!(install_dir.join("sequence.fa").exists());
+    assert!(!install_dir.join("sequence.fa.fai").exists());
+    assert!(!install_dir.join("genes.json").exists());
 }
 
 #[test]
