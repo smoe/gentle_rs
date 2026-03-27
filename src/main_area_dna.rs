@@ -6619,7 +6619,7 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let mut top_panel = egui::TopBottomPanel::top(top_panel_id).frame(Frame::NONE);
+        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
         if self.extended_top_panel_visible() {
             self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
                 self.extended_top_panel_height_px,
@@ -6627,8 +6627,8 @@ impl MainAreaDna {
                 sequence_panel_visible,
             );
             top_panel = top_panel
-                .min_height(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
-                .exact_height(self.extended_top_panel_height_px);
+                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
+                .exact_size(self.extended_top_panel_height_px);
         }
         top_panel.show(ctx, |ui| {
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -6638,12 +6638,12 @@ impl MainAreaDna {
         if self.show_map {
             if self.show_sequence && !auto_hidden_sequence_panel {
                 let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
-                egui::TopBottomPanel::bottom(bottom_panel_id)
+                egui::Panel::bottom(bottom_panel_id)
                     .frame(Frame::NONE)
                     .resizable(true)
-                    .default_height(full_height / 2.0)
-                    .max_height(full_height / 2.0)
-                    .min_height(full_height / 4.0)
+                    .default_size(full_height / 2.0)
+                    .max_size(full_height / 2.0)
+                    .min_size(full_height / 4.0)
                     .show(ctx, |ui| {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
@@ -16122,7 +16122,7 @@ impl MainAreaDna {
             .with_inner_size([1240.0, 820.0])
             .with_min_inner_size([900.0, 560.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_dotplot_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(
@@ -16197,7 +16197,7 @@ impl MainAreaDna {
             .with_inner_size([default_size.x, default_size.y])
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_splicing_expert_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(
@@ -17902,7 +17902,7 @@ impl MainAreaDna {
             .with_inner_size([default_size.x, default_size.y])
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_rna_read_mapping_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(
@@ -23996,7 +23996,7 @@ impl MainAreaDna {
                     next_selection = Some(Some(progress.top_hits_preview[next_pos].record_index));
                 }
                 let copy_shortcut_pressed = ui.input(|i| i.key_pressed(egui::Key::C) && i.modifiers.command);
-                if copy_shortcut_pressed && !ui.ctx().wants_keyboard_input() {
+                if copy_shortcut_pressed && !ui.ctx().egui_wants_keyboard_input() {
                     if let Some(report) = self.current_saved_rna_read_report() {
                         let hits = Self::selected_rna_report_hits(
                             &report,
@@ -24060,7 +24060,7 @@ impl MainAreaDna {
             .with_inner_size([1120.0, 700.0])
             .with_min_inner_size([840.0, 460.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_isoform_expert_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(
@@ -32489,7 +32489,7 @@ impl MainAreaDna {
                                 }
                             }
                         }
-                        if !ctx.wants_keyboard_input() {
+                        if !ctx.egui_wants_keyboard_input() {
                             let keyboard_pan_delta = ctx.input(|i| {
                                 scroll_input_policy::canvas_keyboard_pan_delta(
                                     i,

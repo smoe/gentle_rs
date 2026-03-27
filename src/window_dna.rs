@@ -163,7 +163,7 @@ impl WindowDna {
             };
             let settings = current_window_backdrop_settings();
             let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
-            egui::TopBottomPanel::top(nav_panel_id)
+            egui::Panel::top(nav_panel_id)
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
                     paint_window_backdrop(ui, kind, &settings);

@@ -181,7 +181,7 @@ pub fn scrollarea_keyboard_delta(input: &InputState, step: f32) -> Vec2 {
 
 /// Apply keyboard scrolling to a hovered/non-text-edit scroll pane.
 pub fn apply_scrollarea_keyboard_navigation(ui: &egui::Ui, step: f32) {
-    if !ui.ui_contains_pointer() || ui.ctx().wants_keyboard_input() {
+    if !ui.ui_contains_pointer() || ui.ctx().egui_wants_keyboard_input() {
         return;
     }
     let delta = ui.input(|i| scrollarea_keyboard_delta(i, step));

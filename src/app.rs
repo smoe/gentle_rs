@@ -12845,7 +12845,7 @@ Error: `{err}`"
             .with_min_inner_size([780.0, 420.0]);
         ctx.show_viewport_immediate(Self::uniprot_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::uniprot_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_uniprot_dialog;
                 let mut close_requested = false;
                 egui::Window::new("UniProt Mapping")
@@ -13158,7 +13158,7 @@ Error: `{err}`"
             .with_min_inner_size([520.0, 360.0]);
         ctx.show_viewport_immediate(Self::prepare_genome_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::prepare_genome_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_prepare_dialog;
                 let mut close_requested = false;
                 egui::Window::new(title)
@@ -13979,7 +13979,7 @@ Error: `{err}`"
             builder,
             |ctx, class| {
                 self.note_viewport_focus_if_active(ctx, Self::retrieve_genome_viewport_id());
-                if class == egui::ViewportClass::Embedded {
+                if class == egui::ViewportClass::EmbeddedWindow {
                     let mut open = self.show_reference_genome_retrieve_dialog;
                     let mut close_requested = false;
                     egui::Window::new(title)
@@ -14637,7 +14637,7 @@ Error: `{err}`"
             .with_min_inner_size([640.0, 420.0]);
         ctx.show_viewport_immediate(Self::blast_genome_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::blast_genome_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_blast_dialog;
                 let mut close_requested = false;
                 egui::Window::new(title)
@@ -15461,7 +15461,7 @@ Error: `{err}`"
             .with_min_inner_size([620.0, 320.0]);
         ctx.show_viewport_immediate(Self::bed_track_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::bed_track_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_genome_bed_track_dialog;
                 let mut close_requested = false;
                 egui::Window::new("Import Genome Tracks")
@@ -18256,7 +18256,7 @@ Error: `{err}`"
             .with_min_inner_size([760.0, 560.0]);
         ctx.show_viewport_immediate(Self::gibson_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::gibson_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 egui::Window::new("Gibson")
                     .open(&mut open)
                     .collapsible(false)
@@ -18368,7 +18368,7 @@ Error: `{err}`"
             .with_min_inner_size([920.0, 620.0]);
         ctx.show_viewport_immediate(Self::pcr_design_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::pcr_design_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
                 egui::Window::new(title.clone())
                     .open(&mut open)
@@ -18747,7 +18747,7 @@ Error: `{err}`"
             .with_min_inner_size([700.0, 520.0]);
         ctx.show_viewport_immediate(Self::planning_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::planning_viewport_id());
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
                 egui::Window::new("Planning")
                     .open(&mut open)
@@ -19358,7 +19358,7 @@ Error: `{err}`"
             builder,
             |ctx, class| {
                 self.note_viewport_focus_if_active(ctx, Self::routine_assistant_viewport_id());
-                if class == egui::ViewportClass::Embedded {
+                if class == egui::ViewportClass::EmbeddedWindow {
                     let mut close_requested = false;
                     egui::Window::new("Routine Assistant")
                         .open(&mut open)
@@ -19951,7 +19951,7 @@ Error: `{err}`"
             builder,
             |ctx, class| {
                 self.note_viewport_focus_if_active(ctx, Self::agent_assistant_viewport_id());
-                if class == egui::ViewportClass::Embedded {
+                if class == egui::ViewportClass::EmbeddedWindow {
                     let mut close_requested = false;
                     egui::Window::new("Agent Assistant")
                         .open(&mut open)
@@ -26443,7 +26443,7 @@ Error: `{err}`"
                                     let factor = (1.0 + signed_amount * 0.0015).clamp(0.8, 1.25);
                                     graph_zoom = (graph_zoom * factor).clamp(0.35, 4.0);
                                 }
-                                if !ui.ctx().wants_keyboard_input() {
+                                if !ui.ctx().egui_wants_keyboard_input() {
                                     let keyboard_pan_delta = ui.input(|i| {
                                         scroll_input_policy::canvas_keyboard_pan_delta(
                                             i,
@@ -30079,7 +30079,7 @@ Error: `{err}`"
             .with_min_inner_size([460.0, 320.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_configuration_dialog;
                 let render_started = Instant::now();
                 egui::Window::new("Configuration")
@@ -30270,7 +30270,7 @@ Error: `{err}`"
                     }
                 };
 
-                if class == egui::ViewportClass::Embedded {
+                if class == egui::ViewportClass::EmbeddedWindow {
                     egui::Window::new("Command Palette")
                         .open(&mut open)
                         .collapsible(false)
@@ -31144,7 +31144,7 @@ Error: `{err}`"
                 }
             };
 
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 egui::Window::new("Operation History")
                     .open(&mut open)
                     .collapsible(false)
@@ -31168,7 +31168,7 @@ Error: `{err}`"
             let engine = self.engine.read().unwrap();
             (engine.undo_available(), engine.redo_available())
         };
-        egui::TopBottomPanel::bottom("gentle_status_bar").show(ctx, |ui| {
+        egui::Panel::bottom("gentle_status_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 let hover_text = if self.hover_status_name.trim().is_empty() {
                     "Hover: -".to_string()
@@ -31225,7 +31225,7 @@ Error: `{err}`"
             .with_min_inner_size([420.0, 320.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
-            if class == egui::ViewportClass::Embedded {
+            if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_help_dialog;
                 let render_started = Instant::now();
                 egui::Window::new(title.clone())
@@ -32305,7 +32305,14 @@ Error: `{err}`"
 }
 
 impl eframe::App for GENtleApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.render_root_ui(&ctx, frame);
+    }
+}
+
+impl GENtleApp {
+    fn render_root_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let update_result = catch_unwind(AssertUnwindSafe(|| {
             if !self.update_has_run_before {
                 egui_extras::install_image_loaders(ctx);
@@ -32436,7 +32443,7 @@ impl eframe::App for GENtleApp {
             self.sync_open_windows_if_display_changed(ctx);
 
             // Show menu bar
-            egui::TopBottomPanel::top("top").show(ctx, |ui| {
+            egui::Panel::top("top").show(ctx, |ui| {
                 self.render_menu_bar(ui);
             });
 

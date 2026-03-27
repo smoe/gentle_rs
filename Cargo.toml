@@ -72,7 +72,7 @@ gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7", features = [
 svg = "*"
 rayon = "*"
 anyhow = "*"
-eframe = { version = "*", features = [
+eframe = { version = "0.34.1", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -81,7 +81,7 @@ eframe = { version = "*", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "*", features = ["all_loaders"] }
+egui_extras = { version = "0.34.1", features = ["all_loaders"] }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { version = "*", features = ["jpeg", "png"] }
 resvg = "0.45.1"
@@ -119,3 +119,7 @@ inherits = "release"
 lto = "thin"
 codegen-units = 16
 opt-level = 2
+
+[patch.crates-io]
+egui_commonmark = { path = "vendor/egui_commonmark" }
+egui_commonmark_backend = { path = "vendor/egui_commonmark_backend" }
