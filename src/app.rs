@@ -750,7 +750,7 @@ pub struct GENtleApp {
     cache_cleanup_mode: PreparedCacheCleanupMode,
     cache_cleanup_include_orphans: bool,
     cache_cleanup_inspection: Option<PreparedCacheInspectionReport>,
-    cache_cleanup_selected_ids: HashSet<String>,
+    cache_cleanup_selected_rows: HashSet<CacheCleanupSelectionKey>,
     cache_cleanup_rebuild_candidates: Vec<PreparedGenomeReinstallRequest>,
     cache_cleanup_status: String,
     cache_cleanup_confirm_pending: bool,
@@ -1415,6 +1415,12 @@ enum CacheCleanupScope {
     References,
     Helpers,
     Both,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CacheCleanupSelectionKey {
+    cache_root: String,
+    path: String,
 }
 
 impl CacheCleanupScope {
@@ -2131,7 +2137,7 @@ impl Default for GENtleApp {
             cache_cleanup_mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
             cache_cleanup_include_orphans: false,
             cache_cleanup_inspection: None,
-            cache_cleanup_selected_ids: HashSet::new(),
+            cache_cleanup_selected_rows: HashSet::new(),
             cache_cleanup_rebuild_candidates: vec![],
             cache_cleanup_status: String::new(),
             cache_cleanup_confirm_pending: false,
@@ -6690,7 +6696,7 @@ Error: `{err}`"
         self.cache_cleanup_mode = PreparedCacheCleanupMode::DerivedIndexesOnly;
         self.cache_cleanup_include_orphans = false;
         self.cache_cleanup_confirm_pending = false;
-        self.cache_cleanup_selected_ids.clear();
+        self.cache_cleanup_selected_rows.clear();
         self.cache_cleanup_rebuild_candidates.clear();
         self.show_cache_cleanup_dialog = true;
         self.refresh_cache_cleanup_inspection();
@@ -6709,6 +6715,13 @@ Error: `{err}`"
         let roots = self.cache_cleanup_selected_roots();
         match GentleEngine::inspect_prepared_cache_roots(&roots) {
             Ok(report) => {
+                let valid_keys = report
+                    .entries
+                    .iter()
+                    .map(Self::cache_cleanup_selection_key)
+                    .collect::<HashSet<_>>();
+                self.cache_cleanup_selected_rows
+                    .retain(|key| valid_keys.contains(key));
                 self.cache_cleanup_inspection = Some(report);
                 self.cache_cleanup_status = if self
                     .cache_cleanup_inspection
@@ -6725,6 +6738,20 @@ Error: `{err}`"
                 self.cache_cleanup_status = format!("Could not inspect prepared caches: {e}");
             }
         }
+    }
+
+    fn cache_cleanup_selection_key(
+        entry: &PreparedCacheInspectionEntry,
+    ) -> CacheCleanupSelectionKey {
+        CacheCleanupSelectionKey {
+            cache_root: entry.cache_root.clone(),
+            path: entry.path.clone(),
+        }
+    }
+
+    fn cache_cleanup_entry_is_selected(&self, entry: &PreparedCacheInspectionEntry) -> bool {
+        self.cache_cleanup_selected_rows
+            .contains(&Self::cache_cleanup_selection_key(entry))
     }
 
     fn cache_cleanup_group_label(group: PreparedCacheArtifactGroup) -> &'static str {
@@ -6779,12 +6806,12 @@ Error: `{err}`"
                                 == crate::genomes::PreparedCacheEntryKind::OrphanedRemnant)
                 }
                 PreparedCacheCleanupMode::SelectedPreparedInstalls => {
-                    self.cache_cleanup_selected_ids.contains(&entry.entry_id)
+                    self.cache_cleanup_entry_is_selected(entry)
                 }
                 PreparedCacheCleanupMode::BlastDbOnly
                 | PreparedCacheCleanupMode::DerivedIndexesOnly => {
                     entry.classification == crate::genomes::PreparedCacheEntryKind::PreparedInstall
-                        && self.cache_cleanup_selected_ids.contains(&entry.entry_id)
+                        && self.cache_cleanup_entry_is_selected(entry)
                 }
             })
             .collect::<Vec<_>>();
@@ -6880,6 +6907,11 @@ Error: `{err}`"
                 })
             })
             .collect::<Vec<_>>();
+        Self::sort_cache_cleanup_rebuild_candidates(&mut requests);
+        requests
+    }
+
+    fn sort_cache_cleanup_rebuild_candidates(requests: &mut Vec<PreparedGenomeReinstallRequest>) {
         requests.sort_by(|left, right| {
             (
                 left.scope.description(),
@@ -6897,7 +6929,42 @@ Error: `{err}`"
                 && left.genome_id == right.genome_id
                 && left.cache_dir == right.cache_dir
         });
-        requests
+    }
+
+    fn cache_cleanup_requests_for_targets(
+        &self,
+        targets: &[&PreparedCacheInspectionEntry],
+    ) -> Vec<PreparedCacheCleanupRequest> {
+        if targets.is_empty() {
+            return vec![];
+        }
+        if matches!(
+            self.cache_cleanup_mode,
+            PreparedCacheCleanupMode::AllPreparedInCache
+        ) {
+            return vec![PreparedCacheCleanupRequest {
+                mode: self.cache_cleanup_mode,
+                cache_roots: self.cache_cleanup_selected_roots(),
+                prepared_ids: vec![],
+                include_orphaned_remnants: self.cache_cleanup_include_orphans,
+            }];
+        }
+        let mut ids_by_root: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for entry in targets {
+            ids_by_root
+                .entry(entry.cache_root.clone())
+                .or_default()
+                .insert(entry.entry_id.clone());
+        }
+        ids_by_root
+            .into_iter()
+            .map(|(cache_root, prepared_ids)| PreparedCacheCleanupRequest {
+                mode: self.cache_cleanup_mode,
+                cache_roots: vec![cache_root],
+                prepared_ids: prepared_ids.into_iter().collect(),
+                include_orphaned_remnants: self.cache_cleanup_include_orphans,
+            })
+            .collect()
     }
 
     fn queue_cache_cleanup_rebuild_candidate(&mut self, index: usize) {
@@ -6907,30 +6974,53 @@ Error: `{err}`"
     }
 
     fn apply_cache_cleanup(&mut self) {
-        let roots = self.cache_cleanup_selected_roots();
-        let request = PreparedCacheCleanupRequest {
-            mode: self.cache_cleanup_mode,
-            cache_roots: roots.clone(),
-            prepared_ids: self.cache_cleanup_selected_ids.iter().cloned().collect(),
-            include_orphaned_remnants: self.cache_cleanup_include_orphans,
-        };
-        match GentleEngine::clear_prepared_cache_roots(&request) {
-            Ok(report) => {
-                let rebuild_candidates = self.cache_cleanup_rebuild_candidates_from_report(&report);
-                let status = format!(
-                    "Cache cleanup removed {} item(s), reclaiming {}.",
-                    report.removed_item_count,
-                    Self::format_bytes_compact(report.removed_bytes)
-                );
-                self.cache_cleanup_confirm_pending = false;
-                self.cache_cleanup_selected_ids.clear();
-                self.refresh_cache_cleanup_inspection();
-                self.cache_cleanup_rebuild_candidates = rebuild_candidates;
-                self.cache_cleanup_status = status;
+        let (targets, _, _, _) = self.cache_cleanup_preview_targets();
+        let requests = self.cache_cleanup_requests_for_targets(&targets);
+        if requests.is_empty() {
+            self.cache_cleanup_status = "No cleanup targets selected.".to_string();
+            self.cache_cleanup_confirm_pending = false;
+            return;
+        }
+        let mut rebuild_candidates = vec![];
+        let mut removed_item_count = 0usize;
+        let mut removed_bytes = 0u64;
+        let mut had_success = false;
+        let mut errors = vec![];
+        for request in requests {
+            match GentleEngine::clear_prepared_cache_roots(&request) {
+                Ok(report) => {
+                    had_success = true;
+                    removed_item_count =
+                        removed_item_count.saturating_add(report.removed_item_count);
+                    removed_bytes = removed_bytes.saturating_add(report.removed_bytes);
+                    rebuild_candidates
+                        .extend(self.cache_cleanup_rebuild_candidates_from_report(&report));
+                }
+                Err(e) => errors.push(e.to_string()),
             }
-            Err(e) => {
-                self.cache_cleanup_status = format!("Could not clear caches: {e}");
-            }
+        }
+        self.cache_cleanup_confirm_pending = false;
+        if had_success {
+            Self::sort_cache_cleanup_rebuild_candidates(&mut rebuild_candidates);
+            self.cache_cleanup_selected_rows.clear();
+            self.refresh_cache_cleanup_inspection();
+            self.cache_cleanup_rebuild_candidates = rebuild_candidates;
+        }
+        self.cache_cleanup_status = if errors.is_empty() {
+            format!(
+                "Cache cleanup removed {} item(s), reclaiming {}.",
+                removed_item_count,
+                Self::format_bytes_compact(removed_bytes)
+            )
+        } else if had_success {
+            format!(
+                "Cache cleanup partially succeeded: removed {} item(s), reclaiming {}. Errors: {}",
+                removed_item_count,
+                Self::format_bytes_compact(removed_bytes),
+                errors.join(" | ")
+            )
+        } else {
+            format!("Could not clear caches: {}", errors.join(" | "))
         }
     }
 
@@ -16108,9 +16198,10 @@ Error: `{err}`"
                                         for entry in &report.entries {
                                             let can_select = self.cache_cleanup_mode
                                                 != PreparedCacheCleanupMode::AllPreparedInCache;
+                                            let entry_key = Self::cache_cleanup_selection_key(entry);
                                             let mut selected = self
-                                                .cache_cleanup_selected_ids
-                                                .contains(&entry.entry_id);
+                                                .cache_cleanup_selected_rows
+                                                .contains(&entry_key);
                                             if ui
                                                 .add_enabled(
                                                     can_select,
@@ -16121,11 +16212,11 @@ Error: `{err}`"
                                                 self.cache_cleanup_confirm_pending = false;
                                                 self.cache_cleanup_rebuild_candidates.clear();
                                                 if selected {
-                                                    self.cache_cleanup_selected_ids
-                                                        .insert(entry.entry_id.clone());
+                                                    self.cache_cleanup_selected_rows
+                                                        .insert(entry_key.clone());
                                                 } else {
-                                                    self.cache_cleanup_selected_ids
-                                                        .remove(&entry.entry_id);
+                                                    self.cache_cleanup_selected_rows
+                                                        .remove(&entry_key);
                                                 }
                                             }
                                             ui.label(&entry.entry_id);
@@ -35203,6 +35294,57 @@ mod tests {
         );
     }
 
+    fn write_app_test_prepared_cache_install(
+        root: &std::path::Path,
+        dir_name: &str,
+        genome_id: &str,
+    ) -> std::path::PathBuf {
+        let install_dir = root.join(dir_name);
+        fs::create_dir_all(install_dir.join("blastdb")).expect("create blastdb dir");
+        let sequence_path = install_dir.join("sequence.fa");
+        let annotation_path = install_dir.join("annotation.gtf");
+        let fasta_index_path = install_dir.join("sequence.fa.fai");
+        let gene_index_path = install_dir.join("genes.json");
+        let transcript_index_path = install_dir.join("transcripts.json");
+        let blast_prefix = install_dir.join("blastdb").join("genome");
+        fs::write(&sequence_path, ">chr1\nACGTACGT\n").expect("write fasta");
+        fs::write(
+            &annotation_path,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .expect("write annotation");
+        fs::write(&fasta_index_path, "chr1\t8\t6\t8\t9\n").expect("write fasta index");
+        fs::write(&gene_index_path, "[]").expect("write gene index");
+        fs::write(&transcript_index_path, "[]").expect("write transcript index");
+        fs::write(blast_prefix.with_extension("nhr"), "nhr").expect("write blast nhr");
+        fs::write(blast_prefix.with_extension("nin"), "nin").expect("write blast nin");
+        fs::write(blast_prefix.with_extension("nsq"), "nsq").expect("write blast nsq");
+        let manifest = serde_json::json!({
+            "genome_id": genome_id,
+            "sequence_source": sequence_path.display().to_string(),
+            "annotation_source": annotation_path.display().to_string(),
+            "sequence_source_type": "local",
+            "annotation_source_type": "local",
+            "sequence_sha1": "seqsha",
+            "annotation_sha1": "annsha",
+            "sequence_path": sequence_path.display().to_string(),
+            "annotation_path": annotation_path.display().to_string(),
+            "fasta_index_path": fasta_index_path.display().to_string(),
+            "gene_index_path": gene_index_path.display().to_string(),
+            "transcript_index_path": transcript_index_path.display().to_string(),
+            "blast_db_prefix": blast_prefix.display().to_string(),
+            "blast_index_executable": "makeblastdb",
+            "blast_indexed_at_unix_ms": 123,
+            "installed_at_unix_ms": 456
+        });
+        fs::write(
+            install_dir.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+        install_dir
+    }
+
     #[test]
     fn cache_cleanup_rebuild_candidates_follow_partial_cleanup_results() {
         let mut app = GENtleApp::default();
@@ -35302,6 +35444,71 @@ mod tests {
         assert_eq!(request.catalog_path, "custom/reference_catalog.json");
         assert_eq!(request.cache_dir, "custom/reference_cache");
         assert_eq!(request.dialog_host, PreparedGenomeReinstallDialogHost::Root);
+    }
+
+    #[test]
+    fn cache_cleanup_apply_scopes_duplicate_entry_ids_per_root() {
+        let temp = tempdir().expect("tempdir");
+        let reference_root = temp.path().join("reference_cache");
+        let helper_root = temp.path().join("helper_cache");
+        let reference_install =
+            write_app_test_prepared_cache_install(&reference_root, "shared_ref", "SharedToy");
+        let helper_install =
+            write_app_test_prepared_cache_install(&helper_root, "shared_helper", "SharedToy");
+
+        let mut app = GENtleApp::default();
+        app.cache_cleanup_scope = CacheCleanupScope::Both;
+        app.cache_cleanup_reference_cache_dir = reference_root.display().to_string();
+        app.cache_cleanup_helper_cache_dir = helper_root.display().to_string();
+        app.cache_cleanup_mode = PreparedCacheCleanupMode::DerivedIndexesOnly;
+        app.refresh_cache_cleanup_inspection();
+
+        let report = app
+            .cache_cleanup_inspection
+            .as_ref()
+            .expect("inspection report");
+        assert_eq!(report.entry_count, 2);
+        let helper_entry = report
+            .entries
+            .iter()
+            .find(|entry| {
+                std::path::Path::new(&entry.path)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    == Some("shared_helper")
+            })
+            .expect("helper cache row");
+        app.cache_cleanup_selected_rows
+            .insert(GENtleApp::cache_cleanup_selection_key(helper_entry));
+
+        let (targets, _, _, _) = app.cache_cleanup_preview_targets();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].entry_id, "SharedToy");
+        assert_eq!(
+            std::path::Path::new(&targets[0].path)
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some("shared_helper")
+        );
+
+        app.apply_cache_cleanup();
+
+        assert!(helper_install.join("sequence.fa").exists());
+        assert!(!helper_install.join("sequence.fa.fai").exists());
+        assert!(!helper_install.join("genes.json").exists());
+        assert!(!helper_install.join("blastdb").join("genome.nsq").exists());
+
+        assert!(reference_install.join("sequence.fa").exists());
+        assert!(reference_install.join("sequence.fa.fai").exists());
+        assert!(reference_install.join("genes.json").exists());
+        assert!(
+            reference_install
+                .join("blastdb")
+                .join("genome.nsq")
+                .exists()
+        );
+
+        assert!(app.cache_cleanup_status.contains("removed 1 item"));
     }
 
     #[test]
