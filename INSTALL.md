@@ -181,6 +181,33 @@ docker run --rm -it \
   gentle:local cli capabilities
 ```
 
+### Pull a published release image from GHCR
+
+The GitHub workflow publishes installable container images for release tags
+matching `v*`.
+
+Generic form:
+
+```sh
+docker pull ghcr.io/OWNER/gentle_rs:latest
+```
+
+For your repository at `github.com/smoe/gentle_rs`, that becomes:
+
+```sh
+docker pull ghcr.io/smoe/gentle_rs:latest
+docker run --rm -it \
+  -p 6080:6080 \
+  -v "$(pwd)":/work \
+  ghcr.io/smoe/gentle_rs:latest
+```
+
+Version-specific tags are also published for each release, for example:
+
+```sh
+docker pull ghcr.io/smoe/gentle_rs:v0.1.0
+```
+
 ### Linux users who prefer Apptainer / Singularity
 
 GENtle currently keeps the Dockerfile as the single maintained image
@@ -190,6 +217,8 @@ of maintaining a separate `.def` recipe.
 See:
 
 - `docs/container.md`
+- GitHub releases/tags must be pushed first so the release-image workflow can
+  publish `ghcr.io/OWNER/gentle_rs:latest` and the matching version tags
 
 ## Run GENtle
 

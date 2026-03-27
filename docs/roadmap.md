@@ -139,6 +139,10 @@ order. Durable architecture constraints and decisions remain in
     - explicit non-Debian exception for `rnapkin`
   - user documentation lives in `docs/container.md`
   - GHCR workflow now lives in `.github/workflows/container.yml`
+  - publishing policy is release-oriented:
+    - build-check on PRs / `main`
+    - publish multi-arch images from `v*` release tags
+    - move `latest` only on release-tag publishes
 
 ### Biology/analysis capabilities already implemented
 

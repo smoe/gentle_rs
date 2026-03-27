@@ -34,6 +34,14 @@ This means:
 - macOS users normally run it through Docker Desktop, Colima, or OrbStack
 - Linux users can choose Docker/Podman or Apptainer
 
+Why the Dockerfile installs packages twice:
+
+- the builder stage installs compilers and `-dev` headers
+- the runtime stage installs only what the final image must execute
+
+That split is deliberate. It keeps the final image from carrying the full Rust
+and native build toolchain, even though both stages use Debian packages.
+
 ## Tool Coverage
 
 The image is intended to include the helper tools that GENtle already knows how
@@ -58,6 +66,19 @@ Current implementation detail:
   of the Debian package set we rely on
 - release/distribution follow-up: pin the `rnapkin` source/version explicitly
   once the preferred upstream release policy is fixed
+
+Filesystem/layout note:
+
+- `/opt/gentle`
+  - GENtle payload: binaries, assets, docs, Python wrapper source
+- `/usr/local/bin`
+  - container-facing commands and compatibility shims:
+    - `gentle-entrypoint`
+    - `bigWigToBedGraph`
+    - `rnapkin`
+
+This follows normal container conventions: application payload under `/opt`,
+generic executable entrypoints on `PATH`.
 
 ## Build the Image
 
@@ -253,8 +274,11 @@ The repository now includes:
 
 - `.github/workflows/container.yml`
 
-which builds the image on pull requests and publishes multi-arch GHCR images on
-`main`, tags, and manual dispatch.
+which:
+
+- builds the image as a check on pull requests and `main`
+- publishes multi-arch GHCR images for release tags matching `v*`
+- updates the `latest` image tag only from those release-tag publishes
 
 This keeps maintenance low while still covering:
 

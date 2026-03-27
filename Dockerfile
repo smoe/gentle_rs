@@ -2,6 +2,10 @@
 
 ARG DEBIAN_SUITE=trixie
 
+# Builder stage:
+# - uses Debian rust-all as requested
+# - keeps compiler/dev headers out of the final runtime image
+# - builds every GENtle binary plus the current rnapkin exception
 FROM debian:${DEBIAN_SUITE}-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -9,6 +13,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:/usr/local/rustup/bin:/usr/local/bin:/usr/bin:/bin
 
+# Builder-only packages: compilers, headers, and cargo/git support.
+# These are intentionally separate from the runtime packages below so the final
+# image does not need to ship the full Rust/C/C++ toolchain.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
@@ -34,12 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxkbcommon-dev \
     libxi-dev \
     libxrandr-dev \
-    ncbi-blast+ \
     perl \
     pkg-config \
-    primer3 \
-    python3 \
-    python3-pybigwig \
     rust-all \
     && rm -rf /var/lib/apt/lists/*
 
@@ -72,6 +75,10 @@ RUN mkdir -p /opt/gentle-dist/bin /opt/gentle-dist/integrations \
     && cp CONTRIBUTING.md /opt/gentle-dist/CONTRIBUTING.md \
     && cp copyright /opt/gentle-dist/copyright
 
+# Runtime stage:
+# - carries only what GENtle needs to execute
+# - includes the GUI stack and helper binaries
+# - is the image that gets published to GHCR / consumed by Apptainer
 FROM debian:${DEBIAN_SUITE}-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -95,6 +102,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     XDG_RUNTIME_DIR=/tmp/gentle-runtime
 
+# Runtime packages only: GUI libraries, helper tools, and browser/VNC desktop
+# plumbing. This second apt-get block is intentional in a multi-stage build:
+# build dependencies stay in the builder stage, runtime dependencies stay here.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     dbus-x11 \
@@ -141,6 +151,10 @@ RUN groupadd --gid 1000 gentle \
 WORKDIR /opt/gentle
 
 COPY --from=build /opt/gentle-dist/ /opt/gentle/
+
+# Container-facing launchers and compatibility shims live in /usr/local/bin so
+# they behave like normal commands on PATH. /opt/gentle is reserved for the
+# application payload itself (binaries, assets, docs, Python wrapper source).
 COPY --from=build /opt/rnapkin/bin/rnapkin /usr/local/bin/rnapkin
 COPY docker/bigWigToBedGraph /usr/local/bin/bigWigToBedGraph
 COPY docker/entrypoint.sh /usr/local/bin/gentle-entrypoint
