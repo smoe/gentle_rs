@@ -27,6 +27,15 @@ order. Durable architecture constraints and decisions remain in
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
   - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)
+- Engine-shell agent recursion guardrail is now hardened transitively:
+  - nested `agents ask` invocations are blocked not only as direct suggested
+    commands, but also when they are wrapped inside `macros run` or expanded
+    through `macros template-run`
+  - deterministic regression coverage now includes the macro-wrapped route that
+    previously allowed a CI-only stack-overflow path
+  - remaining follow-up if policy needs to become stricter:
+    inspect deeper generic `op` / `workflow` JSON payload wrappers for hidden
+    agent invocations rather than only shell/macro routes
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
