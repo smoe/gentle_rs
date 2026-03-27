@@ -96,7 +96,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     LIBGL_ALWAYS_SOFTWARE=1 \
     MESA_LOADER_DRIVER_OVERRIDE=llvmpipe \
-    PATH=/opt/gentle/bin:/usr/local/bin:/usr/bin:/bin \
+    PATH=/opt/gentle/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/opt/gentle/integrations/python \
     PYTHONUNBUFFERED=1 \
@@ -133,6 +133,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ncbi-blast+ \
     novnc \
     openbox \
+    passwd \
     primer3 \
     python3 \
     python3-pybigwig \
