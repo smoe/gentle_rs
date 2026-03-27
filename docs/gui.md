@@ -1470,6 +1470,7 @@ The `Help` menu now includes:
     catalog is unavailable
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
+- re-selecting an already open help page, including via `GENtle -> GENtle Windows`, reuses the existing help viewport instead of reloading the manuals from disk
 - Shell command reference includes an `Interface` selector:
   - `All`
   - `GUI shell`
