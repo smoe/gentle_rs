@@ -3943,8 +3943,7 @@ mod tests {
             score_density_bins: vec![0; 40],
             ..RnaReadInterpretationReport::default()
         };
-        let rows =
-            MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(&report, 35, 40);
+        let rows = MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(&report, 35, 40);
         assert_eq!(
             rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
             vec![4, 7]
@@ -23814,38 +23813,40 @@ impl MainAreaDna {
         allow_mapping_actions: bool,
     ) -> Option<Option<usize>> {
         let saved_report = self.current_saved_rna_read_report();
-        let (preview_rows, using_saved_report_score_bin, preview_header, preview_note) =
-            if self.rna_read_task.is_none() {
-                if let (Some(report), Some(score_bin_index)) = (
-                    saved_report.as_ref(),
-                    self.rna_read_alignment_effect_score_bin_index,
-                ) {
-                    let bin_count = report
-                        .score_density_bins
-                        .len()
-                        .max(progress.score_density_bins.len())
-                        .max(40);
-                    let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
-                        report,
-                        score_bin_index,
-                        bin_count,
-                    );
-                    if !rows.is_empty() {
-                        let row_count_label = Self::format_count_compact_km(rows.len() as u64);
-                        (
-                            rows,
-                            true,
-                            format!(
-                                "Ranked preview ({} saved-report rows in selected score bin)",
-                                row_count_label
-                            ),
-                            format!(
-                                "This table shows every saved-report row in score bin {}. It is not capped to the old top-20 preview. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.",
-                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
-                            ),
-                        )
-                    } else {
-                        (
+        let (preview_rows, using_saved_report_score_bin, preview_header, preview_note) = if self
+            .rna_read_task
+            .is_none()
+        {
+            if let (Some(report), Some(score_bin_index)) = (
+                saved_report.as_ref(),
+                self.rna_read_alignment_effect_score_bin_index,
+            ) {
+                let bin_count = report
+                    .score_density_bins
+                    .len()
+                    .max(progress.score_density_bins.len())
+                    .max(40);
+                let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
+                    report,
+                    score_bin_index,
+                    bin_count,
+                );
+                if !rows.is_empty() {
+                    let row_count_label = Self::format_count_compact_km(rows.len() as u64);
+                    (
+                        rows,
+                        true,
+                        format!(
+                            "Ranked preview ({} saved-report rows in selected score bin)",
+                            row_count_label
+                        ),
+                        format!(
+                            "This table shows every saved-report row in score bin {}. It is not capped to the old top-20 preview. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.",
+                            Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
+                        ),
+                    )
+                } else {
+                    (
                             progress.top_hits_preview.clone(),
                             false,
                             format!(
@@ -23854,9 +23855,9 @@ impl MainAreaDna {
                             ),
                             "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                         )
-                    }
-                } else {
-                    (
+                }
+            } else {
+                (
                         progress.top_hits_preview.clone(),
                         false,
                         format!(
@@ -23865,9 +23866,9 @@ impl MainAreaDna {
                         ),
                         "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                     )
-                }
-            } else {
-                (
+            }
+        } else {
+            (
                     progress.top_hits_preview.clone(),
                     false,
                     format!(
@@ -23876,7 +23877,7 @@ impl MainAreaDna {
                     ),
                     "This is the capped live preview while the run is active. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                 )
-            };
+        };
         if preview_rows.is_empty() {
             return None;
         }

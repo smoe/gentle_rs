@@ -70,9 +70,9 @@ impl AminoAcids {
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
             .from_reader(text.as_bytes());
-        let mut header = vec![];
+        let mut header: Vec<String> = Vec::new();
         for result in rdr.records() {
-            let record = result.expect("Bad CSV line");
+            let record: csv::StringRecord = result.expect("Bad CSV line");
             if header.is_empty() {
                 header = record.iter().skip(2).map(|s| s.to_string()).collect();
                 continue;

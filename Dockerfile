@@ -50,16 +50,16 @@ WORKDIR /opt/gentle
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY vendor ./vendor
 COPY src ./src
+COPY assets ./assets
+COPY docs ./docs
+COPY icons ./icons
+COPY integrations/python ./integrations/python
+COPY README.md CONTRIBUTING.md copyright ./
 
 ARG GENTLE_CARGO_PROFILE=release-fast
 
 RUN cargo build --locked --profile "${GENTLE_CARGO_PROFILE}" --features script-interfaces --bins
 RUN cargo install --locked --root /opt/rnapkin rnapkin
-
-COPY README.md CONTRIBUTING.md copyright ./
-COPY assets ./assets
-COPY docs ./docs
-COPY integrations/python ./integrations/python
 
 RUN mkdir -p /opt/gentle-dist/bin /opt/gentle-dist/integrations \
     && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle" /opt/gentle-dist/bin/gentle \
@@ -69,6 +69,7 @@ RUN mkdir -p /opt/gentle-dist/bin /opt/gentle-dist/integrations \
     && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_lua" /opt/gentle-dist/bin/gentle_lua \
     && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_examples_docs" /opt/gentle-dist/bin/gentle_examples_docs \
     && cp -a assets /opt/gentle-dist/assets \
+    && cp -a icons /opt/gentle-dist/icons \
     && cp -a docs /opt/gentle-dist/docs \
     && cp -a integrations/python /opt/gentle-dist/integrations/python \
     && cp README.md /opt/gentle-dist/README.md \

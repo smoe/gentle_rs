@@ -135,7 +135,7 @@ order. Durable architecture constraints and decisions remain in
 - Python adapter baseline is now available as a thin `gentle_cli` wrapper:
   - path: `integrations/python/gentle_py/`
   - deterministic methods for `capabilities`, `state-summary`, `op`,
-  `workflow`, and `shell`
+  `workflow`, `shell`, and `render_dotplot_svg`
   - no biology logic duplication (subprocess bridge only)
 - Debian-first container baseline is now available:
   - authoritative image definition in repository `Dockerfile`
@@ -149,6 +149,11 @@ order. Durable architecture constraints and decisions remain in
     - explicit container compatibility wrapper for `bigWigToBedGraph`
     - explicit non-Debian exception for `rnapkin`
     - no ALSA runtime dependency (GENtle does not need sound output)
+  - build-stage compile-time resources are copied before `cargo build`
+    (`assets`, `docs`, `icons`) so `include_str!/include_image!` resolves in
+    CI/container builds
+  - `build.rs` now preflights required embedded-resource files and emits one
+    actionable error with manifest dir + cwd + missing relative/absolute paths
   - user documentation lives in `docs/container.md`
   - GHCR workflow now lives in `.github/workflows/container.yml`
   - publishing policy is release-oriented:

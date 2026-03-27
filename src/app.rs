@@ -625,6 +625,7 @@ pub struct GENtleApp {
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
     pending_focus_viewports: Vec<ViewportId>,
+    pending_window_initial_positions: HashMap<ViewportId, Pos2>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
     show_about_dialog: bool,
@@ -2010,6 +2011,7 @@ impl Default for GENtleApp {
             windows: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
             pending_focus_viewports: vec![],
+            pending_window_initial_positions: HashMap::new(),
             viewport_id_counter: 0,
             update_has_run_before: false,
             show_about_dialog: false,
@@ -23251,65 +23253,72 @@ Error: `{err}`"
         });
     }
 
-    fn show_window(&self, ctx: &egui::Context, id: ViewportId, window: Arc<RwLock<Window>>) {
+    fn deferred_window_position(index: usize) -> Pos2 {
+        Pos2 {
+            x: index as f32 * 200.0,
+            y: index as f32 * 200.0,
+        }
+    }
+
+    fn register_window(&mut self, window: Window) -> ViewportId {
+        let id = format!("Viewport {}", self.viewport_id_counter);
+        let id = ViewportId::from_hash_of(id);
+        let position = Self::deferred_window_position(self.viewport_id_counter);
+        self.viewport_id_counter += 1;
+        self.mark_viewport_open_requested(id);
+        self.pending_window_initial_positions.insert(id, position);
+        self.windows.insert(id, Arc::new(RwLock::new(window)));
+        id
+    }
+
+    fn show_window(
+        &self,
+        ctx: &egui::Context,
+        id: ViewportId,
+        window: Arc<RwLock<Window>>,
+        initial_position: Option<Pos2>,
+    ) {
         let windows_to_close = self.windows_to_close.clone();
-        let window_number = self.get_window_number_from_id(id);
-        let window_pos = Pos2 {
-            x: window_number as f32 * 200.0,
-            y: window_number as f32 * 200.0,
-        };
         let window_title = window
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
-        ctx.show_viewport_deferred(
-            id,
-            egui::ViewportBuilder::default()
-                .with_title(window_title)
-                // .with_maximized(true),
-                .with_position(window_pos),
-            move |ctx, class| {
-                if class != egui::ViewportClass::Deferred {
-                    eprintln!(
-                        "W GENtleApp: unexpected viewport class, skipping deferred window update"
-                    );
-                    return;
-                }
-                if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
-                    report_active_viewport_from_ui(id);
-                }
+        let mut builder = egui::ViewportBuilder::default().with_title(window_title);
+        if let Some(position) = initial_position {
+            builder = builder.with_position(position);
+        }
+        ctx.show_viewport_deferred(id, builder, move |ctx, class| {
+            if class != egui::ViewportClass::Deferred {
+                eprintln!(
+                    "W GENtleApp: unexpected viewport class, skipping deferred window update"
+                );
+                return;
+            }
+            if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
+                report_active_viewport_from_ui(id);
+            }
 
-                // Draw the window
-                let update_result = catch_unwind(AssertUnwindSafe(|| {
-                    if let Ok(mut w) = window.write() {
-                        w.update(ctx);
-                    } else {
-                        eprintln!("W GENtleApp: window lock poisoned; skipping update");
-                    }
-                }));
-                if update_result.is_err() {
-                    eprintln!("E GENtleApp: recovered from panic while updating window");
+            // Draw the window
+            let update_result = catch_unwind(AssertUnwindSafe(|| {
+                if let Ok(mut w) = window.write() {
+                    w.update(ctx);
+                } else {
+                    eprintln!("W GENtleApp: window lock poisoned; skipping update");
                 }
+            }));
+            if update_result.is_err() {
+                eprintln!("E GENtleApp: recovered from panic while updating window");
+            }
 
-                // "Close window" action
-                if Self::viewport_close_requested_or_shortcut(ctx) {
-                    if let Ok(mut to_close) = windows_to_close.write() {
-                        to_close.push(id);
-                    } else {
-                        eprintln!("W GENtleApp: close-queue lock poisoned");
-                    }
+            // "Close window" action
+            if Self::viewport_close_requested_or_shortcut(ctx) {
+                if let Ok(mut to_close) = windows_to_close.write() {
+                    to_close.push(id);
+                } else {
+                    eprintln!("W GENtleApp: close-queue lock poisoned");
                 }
-            },
-        );
-    }
-
-    fn get_window_number_from_id(&self, id: ViewportId) -> usize {
-        self.windows
-            .keys()
-            .enumerate()
-            .find(|(_num, viewport_id)| **viewport_id == id)
-            .map(|(num, _viewport_id)| num)
-            .unwrap_or(0)
+            }
+        });
     }
 
     fn refresh_lineage_cache_if_needed(&mut self) {
@@ -32624,10 +32633,7 @@ impl GENtleApp {
             // Open new windows
             let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();
             for window in new_windows.drain(..) {
-                let id = format!("Viewport {}", self.viewport_id_counter);
-                let id = ViewportId::from_hash_of(id);
-                self.windows.insert(id, Arc::new(RwLock::new(window)));
-                self.viewport_id_counter += 1;
+                self.register_window(window);
             }
 
             // Close windows
@@ -32640,9 +32646,20 @@ impl GENtleApp {
             }
 
             // Show windows
-            for (id, window) in self.windows.iter() {
-                let id = id.to_owned();
-                self.show_window(ctx, id, window.clone());
+            let windows_to_show = self
+                .windows
+                .iter()
+                .map(|(id, window)| {
+                    (
+                        *id,
+                        window.clone(),
+                        self.pending_window_initial_positions.remove(id),
+                    )
+                })
+                .collect::<Vec<_>>();
+            for (id, window, initial_position) in windows_to_show {
+                self.show_window(ctx, id, window, initial_position);
+                self.finalize_viewport_open_probe(id, "Sequence");
             }
 
             if !self.pending_focus_viewports.is_empty() {
@@ -34169,6 +34186,48 @@ mod tests {
         assert_eq!(
             app.new_windows[0].sequence_id().as_deref(),
             Some("seq_lazy")
+        );
+    }
+
+    #[test]
+    fn register_window_records_one_time_initial_position() {
+        let mut app = GENtleApp::default();
+        let engine = app.engine.clone();
+        let window = Window::new_dna(
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+            "seq_a".to_string(),
+            engine,
+        );
+
+        let viewport_id = app.register_window(window);
+
+        assert_eq!(
+            app.pending_window_initial_positions.get(&viewport_id),
+            Some(&egui::Pos2 { x: 0.0, y: 0.0 })
+        );
+        assert!(
+            app.pending_window_open_timestamps
+                .contains_key(&viewport_id),
+            "registered deferred windows should track an open probe"
+        );
+        let consumed = app.pending_window_initial_positions.remove(&viewport_id);
+        assert_eq!(consumed, Some(egui::Pos2 { x: 0.0, y: 0.0 }));
+        assert!(
+            !app.pending_window_initial_positions
+                .contains_key(&viewport_id),
+            "initial position should be consumed after first deferred viewport render"
+        );
+    }
+
+    #[test]
+    fn deferred_window_position_uses_monotonic_cascade_index() {
+        assert_eq!(
+            GENtleApp::deferred_window_position(0),
+            egui::Pos2 { x: 0.0, y: 0.0 }
+        );
+        assert_eq!(
+            GENtleApp::deferred_window_position(3),
+            egui::Pos2 { x: 600.0, y: 600.0 }
         );
     }
 
