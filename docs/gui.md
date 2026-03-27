@@ -667,6 +667,14 @@ Feature tree grouping:
   - the top-read area is explicitly a `Live preview`, not the whole retained
     report; it remains useful during runs, but post-run read inspection should
     use mapped `Read effects`
+    - after a run has finished, clicking a score-density bar can switch this
+      preview from the capped live top-20 list to the exact saved-report rows
+      belonging to that selected score bin
+    - the preview table now reserves about 12 visible rows before scrolling
+      and starts with `Rank`, so orientation is easier to keep while triaging
+    - `Id%` and `Cov%` are shown as explicit columns:
+      - `Id%` = phase-2 pairwise alignment identity
+      - `Cov%` = phase-2 query coverage
   - saved-report selection helpers now let you:
     - select all reads tied at maximal seed score
     - select all reads in the rightmost non-empty score-density bin

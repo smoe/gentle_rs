@@ -1394,6 +1394,9 @@ Status:
     selects the corresponding saved-report reads, and focuses `Mapped cDNA ->
     Read effects` on that reproducible subset instead of the old top-20-only
     preview.
+    The top-read preview now also shows rank-first tabular rows with explicit
+    `Id%` / `Cov%` columns and, after a run completes, can switch from the
+    capped live preview to the exact saved-report rows in the chosen score bin.
   - Selected aligned reads in `Mapped cDNA -> Read effects` now have an inline
     pairwise dotplot preview driven by the shared engine dotplot logic, so
     manual inspection no longer starts with SVG export.
