@@ -230,6 +230,9 @@ impl RenderDna {
                 _ => Color32::from_rgb(90, 90, 90),
             };
         }
+        if Self::is_mcs_feature(feature) {
+            return Color32::from_rgb(0, 136, 156);
+        }
         if Self::is_regulatory_feature(feature) {
             if let Some(reg_class) = Self::regulatory_class(feature) {
                 if reg_class.contains("silencer") || reg_class.contains("repressor") {
@@ -373,6 +376,27 @@ impl RenderDna {
             || Self::is_track_feature(feature)
     }
 
+    fn text_mentions_mcs(text: &str) -> bool {
+        let lower = text.trim().to_ascii_lowercase();
+        lower.contains("multiple cloning site")
+            || lower == "mcs"
+            || lower.contains(" mcs ")
+            || lower.starts_with("mcs ")
+            || lower.ends_with(" mcs")
+            || lower.contains("(mcs)")
+    }
+
+    fn compact_mcs_label(text: &str) -> String {
+        let short = text.split(|c| c == ';' || c == '\n').next().unwrap_or(text);
+        let normalized = short.split_whitespace().collect::<Vec<_>>().join(" ");
+        let normalized = normalized.trim();
+        if normalized.is_empty() {
+            "MCS".to_string()
+        } else {
+            normalized.to_string()
+        }
+    }
+
     fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
         feature
             .qualifier_values(key.into())
@@ -405,6 +429,28 @@ impl RenderDna {
             }
         }
         None
+    }
+
+    pub fn is_mcs_feature(feature: &Feature) -> bool {
+        if Self::feature_has_qualifier_value(feature, "gentle_generated", "helper_mcs") {
+            return true;
+        }
+        if Self::feature_has_qualifier(feature, "mcs_expected_sites")
+            || Self::feature_has_qualifier(feature, "mcs_preset")
+        {
+            return true;
+        }
+        if !feature
+            .kind
+            .to_string()
+            .eq_ignore_ascii_case("misc_feature")
+        {
+            return false;
+        }
+        ["label", "note", "gene", "name", "standard_name"]
+            .into_iter()
+            .filter_map(|key| Self::feature_qualifier_text(feature, key))
+            .any(|value| Self::text_mentions_mcs(&value))
     }
 
     pub fn tfbs_group_label(feature: &Feature) -> Option<String> {
@@ -675,6 +721,22 @@ impl RenderDna {
                 };
             }
         }
+        if Self::is_mcs_feature(feature) {
+            for key in ["label", "standard_name", "name", "gene", "note"] {
+                if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                    if Self::text_mentions_mcs(&value) {
+                        return Self::compact_mcs_label(&value);
+                    }
+                }
+            }
+            if let Some(value) = Self::first_nonempty_qualifier(
+                feature,
+                &["label", "standard_name", "name", "gene", "note"],
+            ) {
+                return Self::compact_mcs_label(&value);
+            }
+            return "MCS".to_string();
+        }
         if kind == "MRNA" {
             if let Some(name) = Self::first_nonempty_qualifier(
                 feature,
@@ -869,6 +931,7 @@ impl Widget for RenderDna {
 #[cfg(test)]
 mod tests {
     use super::RenderDna;
+    use eframe::egui::Color32;
     use gb_io::seq::{Feature, FeatureKind, Location};
 
     fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
@@ -919,5 +982,42 @@ mod tests {
             ],
         );
         assert!(!RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn mcs_feature_detection_requires_explicit_mcs_hints() {
+        let helper_feature = make_feature("misc_feature", &[("gentle_generated", "helper_mcs")]);
+        assert!(RenderDna::is_mcs_feature(&helper_feature));
+
+        let text_hint_feature = make_feature(
+            "misc_feature",
+            &[(
+                "note",
+                "Multiple Cloning Site (MCS); contains BamHI and EcoR I",
+            )],
+        );
+        assert!(RenderDna::is_mcs_feature(&text_hint_feature));
+
+        let gene_named_mcs = make_feature("gene", &[("gene", "MCS")]);
+        assert!(!RenderDna::is_mcs_feature(&gene_named_mcs));
+    }
+
+    #[test]
+    fn mcs_feature_name_prefers_compact_mcs_label() {
+        let feature = make_feature(
+            "misc_feature",
+            &[(
+                "note",
+                "Multiple Cloning Site (MCS); contains BamHI and EcoR I",
+            )],
+        );
+        assert_eq!(
+            RenderDna::feature_name(&feature),
+            "Multiple Cloning Site (MCS)"
+        );
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(0, 136, 156)
+        );
     }
 }

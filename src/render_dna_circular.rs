@@ -69,6 +69,7 @@ struct FeaturePosition {
     to_90: i64,
     /// Directed features shall end with an arrow-like indication of the direction.
     is_pointy: bool,
+    is_mcs: bool,
     color: Color32,
     band: f32,
     label: String,
@@ -794,6 +795,7 @@ impl RenderDnaCircular {
             outer: 0.0,
             to_90: 0,
             is_pointy: RenderDna::is_feature_pointy(feature),
+            is_mcs: RenderDna::is_mcs_feature(feature),
             color: feature_color,
             band: 0.0,
             label: RenderDna::feature_name(feature),
@@ -888,7 +890,7 @@ impl RenderDnaCircular {
             1.3
         } else {
             1.0
-        };
+        } + if ret.is_mcs { 0.35 } else { 0.0 };
 
         for (segment_idx, segment) in ret.segments.iter().enumerate() {
             let mut feature_points: Vec<Pos2> = vec![];
@@ -946,7 +948,7 @@ impl RenderDnaCircular {
         }
 
         let font_feature = FontId {
-            size: 10.0,
+            size: if ret.is_mcs { 11.0 } else { 10.0 },
             family: FontFamily::Monospace,
         };
 
@@ -1263,8 +1265,9 @@ impl RenderDnaCircular {
         if RenderDna::is_source_feature(feature) {
             return false;
         }
+        let is_mcs = RenderDna::is_mcs_feature(feature);
         let feature_kind = feature.kind.to_string().to_ascii_uppercase();
-        if hidden_feature_kinds.contains(&feature_kind) {
+        if hidden_feature_kinds.contains(&feature_kind) && !is_mcs {
             return false;
         }
         if !RenderDna::feature_passes_kind_filter(

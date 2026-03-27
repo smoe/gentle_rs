@@ -19373,9 +19373,13 @@ Error: `{err}`"
                     }
                 } else {
                     let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                        close_requested = self.render_routine_assistant_contents(ui);
-                    });
+                    crate::egui_compat::show_central_panel(
+                        ctx,
+                        egui::CentralPanel::default(),
+                        |ui| {
+                            close_requested = self.render_routine_assistant_contents(ui);
+                        },
+                    );
                     if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                         open = false;
                     }
@@ -19966,9 +19970,13 @@ Error: `{err}`"
                     }
                 } else {
                     let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                        close_requested = self.render_agent_assistant_contents(ui);
-                    });
+                    crate::egui_compat::show_central_panel(
+                        ctx,
+                        egui::CentralPanel::default(),
+                        |ui| {
+                            close_requested = self.render_agent_assistant_contents(ui);
+                        },
+                    );
 
                     if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                         open = false;
@@ -30280,9 +30288,13 @@ Error: `{err}`"
                         .default_size(Vec2::new(760.0, 520.0))
                         .show(ctx, |ui| render_contents(ui));
                 } else {
-                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                        render_contents(ui);
-                    });
+                    crate::egui_compat::show_central_panel(
+                        ctx,
+                        egui::CentralPanel::default(),
+                        |ui| {
+                            render_contents(ui);
+                        },
+                    );
                     if Self::viewport_close_requested_or_shortcut(ctx) {
                         open = false;
                     }
@@ -31175,20 +31187,20 @@ Error: `{err}`"
             egui::Id::new("gentle_status_bar"),
             egui::Panel::bottom("gentle_status_bar"),
             |ui| {
-            ui.horizontal_wrapped(|ui| {
-                let hover_text = if self.hover_status_name.trim().is_empty() {
-                    "Hover: -".to_string()
-                } else {
-                    format!("Hover: {}", self.hover_status_name)
-                };
-                ui.monospace(hover_text);
-                ui.separator();
-                ui.small(format!("Undo {undo_count} / Redo {redo_count}"));
-                if !self.app_status.trim().is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    let hover_text = if self.hover_status_name.trim().is_empty() {
+                        "Hover: -".to_string()
+                    } else {
+                        format!("Hover: {}", self.hover_status_name)
+                    };
+                    ui.monospace(hover_text);
                     ui.separator();
-                    ui.small(self.app_status.clone());
-                }
-            });
+                    ui.small(format!("Undo {undo_count} / Redo {redo_count}"));
+                    if !self.app_status.trim().is_empty() {
+                        ui.separator();
+                        ui.small(self.app_status.clone());
+                    }
+                });
             },
         );
     }
@@ -32457,7 +32469,7 @@ impl GENtleApp {
                 egui::Id::new("top"),
                 egui::Panel::top("top"),
                 |ui| {
-                self.render_menu_bar(ui);
+                    self.render_menu_bar(ui);
                 },
             );
 
