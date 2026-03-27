@@ -11137,6 +11137,52 @@ fn run_workflow_macro(
     })
 }
 
+fn macro_statement_contains_agents_ask(engine: &GentleEngine, statement: &str) -> bool {
+    let statement = statement.trim();
+    if statement.is_empty() {
+        return false;
+    }
+    let parsed = if statement.starts_with("op ") || statement.starts_with("workflow ") {
+        return false;
+    } else {
+        let Ok(tokens) = split_shell_words(statement) else {
+            return false;
+        };
+        let Ok(command) = parse_shell_tokens(&tokens) else {
+            return false;
+        };
+        command
+    };
+    shell_command_contains_agents_ask(engine, &parsed)
+}
+
+fn workflow_macro_script_contains_agents_ask(engine: &GentleEngine, script_or_ref: &str) -> bool {
+    let Ok(script) = load_workflow_macro_script(script_or_ref) else {
+        return false;
+    };
+    let Ok(statements) = split_macro_statements(&script) else {
+        return false;
+    };
+    statements
+        .iter()
+        .any(|statement| macro_statement_contains_agents_ask(engine, statement))
+}
+
+fn shell_command_contains_agents_ask(engine: &GentleEngine, command: &ShellCommand) -> bool {
+    match command {
+        ShellCommand::AgentsAsk { .. } => true,
+        ShellCommand::MacrosRun { script, .. } => {
+            workflow_macro_script_contains_agents_ask(engine, script)
+        }
+        ShellCommand::MacrosTemplateRun { name, bindings, .. } => engine
+            .render_workflow_macro_template_script(name, bindings)
+            .ok()
+            .map(|script| workflow_macro_script_contains_agents_ask(engine, &script))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 fn macro_bindings_from_preflight(
     preflight: &MacroTemplatePreflightReport,
     direction: RoutinePortDirection,
@@ -11393,6 +11439,12 @@ pub fn execute_shell_command_with_options(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    if !options.allow_agent_commands && shell_command_contains_agents_ask(engine, command) {
+        return Err(
+            "agents ask execution is blocked in this context (agent-to-agent recursion guardrail)"
+                .to_string(),
+        );
+    }
     let result = match command {
         ShellCommand::Help {
             topic,

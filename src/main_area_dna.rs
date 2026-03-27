@@ -27,12 +27,11 @@ use crate::{
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-        RnaReadIsoformSupportRow, RnaReadJunctionSupportFrequency, RnaReadOriginMode,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
-        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry,
-        SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsProgress, Workflow,
+        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
+        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -1175,8 +1174,8 @@ mod tests {
             RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
             RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
             RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode,
-            RnaReadReportMode, SplicingScopePreset,
+            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
+            SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1667,7 +1666,12 @@ mod tests {
         let result = area
             .commit_completed_rna_read_task_outcome(RnaReadTaskOutcome::Interpret(report.clone()))
             .expect("commit outcome");
-        assert!(result.messages.iter().any(|msg| msg.contains("rna_ui_commit")));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|msg| msg.contains("rna_ui_commit"))
+        );
         let stored = engine
             .read()
             .expect("engine")
@@ -16461,8 +16465,8 @@ impl MainAreaDna {
                     "Locus: {} | feature n-{} | group '{}' | transcripts={}",
                     view.seq_id, view.target_feature_id, view.group_label, view.transcript_count
                 ))
-                    .size(9.0)
-                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
         ui.add_space(4.0);
@@ -18734,25 +18738,25 @@ impl MainAreaDna {
         }
         let exon_rows = exon_counts
             .into_iter()
-            .map(|((start_1based, end_1based), support_read_count)| RnaReadExonSupportFrequency {
-                start_1based,
-                end_1based,
-                support_read_count,
-                support_fraction: support_read_count as f64 / denominator,
-            })
+            .map(
+                |((start_1based, end_1based), support_read_count)| RnaReadExonSupportFrequency {
+                    start_1based,
+                    end_1based,
+                    support_read_count,
+                    support_fraction: support_read_count as f64 / denominator,
+                },
+            )
             .collect::<Vec<_>>();
         let junction_rows = junction_counts
             .into_iter()
-            .map(
-                |((donor_1based, acceptor_1based), support_read_count)| {
-                    RnaReadJunctionSupportFrequency {
-                        donor_1based,
-                        acceptor_1based,
-                        support_read_count,
-                        support_fraction: support_read_count as f64 / denominator,
-                    }
-                },
-            )
+            .map(|((donor_1based, acceptor_1based), support_read_count)| {
+                RnaReadJunctionSupportFrequency {
+                    donor_1based,
+                    acceptor_1based,
+                    support_read_count,
+                    support_fraction: support_read_count as f64 / denominator,
+                }
+            })
             .collect::<Vec<_>>();
         (exon_rows, junction_rows)
     }
@@ -18812,7 +18816,11 @@ impl MainAreaDna {
             .iter()
             .map(|hit| hit.exon_transitions_confirmed)
             .sum::<usize>();
-        let tested_kmers = report.hits.iter().map(|hit| hit.tested_kmers).sum::<usize>();
+        let tested_kmers = report
+            .hits
+            .iter()
+            .map(|hit| hit.tested_kmers)
+            .sum::<usize>();
         let matched_kmers = report
             .hits
             .iter()
@@ -21114,17 +21122,14 @@ impl MainAreaDna {
                                     align_config_override.clone(),
                                     &selected_record_indices,
                                     &mut move |progress| {
-                                        if cancel_for_progress
-                                            .load(AtomicOrdering::Relaxed)
-                                        {
+                                        if cancel_for_progress.load(AtomicOrdering::Relaxed) {
                                             return false;
                                         }
                                         let OperationProgress::RnaReadInterpret(p) = progress
                                         else {
                                             return true;
                                         };
-                                        let _ =
-                                            tx_progress.send(RnaReadTaskMessage::Progress(p));
+                                        let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
                                         !cancel_for_progress.load(AtomicOrdering::Relaxed)
                                     },
                                     &mut should_continue,
@@ -22214,12 +22219,7 @@ impl MainAreaDna {
                 self.render_thresholded_cdna_support_tables(ui, view, progress);
             }
             RnaReadEvidenceSourceTab::MappedCdna => {
-                self.render_rna_read_mapped_cdna_panels(
-                    ui,
-                    view,
-                    progress,
-                    allow_mapping_actions,
-                );
+                self.render_rna_read_mapped_cdna_panels(ui, view, progress, allow_mapping_actions);
             }
         }
     }

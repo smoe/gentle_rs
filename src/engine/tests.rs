@@ -6611,7 +6611,7 @@ fn test_extract_genome_gene_reports_alias_guidance_for_contig_mismatch() {
         .expect_err("contig mismatch should fail");
     assert!(
         err.message
-            .contains("Could not load gene region 17:1-12 from 'ToyGenome'")
+            .contains("Could not load gene extraction interval 17:1-12 from 'ToyGenome'")
     );
     assert!(err.message.contains("Tried aliases:"));
     assert!(err.message.contains("Available contigs"));

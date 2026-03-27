@@ -6675,6 +6675,44 @@ fn execute_agents_ask_blocks_nested_agent_call_inside_macro_suggestion() {
 }
 
 #[test]
+fn execute_macros_run_blocks_nested_agents_ask_when_agent_commands_are_disabled() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    let catalog_json = r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "builtin_echo",
+      "label": "Builtin Echo",
+      "transport": "builtin_echo"
+    }
+  ]
+}"#;
+    fs::write(&catalog_path, catalog_json).expect("write catalog");
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let err = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::MacrosRun {
+            script: format!(
+                "agents ask builtin_echo --catalog {} --prompt \"ask: capabilities\"",
+                catalog_path.display()
+            ),
+            transactional: false,
+        },
+        &ShellExecutionOptions {
+            allow_agent_commands: false,
+            ..ShellExecutionOptions::default()
+        },
+    )
+    .expect_err("nested agents ask should be blocked inside macros run");
+    assert!(
+        err.contains("agent-to-agent recursion guardrail"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn execute_agent_suggestions_allows_blast_shell_route() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
