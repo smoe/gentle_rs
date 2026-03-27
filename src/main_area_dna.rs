@@ -3914,6 +3914,40 @@ mod tests {
     }
 
     #[test]
+    fn collect_rna_read_top_hit_previews_for_score_bin_uses_all_saved_report_rows() {
+        let report = RnaReadInterpretationReport {
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "r1".to_string(),
+                    seed_hit_fraction: 0.12,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 4,
+                    header_id: "r4".to_string(),
+                    seed_hit_fraction: 0.88,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 7,
+                    header_id: "r7".to_string(),
+                    seed_hit_fraction: 0.89,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            score_density_bins: vec![0; 40],
+            ..RnaReadInterpretationReport::default()
+        };
+        let rows =
+            MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(&report, 35, 40);
+        assert_eq!(
+            rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
+            vec![4, 7]
+        );
+    }
+
+    #[test]
     fn rna_read_selected_export_operations_preserve_exact_record_indices() {
         let selected_record_indices = vec![2usize, 5usize, 9usize];
 
@@ -19413,6 +19447,23 @@ impl MainAreaDna {
             .collect::<Vec<_>>()
     }
 
+    fn collect_rna_read_top_hit_previews_for_score_bin(
+        report: &RnaReadInterpretationReport,
+        target_idx: usize,
+        bin_count: usize,
+    ) -> Vec<RnaReadTopHitPreview> {
+        let selected_record_indices =
+            Self::select_rna_read_report_score_bin_record_indices(report, target_idx, bin_count)
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+        report
+            .hits
+            .iter()
+            .filter(|hit| selected_record_indices.contains(&hit.record_index))
+            .map(Self::rna_read_top_hit_preview_from_hit)
+            .collect::<Vec<_>>()
+    }
+
     fn selected_rna_report_hits<'a>(
         report: &'a RnaReadInterpretationReport,
         selected_record_indices: &BTreeSet<usize>,
@@ -22229,6 +22280,11 @@ impl MainAreaDna {
         (row_height * 15.0 + 36.0).clamp(320.0, 560.0)
     }
 
+    fn default_rna_read_preview_table_height(ui: &egui::Ui) -> f32 {
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace).max(14.0) + 4.0;
+        (row_height * 12.0 + 36.0).clamp(260.0, 460.0)
+    }
+
     fn render_rna_read_mapped_cdna_panels(
         &mut self,
         ui: &mut egui::Ui,
@@ -23757,33 +23813,102 @@ impl MainAreaDna {
         progress: &RnaReadInterpretProgress,
         allow_mapping_actions: bool,
     ) -> Option<Option<usize>> {
-        if progress.top_hits_preview.is_empty() {
+        let saved_report = self.current_saved_rna_read_report();
+        let (preview_rows, using_saved_report_score_bin, preview_header, preview_note) =
+            if self.rna_read_task.is_none() {
+                if let (Some(report), Some(score_bin_index)) = (
+                    saved_report.as_ref(),
+                    self.rna_read_alignment_effect_score_bin_index,
+                ) {
+                    let bin_count = report
+                        .score_density_bins
+                        .len()
+                        .max(progress.score_density_bins.len())
+                        .max(40);
+                    let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
+                        report,
+                        score_bin_index,
+                        bin_count,
+                    );
+                    if !rows.is_empty() {
+                        let row_count_label = Self::format_count_compact_km(rows.len() as u64);
+                        (
+                            rows,
+                            true,
+                            format!(
+                                "Ranked preview ({} saved-report rows in selected score bin)",
+                                row_count_label
+                            ),
+                            format!(
+                                "This table shows every saved-report row in score bin {}. It is not capped to the old top-20 preview. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.",
+                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
+                            ),
+                        )
+                    } else {
+                        (
+                            progress.top_hits_preview.clone(),
+                            false,
+                            format!(
+                                "Live preview (top {} retained rows from run)",
+                                progress.top_hits_preview.len()
+                            ),
+                            "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
+                        )
+                    }
+                } else {
+                    (
+                        progress.top_hits_preview.clone(),
+                        false,
+                        format!(
+                            "Live preview (top {} retained rows from run)",
+                            progress.top_hits_preview.len()
+                        ),
+                        "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
+                    )
+                }
+            } else {
+                (
+                    progress.top_hits_preview.clone(),
+                    false,
+                    format!(
+                        "Live preview (top {} retained rows from run)",
+                        progress.top_hits_preview.len()
+                    ),
+                    "This is the capped live preview while the run is active. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
+                )
+            };
+        if preview_rows.is_empty() {
             return None;
         }
-        let visible_record_indices = progress
-            .top_hits_preview
+        let visible_record_indices = preview_rows
             .iter()
             .map(|row| row.record_index)
             .collect::<BTreeSet<_>>();
+        let rank_by_record_index = saved_report
+            .as_ref()
+            .map(|report| {
+                report
+                    .hits
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, hit)| (hit.record_index, idx + 1))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
         let mut next_selection: Option<Option<usize>> = None;
-        egui::CollapsingHeader::new(format!(
-            "Live preview (top {} retained rows from run)",
-            progress.top_hits_preview.len()
-        ))
-        .default_open(self.rna_read_task.is_some())
+        egui::CollapsingHeader::new(preview_header)
+        .default_open(self.rna_read_task.is_some() || using_saved_report_score_bin)
         .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.small(
-                        "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface.",
-                    );
+                    ui.small(&preview_note);
                     if ui.button("Clear highlight").clicked() {
                         next_selection = Some(None);
                     }
                     ui.menu_button("Selection tools", |ui| {
-                        if let Some(report) = self.current_saved_rna_read_report() {
+                        if let Some(report) = saved_report.as_ref() {
                             if ui.button("Select max-score ties").clicked() {
                                 self.rna_seed_selected_record_indices =
-                                    Self::select_rna_read_report_max_score_record_indices(&report)
+                                    Self::select_rna_read_report_max_score_record_indices(report)
                                         .into_iter()
                                         .collect::<BTreeSet<_>>();
                                 self.op_status = format!(
@@ -23806,7 +23931,7 @@ impl MainAreaDna {
                         } else {
                             ui.small("Save/load a report before using saved-report selection helpers.");
                         }
-                        if ui.button("Select visible preview rows").clicked() {
+                        if ui.button("Select listed rows").clicked() {
                             self.rna_seed_selected_record_indices = visible_record_indices.clone();
                             ui.close();
                         }
@@ -23857,15 +23982,14 @@ impl MainAreaDna {
                         .button(format!("Copy selected FASTA ({selected_count})"))
                         .clicked()
                     {
-                        if let Some(report) = self.current_saved_rna_read_report() {
+                        if let Some(report) = saved_report.as_ref() {
                             let hits = Self::selected_rna_report_hits(
-                                &report,
+                                report,
                                 &self.rna_seed_selected_record_indices,
                             );
                             self.copy_rna_report_hits_as_fasta(ui, &hits, "selected report reads");
                         } else {
-                            let rows = progress
-                                .top_hits_preview
+                            let rows = preview_rows
                                 .iter()
                                 .filter(|row| {
                                     self.rna_seed_selected_record_indices
@@ -23881,9 +24005,9 @@ impl MainAreaDna {
                         }
                     }
                     if ui.button("Copy highlighted FASTA").clicked() {
-                        if let Some(report) = self.current_saved_rna_read_report() {
+                        if let Some(report) = saved_report.as_ref() {
                             let hits = self
-                                .selected_highlighted_rna_report_hit(&report)
+                                .selected_highlighted_rna_report_hit(report)
                                 .into_iter()
                                 .collect::<Vec<_>>();
                             self.copy_rna_report_hits_as_fasta(
@@ -23892,8 +24016,11 @@ impl MainAreaDna {
                                 "highlighted report read",
                             );
                         } else {
-                            let rows = self
-                                .selected_rna_top_hit_preview(progress)
+                            let rows = preview_rows
+                                .iter()
+                                .find(|row| {
+                                    self.rna_seed_highlight_record_index == Some(row.record_index)
+                                })
                                 .cloned()
                                 .into_iter()
                                 .collect::<Vec<_>>();
@@ -23923,71 +24050,123 @@ impl MainAreaDna {
                     .count();
                 if hidden_selected_count > 0 {
                     ui.small(format!(
-                        "{} selected read(s) are outside the live preview cap but remain active for phase-2 alignment, FASTA copy, and dotplot export.",
-                        hidden_selected_count
+                        "{} selected read(s) are outside the currently listed preview rows but remain active for phase-2 alignment, FASTA copy, and dotplot export.",
+                        hidden_selected_count,
                     ));
                 }
+                ui.small("Rank is retention rank. Id%=phase-2 alignment identity. Cov%=query coverage.");
                 egui::ScrollArea::both()
                     .id_salt(format!("rna_top_hits_scroll_{}", progress.seq_id))
-                    .max_height(220.0)
+                    .max_height(Self::default_rna_read_preview_table_height(ui))
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.scope(|ui| {
-                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                            for row in &progress.top_hits_preview {
+                        egui::Grid::new(format!("rna_top_hits_grid_{}", progress.seq_id))
+                            .striped(true)
+                            .num_columns(10)
+                            .show(ui, |ui| {
+                                ui.small("");
+                                ui.small("Rank");
+                                ui.small("Read");
+                                ui.small("Score");
+                                ui.small("Phase 1 tx");
+                                ui.small("Id%");
+                                ui.small("Cov%");
+                                ui.small("Pass");
+                                ui.small("Phase 2");
+                                ui.small("Len");
+                                ui.end_row();
+                            for (display_idx, row) in preview_rows.iter().enumerate() {
                                 let selected =
                                     self.rna_seed_highlight_record_index == Some(row.record_index);
-                                ui.horizontal(|ui| {
-                                    let mut include_for_copy = self
-                                        .rna_seed_selected_record_indices
-                                        .contains(&row.record_index);
-                                    if ui.checkbox(&mut include_for_copy, "").changed() {
-                                        if include_for_copy {
-                                            self.rna_seed_selected_record_indices
-                                                .insert(row.record_index);
-                                        } else {
-                                            self.rna_seed_selected_record_indices
-                                                .remove(&row.record_index);
-                                        }
-                                    }
-                                    let (sequence_text, truncated) = if row.sequence.len() > 5000 {
-                                        (&row.sequence[..5000], true)
+                                let mut include_for_copy = self
+                                    .rna_seed_selected_record_indices
+                                    .contains(&row.record_index);
+                                if ui.checkbox(&mut include_for_copy, "").changed() {
+                                    if include_for_copy {
+                                        self.rna_seed_selected_record_indices
+                                            .insert(row.record_index);
                                     } else {
-                                        (row.sequence.as_str(), false)
-                                    };
-                                    let alignment_summary = Self::rna_top_hit_alignment_summary(row);
-                                    let response = ui.selectable_label(selected, format!(
-                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} align={} len={} seq={}{}",
-                                        row.record_index + 1,
-                                        row.header_id,
-                                        row.seed_hit_fraction,
-                                        row.weighted_seed_hit_fraction,
-                                        row.weighted_matched_kmers,
-                                        if row.seed_transcript_gap_count == 0 {
-                                            "na".to_string()
-                                        } else {
-                                            format!("{:.2}", row.seed_median_transcript_gap)
-                                        },
-                                        row.seed_transcript_gap_count,
-                                        row.seed_chain_support_fraction,
-                                        row.seed_chain_support_kmers,
-                                        if row.seed_chain_transcript_id.is_empty() { "none" } else { row.seed_chain_transcript_id.as_str() },
-                                        row.origin_class.as_str(),
-                                        row.origin_confidence,
-                                        row.strand_confidence,
-                                        if row.selected_strand.is_empty() { "na" } else { row.selected_strand.as_str() },
-                                        row.competing_opposite_strand,
-                                        row.ambiguous_strand_tie,
-                                        row.matched_kmers,
-                                        row.tested_kmers,
-                                        row.passed_seed_filter,
-                                        row.reverse_complement_applied,
-                                        row.msa_eligible,
-                                        alignment_summary,
-                                        row.read_length_bp,
-                                        sequence_text,
-                                        if truncated { "...[cut@5000]" } else { "" },
-                                    ));
+                                        self.rna_seed_selected_record_indices
+                                            .remove(&row.record_index);
+                                    }
+                                }
+                                let rank = rank_by_record_index
+                                    .get(&row.record_index)
+                                    .copied()
+                                    .unwrap_or(display_idx + 1);
+                                ui.monospace(rank.to_string());
+                                let response = ui.selectable_label(
+                                    selected,
+                                    format!("#{} {}", row.record_index + 1, row.header_id),
+                                );
+                                let phase1_tx = if row.seed_chain_transcript_id.is_empty() {
+                                    "none".to_string()
+                                } else {
+                                    row.seed_chain_transcript_id.clone()
+                                };
+                                let phase2_tx = if row.aligned {
+                                    Self::compact_rna_read_transcript_label(
+                                        &row.best_alignment_transcript_id,
+                                        &row.best_alignment_transcript_label,
+                                    )
+                                } else {
+                                    "none".to_string()
+                                };
+                                let alignment_summary = Self::rna_top_hit_alignment_summary(row);
+                                let gap_median = if row.seed_transcript_gap_count == 0 {
+                                    "na".to_string()
+                                } else {
+                                    format!("{:.2}", row.seed_median_transcript_gap)
+                                };
+                                let hover_text = format!(
+                                    "rank={rank} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} phase1_tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} align={} len={} seq={}",
+                                    row.seed_hit_fraction,
+                                    row.weighted_seed_hit_fraction,
+                                    row.weighted_matched_kmers,
+                                    gap_median,
+                                    row.seed_transcript_gap_count,
+                                    row.seed_chain_support_fraction,
+                                    row.seed_chain_support_kmers,
+                                    phase1_tx,
+                                    row.origin_class.as_str(),
+                                    row.origin_confidence,
+                                    row.strand_confidence,
+                                    if row.selected_strand.is_empty() { "na" } else { row.selected_strand.as_str() },
+                                    row.competing_opposite_strand,
+                                    row.ambiguous_strand_tie,
+                                    row.matched_kmers,
+                                    row.tested_kmers,
+                                    row.passed_seed_filter,
+                                    row.reverse_complement_applied,
+                                    row.msa_eligible,
+                                    alignment_summary,
+                                    row.read_length_bp,
+                                    row.sequence_preview,
+                                );
+                                ui.monospace(format!("{:.3}", row.seed_hit_fraction));
+                                ui.monospace(phase1_tx);
+                                ui.monospace(if row.aligned {
+                                    format!("{:.1}", row.best_alignment_identity_fraction * 100.0)
+                                } else {
+                                    "na".to_string()
+                                });
+                                ui.monospace(if row.aligned {
+                                    format!(
+                                        "{:.1}",
+                                        row.best_alignment_query_coverage_fraction * 100.0
+                                    )
+                                } else {
+                                    "na".to_string()
+                                });
+                                ui.monospace(if row.passed_seed_filter {
+                                    "yes".to_string()
+                                } else {
+                                    "no".to_string()
+                                });
+                                ui.monospace(phase2_tx);
+                                ui.monospace(row.read_length_bp.to_string());
+                                ui.end_row();
+                                let response = response.on_hover_text(hover_text);
                                     if response.clicked() {
                                         next_selection = Some(Some(row.record_index));
                                     }
@@ -24001,9 +24180,9 @@ impl MainAreaDna {
                                             ui.close();
                                         }
                                         if ui.button("Copy FASTA (selected reads)").clicked() {
-                                            if let Some(report) = self.current_saved_rna_read_report() {
+                                            if let Some(report) = saved_report.as_ref() {
                                                 let hits = Self::selected_rna_report_hits(
-                                                    &report,
+                                                    report,
                                                     &self.rna_seed_selected_record_indices,
                                                 );
                                                 self.copy_rna_report_hits_as_fasta(
@@ -24012,8 +24191,7 @@ impl MainAreaDna {
                                                     "context-menu selected report reads",
                                                 );
                                             } else {
-                                                let rows = progress
-                                                    .top_hits_preview
+                                                let rows = preview_rows
                                                     .iter()
                                                     .filter(|candidate| {
                                                         self.rna_seed_selected_record_indices
@@ -24043,22 +24221,20 @@ impl MainAreaDna {
                                             ui.close();
                                         }
                                     });
-                                });
                             }
                         });
                     });
                 let arrow_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
                 let arrow_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
-                if (arrow_down || arrow_up) && !progress.top_hits_preview.is_empty() {
+                if (arrow_down || arrow_up) && !preview_rows.is_empty() {
                     let current_pos = self
                         .rna_seed_highlight_record_index
                         .and_then(|record_index| {
-                            progress
-                                .top_hits_preview
+                            preview_rows
                                 .iter()
                                 .position(|row| row.record_index == record_index)
                         });
-                    let len = progress.top_hits_preview.len();
+                    let len = preview_rows.len();
                     let next_pos = if arrow_down {
                         current_pos.map_or(0, |idx| (idx + 1) % len)
                     } else {
@@ -24066,13 +24242,13 @@ impl MainAreaDna {
                             if idx == 0 { len - 1 } else { idx - 1 }
                         })
                     };
-                    next_selection = Some(Some(progress.top_hits_preview[next_pos].record_index));
+                    next_selection = Some(Some(preview_rows[next_pos].record_index));
                 }
                 let copy_shortcut_pressed = ui.input(|i| i.key_pressed(egui::Key::C) && i.modifiers.command);
                 if copy_shortcut_pressed && !ui.ctx().egui_wants_keyboard_input() {
-                    if let Some(report) = self.current_saved_rna_read_report() {
+                    if let Some(report) = saved_report.as_ref() {
                         let hits = Self::selected_rna_report_hits(
-                            &report,
+                            report,
                             &self.rna_seed_selected_record_indices,
                         );
                         if !hits.is_empty() {
@@ -24093,8 +24269,10 @@ impl MainAreaDna {
                             self.op_status =
                                 "Ctrl/Cmd+C: select or highlight a top read first".to_string();
                         }
-                    } else if let Some(highlighted) =
-                        self.selected_rna_top_hit_preview(progress).cloned()
+                    } else if let Some(highlighted) = preview_rows
+                        .iter()
+                        .find(|row| self.rna_seed_highlight_record_index == Some(row.record_index))
+                        .cloned()
                     {
                         self.copy_rna_top_hit_previews_as_fasta(
                             ui,
