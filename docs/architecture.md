@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-26
+Last updated: 2026-03-27
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1418,6 +1418,17 @@ Architecture constraints for this track:
 
 - RNA evidence handling must remain engine-owned and deterministic; adapters
   only invoke/display shared contracts.
+- GUI role split should remain explicit:
+  - `Splicing Expert` is annotation-first and report-viewer-first.
+  - transcript derivation and primer/qPCR ROI seeding stay in `Splicing Expert`
+    because they are splicing-locus quick actions, not mapping-configuration
+    controls.
+  - `RNA-read Mapping` is the dedicated workspace for
+    `InterpretRnaReads`/`AlignRnaReadReport` run configuration, workflow
+    staging, live progress, and export actions.
+  - persisted RNA-read reports are the bridge between those two surfaces, so
+    GUI inspection and mapping execution stay loosely coupled while sharing the
+    same engine-owned report payloads.
 - Initial RNA-seq path is Nanopore cDNA evidence ingestion with deterministic
   filtering and partial ROI mapping overlays.
 - Read-orientation handling must stay explicit and deterministic:

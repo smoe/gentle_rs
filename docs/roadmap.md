@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-26
+Last updated: 2026-03-27
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1270,9 +1270,17 @@ Status:
 - This replaces earlier demo-oriented framing for this direction; immediate
   focus is production-aligned ROI workflows for cloning-candidate regions.
 - Implemented in current baseline:
-  - Splicing Expert `Nanopore cDNA interpretation` run path is now asynchronous
-    (non-blocking UI) with live progress updates.
-  - Splicing Expert now exposes a regular workflow access route for the same
+  - GUI role split is now explicit:
+    - `Splicing Expert` stays annotation-first and report-viewer-first.
+    - transcript quick actions (`Derive group transcripts`,
+      `Derive + Dotplot`, `Send Group ROI -> Primer/qPCR`) remain there.
+    - RNA-read run/configuration controls now live in a dedicated top-level
+      `RNA-read Mapping` workspace seeded from the current splicing locus.
+    - persisted RNA-read reports bridge the two windows through shared
+      engine-owned report payloads rather than GUI-local transfer state.
+  - `RNA-read Mapping` `Nanopore cDNA interpretation` run path is now
+    asynchronous (non-blocking UI) with live progress updates.
+  - `RNA-read Mapping` now exposes a regular workflow access route for the same
     cDNA mapping payload:
     `Prepare Workflow Op` stages `run_id + ops` in Engine Ops workflow runner,
     and `Copy Workflow JSON` exports a complete workflow object for CLI/shell
@@ -1281,11 +1289,13 @@ Status:
     execution and updates every 1000 reads (`+` strand up, `-` strand down).
   - Histogram bars now use sqrt-scaled heights so low-frequency bins remain
     visible instead of collapsing under one dominant bin.
-  - Seed-hash catalog preview is now available directly in Splicing Expert and
-    overlaid as red position dots with hover sequence/hash detail.
-  - Live top-read preview is now available during streaming; selected rows
-    highlight their supported seed positions in green with recompute-time
-    telemetry for in-window hash-speed sanity checks.
+  - Seed-hash catalog preview is now available directly in `RNA-read Mapping`
+    and reused by Splicing Expert evidence overlays as red position dots with
+    hover sequence/hash detail.
+  - Live top-read preview is now available during streaming in
+    `RNA-read Mapping`; selected rows highlight their supported seed positions
+    in green with recompute-time telemetry for in-window hash-speed sanity
+    checks.
   - Streaming status now shows ETA estimated from gzip/plain input bytes
     consumed and elapsed runtime; ETA refresh is synchronized with read-count
     update cadence.
@@ -1327,9 +1337,9 @@ Status:
     checkpoint snapshots are serialized to
     `gentle.rna_read_interpret_checkpoint.v1` and resume restores counters,
     support tables, retained hits, and score-density bins.
-  - Splicing Expert advanced Nanopore controls expose active sparse-origin
-    settings (`origin mode`, `target genes`, `ROI seed capture`) and pass them
-    through unchanged to engine/shell contracts.
+  - `RNA-read Mapping` advanced controls expose active sparse-origin settings
+    (`origin mode`, `target genes`, `ROI seed capture`) and pass them through
+    unchanged to engine/shell contracts.
   - Deterministic TP73 seed-filter tests now use compact committed mapping
     fixtures (`test_files/fixtures/mapping/`) and cover:
     - expected TP73 positive behavior (TP73-derived reads with 30% deletions
@@ -1390,7 +1400,7 @@ Status:
     with score-based coloring.
   - Phase-1 seed filtering now hashes full read span for every read (replacing
     prior sampled-window behavior) to improve filtering sensitivity.
-  - Splicing Expert now exposes the active phase-1 hash-density control
+  - `RNA-read Mapping` now exposes the active phase-1 hash-density control
     (`seed_stride_bp`, default `1`) so seed-start spacing can be tuned without
     diverging from engine/CLI/shell contracts.
   - Runtime panel now reports detailed compute breakdown
@@ -1402,10 +1412,10 @@ Status:
   - Seed-hit score-density panel now supports `Linear`/`Log` rendering
     (`Log` default) so sparse higher-score bins remain visible in heavily
     skewed distributions while still allowing raw-count inspection.
-  - Splicing Expert now exposes explicit cDNA/direct-RNA interpretation mode
+  - `RNA-read Mapping` now exposes explicit cDNA/direct-RNA interpretation mode
     control (`Input is cDNA` checkbox) with configurable poly-T prefix minimum
     for automatic reverse-complement normalization.
-  - Splicing Expert / `InterpretRnaReads` now admit `ncRNA` seed features in
+  - `RNA-read Mapping` / `InterpretRnaReads` now admit `ncRNA` seed features in
     addition to `mRNA`/`transcript`/`exon`, so reverse-strand antisense loci
     such as `TP73-AS3` can use the shared cDNA filtering path without
     feature-kind workarounds.

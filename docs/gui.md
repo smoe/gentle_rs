@@ -376,19 +376,34 @@ Feature tree grouping:
       - transcript `-` strand -> `pair_reverse_complement`
     - step size is auto-increased when needed so pair evaluations stay within
       engine limits.
-  - `Window guide [?]` hover tooltip summarizes the whole splicing expert:
-    annotation structure, transcript quick actions, and RNA-read evidence for
-    the selected locus.
-- The splicing expert window also includes `Nanopore cDNA interpretation`:
-  - the section header and `Panel guide [?]` expose a detailed hover tooltip
-    for the two-phase workflow:
+  - `Window guide [?]` hover tooltip summarizes the whole Splicing Expert:
+    annotation structure, transcript quick actions, and report-driven
+    RNA-read evidence for the selected locus.
+- The Splicing Expert now includes a compact `RNA-read evidence` section:
+  - `Report` selector filtered to the current `seq_id + seed_feature_id`
+  - newest matching report is auto-selected when no explicit report is chosen
+  - empty state:
+    `No RNA-read report for this splicing group yet` plus
+    `Open RNA-read Mapping Workspace...`
+  - saved reports drive score density, thresholded cDNA support, mapped cDNA
+    support, read-effects inspection, and inline dotplot/report-driven review
+- RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
+  workspace:
+  - seeded from the current splicing locus (`seq_id`, `seed_feature_id`, current
+    scope/default report)
+  - owns phase-1 FASTA input, report id, scope/origin controls, checkpoint/
+    resume, phase-2 alignment controls, workflow staging, and report exports
+  - `Show in Splicing Expert` returns to the viewer with the current mapping
+    report selected
+  - the workspace `Panel guide [?]` exposes the detailed two-phase workflow:
     - phase 1 `InterpretRnaReads` streams FASTA input, optionally normalizes
       cDNA-like reads with a T-rich 5' head, and scores reads against locally
       admitted transcript/junction seed templates
     - retained top hits are stored under `Report ID`
     - phase 2 `AlignRnaReadReport` reopens that saved report, aligns retained
       rows, and refreshes mapping/junction/isoform summaries
-    - the panel is ROI-first and local-model-first, not a whole-genome mapper
+    - the workflow remains ROI-first and local-model-first, not a whole-genome
+      mapper
   - phase-1 FASTA input run panel for `InterpretRnaReads`
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
   - gzip FASTA input also accepts concatenated gzip members
