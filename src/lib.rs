@@ -22,6 +22,8 @@ pub mod dna_display;
 pub mod dna_ladder;
 /// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
+/// Internal egui compatibility helpers used during GUI API migrations.
+pub(crate) mod egui_compat;
 /// Shared deterministic operation engine and state model.
 pub mod engine;
 /// Shared shell command parser/executor reused by GUI shell and CLI shell mode.

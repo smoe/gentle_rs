@@ -6630,7 +6630,7 @@ impl MainAreaDna {
                 .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
                 .exact_size(self.extended_top_panel_height_px);
         }
-        top_panel.show(ctx, |ui| {
+        crate::egui_compat::show_panel(ctx, top_panel, |ui| {
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
             self.render_top_panel(ui);
         });
@@ -6638,44 +6638,55 @@ impl MainAreaDna {
         if self.show_map {
             if self.show_sequence && !auto_hidden_sequence_panel {
                 let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
-                egui::Panel::bottom(bottom_panel_id)
-                    .frame(Frame::NONE)
-                    .resizable(true)
-                    .default_size(full_height / 2.0)
-                    .max_size(full_height / 2.0)
-                    .min_size(full_height / 4.0)
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_panel(
+                    ctx,
+                    egui::Panel::bottom(bottom_panel_id)
+                        .frame(Frame::NONE)
+                        .resizable(true)
+                        .default_size(full_height / 2.0)
+                        .max_size(full_height / 2.0)
+                        .min_size(full_height / 4.0),
+                    |ui| {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
-                    });
-                egui::CentralPanel::default()
-                    .frame(Frame::NONE)
-                    .show(ctx, |ui| {
+                    },
+                );
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(Frame::NONE),
+                    |ui| {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_middle(ctx, ui);
-                    });
+                    },
+                );
             } else if auto_hidden_sequence_panel {
-                egui::CentralPanel::default()
-                    .frame(Frame::NONE)
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(Frame::NONE),
+                    |ui| {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_middle(ctx, ui);
-                    });
+                    },
+                );
             } else {
-                egui::CentralPanel::default()
-                    .frame(Frame::NONE)
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(Frame::NONE),
+                    |ui| {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_middle(ctx, ui);
-                    });
+                    },
+                );
             }
         } else {
-            egui::CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(
+                ctx,
+                egui::CentralPanel::default().frame(Frame::NONE),
+                |ui| {
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_sequence(ui);
-                });
+                },
+            );
         }
         self.render_error_popup(ctx);
         self.render_anchor_prepared_choice_popup(ctx);
@@ -16154,7 +16165,7 @@ impl MainAreaDna {
                 return;
             }
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
                 egui::ScrollArea::both()
@@ -16235,7 +16246,7 @@ impl MainAreaDna {
                 return;
             }
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                 egui::ScrollArea::both()
@@ -17967,7 +17978,7 @@ impl MainAreaDna {
                 return;
             }
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                 egui::ScrollArea::both()
@@ -24079,7 +24090,7 @@ impl MainAreaDna {
                 return;
             }
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                 self.render_isoform_architecture_expert_view_ui(ui, &view);

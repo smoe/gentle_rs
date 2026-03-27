@@ -163,9 +163,10 @@ impl WindowDna {
             };
             let settings = current_window_backdrop_settings();
             let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
-            egui::Panel::top(nav_panel_id)
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| {
+            crate::egui_compat::show_panel(
+                ctx,
+                egui::Panel::top(nav_panel_id).frame(egui::Frame::NONE),
+                |ui| {
                     paint_window_backdrop(ui, kind, &settings);
                     ui.horizontal(|ui| {
                         if ui
@@ -199,11 +200,13 @@ impl WindowDna {
                             request_open_graphics_settings_from_native_menu();
                         }
                     });
-                });
+                },
+            );
             if self.pending_dna_load.is_some() {
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::NONE)
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
                         paint_window_backdrop(ui, kind, &settings);
                         with_window_content_inset(ui, |ui| {
                             ui.vertical_centered(|ui| {
@@ -215,17 +218,20 @@ impl WindowDna {
                                 );
                             });
                         });
-                    });
+                    },
+                );
                 ctx.request_repaint();
             } else if let Some(message) = self.deferred_load_message.as_deref() {
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::NONE)
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
                         paint_window_backdrop(ui, kind, &settings);
                         with_window_content_inset(ui, |ui| {
                             ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
                         });
-                    });
+                    },
+                );
             } else {
                 // MainAreaDna owns the root panel layout for sequence windows.
                 self.main_area.render(ctx);

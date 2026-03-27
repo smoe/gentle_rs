@@ -12865,7 +12865,7 @@ Error: `{err}`"
             }
 
             let mut close_requested = false;
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 close_requested = self.render_uniprot_dialog_contents(ui);
             });
 
@@ -13195,7 +13195,7 @@ Error: `{err}`"
             }
 
             let mut close_requested = false;
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -13999,7 +13999,7 @@ Error: `{err}`"
                 }
 
                 let mut close_requested = false;
-                egui::CentralPanel::default().show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     close_requested = self.render_reference_genome_retrieve_contents(ui);
                 });
 
@@ -14656,7 +14656,7 @@ Error: `{err}`"
             }
 
             let mut close_requested = false;
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 close_requested = self.render_reference_genome_blast_contents(ui);
             });
 
@@ -15480,7 +15480,7 @@ Error: `{err}`"
             }
 
             let mut close_requested = false;
-            egui::CentralPanel::default().show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 close_requested = self.render_genome_bed_track_contents(ui);
             });
 
@@ -18268,7 +18268,7 @@ Error: `{err}`"
                             .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
                     });
             } else {
-                egui::CentralPanel::default().show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
@@ -18387,7 +18387,7 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                egui::CentralPanel::default().show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -18762,7 +18762,7 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                egui::CentralPanel::default().show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     close_requested = self.render_planning_contents(ui);
                 });
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
@@ -19373,7 +19373,7 @@ Error: `{err}`"
                     }
                 } else {
                     let mut close_requested = false;
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                         close_requested = self.render_routine_assistant_contents(ui);
                     });
                     if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
@@ -19966,7 +19966,7 @@ Error: `{err}`"
                     }
                 } else {
                     let mut close_requested = false;
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                         close_requested = self.render_agent_assistant_contents(ui);
                     });
 
@@ -30097,11 +30097,13 @@ Error: `{err}`"
             }
 
             let render_started = Instant::now();
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(
+                ctx,
+                egui::CentralPanel::default().frame(egui::Frame::NONE),
+                |ui| {
                     self.render_configuration_contents(ui);
-                });
+                },
+            );
             self.note_slow_open_phase(
                 viewport_id,
                 "Configuration first-frame render",
@@ -30278,7 +30280,7 @@ Error: `{err}`"
                         .default_size(Vec2::new(760.0, 520.0))
                         .show(ctx, |ui| render_contents(ui));
                 } else {
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                         render_contents(ui);
                     });
                     if Self::viewport_close_requested_or_shortcut(ctx) {
@@ -31152,7 +31154,7 @@ Error: `{err}`"
                     .default_size(Vec2::new(820.0, 520.0))
                     .show(ctx, |ui| render_contents(ui));
             } else {
-                egui::CentralPanel::default().show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     render_contents(ui);
                 });
                 if Self::viewport_close_requested_or_shortcut(ctx) {
@@ -31168,7 +31170,7 @@ Error: `{err}`"
             let engine = self.engine.read().unwrap();
             (engine.undo_available(), engine.redo_available())
         };
-        egui::Panel::bottom("gentle_status_bar").show(ctx, |ui| {
+        crate::egui_compat::show_panel(ctx, egui::Panel::bottom("gentle_status_bar"), |ui| {
             ui.horizontal_wrapped(|ui| {
                 let hover_text = if self.hover_status_name.trim().is_empty() {
                     "Hover: -".to_string()
@@ -31246,11 +31248,13 @@ Error: `{err}`"
             }
 
             let render_started = Instant::now();
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(
+                ctx,
+                egui::CentralPanel::default().frame(egui::Frame::NONE),
+                |ui| {
                     self.render_help_contents(ui);
-                });
+                },
+            );
             self.note_slow_open_phase(
                 viewport_id,
                 "Help first-frame render",
@@ -32443,14 +32447,15 @@ impl GENtleApp {
             self.sync_open_windows_if_display_changed(ctx);
 
             // Show menu bar
-            egui::Panel::top("top").show(ctx, |ui| {
+            crate::egui_compat::show_panel(ctx, egui::Panel::top("top"), |ui| {
                 self.render_menu_bar(ui);
             });
 
             // Show main window
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| {
+            crate::egui_compat::show_central_panel(
+                ctx,
+                egui::CentralPanel::default().frame(egui::Frame::NONE),
+                |ui| {
                     window_backdrop::paint_window_backdrop(
                         ui,
                         WindowBackdropKind::Main,
@@ -32464,7 +32469,8 @@ impl GENtleApp {
                             ui.label("Status: saved");
                         }
                     });
-                });
+                },
+            );
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
             self.render_uniprot_dialog(ctx);
