@@ -1391,6 +1391,10 @@ Status:
     RNA-read query override, so dotplot parameters can be adjusted in place for
     the same read-vs-ROI comparison without respawning/exporting a separate
     artifact.
+  - RNA-read background runs now return completed reports to the GUI thread for
+    final commit instead of making the worker grab the engine write lock after
+    EOF, reducing end-of-run stalls where progress reached the final read count
+    but the report had not yet been committed into state.
   - Added ranked alignment TSV export for downstream tabular analysis:
     `ExportRnaReadAlignmentsTsv` /
     `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv

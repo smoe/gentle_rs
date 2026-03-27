@@ -1161,7 +1161,8 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::{
-        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, ViewSvgExportProfile,
+        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTaskOutcome,
+        ViewSvgExportProfile,
     };
     use crate::{
         dna_display::Selection,
@@ -1647,6 +1648,33 @@ mod tests {
             MainAreaDna::async_task_repaint_delay(512, true),
             Duration::from_millis(20)
         );
+    }
+
+    #[test]
+    fn commit_completed_rna_read_task_outcome_persists_report_on_ui_thread() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine.clone()));
+        let report = RnaReadInterpretationReport {
+            report_id: "rna_ui_commit".to_string(),
+            seq_id: "seq1".to_string(),
+            input_path: "reads.fa".to_string(),
+            read_count_total: 1,
+            ..RnaReadInterpretationReport::default()
+        };
+        let result = area
+            .commit_completed_rna_read_task_outcome(RnaReadTaskOutcome::Interpret(report.clone()))
+            .expect("commit outcome");
+        assert!(result.messages.iter().any(|msg| msg.contains("rna_ui_commit")));
+        let stored = engine
+            .read()
+            .expect("engine")
+            .get_rna_read_report("rna_ui_commit")
+            .expect("stored report");
+        assert_eq!(stored.report_id, report.report_id);
+        assert_eq!(stored.seq_id, "seq1");
     }
 
     #[test]
@@ -5114,7 +5142,7 @@ struct TfbsTask {
 #[derive(Clone, Debug)]
 enum RnaReadTaskMessage {
     Progress(RnaReadInterpretProgress),
-    Done(Result<OpResult, EngineError>),
+    Done(Result<RnaReadTaskOutcome, EngineError>),
 }
 
 #[derive(Clone, Debug)]
@@ -5127,6 +5155,17 @@ struct RnaReadTask {
     operation_label: String,
     cancel_requested: Arc<AtomicBool>,
     receiver: Arc<Mutex<Receiver<RnaReadTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
+enum RnaReadTaskOutcome {
+    Interpret(RnaReadInterpretationReport),
+    Align {
+        report: RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        align_config_override: Option<RnaReadAlignConfig>,
+        selected_record_indices: Vec<usize>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -21005,56 +21044,51 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let report = match engine.read() {
+                    let outcome = match engine.read() {
                         Ok(guard) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                            guard.compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
-                                &seq_id,
-                                seed_feature_id,
-                                profile,
-                                &input_path,
-                                input_format,
-                                scope,
-                                origin_mode,
-                                &target_gene_ids,
-                                roi_seed_capture_enabled,
-                                &seed_filter,
-                                &align_config,
-                                report_id.as_deref(),
-                                report_mode,
-                                checkpoint_path.as_deref(),
-                                checkpoint_every_reads,
-                                resume_from_checkpoint,
-                                &mut move |progress| {
-                                    if cancel_for_progress.load(AtomicOrdering::Relaxed) {
-                                        return false;
-                                    }
-                                    let OperationProgress::RnaReadInterpret(p) = progress else {
-                                        return true;
-                                    };
-                                    let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
-                                    !cancel_for_progress.load(AtomicOrdering::Relaxed)
-                                },
-                                &mut should_continue,
-                            )
+                            guard
+                                .compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
+                                    &seq_id,
+                                    seed_feature_id,
+                                    profile,
+                                    &input_path,
+                                    input_format,
+                                    scope,
+                                    origin_mode,
+                                    &target_gene_ids,
+                                    roi_seed_capture_enabled,
+                                    &seed_filter,
+                                    &align_config,
+                                    report_id.as_deref(),
+                                    report_mode,
+                                    checkpoint_path.as_deref(),
+                                    checkpoint_every_reads,
+                                    resume_from_checkpoint,
+                                    &mut move |progress| {
+                                        if cancel_for_progress
+                                            .load(AtomicOrdering::Relaxed)
+                                        {
+                                            return false;
+                                        }
+                                        let OperationProgress::RnaReadInterpret(p) = progress
+                                        else {
+                                            return true;
+                                        };
+                                        let _ =
+                                            tx_progress.send(RnaReadTaskMessage::Progress(p));
+                                        !cancel_for_progress.load(AtomicOrdering::Relaxed)
+                                    },
+                                    &mut should_continue,
+                                )
+                                .map(RnaReadTaskOutcome::Interpret)
                         }
                         Err(_) => Err(EngineError {
                             code: ErrorCode::Internal,
                             message: "Engine lock poisoned while preparing RNA-read interpretation"
                                 .to_string(),
                         }),
-                    };
-                    let outcome = match report {
-                        Ok(report) => match engine.write() {
-                            Ok(mut guard) => guard.commit_rna_read_report(report),
-                            Err(_) => Err(EngineError {
-                                code: ErrorCode::Internal,
-                                message: "Engine lock poisoned while committing RNA-read report"
-                                    .to_string(),
-                            }),
-                        },
-                        Err(err) => Err(err),
                     };
                     let _ = tx.send(RnaReadTaskMessage::Done(outcome));
                 });
@@ -21069,50 +21103,44 @@ impl MainAreaDna {
                     let tx_progress = tx.clone();
                     let cancel_for_progress = Arc::clone(&cancel_requested);
                     let cancel_for_compute = Arc::clone(&cancel_requested);
-                    let report = match engine.read() {
+                    let outcome = match engine.read() {
                         Ok(guard) => {
                             let mut should_continue =
                                 move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                            guard.align_rna_read_report_with_progress_and_cancel(
-                                &report_id,
-                                selection,
-                                align_config_override.clone(),
-                                &selected_record_indices,
-                                &mut move |progress| {
-                                    if cancel_for_progress.load(AtomicOrdering::Relaxed) {
-                                        return false;
-                                    }
-                                    let OperationProgress::RnaReadInterpret(p) = progress else {
-                                        return true;
-                                    };
-                                    let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
-                                    !cancel_for_progress.load(AtomicOrdering::Relaxed)
-                                },
-                                &mut should_continue,
-                            )
+                            guard
+                                .align_rna_read_report_with_progress_and_cancel(
+                                    &report_id,
+                                    selection,
+                                    align_config_override.clone(),
+                                    &selected_record_indices,
+                                    &mut move |progress| {
+                                        if cancel_for_progress
+                                            .load(AtomicOrdering::Relaxed)
+                                        {
+                                            return false;
+                                        }
+                                        let OperationProgress::RnaReadInterpret(p) = progress
+                                        else {
+                                            return true;
+                                        };
+                                        let _ =
+                                            tx_progress.send(RnaReadTaskMessage::Progress(p));
+                                        !cancel_for_progress.load(AtomicOrdering::Relaxed)
+                                    },
+                                    &mut should_continue,
+                                )
+                                .map(|report| RnaReadTaskOutcome::Align {
+                                    report,
+                                    selection,
+                                    align_config_override,
+                                    selected_record_indices,
+                                })
                         }
                         Err(_) => Err(EngineError {
                             code: ErrorCode::Internal,
                             message: "Engine lock poisoned while preparing RNA-read alignment"
                                 .to_string(),
                         }),
-                    };
-                    let outcome = match report {
-                        Ok(report) => match engine.write() {
-                            Ok(mut guard) => guard.commit_aligned_rna_read_report(
-                                report,
-                                selection,
-                                align_config_override,
-                                selected_record_indices,
-                            ),
-                            Err(_) => Err(EngineError {
-                                code: ErrorCode::Internal,
-                                message:
-                                    "Engine lock poisoned while committing aligned RNA-read report"
-                                        .to_string(),
-                            }),
-                        },
-                        Err(err) => Err(err),
                     };
                     let _ = tx.send(RnaReadTaskMessage::Done(outcome));
                 });
@@ -21137,11 +21165,41 @@ impl MainAreaDna {
         }
     }
 
+    fn commit_completed_rna_read_task_outcome(
+        &mut self,
+        outcome: RnaReadTaskOutcome,
+    ) -> Result<OpResult, EngineError> {
+        let Some(engine) = self.engine.as_ref() else {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "No engine attached while finalizing RNA-read task".to_string(),
+            });
+        };
+        let mut guard = engine.write().map_err(|_| EngineError {
+            code: ErrorCode::Internal,
+            message: "Engine lock poisoned while finalizing RNA-read task".to_string(),
+        })?;
+        match outcome {
+            RnaReadTaskOutcome::Interpret(report) => guard.commit_rna_read_report(report),
+            RnaReadTaskOutcome::Align {
+                report,
+                selection,
+                align_config_override,
+                selected_record_indices,
+            } => guard.commit_aligned_rna_read_report(
+                report,
+                selection,
+                align_config_override,
+                selected_record_indices,
+            ),
+        }
+    }
+
     fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
         if self.rna_read_task.is_none() {
             return;
         }
-        let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut done: Option<Result<RnaReadTaskOutcome, EngineError>> = None;
         let mut processed_progress_messages = 0usize;
         let mut hit_progress_cap = false;
         let mut task_still_running = false;
@@ -21321,7 +21379,10 @@ impl MainAreaDna {
                 .unwrap_or_else(|| (Instant::now(), false, "RNA-read task".to_string()));
             self.rna_read_task = None;
             match done {
-                Ok(result) => self.handle_operation_success(result, started),
+                Ok(outcome) => match self.commit_completed_rna_read_task_outcome(outcome) {
+                    Ok(result) => self.handle_operation_success(result, started),
+                    Err(err) => self.handle_operation_error(err, started),
+                },
                 Err(err) => {
                     let cancelled =
                         cancel_requested && err.message.to_ascii_lowercase().contains("cancel");
