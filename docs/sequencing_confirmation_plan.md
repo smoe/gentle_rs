@@ -372,12 +372,12 @@ these defaults unless later tests force a change:
 
 ### Suggested Phase-1 Synthetic Fixtures
 
-- `test_files/sequencing/README.md`
-- `test_files/sequencing/expected_construct_simple.gb`
-- `test_files/sequencing/read_forward_perfect.fa`
-- `test_files/sequencing/read_reverse_perfect.fa`
-- `test_files/sequencing/read_truncated.fa`
-- `test_files/sequencing/read_junction_indel.fa`
+- `test_files/fixtures/sequencing_confirmation/README.md`
+- `test_files/fixtures/sequencing_confirmation/expected_construct_simple.gb`
+- `test_files/fixtures/sequencing_confirmation/read_forward_perfect.fa`
+- `test_files/fixtures/sequencing_confirmation/read_reverse_perfect.fa`
+- `test_files/fixtures/sequencing_confirmation/read_truncated.fa`
+- `test_files/fixtures/sequencing_confirmation/read_junction_indel.fa`
 
 ## Phase 2: GUI Confirmation Specialist
 
@@ -506,7 +506,16 @@ Committed fixture requirements from `docs/architecture.md` apply.
 
 Add a dedicated fixture manifest near the new test data, for example:
 
-- `test_files/sequencing/README.md`
+- `test_files/fixtures/sequencing_confirmation/README.md`
+
+Current shortlist/provenance note:
+
+- `test_files/fixtures/sequencing_confirmation/README.md`
+  - deterministic phase-1 baseline: public `U13852` / `pGEX-3X` derived
+    synthetic reads
+  - real-read exploratory benchmark: `PRJNA1066256` / `SRR27605537`
+  - raw-trace parser seed fixtures: Biopython `Tests/Abi` pinned to a specific
+    upstream commit
 
 Fixture classes to prepare:
 

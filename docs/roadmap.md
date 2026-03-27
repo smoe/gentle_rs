@@ -2056,6 +2056,8 @@ Repeated multi-tool gaps to prioritize:
      - v1 target coverage supports full-span default confirmation plus explicit
        interval/junction targets
      - persisted report inspection/export exists before GUI specialist work
+     - public benchmark shortlist/provenance note now lives at
+       `test_files/fixtures/sequencing_confirmation/README.md`
    - legacy `gentle-m` intake priority: do this before resurrecting broader
      legacy cloning conveniences because it most directly improves user trust
    - stage the work as:
