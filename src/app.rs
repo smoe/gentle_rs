@@ -1399,7 +1399,7 @@ struct PendingPreparedGenomeRemovalRequest {
     genome_id: String,
     scope: GenomeDialogScope,
     catalog_path: String,
-    cache_dir: String,
+    cache_dir: Option<String>,
     install_dir: String,
 }
 
@@ -9626,9 +9626,7 @@ Error: `{err}`"
             genome_id,
             scope,
             catalog_path: self.genome_catalog_path_resolved(),
-            cache_dir: self
-                .genome_cache_dir_opt()
-                .unwrap_or_else(|| scope.default_cache_dir().to_string()),
+            cache_dir: self.genome_cache_dir_opt(),
             install_dir,
         });
     }
@@ -9640,7 +9638,7 @@ Error: `{err}`"
         match GentleEngine::remove_prepared_reference_genome(
             Some(&request.catalog_path),
             &request.genome_id,
-            Some(&request.cache_dir),
+            request.cache_dir.as_deref(),
         ) {
             Ok(report) => {
                 self.genome_prepare_status = if report.removed {
@@ -13454,7 +13452,12 @@ Error: `{err}`"
                 ui.small("This deletes the prepared install only. The catalog entry stays available.");
                 ui.separator();
                 ui.label(format!("catalog: {}", request.catalog_path));
-                ui.label(format!("cache_dir: {}", request.cache_dir));
+                let cache_display = request
+                    .cache_dir
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("(catalog/default)");
+                ui.label(format!("cache_dir: {cache_display}"));
                 ui.label(format!("install_dir: {}", request.install_dir));
                 ui.horizontal(|ui| {
                     if ui
@@ -35097,6 +35100,30 @@ mod tests {
             request.dialog_host,
             PreparedGenomeReinstallDialogHost::PrepareDialog
         );
+    }
+
+    #[test]
+    fn queue_prepared_genome_removal_uses_none_cache_override_when_input_is_empty() {
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_prepare_dialog();
+        app.genome_catalog_path = "custom/helper_catalog.json".to_string();
+        app.genome_cache_dir = "   ".to_string();
+
+        app.queue_prepared_genome_removal(
+            "Yeast Helper".to_string(),
+            GenomeDialogScope::Helper,
+            "/tmp/helper_install".to_string(),
+        );
+
+        let request = app
+            .pending_prepared_genome_removal
+            .as_ref()
+            .expect("removal request");
+        assert_eq!(request.genome_id, "Yeast Helper");
+        assert_eq!(request.scope, GenomeDialogScope::Helper);
+        assert_eq!(request.catalog_path, "custom/helper_catalog.json");
+        assert!(request.cache_dir.is_none());
+        assert_eq!(request.install_dir, "/tmp/helper_install");
     }
 
     #[test]
