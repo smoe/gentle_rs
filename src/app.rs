@@ -125,7 +125,7 @@ const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
-const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 2.0;
+const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -631,6 +631,7 @@ pub struct GENtleApp {
     show_help_dialog: bool,
     help_doc: HelpDoc,
     help_markdown_cache: CommonMarkCache,
+    help_rendered_markdown_cache: HashMap<String, RenderedHelpMarkdownEntry>,
     help_gui_markdown: String,
     help_cli_markdown: String,
     help_agent_interface_markdown: String,
@@ -1017,6 +1018,12 @@ impl ShellHelpInterface {
 struct HelpSearchMatch {
     line_number: usize,
     snippet: String,
+}
+
+#[derive(Clone, Debug)]
+struct RenderedHelpMarkdownEntry {
+    source_hash: u64,
+    rendered: Arc<str>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2003,6 +2010,7 @@ impl Default for GENtleApp {
             show_help_dialog: false,
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
+            help_rendered_markdown_cache: HashMap::new(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
             help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
@@ -2790,6 +2798,62 @@ impl GENtleApp {
         Self::rewrite_markdown_inline_code_soft_breaks(markdown)
     }
 
+    fn help_markdown_hash(markdown: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        markdown.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn help_render_cache_key(&self, doc: HelpDoc) -> String {
+        match doc {
+            HelpDoc::Gui => "gui".to_string(),
+            HelpDoc::Cli => "cli".to_string(),
+            HelpDoc::AgentInterface => "agent_interface".to_string(),
+            HelpDoc::ReviewerPreview => "reviewer_preview".to_string(),
+            HelpDoc::Shell => format!("shell:{}", self.help_shell_interface.label()),
+            HelpDoc::Tutorial => format!(
+                "tutorial:{}:{}",
+                self.help_tutorial_selected, self.help_tutorial_title
+            ),
+        }
+    }
+
+    fn help_source_markdown(&self, doc: HelpDoc) -> &str {
+        match doc {
+            HelpDoc::Gui => self.help_gui_markdown.as_str(),
+            HelpDoc::Cli => self.help_cli_markdown.as_str(),
+            HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
+            HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
+            HelpDoc::Shell => self.help_shell_markdown.as_str(),
+            HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
+        }
+    }
+
+    fn rendered_help_markdown_for(&mut self, doc: HelpDoc) -> Arc<str> {
+        let cache_key = self.help_render_cache_key(doc);
+        let source_hash = Self::help_markdown_hash(self.help_source_markdown(doc));
+        let needs_refresh = self
+            .help_rendered_markdown_cache
+            .get(&cache_key)
+            .map(|entry| entry.source_hash != source_hash)
+            .unwrap_or(true);
+        if needs_refresh {
+            let rendered =
+                Arc::<str>::from(Self::help_display_markdown(self.help_source_markdown(doc)));
+            self.help_rendered_markdown_cache.insert(
+                cache_key.clone(),
+                RenderedHelpMarkdownEntry {
+                    source_hash,
+                    rendered,
+                },
+            );
+        }
+        self.help_rendered_markdown_cache
+            .get(&cache_key)
+            .map(|entry| entry.rendered.clone())
+            .unwrap_or_else(|| Arc::<str>::from(self.help_source_markdown(doc)))
+    }
+
     fn rewrite_markdown_inline_code_soft_breaks(markdown: &str) -> String {
         let mut out = String::with_capacity(markdown.len() + markdown.len() / 16);
         let mut idx = 0usize;
@@ -3376,6 +3440,7 @@ Error: `{err}`"
             Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
         self.help_shell_markdown =
             Self::generate_shell_help_markdown_for(self.help_shell_interface);
+        self.help_rendered_markdown_cache.clear();
         self.help_tutorial_entries = Self::discover_help_tutorial_entries();
         self.set_help_tutorial_selected(self.help_tutorial_selected);
     }
@@ -22325,6 +22390,7 @@ Error: `{err}`"
 
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        ctx.request_repaint();
         self.set_active_window_viewport(viewport_id);
     }
 
@@ -31455,15 +31521,12 @@ Error: `{err}`"
                     }
                     self.help_last_content_width = content_width;
                     let max_image_width = Self::help_markdown_max_image_width(content_width);
-                    let markdown = match self.help_doc {
-                        HelpDoc::Gui => self.help_gui_markdown.as_str(),
-                        HelpDoc::Cli => self.help_cli_markdown.as_str(),
-                        HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
-                        HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
-                        HelpDoc::Shell => self.help_shell_markdown.as_str(),
-                        HelpDoc::Tutorial => self.help_tutorial_markdown.as_str(),
-                    };
-                    let rendered_markdown = Self::help_display_markdown(markdown);
+                    let active_doc = self.help_doc;
+                    let raw_markdown = self
+                        .help_selectable_text_mode
+                        .then(|| self.help_source_markdown(active_doc).to_string());
+                    let rendered_markdown = (!self.help_selectable_text_mode)
+                        .then(|| self.rendered_help_markdown_for(active_doc));
                     ui.set_width(content_width);
                     ui.set_max_width(content_width);
                     ui.allocate_ui_with_layout(
@@ -31471,7 +31534,7 @@ Error: `{err}`"
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             if self.help_selectable_text_mode {
-                                let mut copyable_text = markdown;
+                                let mut copyable_text = raw_markdown.clone().unwrap_or_default();
                                 ui.add_sized(
                                     [content_width, ui.available_height().max(320.0)],
                                     egui::TextEdit::multiline(&mut copyable_text)
@@ -31482,7 +31545,11 @@ Error: `{err}`"
                             } else {
                                 CommonMarkViewer::new()
                                     .max_image_width(Some(max_image_width))
-                                    .show(ui, &mut self.help_markdown_cache, &rendered_markdown);
+                                    .show(
+                                        ui,
+                                        &mut self.help_markdown_cache,
+                                        rendered_markdown.as_deref().unwrap_or_default(),
+                                    );
                             }
                         },
                     );
@@ -35290,6 +35357,28 @@ mod tests {
     }
 
     #[test]
+    fn rendered_help_markdown_cache_reuses_entry_until_source_changes() {
+        let mut app = GENtleApp::default();
+        app.help_gui_markdown = "Use `Cmd+K`.".to_string();
+
+        let first = app.rendered_help_markdown_for(HelpDoc::Gui);
+        let second = app.rendered_help_markdown_for(HelpDoc::Gui);
+        assert_eq!(
+            first.as_ref(),
+            GENtleApp::help_display_markdown(app.help_gui_markdown.as_str())
+        );
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+
+        app.help_gui_markdown = "Use `Cmd+Shift+K`.".to_string();
+        let third = app.rendered_help_markdown_for(HelpDoc::Gui);
+        assert_eq!(
+            third.as_ref(),
+            GENtleApp::help_display_markdown(app.help_gui_markdown.as_str())
+        );
+        assert!(!std::sync::Arc::ptr_eq(&first, &third));
+    }
+
+    #[test]
     fn open_help_doc_when_same_tab_open_only_queues_focus() {
         let mut app = GENtleApp::default();
         app.show_help_dialog = true;
@@ -35318,6 +35407,12 @@ mod tests {
         ));
         assert!(!GENtleApp::help_content_width_requires_relayout(
             620.0, 621.0
+        ));
+        assert!(!GENtleApp::help_content_width_requires_relayout(
+            620.0, 626.0
+        ));
+        assert!(GENtleApp::help_content_width_requires_relayout(
+            620.0, 629.0
         ));
         assert!(!GENtleApp::help_content_width_requires_relayout(
             620.0,
