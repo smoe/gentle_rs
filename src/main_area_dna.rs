@@ -6630,7 +6630,7 @@ impl MainAreaDna {
                 .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
                 .exact_size(self.extended_top_panel_height_px);
         }
-        crate::egui_compat::show_panel(ctx, top_panel, |ui| {
+        crate::egui_compat::show_top_panel(ctx, top_panel_id, top_panel, |ui| {
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
             self.render_top_panel(ui);
         });
@@ -6638,8 +6638,9 @@ impl MainAreaDna {
         if self.show_map {
             if self.show_sequence && !auto_hidden_sequence_panel {
                 let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
-                crate::egui_compat::show_panel(
+                crate::egui_compat::show_bottom_panel(
                     ctx,
+                    bottom_panel_id,
                     egui::Panel::bottom(bottom_panel_id)
                         .frame(Frame::NONE)
                         .resizable(true)

@@ -31170,7 +31170,11 @@ Error: `{err}`"
             let engine = self.engine.read().unwrap();
             (engine.undo_available(), engine.redo_available())
         };
-        crate::egui_compat::show_panel(ctx, egui::Panel::bottom("gentle_status_bar"), |ui| {
+        crate::egui_compat::show_bottom_panel(
+            ctx,
+            egui::Id::new("gentle_status_bar"),
+            egui::Panel::bottom("gentle_status_bar"),
+            |ui| {
             ui.horizontal_wrapped(|ui| {
                 let hover_text = if self.hover_status_name.trim().is_empty() {
                     "Hover: -".to_string()
@@ -31185,7 +31189,8 @@ Error: `{err}`"
                     ui.small(self.app_status.clone());
                 }
             });
-        });
+            },
+        );
     }
 
     fn help_content_width_requires_relayout(previous_width: f32, current_width: f32) -> bool {
@@ -32447,9 +32452,14 @@ impl GENtleApp {
             self.sync_open_windows_if_display_changed(ctx);
 
             // Show menu bar
-            crate::egui_compat::show_panel(ctx, egui::Panel::top("top"), |ui| {
+            crate::egui_compat::show_top_panel(
+                ctx,
+                egui::Id::new("top"),
+                egui::Panel::top("top"),
+                |ui| {
                 self.render_menu_bar(ui);
-            });
+                },
+            );
 
             // Show main window
             crate::egui_compat::show_central_panel(
