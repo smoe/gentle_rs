@@ -25,6 +25,8 @@ checks.
   - `ensembl_human_tp53_all.fasta`
   - `ensembl_human_tp63_all.fasta`
   - `ensembl_mouse_trp73_all.fasta`
+- `sequencing_confirmation/`
+  - `README.md`
 
 ## Provenance and usage
 
@@ -112,6 +114,20 @@ checks.
   - keep CI/stable tests on compact mapping fixtures,
   - include TP53 as a close-family negative benchmark (as requested for better
     practical signal than TP73-only stress sets).
+
+### `sequencing_confirmation/README.md`
+
+- Origin: in-repo provenance shortlist for future sequencing-confirmation
+  fixtures and public benchmarks.
+- Primary usage:
+  - plan deterministic phase-1 confirmation fixtures before raw trace intake
+  - pin the first real public read benchmark and ABI parser fixture sources
+  - keep future sequencing fixtures aligned with the architecture provenance
+    rule before payloads are committed
+- Current contents:
+  - `U13852` / `pGEX-3X` synthetic-fixture plan
+  - `PRJNA1066256` / `SRR27605537` real-read benchmark candidate
+  - Biopython ABI fixture shortlist pinned to a repository commit
 
 ## Large exploratory XML samples
 
