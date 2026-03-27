@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt/gentle
 
 COPY Cargo.toml Cargo.lock build.rs ./
+COPY vendor ./vendor
 COPY src ./src
 
 ARG GENTLE_CARGO_PROFILE=release-fast
