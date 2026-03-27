@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG DEBIAN_SUITE=testing
+ARG DEBIAN_SUITE=sid
 
 # Builder stage:
 # - uses Debian rust-all as requested
@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     cmake \
     git \
-    libasound2-dev \
     libegl1-mesa-dev \
     libfontconfig1-dev \
     libfreetype6-dev \
@@ -110,7 +109,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dbus-x11 \
     fonts-dejavu-core \
     fonts-noto-core \
-    libasound2 \
     libegl1 \
     libfontconfig1 \
     libfreetype6 \

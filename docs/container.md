@@ -21,7 +21,7 @@ The container goal is pragmatic:
 
 ## Design Summary
 
-- Base image: Debian `testing`
+- Base image: Debian `sid`
 - Build toolchain: Debian `rust-all`
 - Runtime GUI delivery: `Xvfb` + `openbox` + `x11vnc` + `noVNC`
 - Default UX: open GENtle in a browser at `http://localhost:6080`
@@ -91,7 +91,7 @@ docker build -t gentle:local .
 Optional build arguments:
 
 - `DEBIAN_SUITE`
-  - defaults to `testing`
+  - defaults to `sid`
 - `GENTLE_CARGO_PROFILE`
   - defaults to `release-fast`
   - set to `release` if you prefer fully optimized binaries over faster image
@@ -101,19 +101,22 @@ Example:
 
 ```sh
 docker build \
-  --build-arg DEBIAN_SUITE=testing \
+  --build-arg DEBIAN_SUITE=sid \
   --build-arg GENTLE_CARGO_PROFILE=release \
   -t gentle:release .
 ```
 
-Why `testing` by default:
+Why `sid` by default:
 
 - the current GUI stack requires a newer Rust than Debian stable currently
   provides
-- Debian package tracker currently lists `rustc`/`rust-all` at `1.92` in
-  testing and unstable, while stable is `1.85`
-- that makes Debian testing the correct Debian-first default for the container
-  until stable catches up enough for GENtle's dependency graph
+- this project intentionally follows Debian archive freshness closely and uses
+  Debian-packaged `rust-all` instead of `rustup` in the container
+- `sid` is therefore the most direct Debian-first base for GENtle's current
+  dependency graph until stable catches up enough again
+- GENtle does not need audio output, so the image intentionally omits ALSA
+  runtime packages instead of depending on the current `libasound2` virtual
+  package split
 
 ## Run the GUI in a Browser
 

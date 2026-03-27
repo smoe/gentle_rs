@@ -139,8 +139,8 @@ order. Durable architecture constraints and decisions remain in
   - no biology logic duplication (subprocess bridge only)
 - Debian-first container baseline is now available:
   - authoritative image definition in repository `Dockerfile`
-  - default base suite is Debian `testing` (current `rust-all` toolchain in
-    stable is too old for the current egui/eframe dependency set)
+  - default base suite is Debian `sid` (project policy now prefers Debian
+    unstable for container freshness and for current `rust-all` availability)
   - GUI served through `Xvfb` + `openbox` + `x11vnc` + `noVNC`
   - CLI/MCP/JS/Lua/Python wrapper available from the same image
   - helper-tool coverage in container:
@@ -148,6 +148,7 @@ order. Durable architecture constraints and decisions remain in
       `novnc`, `x11vnc`, `xvfb`
     - explicit container compatibility wrapper for `bigWigToBedGraph`
     - explicit non-Debian exception for `rnapkin`
+    - no ALSA runtime dependency (GENtle does not need sound output)
   - user documentation lives in `docs/container.md`
   - GHCR workflow now lives in `.github/workflows/container.yml`
   - publishing policy is release-oriented:

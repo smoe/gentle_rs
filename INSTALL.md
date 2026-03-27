@@ -151,6 +151,10 @@ From the repository root:
 docker build -t gentle:local .
 ```
 
+The in-tree Dockerfile currently defaults to Debian `sid` so it can use the
+Debian-packaged `rust-all` toolchain that matches GENtle's current dependency
+set.
+
 The image includes:
 
 - the GUI
