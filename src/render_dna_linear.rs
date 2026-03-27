@@ -96,6 +96,7 @@ struct FeaturePosition {
     kind_upper: String,
     color: Color32,
     is_regulatory: bool,
+    is_mcs: bool,
     is_pointy: bool,
     is_reverse: bool,
     rect: Rect,
@@ -498,8 +499,20 @@ impl RenderDnaLinear {
         }
     }
 
-    fn should_render_feature_label(detail: LinearDetailLevel, kind_upper: &str) -> bool {
-        detail.show_feature_labels || kind_upper.eq_ignore_ascii_case("GENE")
+    fn feature_external_label_fill(fill: Color32, alpha: u8, emphasize: bool) -> Color32 {
+        if !emphasize {
+            return Color32::from_rgba_unmultiplied(252, 252, 252, alpha);
+        }
+        let mix = |component: u8| -> u8 { (((component as u16) * 18 + 255 * 82) / 100) as u8 };
+        Color32::from_rgba_unmultiplied(mix(fill.r()), mix(fill.g()), mix(fill.b()), alpha)
+    }
+
+    fn should_render_feature_label(
+        detail: LinearDetailLevel,
+        kind_upper: &str,
+        is_mcs: bool,
+    ) -> bool {
+        detail.show_feature_labels || kind_upper.eq_ignore_ascii_case("GENE") || is_mcs
     }
 
     fn draw_feature(
@@ -516,8 +529,9 @@ impl RenderDnaLinear {
         if RenderDna::is_source_feature(feature) {
             return false;
         }
+        let is_mcs = RenderDna::is_mcs_feature(feature);
         let feature_kind = feature.kind.to_string().to_ascii_uppercase();
-        if hidden_feature_kinds.contains(&feature_kind) {
+        if hidden_feature_kinds.contains(&feature_kind) && !is_mcs {
             return false;
         }
         if !RenderDna::feature_passes_kind_filter(
@@ -689,6 +703,7 @@ impl RenderDnaLinear {
             is_pointy: bool,
             is_reverse: bool,
             is_regulatory: bool,
+            is_mcs: bool,
         }
 
         #[derive(Clone)]
@@ -798,6 +813,7 @@ impl RenderDnaLinear {
             }
 
             let label = RenderDna::feature_name(feature);
+            let is_mcs = RenderDna::is_mcs_feature(feature);
             let mut exon_ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
             if exon_ranges.is_empty() {
@@ -883,7 +899,8 @@ impl RenderDnaLinear {
                 continue;
             }
             let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_high_priority_feature = matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+            let is_high_priority_feature =
+                is_mcs || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
             if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }
@@ -902,6 +919,7 @@ impl RenderDnaLinear {
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: feature_is_reverse(feature),
                 is_regulatory: RenderDna::is_regulatory_feature(feature),
+                is_mcs,
             });
         }
 
@@ -1198,6 +1216,7 @@ impl RenderDnaLinear {
                 kind_upper: seed.kind_upper,
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
+                is_mcs: seed.is_mcs,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
                 rect,
@@ -2095,6 +2114,12 @@ impl RenderDnaLinear {
             for exon_rect in &feature.exon_rects {
                 painter.rect_filled(*exon_rect, 1.5, feature.color);
             }
+            if feature.is_mcs && !selected && !hovered {
+                let stroke = Stroke::new(1.1, feature.color.gamma_multiply(0.75));
+                for exon_rect in &feature.exon_rects {
+                    painter.rect_stroke(exon_rect.expand(0.5), 2.0, stroke, StrokeKind::Inside);
+                }
+            }
 
             if feature.is_pointy {
                 let tip_target = if feature.is_reverse {
@@ -2143,7 +2168,7 @@ impl RenderDnaLinear {
             }
 
             let is_gene_feature = feature.kind_upper.as_str() == "GENE";
-            if !Self::should_render_feature_label(detail, &feature.kind_upper) {
+            if !Self::should_render_feature_label(detail, &feature.kind_upper, feature.is_mcs) {
                 continue;
             }
             if feature.label.trim().is_empty() {
@@ -2184,7 +2209,8 @@ impl RenderDnaLinear {
                 || hovered
                 || self
                     .external_labeled_feature_numbers
-                    .contains(&feature.feature_number);
+                    .contains(&feature.feature_number)
+                || (feature.is_mcs && !inline_possible);
             // Keep gene names visible whenever there is room inside the feature box,
             // even when generic feature labels are suppressed by zoom/detail heuristics.
             if inline_possible && (!force_external || is_gene_feature) {
@@ -2268,12 +2294,15 @@ impl RenderDnaLinear {
             painter.rect_filled(
                 label_bg,
                 2.0,
-                Color32::from_rgba_unmultiplied(252, 252, 252, external_bg_alpha),
+                Self::feature_external_label_fill(feature.color, external_bg_alpha, feature.is_mcs),
             );
             painter.rect_stroke(
                 label_bg,
                 2.0,
-                Stroke::new(1.0, feature.color.gamma_multiply(0.75)),
+                Stroke::new(
+                    if feature.is_mcs { 1.2 } else { 1.0 },
+                    feature.color.gamma_multiply(0.75),
+                ),
                 StrokeKind::Inside,
             );
             painter.text(
@@ -2767,11 +2796,13 @@ mod tests {
         };
         assert!(RenderDnaLinear::should_render_feature_label(
             detail_labels_hidden,
-            "GENE"
+            "GENE",
+            false,
         ));
         assert!(!RenderDnaLinear::should_render_feature_label(
             detail_labels_hidden,
-            "CDS"
+            "CDS",
+            false,
         ));
         let detail_labels_shown = LinearDetailLevel {
             show_feature_labels: true,
@@ -2779,8 +2810,53 @@ mod tests {
         };
         assert!(RenderDnaLinear::should_render_feature_label(
             detail_labels_shown,
-            "CDS"
+            "CDS",
+            false,
         ));
+    }
+
+    #[test]
+    fn mcs_labels_bypass_generic_feature_label_detail_gate() {
+        let detail_labels_hidden = LinearDetailLevel {
+            show_feature_labels: false,
+            show_restriction_sites: true,
+            show_restriction_labels: true,
+            show_methylation_sites: true,
+            show_open_reading_frames: true,
+        };
+        assert!(RenderDnaLinear::should_render_feature_label(
+            detail_labels_hidden,
+            "MISC_FEATURE",
+            true,
+        ));
+    }
+
+    #[test]
+    fn narrow_mcs_misc_feature_survives_overview_pruning() {
+        let mcs_feature = Feature {
+            kind: FeatureKind::from("misc_feature"),
+            location: Location::simple_range(1_000, 1_020),
+            qualifiers: vec![
+                ("label".into(), Some("MCS (pUC19)".to_string())),
+                ("mcs_expected_sites".into(), Some("EcoRI,BamHI".to_string())),
+            ],
+        };
+        let generic_misc_feature = Feature {
+            kind: FeatureKind::from("misc_feature"),
+            location: Location::simple_range(2_000, 2_020),
+            qualifiers: vec![("label".into(), Some("generic misc feature".to_string()))],
+        };
+        let mut renderer =
+            test_renderer_with_features(vec![mcs_feature, generic_misc_feature], 50_000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 50_000,
+            span: 50_000,
+        });
+        assert_eq!(renderer.features.len(), 1);
+        let feature = &renderer.features[0];
+        assert!(feature.is_mcs);
+        assert_eq!(feature.label, "MCS (pUC19)");
     }
 
     #[test]

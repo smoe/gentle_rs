@@ -203,10 +203,11 @@ order. Durable architecture constraints and decisions remain in
 - Engine Ops digest panel now includes MCS/REBASE quick-fill actions:
   `Use MCS enzymes`, `Single-cutters (REBASE)`, and
   `Single-cutters in CDS`.
-- Next UI polish target for the DNA sequence window:
-  make MCS annotations more prominent and directly legible in the sequence
-  view, so cloning-oriented users can recognize the intended insertion/cut
-  region without needing to expose `misc_feature` detail manually first.
+- DNA sequence window MCS annotations now use dedicated styling:
+  they keep a visible label in linear view even when generic
+  `misc_feature` labels would otherwise stay collapsed, and the MCS region
+  uses a distinct map color so cloning-oriented users can spot the intended
+  insertion/cut region faster.
 - New strict policy switch is available:
   `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
   verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).
