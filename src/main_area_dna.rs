@@ -11403,6 +11403,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &RestrictionSiteExpertView,
     ) {
+        let font_size = self.feature_details_font_size();
         ui.label(
             egui::RichText::new(format!(
                 "{} | cut={} | {}:{}..{}",
@@ -11415,14 +11416,47 @@ impl MainAreaDna {
                 view.recognition_end_1based
             ))
             .monospace()
-            .size(self.feature_details_font_size()),
+            .size(font_size),
         );
         if let Some(pattern) = &view.recognition_iupac {
             ui.label(
                 egui::RichText::new(format!("recognition_iupac={pattern}"))
                     .monospace()
-                    .size(self.feature_details_font_size()),
+                    .size(font_size),
             );
+        }
+        if view.enzyme_cut_offset_0based.is_some() || view.overlap_bp.is_some() {
+            let mut fields = Vec::new();
+            if let Some(cut_offset) = view.enzyme_cut_offset_0based {
+                fields.push(format!("enzyme_cut_offset_0based={cut_offset}"));
+            }
+            if let Some(overlap) = view.overlap_bp {
+                fields.push(format!("overlap_bp={overlap}"));
+            }
+            if !fields.is_empty() {
+                ui.label(
+                    egui::RichText::new(fields.join(" | "))
+                        .monospace()
+                        .size(font_size),
+                );
+            }
+        }
+        if let Some(note) = &view.enzyme_note {
+            ui.label(
+                egui::RichText::new(format!("note={note}"))
+                    .monospace()
+                    .size(font_size),
+            );
+        }
+        if let Some(url) = &view.rebase_url {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("rebase_url=")
+                        .monospace()
+                        .size(font_size),
+                );
+                ui.hyperlink_to(url, url);
+            });
         }
         let top = if view.site_sequence.is_empty() {
             view.recognition_iupac.clone().unwrap_or_default()

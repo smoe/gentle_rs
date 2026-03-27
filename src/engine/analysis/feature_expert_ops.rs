@@ -479,6 +479,18 @@ impl GentleEngine {
                 .find(|enzyme| enzyme.name.eq_ignore_ascii_case(name))
         });
         let recognition_iupac = selected_enzyme_def.map(|enzyme| enzyme.sequence.clone());
+        let enzyme_cut_offset_0based = selected_enzyme_def.map(|enzyme| enzyme.cut);
+        let overlap_bp = selected_enzyme_def.map(|enzyme| enzyme.overlap);
+        let enzyme_note = selected_enzyme_def.and_then(|enzyme| {
+            enzyme
+                .note
+                .as_deref()
+                .map(str::trim)
+                .filter(|note| !note.is_empty())
+                .map(str::to_string)
+        });
+        let rebase_url = selected_enzyme_def
+            .map(|enzyme| format!("https://rebase.neb.com/rebase/enz/{}.html", enzyme.name));
         if site_sequence.is_empty() {
             if let Some(iupac) = &recognition_iupac {
                 site_sequence = iupac.to_ascii_uppercase();
@@ -501,7 +513,10 @@ impl GentleEngine {
             recognition_iupac,
             site_sequence,
             site_sequence_complement,
-            overlap_bp: selected_enzyme_def.map(|enzyme| enzyme.overlap),
+            enzyme_cut_offset_0based,
+            overlap_bp,
+            enzyme_note,
+            rebase_url,
             instruction: RESTRICTION_EXPERT_INSTRUCTION.to_string(),
         })
     }

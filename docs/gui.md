@@ -322,6 +322,11 @@ Feature tree grouping:
 - Selecting an `mRNA`/`transcript`/`ncRNA`/`misc_RNA`/`exon`/`gene`/`CDS`
   feature opens the splicing expert view in a dedicated, resizable window
   instead of the inline description pane.
+- Selecting a restriction-site marker keeps the inline restriction expert view
+  and now shows the active enzyme's raw catalog metadata
+  (`recognition_iupac`, `enzyme_cut_offset_0based`, `overlap_bp`, optional
+  `note`) plus a direct REBASE enzyme URL
+  (`https://rebase.neb.com/rebase/enz/<Enzyme>.html`).
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
 - The splicing expert window opens slightly slimmer by default and its content

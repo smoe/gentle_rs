@@ -437,6 +437,50 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
         .set("font-size", 12)
         .set("fill", "#4b5563"),
     );
+    if view.enzyme_cut_offset_0based.is_some() || view.overlap_bp.is_some() {
+        let mut fields = Vec::new();
+        if let Some(cut_offset) = view.enzyme_cut_offset_0based {
+            fields.push(format!("enzyme_cut_offset_0based={cut_offset}"));
+        }
+        if let Some(overlap) = view.overlap_bp {
+            fields.push(format!("overlap_bp={overlap}"));
+        }
+        if !fields.is_empty() {
+            doc = doc.add(
+                Text::new(fields.join(" | "))
+                    .set("x", 90)
+                    .set("y", 84)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("fill", "#4b5563"),
+            );
+        }
+    }
+    if let Some(note) = &view.enzyme_note {
+        for (line_idx, line) in wrap_text(&format!("note={note}"), 125)
+            .into_iter()
+            .enumerate()
+        {
+            doc = doc.add(
+                Text::new(line)
+                    .set("x", 90)
+                    .set("y", 102.0 + line_idx as f32 * 14.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("fill", "#4b5563"),
+            );
+        }
+    }
+    if let Some(url) = &view.rebase_url {
+        doc = doc.add(
+            Text::new(format!("rebase_url={url}"))
+                .set("x", 90)
+                .set("y", 120)
+                .set("font-family", "monospace")
+                .set("font-size", 12)
+                .set("fill", "#2563eb"),
+        );
+    }
 
     let top = if view.site_sequence.is_empty() {
         view.recognition_iupac.clone().unwrap_or_default()
@@ -552,17 +596,6 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
             .set("font-size", 12)
             .set("fill", "#b91c1c"),
     );
-
-    if let Some(overlap) = view.overlap_bp {
-        doc = doc.add(
-            Text::new(format!("overhang_bp={overlap}"))
-                .set("x", 90)
-                .set("y", 402)
-                .set("font-family", "monospace")
-                .set("font-size", 12)
-                .set("fill", "#4b5563"),
-        );
-    }
 
     for (line_idx, line) in wrap_text(&view.instruction, 125).into_iter().enumerate() {
         doc = doc.add(

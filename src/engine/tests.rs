@@ -4326,6 +4326,15 @@ fn test_inspect_restriction_site_expert_view() {
             assert_eq!(re.cut_pos_1based, key.pos() as usize + 1);
             assert_eq!(re.recognition_start_1based, key.from() as usize + 1);
             assert_eq!(re.recognition_end_1based, key.to() as usize);
+            assert_eq!(re.selected_enzyme.as_deref(), Some("EcoRI"));
+            assert_eq!(re.recognition_iupac.as_deref(), Some("GAATTC"));
+            assert_eq!(re.enzyme_cut_offset_0based, Some(1));
+            assert_eq!(re.overlap_bp, Some(4));
+            assert_eq!(re.enzyme_note, None);
+            assert_eq!(
+                re.rebase_url.as_deref(),
+                Some("https://rebase.neb.com/rebase/enz/EcoRI.html")
+            );
             assert!(
                 re.enzyme_names
                     .iter()

@@ -474,7 +474,13 @@ pub struct RestrictionSiteExpertView {
     pub site_sequence: String,
     pub site_sequence_complement: String,
     #[serde(default)]
+    pub enzyme_cut_offset_0based: Option<isize>,
+    #[serde(default)]
     pub overlap_bp: Option<isize>,
+    #[serde(default)]
+    pub enzyme_note: Option<String>,
+    #[serde(default)]
+    pub rebase_url: Option<String>,
     pub instruction: String,
 }
 
