@@ -21,7 +21,7 @@ The container goal is pragmatic:
 
 ## Design Summary
 
-- Base image: Debian `trixie`
+- Base image: Debian `testing`
 - Build toolchain: Debian `rust-all`
 - Runtime GUI delivery: `Xvfb` + `openbox` + `x11vnc` + `noVNC`
 - Default UX: open GENtle in a browser at `http://localhost:6080`
@@ -91,7 +91,7 @@ docker build -t gentle:local .
 Optional build arguments:
 
 - `DEBIAN_SUITE`
-  - defaults to `trixie`
+  - defaults to `testing`
 - `GENTLE_CARGO_PROFILE`
   - defaults to `release-fast`
   - set to `release` if you prefer fully optimized binaries over faster image
@@ -101,10 +101,19 @@ Example:
 
 ```sh
 docker build \
-  --build-arg DEBIAN_SUITE=trixie \
+  --build-arg DEBIAN_SUITE=testing \
   --build-arg GENTLE_CARGO_PROFILE=release \
   -t gentle:release .
 ```
+
+Why `testing` by default:
+
+- the current GUI stack requires a newer Rust than Debian stable currently
+  provides
+- Debian package tracker currently lists `rustc`/`rust-all` at `1.92` in
+  testing and unstable, while stable is `1.85`
+- that makes Debian testing the correct Debian-first default for the container
+  until stable catches up enough for GENtle's dependency graph
 
 ## Run the GUI in a Browser
 

@@ -33,6 +33,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=testing
           platforms: linux/amd64
           push: false
           provenance: false
@@ -88,6 +90,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=testing
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false

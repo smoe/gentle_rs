@@ -130,6 +130,8 @@ order. Durable architecture constraints and decisions remain in
   - no biology logic duplication (subprocess bridge only)
 - Debian-first container baseline is now available:
   - authoritative image definition in repository `Dockerfile`
+  - default base suite is Debian `testing` (current `rust-all` toolchain in
+    stable is too old for the current egui/eframe dependency set)
   - GUI served through `Xvfb` + `openbox` + `x11vnc` + `noVNC`
   - CLI/MCP/JS/Lua/Python wrapper available from the same image
   - helper-tool coverage in container:

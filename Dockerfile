@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG DEBIAN_SUITE=trixie
+ARG DEBIAN_SUITE=testing
 
 # Builder stage:
 # - uses Debian rust-all as requested
