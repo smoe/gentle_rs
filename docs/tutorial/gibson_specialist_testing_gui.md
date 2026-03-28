@@ -60,6 +60,9 @@ By the end of this tutorial, you should have verified all of these:
 - the exported plan can be replayed through:
   - `gentle_cli ... gibson preview @plan.json --output preview.json`
 - GUI and CLI preview payloads are identical
+- if you continue through apply, the follow-up arrangement tutorial can pick up
+  immediately from the same project state:
+  [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md)
 
 ## Inputs
 

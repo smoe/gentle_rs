@@ -1851,6 +1851,13 @@ Serial gel export is available in two places:
   - `Containers` table: `Gel SVG` exports one lane for that container.
   - `Arrangements` table: `Export Gel` exports all lanes defined in that arrangement.
 
+Tutorial companion:
+
+- [`docs/tutorial/gibson_arrangements_gui.md`](./tutorial/gibson_arrangements_gui.md)
+  walks through how a Gibson apply step creates singleton output containers,
+  records one reusable serial arrangement, and then exports the arrangement as
+  one ladder-flanked gel.
+
 Ladder source:
 
 - built-in ladder catalog: `assets/dna_ladders.json` (derived from historical
@@ -2658,12 +2665,22 @@ Tutorial projects:
   - `docs/tutorial/gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking
+  - `docs/tutorial/gibson_arrangements_gui.md`
+    - follows the same offline Gibson starter project through
+      `Apply Gibson Cloning`, singleton output containers, automatic
+      arrangement creation, and arrangement-level gel export
   - generated tutorial-project baseline:
     - `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
     - preloads stable `gibson_destination_pgex` and `gibson_insert_demo`
       sequence IDs for the manual Gibson specialist walkthrough
     - `Gibson Specialist Starter Project (offline)` also opens the matching
       Help/Tutorial guide automatically
+    - `docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`
+    - reuses the same stable `gibson_destination_pgex` and
+      `gibson_insert_demo` baseline, but opens the arrangement tutorial guide
+      directly
+    - `Gibson Arrangements Starter Project (offline)` lands on the arrangement
+      walkthrough without changing the underlying biological setup
   - `docs/tutorial/two_sequence_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).

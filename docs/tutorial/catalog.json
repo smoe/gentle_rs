@@ -65,6 +65,20 @@
       "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity."
     },
     {
+      "id": "gibson_arrangements_gui",
+      "title": "Gibson Arrangements Tutorial",
+      "path": "docs/tutorial/gibson_arrangements_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export."
+    },
+    {
       "id": "agent_interfaces",
       "title": "GENtle Agent Interfaces Tutorial",
       "path": "docs/agent_interfaces_tutorial.md",

@@ -42,6 +42,25 @@ Wet-lab semantic rule (target model):
 - Filter-like steps (PCR, gel extraction, in silico selection) produce a new
   container with a narrower candidate set.
 
+Rack-placement rule (target model):
+
+- An `arrangement` describes semantic sample order for one experiment
+  (for example ladder/vector/insert/product), not the physical carrier by
+  itself.
+- A `rack profile` describes the physical carrier shape independently from the
+  experiment:
+  - row/column dimensions
+  - coordinate naming
+  - fill direction
+  - reserved/blocked positions
+- Built-in rack profiles should explicitly include common bench carriers such
+  as small tube racks, 96-well plates, and 384-well plates.
+- Multiple arrangements may share one physical rack; rack placement must
+  therefore stay separate from experiment identity.
+- Where GENtle already has plate-coordinate conventions (for example existing
+  `Plate384` CSV export support), rack placement should reuse the same
+  coordinate vocabulary instead of inventing a parallel naming scheme.
+
 Strategic aims:
 
 1. Keep one deterministic engine contract across GUI, CLI, JS, Lua, Python,

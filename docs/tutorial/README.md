@@ -41,6 +41,20 @@ If you want to test the destination-first Gibson specialist end-to-end:
   multi-insert Gibson execution currently requires a defined destination
   opening; `existing_termini` remains the single-fragment handoff path
 
+If you want to inspect the arrangement that Gibson apply creates and export one
+reusable gel lane set from it:
+
+- Use the Gibson arrangements tutorial:
+  [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md)
+- fastest setup path:
+  [`docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`](./generated/chapters/16_gibson_arrangements_baseline.md)
+  - in the app, `File -> Open Tutorial Project...` -> `Gibson Arrangements Starter Project (offline)`
+    now opens the same stable Gibson starter state but lands directly on the
+    arrangement guide in Help/Tutorial
+- this starts from the same offline Gibson starter project, then continues into
+  `Containers`, `Arrangements`, graph inspection, and arrangement-level gel
+  export
+
 If you want a sequence-analysis example with screenshots:
 
 - Use the TP73 cDNA-vs-genomic dotplot walkthrough:
@@ -85,6 +99,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/sources/` and executable workflows through the runtime manifest; validated by `tutorial-check`. |
 | [`docs/tutorial/tp73_promoter_luciferase_gui.md`](./tp73_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first cloning planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable PCR material. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
+| [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
@@ -129,14 +144,22 @@ Use the labels above as trust/maintenance signals:
 2. Run the GUI preview/export steps with local inputs
 3. Replay the exported plan through `gibson preview` for parity checking
 
-### Path D: Sequence-analysis and visualization
+### Path D: Gibson arrangements and gel export
+
+1. Read [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md)
+2. Optionally begin from [`docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`](./generated/chapters/16_gibson_arrangements_baseline.md)
+3. Apply one single-insert Gibson plan
+4. Inspect the resulting singleton output containers and reusable arrangement
+5. Export one arrangement-level gel with ladders flanking the sample lanes
+
+### Path E: Sequence-analysis and visualization
 
 1. Read [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md)
 2. Compare its screenshots to the live GUI state
 3. Re-run the corresponding workflow example if you want a deterministic audit
    path
 
-### Path E: Agents and automation
+### Path F: Agents and automation
 
 1. Read [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 2. Verify capabilities with `gentle_cli help` or MCP `tools/list`
