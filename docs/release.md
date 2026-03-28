@@ -5,6 +5,13 @@ This project publishes installable desktop packages for:
 - macOS: `.dmg`
 - Windows: `.zip` (contains `gentle.exe`)
 
+Release tags also publish a GitHub-downloadable container image through GitHub
+Container Registry (GHCR):
+
+- container image: `ghcr.io/<owner>/<repo>:<tag>`
+- `latest` is updated only from release-tag publishes
+- current image platforms: `linux/amd64`, `linux/arm64`
+
 Linux installable packaging is intentionally deferred. Until Debian packaging is
 ready, releases should default Linux distribution metadata to `tarball`.
 
@@ -38,6 +45,10 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
 - CI validation workflow: `.github/workflows/ci.yml`
   - Runs checks/tests on pushes to `main` and pull requests.
   - Does not publish release assets.
+- Container workflow: `.github/workflows/container.yml`
+  - Builds the Debian-first container image on PRs / `main`.
+  - Publishes multi-arch GHCR images from tag pushes matching `v*`.
+  - Moves `latest` only on release-tag publishes.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered by tag pushes matching `v*`.
   - Can also be run manually via `workflow_dispatch` with inputs:
@@ -111,6 +122,9 @@ Use Actions → `Release Installers` → `Run workflow` and provide:
 - `linux_distribution`: planned Linux channel for this release metadata
 
 This rebuilds installers and updates assets on that tag’s release.
+
+Container publishing remains tag-driven through `.github/workflows/container.yml`
+rather than the desktop-installer release workflow.
 
 ## Smoke Checks in Release Workflow
 
