@@ -23206,6 +23206,16 @@ Error: `{err}`"
         id
     }
 
+    fn deferred_window_initial_commands(
+        initial_position: Option<Pos2>,
+    ) -> Vec<egui::ViewportCommand> {
+        let mut commands = Vec::new();
+        if let Some(position) = initial_position {
+            commands.push(egui::ViewportCommand::OuterPosition(position));
+        }
+        commands
+    }
+
     fn show_window(
         &self,
         ctx: &egui::Context,
@@ -23218,12 +23228,13 @@ Error: `{err}`"
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
-        let mut builder = egui::ViewportBuilder::default().with_title(window_title);
-        if let Some(position) = initial_position {
-            builder = builder.with_position(position);
-        }
+        let builder = egui::ViewportBuilder::default().with_title(window_title);
+        let initial_commands = Self::deferred_window_initial_commands(initial_position);
         ctx.show_viewport_deferred(id, builder, move |ctx, class| {
-            if class != egui::ViewportClass::Deferred {
+            if !matches!(
+                class,
+                egui::ViewportClass::Deferred | egui::ViewportClass::EmbeddedWindow
+            ) {
                 eprintln!(
                     "W GENtleApp: unexpected viewport class, skipping deferred window update"
                 );
@@ -23254,6 +23265,9 @@ Error: `{err}`"
                 }
             }
         });
+        for command in initial_commands {
+            ctx.send_viewport_cmd_to(id, command);
+        }
     }
 
     fn refresh_lineage_cache_if_needed(&mut self) {
@@ -34255,6 +34269,21 @@ mod tests {
         assert_eq!(
             GENtleApp::deferred_window_position(3),
             egui::Pos2 { x: 600.0, y: 600.0 }
+        );
+    }
+
+    #[test]
+    fn deferred_window_initial_commands_emit_one_shot_outer_position() {
+        assert_eq!(
+            GENtleApp::deferred_window_initial_commands(Some(egui::Pos2 { x: 120.0, y: 240.0 })),
+            vec![egui::ViewportCommand::OuterPosition(egui::Pos2 {
+                x: 120.0,
+                y: 240.0,
+            })]
+        );
+        assert!(
+            GENtleApp::deferred_window_initial_commands(None).is_empty(),
+            "no initial position should mean no one-shot viewport commands"
         );
     }
 
