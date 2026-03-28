@@ -45,6 +45,7 @@ pub struct WindowDna {
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
     deferred_load_message: Option<String>,
     deferred_analysis_focus: Option<DeferredAnalysisFocus>,
+    close_requested: bool,
 }
 
 impl WindowDna {
@@ -55,6 +56,7 @@ impl WindowDna {
             pending_dna_load: None,
             deferred_load_message: None,
             deferred_analysis_focus: None,
+            close_requested: false,
         }
     }
 
@@ -91,6 +93,7 @@ impl WindowDna {
             pending_dna_load: Some(Arc::new(Mutex::new(rx))),
             deferred_load_message: None,
             deferred_analysis_focus: None,
+            close_requested: false,
         }
     }
 
@@ -200,6 +203,13 @@ impl WindowDna {
                         {
                             request_open_graphics_settings_from_native_menu();
                         }
+                        if ui
+                            .button("Close")
+                            .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
+                            .clicked()
+                        {
+                            self.close_requested = true;
+                        }
                     });
                 },
             );
@@ -249,6 +259,12 @@ impl WindowDna {
 
     pub fn sequence_id(&self) -> Option<String> {
         self.main_area.sequence_id().map(|v| v.to_string())
+    }
+
+    pub fn take_close_requested(&mut self) -> bool {
+        let requested = self.close_requested;
+        self.close_requested = false;
+        requested
     }
 
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {

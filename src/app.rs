@@ -23220,6 +23220,17 @@ Error: `{err}`"
         cfg!(target_os = "macos")
     }
 
+    fn sequence_window_accepts_native_close_request() -> bool {
+        !cfg!(target_os = "macos")
+    }
+
+    fn take_window_close_requested(window: &Arc<RwLock<Window>>) -> bool {
+        window
+            .write()
+            .map(|mut guard| guard.take_close_requested())
+            .unwrap_or(false)
+    }
+
     fn show_window(
         &self,
         ctx: &egui::Context,
@@ -23260,7 +23271,18 @@ Error: `{err}`"
                     eprintln!("E GENtleApp: recovered from panic while updating window");
                 }
 
-                if Self::viewport_close_requested_or_shortcut(ui.ctx()) {
+                let explicit_close_requested = Self::take_window_close_requested(&window);
+                let shortcut_triggered = Self::consume_command_or_ctrl_shortcut(ui.ctx(), Key::W);
+                let native_close_requested = ui.ctx().input(|i| i.viewport().close_requested());
+                if native_close_requested && !Self::sequence_window_accepts_native_close_request() {
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                }
+                if explicit_close_requested
+                    || shortcut_triggered
+                    || (native_close_requested
+                        && Self::sequence_window_accepts_native_close_request())
+                {
                     if let Ok(mut to_close) = windows_to_close.write() {
                         to_close.push(id);
                     } else {
@@ -23296,7 +23318,17 @@ Error: `{err}`"
                 }
 
                 // "Close window" action
-                if Self::viewport_close_requested_or_shortcut(ctx) {
+                let explicit_close_requested = Self::take_window_close_requested(&window);
+                let shortcut_triggered = Self::consume_command_or_ctrl_shortcut(ctx, Key::W);
+                let native_close_requested = ctx.input(|i| i.viewport().close_requested());
+                if native_close_requested && !Self::sequence_window_accepts_native_close_request() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                }
+                if explicit_close_requested
+                    || shortcut_triggered
+                    || (native_close_requested
+                        && Self::sequence_window_accepts_native_close_request())
+                {
                     if let Ok(mut to_close) = windows_to_close.write() {
                         to_close.push(id);
                     } else {
@@ -34333,6 +34365,15 @@ mod tests {
             assert!(GENtleApp::use_immediate_sequence_viewports());
         } else {
             assert!(!GENtleApp::use_immediate_sequence_viewports());
+        }
+    }
+
+    #[test]
+    fn macos_sequence_windows_ignore_native_close_requests() {
+        if cfg!(target_os = "macos") {
+            assert!(!GENtleApp::sequence_window_accepts_native_close_request());
+        } else {
+            assert!(GENtleApp::sequence_window_accepts_native_close_request());
         }
     }
 

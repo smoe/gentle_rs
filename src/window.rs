@@ -83,4 +83,10 @@ impl Window {
             Self::Dna(window) => window.refresh_from_engine_state(),
         }
     }
+
+    pub fn take_close_requested(&mut self) -> bool {
+        match self {
+            Self::Dna(window) => window.take_close_requested(),
+        }
+    }
 }

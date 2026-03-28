@@ -1882,11 +1882,7 @@ mod tests {
         let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
 
         let (start, end) = area
-            .resolve_roi_range_inputs_0based(
-                "=CDS.start+10 .. CDS.end-5",
-                "0",
-                "primer_design",
-            )
+            .resolve_roi_range_inputs_0based("=CDS.start+10 .. CDS.end-5", "0", "primer_design")
             .expect("range formula");
 
         assert_eq!((start, end), (30, 75));
@@ -1953,10 +1949,7 @@ mod tests {
             )
             .expect("label formula");
         let second_end = area
-            .parse_required_usize_or_formula_text(
-                "=gene[2].end",
-                "primer_design.roi_end_0based",
-            )
+            .parse_required_usize_or_formula_text("=gene[2].end", "primer_design.roi_end_0based")
             .expect("occurrence formula");
 
         assert_eq!(start, 10);
@@ -10742,7 +10735,11 @@ impl MainAreaDna {
         Some((from, to))
     }
 
-    fn set_selection_range_0based(&mut self, start: usize, end_exclusive: usize) -> Result<(), String> {
+    fn set_selection_range_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Result<(), String> {
         let sequence_length = self
             .dna
             .read()
@@ -27390,15 +27387,10 @@ impl MainAreaDna {
             let inside = raw[start..idx].trim();
             idx += 1;
             if inside.is_empty() {
-                return Err(format!(
-                    "Invalid {field_name}: empty selector inside []"
-                ));
+                return Err(format!("Invalid {field_name}: empty selector inside []"));
             }
             let inside_lower = inside.to_ascii_lowercase();
-            if let Some(value_raw) = inside_lower
-                .strip_prefix("label=")
-                .map(|_| &inside[6..])
-            {
+            if let Some(value_raw) = inside_lower.strip_prefix("label=").map(|_| &inside[6..]) {
                 let label = value_raw.trim();
                 if label.is_empty() {
                     return Err(format!(
@@ -27446,7 +27438,11 @@ impl MainAreaDna {
                 "Invalid {field_name}: expected boundary token (start|end|middle)"
             ));
         }
-        let boundary = match raw[boundary_start..idx].trim().to_ascii_lowercase().as_str() {
+        let boundary = match raw[boundary_start..idx]
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "start" => AnchorBoundary::Start,
             "end" => AnchorBoundary::End,
             "middle" => AnchorBoundary::Middle,
@@ -27488,9 +27484,9 @@ impl MainAreaDna {
                     "Invalid {field_name}: expected integer offset after sign"
                 ));
             }
-            let delta = raw[number_start..idx].parse::<isize>().map_err(|_| {
-                format!("Invalid {field_name}: could not parse coordinate offset")
-            })?;
+            let delta = raw[number_start..idx]
+                .parse::<isize>()
+                .map_err(|_| format!("Invalid {field_name}: could not parse coordinate offset"))?;
             offset += sign * delta;
         }
 
@@ -27499,9 +27495,7 @@ impl MainAreaDna {
             .read()
             .map_err(|_| format!("Could not read DNA while parsing {field_name}"))?;
         if dna.len() == 0 {
-            return Err(format!(
-                "Invalid {field_name}: active sequence is empty"
-            ));
+            return Err(format!("Invalid {field_name}: active sequence is empty"));
         }
 
         let mut matches: Vec<(usize, usize, usize)> = Vec::new();
@@ -27586,7 +27580,9 @@ impl MainAreaDna {
     fn parse_coordinate_term_text(&self, raw: &str, field_name: &str) -> Result<usize, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err(format!("Invalid {field_name}: expected an integer or formula"));
+            return Err(format!(
+                "Invalid {field_name}: expected an integer or formula"
+            ));
         }
         if let Ok(value) = trimmed.parse::<usize>() {
             return Ok(value);
@@ -27594,7 +27590,11 @@ impl MainAreaDna {
         self.parse_feature_formula_coordinate_expression(trimmed, field_name)
     }
 
-    fn parse_required_usize_or_formula_text(&self, raw: &str, field_name: &str) -> Result<usize, String> {
+    fn parse_required_usize_or_formula_text(
+        &self,
+        raw: &str,
+        field_name: &str,
+    ) -> Result<usize, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return Err(format!("Invalid {field_name}: expected an integer"));
@@ -27618,11 +27618,11 @@ impl MainAreaDna {
             && let Some((left, right)) = Self::split_formula_range_expression(formula)
         {
             (
-                self.parse_coordinate_term_text(&left, &format!("{field_prefix}.roi_start_0based"))?,
                 self.parse_coordinate_term_text(
-                    &right,
-                    &format!("{field_prefix}.roi_end_0based"),
+                    &left,
+                    &format!("{field_prefix}.roi_start_0based"),
                 )?,
+                self.parse_coordinate_term_text(&right, &format!("{field_prefix}.roi_end_0based"))?,
             )
         } else {
             (
@@ -27669,10 +27669,11 @@ impl MainAreaDna {
         let expr = trimmed
             .strip_prefix('=')
             .ok_or_else(|| "Selection formula must start with '='".to_string())?;
-        let (left_raw, right_raw) = Self::split_formula_range_expression(expr).ok_or_else(|| {
-            "Selection formula must define a range (`=left .. right` or `=left to right`)"
-                .to_string()
-        })?;
+        let (left_raw, right_raw) =
+            Self::split_formula_range_expression(expr).ok_or_else(|| {
+                "Selection formula must define a range (`=left .. right` or `=left to right`)"
+                    .to_string()
+            })?;
         let start = self.parse_coordinate_term_text(&left_raw, "selection_formula.start")?;
         let end_exclusive = self.parse_coordinate_term_text(&right_raw, "selection_formula.end")?;
         if end_exclusive <= start {
