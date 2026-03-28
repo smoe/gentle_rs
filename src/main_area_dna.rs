@@ -893,6 +893,8 @@ struct EngineOpsUiState {
     #[serde(default)]
     pcr_paint_intervals: PcrPaintIntervalsUiState,
     #[serde(default)]
+    selection_formula_text: String,
+    #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
     #[serde(default = "default_primer_backend_auto")]
     primer_backend: PrimerDesignBackend,
@@ -1911,6 +1913,54 @@ mod tests {
         assert_eq!(queued.end_0based_exclusive, 75);
         assert_eq!(area.primer_design_ui.roi_start_0based, "30");
         assert_eq!(area.primer_design_ui.roi_end_0based, "75");
+    }
+
+    #[test]
+    fn selection_formula_applies_current_selection_range() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("CDS"),
+            location: Location::simple_range(20, 100),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.selection_formula_text = "=CDS.start+10 .. CDS.end-5".to_string();
+
+        area.apply_selection_formula();
+
+        assert_eq!(area.current_selection_range_0based(), Some((30, 95)));
+    }
+
+    #[test]
+    fn selection_formula_supports_label_filter_and_occurrence() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(10, 40),
+            qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(80, 140),
+            qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+        });
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        let start = area
+            .parse_required_usize_or_formula_text(
+                "=gene[label=TP73].start",
+                "primer_design.roi_start_0based",
+            )
+            .expect("label formula");
+        let second_end = area
+            .parse_required_usize_or_formula_text(
+                "=gene[2].end",
+                "primer_design.roi_end_0based",
+            )
+            .expect("occurrence formula");
+
+        assert_eq!(start, 10);
+        assert_eq!(second_end, 140);
     }
 
     #[test]
@@ -5573,6 +5623,7 @@ pub struct MainAreaDna {
     pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
     pcr_paint_role: PcrPaintRole,
     pcr_paint_intervals: PcrPaintIntervalsUiState,
+    selection_formula_text: String,
     pcr_paint_drag_interval: Option<(PcrPaintRole, usize, usize)>,
     pcr_paint_last_drag_interval: Option<(PcrPaintRole, usize, usize)>,
     pcr_paint_last_drag_start_text: String,
@@ -5934,6 +5985,7 @@ impl MainAreaDna {
             pcr_batch_results_ui: vec![],
             pcr_paint_role: PcrPaintRole::default(),
             pcr_paint_intervals: PcrPaintIntervalsUiState::default(),
+            selection_formula_text: String::new(),
             pcr_paint_drag_interval: None,
             pcr_paint_last_drag_interval: None,
             pcr_paint_last_drag_start_text: String::new(),
@@ -8258,6 +8310,32 @@ impl MainAreaDna {
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
                 }
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Selection formula")
+                        .on_hover_text("Set map/text selection from feature-relative formula range");
+                    let response = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.selection_formula_text)
+                                .desired_width(320.0)
+                                .hint_text("=CDS.start+10 .. CDS.end-500"),
+                        )
+                        .on_hover_text(
+                            "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
+                        );
+                    if response.changed() {
+                        self.save_engine_ops_state();
+                    }
+                    let apply_clicked = ui
+                        .button("Apply Sel")
+                        .on_hover_text(
+                            "Resolve selection formula and apply it as current map/text selection",
+                        )
+                        .clicked();
+                    let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if apply_clicked || (enter_pressed && response.lost_focus()) {
+                        self.apply_selection_formula();
+                    }
+                });
                 if let Some((start, end_exclusive)) = selection_roi {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
@@ -10662,6 +10740,29 @@ impl MainAreaDna {
             return None;
         }
         Some((from, to))
+    }
+
+    fn set_selection_range_0based(&mut self, start: usize, end_exclusive: usize) -> Result<(), String> {
+        let sequence_length = self
+            .dna
+            .read()
+            .map_err(|_| "DNA lock poisoned while setting selection".to_string())?
+            .len();
+        if sequence_length == 0 {
+            return Err("Cannot select a region on an empty sequence".to_string());
+        }
+        if start >= sequence_length || end_exclusive > sequence_length || end_exclusive <= start {
+            return Err(format!(
+                "Invalid selection range {}..{} for sequence length {}",
+                start, end_exclusive, sequence_length
+            ));
+        }
+        self.dna_display
+            .write()
+            .map_err(|_| "DNA display lock poisoned while setting selection".to_string())?
+            .select(Selection::new(start, end_exclusive, sequence_length));
+        self.map_sequence.request_scroll_to_selection();
+        Ok(())
     }
 
     fn current_visible_linear_span_range_0based(&self) -> Option<(usize, usize)> {
@@ -27557,6 +27658,67 @@ impl MainAreaDna {
         Ok((start, end_exclusive))
     }
 
+    fn resolve_selection_formula_range_0based(&self, raw: &str) -> Result<(usize, usize), String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(
+                "Selection formula is empty; expected `=left .. right` or `=left to right`"
+                    .to_string(),
+            );
+        }
+        let expr = trimmed
+            .strip_prefix('=')
+            .ok_or_else(|| "Selection formula must start with '='".to_string())?;
+        let (left_raw, right_raw) = Self::split_formula_range_expression(expr).ok_or_else(|| {
+            "Selection formula must define a range (`=left .. right` or `=left to right`)"
+                .to_string()
+        })?;
+        let start = self.parse_coordinate_term_text(&left_raw, "selection_formula.start")?;
+        let end_exclusive = self.parse_coordinate_term_text(&right_raw, "selection_formula.end")?;
+        if end_exclusive <= start {
+            return Err(format!(
+                "Invalid selection formula range: start ({start}) must be < end ({end_exclusive})"
+            ));
+        }
+        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if seq_len == 0 {
+            return Err("Cannot apply selection formula: active sequence is empty".to_string());
+        }
+        if start >= seq_len {
+            return Err(format!(
+                "Invalid selection formula start: {start} is outside sequence length {seq_len}"
+            ));
+        }
+        if end_exclusive > seq_len {
+            return Err(format!(
+                "Invalid selection formula end: {end_exclusive} is outside sequence length {seq_len}"
+            ));
+        }
+        Ok((start, end_exclusive))
+    }
+
+    fn apply_selection_formula(&mut self) {
+        let (start, end_exclusive) =
+            match self.resolve_selection_formula_range_0based(&self.selection_formula_text) {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err;
+                    return;
+                }
+            };
+        match self.set_selection_range_0based(start, end_exclusive) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Selected region from formula: {}..{} (0-based, end-exclusive)",
+                    start, end_exclusive
+                );
+            }
+            Err(err) => {
+                self.op_status = err;
+            }
+        }
+    }
+
     fn resolve_and_apply_primer_roi_fields(&mut self) {
         match self.resolve_roi_range_inputs_0based(
             &self.primer_design_ui.roi_start_0based,
@@ -31088,6 +31250,7 @@ impl MainAreaDna {
             pcr_batch_results_ui: self.pcr_batch_results_ui.clone(),
             pcr_paint_role: self.pcr_paint_role,
             pcr_paint_intervals: self.pcr_paint_intervals.clone(),
+            selection_formula_text: self.selection_formula_text.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
@@ -31301,6 +31464,7 @@ impl MainAreaDna {
         self.pcr_batch_results_ui = s.pcr_batch_results_ui;
         self.pcr_paint_role = s.pcr_paint_role;
         self.pcr_paint_intervals = s.pcr_paint_intervals;
+        self.selection_formula_text = s.selection_formula_text;
         self.pcr_paint_drag_interval = None;
         self.pcr_paint_last_drag_interval = None;
         self.pcr_paint_last_drag_start_text.clear();

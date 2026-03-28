@@ -1135,7 +1135,22 @@ Controls:
      selection as one PCR region and opens Engine Ops.
    - When a selection is present, the map area also shows an inline hint with
      the active span and the same PCR queue action.
-17. PCR ROI
+17. Selection formula
+   - Toolbar input for formula-driven selection ranges in the DNA window.
+   - Formula must start with `=` and define a range:
+     - `=left .. right`
+     - `=left to right`
+   - Coordinate terms support:
+     - numeric bp positions
+     - feature-relative terms:
+       - `KIND.start|end|middle`
+       - optional occurrence selector (`KIND[2]`, 1-based)
+       - optional label selector (`KIND[label=TP73]`)
+       - optional signed offsets (`+N`, `-N`)
+   - `Apply Sel` resolves the formula and sets the active map/text selection,
+     which can then be used directly by `Extract Sel`, `Queue PCR selection`,
+     or `PCR ROI` menu actions.
+18. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
      - add current map/text selection to PCR region queue
@@ -1146,12 +1161,12 @@ Controls:
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
-18. Export Seq
+19. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-19. Export SVG
+20. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-20. Export View SVG
+21. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
    - When linear `Splicing map` mode is active, export uses the same splicing
@@ -1163,10 +1178,10 @@ Controls:
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
    - Debug builds include adaptive routing-tier diagnostics in the SVG header.
-20. Export RNA SVG (ssRNA only)
+22. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-21. Engine Ops
+23. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
    - Digest quick-fill actions:
      - `Use MCS enzymes`: fills digest enzyme list from MCS feature context
@@ -1175,7 +1190,7 @@ Controls:
        once in the active sequence.
      - `Single-cutters in CDS`: same single-cutter filter constrained to
        cleavage positions inside CDS features.
-22. Shell
+24. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 

@@ -605,6 +605,13 @@ order. Durable architecture constraints and decisions remain in
     - `Splicing Expert` opens by deliberate actions (`double-click` feature row
       or map glyph, description-panel button, or feature/map context-menu action
       `Open Splicing Window`)
+  - DNA-window toolbar now includes `Selection formula` with `Apply Sel`:
+    - formula-driven range selection (`=left .. right` or `=left to right`)
+    - feature-relative coordinate terms (`KIND.start|end|middle`,
+      optional occurrence `KIND[2]`, optional label filter
+      `KIND[label=TP73]`, optional `+/-N` offsets)
+    - resolved selection feeds existing `Extract Sel`, `Queue PCR selection`,
+      and `PCR ROI` actions without separate handoff steps
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
@@ -1124,14 +1131,15 @@ Notes:
      - done baseline:
        - primer/qPCR ROI fields now accept `=` formulas
          (`KIND.start|end|middle +/- N`)
+       - DNA-window toolbar `Selection formula` now applies formula-resolved
+         ranges directly to map/text selection
        - optional selectors:
          - occurrence index (`KIND[2]`, 1-based)
          - label filter (`KIND[label=TP73]`)
        - ROI-start range form:
          `=left .. right` (or `=left to right`)
      - remaining:
-       - shared `Selection formula` input in DNA window map/selection tools is
-         still pending
+       - dedicated formula input in PCR Designer specialist is still pending
        - parser/resolver still lives in GUI adapter path; move to engine-owned
          shared helper remains pending for stricter cross-adapter parity
        - strand-aware helper aliases (`tss`, `upstream(n)`) remain pending
