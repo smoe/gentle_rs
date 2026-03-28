@@ -2277,6 +2277,8 @@ Recommended flow:
    - `Clear Caches...` inspects only the selected known cache roots
      (`cache_dir` settings for references/helpers) and does not scan the whole
      workspace
+   - selective cleanup rows are keyed by install path, so duplicate prepared ids
+     under different cache roots can be previewed and cleaned independently
    - cleanup modes are intentionally conservative:
      - `Remove BLAST databases only` removes only BLAST DB sidecars
      - `Remove rebuildable indexes` removes BLAST DB sidecars plus

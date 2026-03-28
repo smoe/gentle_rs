@@ -890,6 +890,7 @@ cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (online)" --filter bl
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- cache inspect --references --cache-dir data/genomes
 cargo run --bin gentle_cli -- cache clear derived-indexes-only --references --cache-dir data/genomes --prepared-id "Human GRCh38 Ensembl 116"
+cargo run --bin gentle_cli -- cache clear selected-prepared --both --cache-dir data/genomes --cache-dir data/helper_genomes --prepared-path data/helper_genomes/localproject
 cargo run --bin gentle_cli -- cache clear all-prepared-in-cache --both --include-orphans
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
@@ -1352,16 +1353,19 @@ Rendering export commands:
     - `--references`: `data/genomes`
     - `--helpers`: `data/helper_genomes`
     - `--both`: both roots above
-- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]`
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]`
   - Calls the shared prepared-cache cleanup path.
   - Returns one `gentle.prepared_cache_cleanup.v1` payload with exact affected
     paths, removed byte totals, and per-entry cleanup results.
   - `blast-db-only` and `derived-indexes-only` apply only to manifest-backed
-    prepared installs and require one or more `--prepared-id` values.
-  - `selected-prepared` removes only the named prepared installs and may also
-    remove orphaned remnants when `--include-orphans` is set.
+    prepared installs and require one or more `--prepared-id` or
+    `--prepared-path` selectors.
+  - `selected-prepared` removes only the selected prepared installs and may
+    also remove orphaned remnants when `--include-orphans` is set.
+  - `--prepared-path` is the precise selector when duplicate prepared ids exist
+    across multiple selected cache roots.
   - `all-prepared-in-cache` clears all prepared installs under the selected
-    roots and ignores `--prepared-id`.
+    roots and ignores `--prepared-id` / `--prepared-path`.
   - Cleanup is conservative by design:
     - only selected known cache roots are touched
     - catalog JSON and project state files remain unchanged
@@ -1602,7 +1606,7 @@ Helper convenience commands:
     roots with artifact-group byte totals.
   - Default roots are `data/genomes` for references and
     `data/helper_genomes` for helpers.
-- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]`
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]`
   - Conservatively deletes derived cache artifacts or prepared installs inside
     the selected roots only.
   - Partial modes keep cached FASTA/annotation sources and manifests intact so

@@ -363,6 +363,8 @@ pub struct PreparedCacheCleanupRequest {
     #[serde(default)]
     pub prepared_ids: Vec<String>,
     #[serde(default)]
+    pub prepared_paths: Vec<String>,
+    #[serde(default)]
     pub include_orphaned_remnants: bool,
 }
 
@@ -390,6 +392,8 @@ pub struct PreparedCacheCleanupReport {
     pub cache_roots: Vec<String>,
     #[serde(default)]
     pub selected_prepared_ids: Vec<String>,
+    #[serde(default)]
+    pub selected_prepared_paths: Vec<String>,
     pub include_orphaned_remnants: bool,
     #[serde(default)]
     pub results: Vec<PreparedCacheCleanupItemReport>,
@@ -3329,15 +3333,23 @@ pub fn clear_prepared_cache_roots(
         .filter(|id| !id.is_empty())
         .map(|id| id.to_string())
         .collect::<Vec<_>>();
+    let selected_paths = request
+        .prepared_paths
+        .iter()
+        .map(|path| path.trim())
+        .filter(|path| !path.is_empty())
+        .map(|path| canonical_or_display(Path::new(path)))
+        .collect::<Vec<_>>();
     if matches!(
         request.mode,
         PreparedCacheCleanupMode::BlastDbOnly
             | PreparedCacheCleanupMode::DerivedIndexesOnly
             | PreparedCacheCleanupMode::SelectedPreparedInstalls
     ) && selected_ids.is_empty()
+        && selected_paths.is_empty()
     {
         return Err(format!(
-            "Cleanup mode '{}' requires at least one prepared id",
+            "Cleanup mode '{}' requires at least one prepared id or prepared path",
             request.mode.label()
         ));
     }
@@ -3351,6 +3363,9 @@ pub fn clear_prepared_cache_roots(
             true
         } else {
             selected_ids.iter().any(|id| id == &entry.entry_id)
+                || selected_paths
+                    .iter()
+                    .any(|path| paths_refer_to_same_location(Path::new(path), &entry.path))
         };
         if !selected {
             continue;
@@ -3369,11 +3384,18 @@ pub fn clear_prepared_cache_roots(
     }
     if results.is_empty()
         && !matches!(request.mode, PreparedCacheCleanupMode::AllPreparedInCache)
-        && !selected_ids.is_empty()
+        && (!selected_ids.is_empty() || !selected_paths.is_empty())
     {
+        let mut selectors = vec![];
+        if !selected_ids.is_empty() {
+            selectors.push(format!("id(s): {}", selected_ids.join(", ")));
+        }
+        if !selected_paths.is_empty() {
+            selectors.push(format!("path(s): {}", selected_paths.join(", ")));
+        }
         return Err(format!(
-            "No prepared cache entries matched requested id(s): {}",
-            selected_ids.join(", ")
+            "No prepared cache entries matched requested selector(s): {}",
+            selectors.join(" | ")
         ));
     }
 
@@ -3385,6 +3407,7 @@ pub fn clear_prepared_cache_roots(
             .map(|root| canonical_or_display(root))
             .collect(),
         selected_prepared_ids: selected_ids,
+        selected_prepared_paths: selected_paths,
         include_orphaned_remnants: request.include_orphaned_remnants
             && request.mode.allows_orphaned_remnants(),
         entry_count: results.len(),
@@ -3798,6 +3821,16 @@ fn canonical_or_display(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+pub(crate) fn paths_refer_to_same_location(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left_canonical), Ok(right_canonical)) => left_canonical == right_canonical,
+        _ => false,
+    }
 }
 
 pub fn is_prepare_cancelled_error(message: &str) -> bool {
@@ -10446,6 +10479,7 @@ mod tests {
             mode: PreparedCacheCleanupMode::BlastDbOnly,
             cache_roots: vec![root.display().to_string()],
             prepared_ids: vec!["ToyGenome".to_string()],
+            prepared_paths: vec![],
             include_orphaned_remnants: false,
         };
         let report = clear_prepared_cache_roots(&request).unwrap();
@@ -10468,6 +10502,7 @@ mod tests {
             mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
             cache_roots: vec![root.display().to_string()],
             prepared_ids: vec!["ToyGenome".to_string()],
+            prepared_paths: vec![],
             include_orphaned_remnants: false,
         };
         let report = clear_prepared_cache_roots(&request).unwrap();
@@ -10490,12 +10525,42 @@ mod tests {
             mode: PreparedCacheCleanupMode::SelectedPreparedInstalls,
             cache_roots: vec![root.display().to_string()],
             prepared_ids: vec!["ToyA".to_string()],
+            prepared_paths: vec![],
             include_orphaned_remnants: false,
         };
         let report = clear_prepared_cache_roots(&request).unwrap();
         assert_eq!(report.removed_item_count, 1);
         assert!(!toya_dir.exists());
         assert!(toyb_dir.exists());
+    }
+
+    #[test]
+    fn test_clear_prepared_cache_selected_path_can_target_one_duplicate_id() {
+        let td = tempdir().unwrap();
+        let root_a = td.path().join("cache_a");
+        let root_b = td.path().join("cache_b");
+        let (install_a, _) = write_prepared_cache_install(&root_a, "ToyGenome");
+        let (install_b, _) = write_prepared_cache_install(&root_b, "ToyGenome");
+        let expected_selected_path = std::fs::canonicalize(&install_a)
+            .unwrap_or_else(|_| install_a.clone())
+            .to_string_lossy()
+            .into_owned();
+        let request = PreparedCacheCleanupRequest {
+            mode: PreparedCacheCleanupMode::SelectedPreparedInstalls,
+            cache_roots: vec![root_a.display().to_string(), root_b.display().to_string()],
+            prepared_ids: vec![],
+            prepared_paths: vec![install_a.display().to_string()],
+            include_orphaned_remnants: false,
+        };
+
+        let report = clear_prepared_cache_roots(&request).unwrap();
+
+        assert_eq!(report.removed_item_count, 1);
+        assert_eq!(report.selected_prepared_ids, Vec::<String>::new());
+        assert_eq!(report.selected_prepared_paths.len(), 1);
+        assert_eq!(report.selected_prepared_paths[0], expected_selected_path);
+        assert!(!install_a.exists());
+        assert!(install_b.exists());
     }
 
     #[test]
@@ -10510,6 +10575,7 @@ mod tests {
             mode: PreparedCacheCleanupMode::AllPreparedInCache,
             cache_roots: vec![root.display().to_string()],
             prepared_ids: vec![],
+            prepared_paths: vec![],
             include_orphaned_remnants: false,
         })
         .unwrap();
@@ -10522,6 +10588,7 @@ mod tests {
             mode: PreparedCacheCleanupMode::AllPreparedInCache,
             cache_roots: vec![root.display().to_string()],
             prepared_ids: vec![],
+            prepared_paths: vec![],
             include_orphaned_remnants: true,
         })
         .unwrap();
