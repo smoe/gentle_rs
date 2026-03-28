@@ -45,8 +45,10 @@ use crate::{
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
-        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
+        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
+        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
+        SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
+        SequencingConfirmationTargetSpec, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1161,6 +1163,9 @@ pub enum ShellCommand {
         oligo_set_id: Option<String>,
         path: String,
         include_qc_checklist: bool,
+    },
+    FeaturesQuery {
+        query: SequenceFeatureQuery,
     },
     PrimersDesign {
         request_json: String,
@@ -5835,6 +5840,32 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("-"),
                 include_qc_checklist
+            ),
+            Self::FeaturesQuery { query } => format!(
+                "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
+                query.seq_id,
+                if query.kind_in.is_empty() {
+                    "any".to_string()
+                } else {
+                    query.kind_in.join(",")
+                },
+                query
+                    .start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query
+                    .end_0based_exclusive
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                query.range_relation.as_str(),
+                query.strand.as_str(),
+                query.label_contains.as_deref().unwrap_or("-"),
+                query.qualifier_filters.len(),
+                query
+                    .limit
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                query.offset
             ),
             Self::PrimersDesign {
                 request_json,
@@ -10754,6 +10785,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "candidates" => parse_candidates_command(tokens),
         "planning" => parse_planning_command(tokens),
         "guides" => parse_guides_command(tokens),
+        "features" => parse_features_command(tokens),
         "primers" => parse_primers_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
@@ -15201,6 +15233,16 @@ pub fn execute_shell_command_with_options(
                     "transcript_count": created.len(),
                     "transcripts": created,
                 }),
+            }
+        }
+        ShellCommand::FeaturesQuery { query } => {
+            let result = engine
+                .query_sequence_features(query.clone())
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(result)
+                    .map_err(|e| format!("Could not serialize feature query result: {e}"))?,
             }
         }
         ShellCommand::PrimersDesign {

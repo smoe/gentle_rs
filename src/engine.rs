@@ -217,6 +217,9 @@ const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
+const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
+const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
+const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 
 // Private decomposition slices of the engine implementation. Shared public
 // contracts stay in this file; heavy helpers and operation families live in the
@@ -4512,6 +4515,132 @@ pub struct FlexibilityTrackSummary {
     pub bin_count: usize,
     pub min_score: f64,
     pub max_score: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequenceFeatureRangeRelation {
+    #[default]
+    Overlap,
+    Within,
+    Contains,
+}
+
+impl SequenceFeatureRangeRelation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Overlap => "overlap",
+            Self::Within => "within",
+            Self::Contains => "contains",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequenceFeatureStrandFilter {
+    #[default]
+    Any,
+    Forward,
+    Reverse,
+}
+
+impl SequenceFeatureStrandFilter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::Forward => "forward",
+            Self::Reverse => "reverse",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequenceFeatureSortBy {
+    FeatureId,
+    #[default]
+    Start,
+    End,
+    Kind,
+    Length,
+}
+
+impl SequenceFeatureSortBy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FeatureId => "feature_id",
+            Self::Start => "start",
+            Self::End => "end",
+            Self::Kind => "kind",
+            Self::Length => "length",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequenceFeatureQualifierFilter {
+    pub key: String,
+    pub value_contains: Option<String>,
+    pub value_regex: Option<String>,
+    pub case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequenceFeatureQuery {
+    pub seq_id: SeqId,
+    pub include_source: bool,
+    pub include_qualifiers: bool,
+    pub kind_in: Vec<String>,
+    pub kind_not_in: Vec<String>,
+    pub start_0based: Option<usize>,
+    pub end_0based_exclusive: Option<usize>,
+    pub range_relation: SequenceFeatureRangeRelation,
+    pub strand: SequenceFeatureStrandFilter,
+    pub label_contains: Option<String>,
+    pub label_regex: Option<String>,
+    pub qualifier_filters: Vec<SequenceFeatureQualifierFilter>,
+    pub min_len_bp: Option<usize>,
+    pub max_len_bp: Option<usize>,
+    pub limit: Option<usize>,
+    pub offset: usize,
+    pub sort_by: SequenceFeatureSortBy,
+    pub descending: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequenceFeatureQueryRow {
+    pub feature_id: usize,
+    pub kind: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub strand: String,
+    pub label: String,
+    pub labels: Vec<String>,
+    pub qualifiers: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequenceFeatureQueryResult {
+    pub schema: String,
+    pub seq_id: SeqId,
+    pub sequence_length_bp: usize,
+    pub total_feature_count: usize,
+    pub matched_count: usize,
+    pub returned_count: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub range_relation: String,
+    pub strand_filter: String,
+    pub sort_by: String,
+    pub descending: bool,
+    pub query: SequenceFeatureQuery,
+    pub rows: Vec<SequenceFeatureQueryRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -9661,6 +9790,427 @@ impl GentleEngine {
             message: format!("Could not write qPCR design report to '{path}': {e}"),
         })?;
         Ok(report)
+    }
+
+    fn feature_query_label_values(feature: &gb_io::seq::Feature) -> Vec<String> {
+        let mut labels: Vec<String> = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        for key in [
+            "label",
+            "name",
+            "standard_name",
+            "gene",
+            "locus_tag",
+            "product",
+            "note",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let normalized = trimmed.to_ascii_uppercase();
+                if seen.insert(normalized) {
+                    labels.push(trimmed.to_string());
+                }
+            }
+        }
+        labels
+    }
+
+    fn normalize_feature_kind_token(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_ascii_uppercase())
+        }
+    }
+
+    pub fn query_sequence_features(
+        &self,
+        mut query: SequenceFeatureQuery,
+    ) -> Result<SequenceFeatureQueryResult, EngineError> {
+        query.seq_id = query.seq_id.trim().to_string();
+        if query.seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "query_sequence_features requires non-empty seq_id".to_string(),
+            });
+        }
+        query.kind_in = query
+            .kind_in
+            .iter()
+            .filter_map(|value| Self::normalize_feature_kind_token(value))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        query.kind_not_in = query
+            .kind_not_in
+            .iter()
+            .filter_map(|value| Self::normalize_feature_kind_token(value))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        query.label_contains = query
+            .label_contains
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        query.label_regex = query
+            .label_regex
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+
+        let label_contains_upper = query
+            .label_contains
+            .as_ref()
+            .map(|value| value.to_ascii_uppercase());
+        let label_regex_compiled = query
+            .label_regex
+            .as_ref()
+            .map(|pattern| {
+                RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Invalid label_regex '{}': {e}", pattern),
+                    })
+            })
+            .transpose()?;
+
+        if let (Some(min_len), Some(max_len)) = (query.min_len_bp, query.max_len_bp)
+            && min_len > max_len
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid feature length filter: min_len_bp ({min_len}) must be <= max_len_bp ({max_len})"
+                ),
+            });
+        }
+
+        if query.start_0based.is_some() != query.end_0based_exclusive.is_some() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Feature range filter requires both start_0based and end_0based_exclusive"
+                    .to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(&query.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", query.seq_id),
+            })?;
+        let sequence_length_bp = dna.len();
+
+        let range_filter = if let (Some(start), Some(end_exclusive)) =
+            (query.start_0based, query.end_0based_exclusive)
+        {
+            if sequence_length_bp == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Feature range filter cannot be applied on empty sequence".to_string(),
+                });
+            }
+            if end_exclusive <= start {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid feature range filter: start ({start}) must be < end ({end_exclusive})"
+                    ),
+                });
+            }
+            if start >= sequence_length_bp || end_exclusive > sequence_length_bp {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Feature range filter {}..{} is outside sequence length {}",
+                        start, end_exclusive, sequence_length_bp
+                    ),
+                });
+            }
+            Some((start, end_exclusive))
+        } else {
+            None
+        };
+
+        let mut qualifier_filters: Vec<(SequenceFeatureQualifierFilter, Option<Regex>)> = vec![];
+        for mut filter in query.qualifier_filters.clone() {
+            filter.key = filter.key.trim().to_string();
+            if filter.key.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Qualifier filter key must not be empty".to_string(),
+                });
+            }
+            filter.value_contains = filter
+                .value_contains
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string());
+            filter.value_regex = filter
+                .value_regex
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string());
+            let compiled = filter
+                .value_regex
+                .as_ref()
+                .map(|pattern| {
+                    RegexBuilder::new(pattern)
+                        .case_insensitive(!filter.case_sensitive)
+                        .build()
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Invalid qualifier regex for key '{}': {e}",
+                                filter.key
+                            ),
+                        })
+                })
+                .transpose()?;
+            qualifier_filters.push((filter, compiled));
+        }
+        query.qualifier_filters = qualifier_filters
+            .iter()
+            .map(|(filter, _)| filter.clone())
+            .collect();
+
+        let mut rows: Vec<SequenceFeatureQueryRow> = vec![];
+        let total_feature_count = dna.features().len();
+        let kind_in = query.kind_in.iter().collect::<HashSet<_>>();
+        let kind_not_in = query.kind_not_in.iter().collect::<HashSet<_>>();
+
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            let kind = feature.kind.to_string();
+            let kind_upper = kind.to_ascii_uppercase();
+            if !query.include_source && kind_upper == "SOURCE" {
+                continue;
+            }
+            if !kind_in.is_empty() && !kind_in.contains(&kind_upper) {
+                continue;
+            }
+            if kind_not_in.contains(&kind_upper) {
+                continue;
+            }
+
+            let mut ranges: Vec<(usize, usize)> = vec![];
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.is_empty() {
+                let Ok((from, to)) = feature.location.find_bounds() else {
+                    continue;
+                };
+                if from < 0 || to < 0 {
+                    continue;
+                }
+                ranges.push((from as usize, to as usize));
+            }
+            let Some(start_0based) = ranges.iter().map(|(start, _)| *start).min() else {
+                continue;
+            };
+            let Some(end_0based_exclusive) = ranges
+                .iter()
+                .map(|(_, end)| *end)
+                .max()
+                .map(|end| end.min(sequence_length_bp))
+            else {
+                continue;
+            };
+            if end_0based_exclusive <= start_0based || start_0based >= sequence_length_bp {
+                continue;
+            }
+            let length_bp = end_0based_exclusive.saturating_sub(start_0based);
+
+            if let Some(min_len_bp) = query.min_len_bp
+                && length_bp < min_len_bp
+            {
+                continue;
+            }
+            if let Some(max_len_bp) = query.max_len_bp
+                && length_bp > max_len_bp
+            {
+                continue;
+            }
+
+            if let Some((range_start, range_end)) = range_filter {
+                let range_ok = match query.range_relation {
+                    SequenceFeatureRangeRelation::Overlap => {
+                        end_0based_exclusive > range_start && start_0based < range_end
+                    }
+                    SequenceFeatureRangeRelation::Within => {
+                        start_0based >= range_start && end_0based_exclusive <= range_end
+                    }
+                    SequenceFeatureRangeRelation::Contains => {
+                        start_0based <= range_start && end_0based_exclusive >= range_end
+                    }
+                };
+                if !range_ok {
+                    continue;
+                }
+            }
+
+            let is_reverse = feature_is_reverse(feature);
+            let strand_text = if is_reverse { "reverse" } else { "forward" };
+            let strand_ok = match query.strand {
+                SequenceFeatureStrandFilter::Any => true,
+                SequenceFeatureStrandFilter::Forward => !is_reverse,
+                SequenceFeatureStrandFilter::Reverse => is_reverse,
+            };
+            if !strand_ok {
+                continue;
+            }
+
+            let labels = Self::feature_query_label_values(feature);
+            if let Some(needle_upper) = label_contains_upper.as_ref() {
+                let label_match = labels.iter().any(|value| {
+                    let upper = value.to_ascii_uppercase();
+                    upper == *needle_upper || upper.contains(needle_upper)
+                });
+                if !label_match {
+                    continue;
+                }
+            }
+            if let Some(label_regex) = label_regex_compiled.as_ref() {
+                let label_match = labels.iter().any(|value| label_regex.is_match(value));
+                if !label_match {
+                    continue;
+                }
+            }
+
+            let mut qualifiers_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            if query.include_qualifiers {
+                for (key, value) in &feature.qualifiers {
+                    let Some(value) = value.as_deref().map(str::trim).filter(|v| !v.is_empty())
+                    else {
+                        continue;
+                    };
+                    qualifiers_map
+                        .entry(key.to_string())
+                        .or_default()
+                        .push(value.to_string());
+                }
+            }
+
+            let qualifiers_ok = qualifier_filters.iter().all(|(filter, regex)| {
+                let values = feature
+                    .qualifier_values(filter.key.as_str().into())
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .collect::<Vec<_>>();
+                if values.is_empty() {
+                    return false;
+                }
+                if let Some(needle) = filter.value_contains.as_ref() {
+                    if filter.case_sensitive {
+                        if !values.iter().any(|value| value.contains(needle)) {
+                            return false;
+                        }
+                    } else {
+                        let needle_upper = needle.to_ascii_uppercase();
+                        if !values
+                            .iter()
+                            .any(|value| value.to_ascii_uppercase().contains(&needle_upper))
+                        {
+                            return false;
+                        }
+                    }
+                }
+                if let Some(regex) = regex {
+                    if !values.iter().any(|value| regex.is_match(value)) {
+                        return false;
+                    }
+                }
+                true
+            });
+            if !qualifiers_ok {
+                continue;
+            }
+
+            rows.push(SequenceFeatureQueryRow {
+                feature_id,
+                kind,
+                start_0based,
+                end_0based_exclusive,
+                length_bp,
+                strand: strand_text.to_string(),
+                label: Self::feature_display_label(feature, feature_id),
+                labels,
+                qualifiers: qualifiers_map,
+            });
+        }
+
+        rows.sort_by(|a, b| match query.sort_by {
+            SequenceFeatureSortBy::FeatureId => a.feature_id.cmp(&b.feature_id),
+            SequenceFeatureSortBy::Start => a
+                .start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.feature_id.cmp(&b.feature_id)),
+            SequenceFeatureSortBy::End => a
+                .end_0based_exclusive
+                .cmp(&b.end_0based_exclusive)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.feature_id.cmp(&b.feature_id)),
+            SequenceFeatureSortBy::Kind => a
+                .kind
+                .to_ascii_uppercase()
+                .cmp(&b.kind.to_ascii_uppercase())
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.feature_id.cmp(&b.feature_id)),
+            SequenceFeatureSortBy::Length => a
+                .length_bp
+                .cmp(&b.length_bp)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.feature_id.cmp(&b.feature_id)),
+        });
+        if query.descending {
+            rows.reverse();
+        }
+
+        let matched_count = rows.len();
+        let offset = query.offset.min(matched_count);
+        let limit = query
+            .limit
+            .unwrap_or(FEATURE_QUERY_DEFAULT_LIMIT)
+            .clamp(1, FEATURE_QUERY_MAX_LIMIT);
+        let rows = rows
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect::<Vec<_>>();
+        let returned_count = rows.len();
+        query.limit = Some(limit);
+        query.offset = offset;
+
+        Ok(SequenceFeatureQueryResult {
+            schema: FEATURE_QUERY_RESULT_SCHEMA.to_string(),
+            seq_id: query.seq_id.clone(),
+            sequence_length_bp,
+            total_feature_count,
+            matched_count,
+            returned_count,
+            offset,
+            limit,
+            range_relation: query.range_relation.as_str().to_string(),
+            strand_filter: query.strand.as_str().to_string(),
+            sort_by: query.sort_by.as_str().to_string(),
+            descending: query.descending,
+            query,
+            rows,
+        })
     }
 
     pub(crate) fn normalize_planning_class_key(raw: &str) -> String {

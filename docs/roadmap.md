@@ -612,6 +612,13 @@ order. Durable architecture constraints and decisions remain in
       `KIND[label=TP73]`, optional `+/-N` offsets)
     - resolved selection feeds existing `Extract Sel`, `Queue PCR selection`,
       and `PCR ROI` actions without separate handoff steps
+  - shared-shell/agent feature inspection now includes `features query`:
+    - deterministic non-mutating feature table query by `seq_id`
+    - filters: kind include/exclude, range relation, strand, label/regex,
+      qualifier filters, length bounds
+    - deterministic sorting/pagination for agent iteration
+    - structured response schema:
+      `gentle.sequence_feature_query_result.v1`
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue

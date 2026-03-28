@@ -15535,3 +15535,136 @@ fn test_candidate_metric_expression_fuzz_smoke_does_not_panic() {
         assert!(run.is_ok(), "expression caused panic: {expr}");
     }
 }
+
+#[test]
+fn query_sequence_features_filters_by_kind_range_strand_and_label() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(150)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("SOURCE"),
+        location: gb_io::seq::Location::simple_range(0, 600),
+        qualifiers: vec![("label".into(), Some("source".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(20, 160),
+        qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("CDS"),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            40, 140,
+        ))),
+        qualifiers: vec![
+            ("label".into(), Some("TP73_DBD".to_string())),
+            (
+                "product".into(),
+                Some("TP73 DNA-binding region".to_string()),
+            ),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("promoter"),
+        location: gb_io::seq::Location::simple_range(180, 260),
+        qualifiers: vec![("note".into(), Some("TP73-AS2 promoter".to_string()))],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let query = SequenceFeatureQuery {
+        seq_id: "tp73".to_string(),
+        kind_in: vec!["CDS".to_string()],
+        start_0based: Some(30),
+        end_0based_exclusive: Some(180),
+        range_relation: SequenceFeatureRangeRelation::Within,
+        strand: SequenceFeatureStrandFilter::Reverse,
+        label_contains: Some("tp73".to_string()),
+        sort_by: SequenceFeatureSortBy::Start,
+        ..SequenceFeatureQuery::default()
+    };
+    let result = engine
+        .query_sequence_features(query)
+        .expect("feature query should succeed");
+    assert_eq!(result.schema, "gentle.sequence_feature_query_result.v1");
+    assert_eq!(result.total_feature_count, 4);
+    assert_eq!(result.matched_count, 1);
+    assert_eq!(result.returned_count, 1);
+    assert_eq!(result.rows[0].feature_id, 2);
+    assert_eq!(result.rows[0].kind.to_ascii_uppercase(), "CDS");
+    assert_eq!(result.rows[0].strand, "reverse");
+}
+
+#[test]
+fn query_sequence_features_applies_qualifier_filters_and_pagination() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(10, 70),
+        qualifiers: vec![
+            ("label".into(), Some("TP73".to_string())),
+            ("gene".into(), Some("TP73".to_string())),
+            ("note".into(), Some("tumor protein p73".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(80, 130),
+        qualifiers: vec![
+            ("label".into(), Some("TP53".to_string())),
+            ("gene".into(), Some("TP53".to_string())),
+            ("note".into(), Some("tumor protein p53".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("misc_feature"),
+        location: gb_io::seq::Location::simple_range(140, 200),
+        qualifiers: vec![
+            ("label".into(), Some("TP73_promoter".to_string())),
+            ("note".into(), Some("promoter-like region".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let query = SequenceFeatureQuery {
+        seq_id: "tp73".to_string(),
+        qualifier_filters: vec![
+            SequenceFeatureQualifierFilter {
+                key: "gene".to_string(),
+                value_contains: Some("tp".to_string()),
+                value_regex: Some("^TP7".to_string()),
+                case_sensitive: false,
+            },
+            SequenceFeatureQualifierFilter {
+                key: "note".to_string(),
+                value_contains: Some("tumor".to_string()),
+                value_regex: None,
+                case_sensitive: false,
+            },
+        ],
+        sort_by: SequenceFeatureSortBy::FeatureId,
+        descending: false,
+        offset: 0,
+        limit: Some(1),
+        include_qualifiers: true,
+        ..SequenceFeatureQuery::default()
+    };
+    let result = engine
+        .query_sequence_features(query)
+        .expect("feature query should succeed");
+    assert_eq!(result.matched_count, 1);
+    assert_eq!(result.returned_count, 1);
+    assert_eq!(result.rows[0].feature_id, 0);
+    assert_eq!(
+        result.rows[0]
+            .qualifiers
+            .get("gene")
+            .expect("gene qualifier")
+            .first()
+            .expect("gene value"),
+        "TP73"
+    );
+}

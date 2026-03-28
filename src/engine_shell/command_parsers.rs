@@ -1348,6 +1348,288 @@ pub(super) fn sequence_feature_roi_range_0based(
     Ok((start, end_exclusive))
 }
 
+fn parse_feature_range(raw: &str, context: &str) -> Result<(usize, usize), String> {
+    let trimmed = raw.trim();
+    let (left, right) = if let Some((left, right)) = trimmed.split_once("..") {
+        (left.trim(), right.trim())
+    } else if let Some((left, right)) = trimmed.split_once(':') {
+        (left.trim(), right.trim())
+    } else {
+        return Err(format!(
+            "Invalid --range value '{raw}' for {context}; expected START..END"
+        ));
+    };
+    let start = left
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid range start '{left}' for {context}: {e}"))?;
+    let end_exclusive = right
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid range end '{right}' for {context}: {e}"))?;
+    if end_exclusive <= start {
+        return Err(format!(
+            "Invalid --range value '{raw}' for {context}: end must be > start"
+        ));
+    }
+    Ok((start, end_exclusive))
+}
+
+fn parse_feature_query_strand(raw: &str) -> Result<SequenceFeatureStrandFilter, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "any" => Ok(SequenceFeatureStrandFilter::Any),
+        "forward" | "+" | "plus" => Ok(SequenceFeatureStrandFilter::Forward),
+        "reverse" | "-" | "minus" => Ok(SequenceFeatureStrandFilter::Reverse),
+        other => Err(format!(
+            "Unsupported --strand value '{other}' (expected any|forward|reverse)"
+        )),
+    }
+}
+
+fn parse_feature_query_sort(raw: &str) -> Result<SequenceFeatureSortBy, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "feature_id" | "id" => Ok(SequenceFeatureSortBy::FeatureId),
+        "start" => Ok(SequenceFeatureSortBy::Start),
+        "end" => Ok(SequenceFeatureSortBy::End),
+        "kind" => Ok(SequenceFeatureSortBy::Kind),
+        "length" | "len" => Ok(SequenceFeatureSortBy::Length),
+        other => Err(format!(
+            "Unsupported --sort value '{other}' (expected feature_id|start|end|kind|length)"
+        )),
+    }
+}
+
+fn parse_feature_qual_key_value(raw: &str, flag: &str) -> Result<(String, String), String> {
+    let Some((key, value)) = raw.split_once('=') else {
+        return Err(format!("{flag} requires KEY=VALUE (received '{raw}')"));
+    };
+    let key = key.trim().to_string();
+    let value = value.trim().to_string();
+    if key.is_empty() {
+        return Err(format!("{flag} requires non-empty KEY"));
+    }
+    if value.is_empty() {
+        return Err(format!("{flag} requires non-empty VALUE"));
+    }
+    Ok((key, value))
+}
+
+pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("features requires a subcommand: query".to_string());
+    }
+    match tokens[1].as_str() {
+        "query" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features query requires SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]"
+                        .to_string(),
+                );
+            }
+            let mut query = SequenceFeatureQuery {
+                seq_id: tokens[2].clone(),
+                ..SequenceFeatureQuery::default()
+            };
+            let mut range_arg: Option<(usize, usize)> = None;
+            let mut start_arg: Option<usize> = None;
+            let mut end_arg: Option<usize> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--kind", "features query")?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            query.kind_in.push(trimmed.to_string());
+                        }
+                    }
+                    "--kind-not" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--kind-not", "features query")?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            query.kind_not_in.push(trimmed.to_string());
+                        }
+                    }
+                    "--range" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--range", "features query")?;
+                        if range_arg.is_some() {
+                            return Err("--range was specified multiple times".to_string());
+                        }
+                        range_arg = Some(parse_feature_range(&raw, "features query")?);
+                    }
+                    "--start" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--start", "features query")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --start value '{raw}': {e}"))?;
+                        start_arg = Some(parsed);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--end", "features query")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --end value '{raw}': {e}"))?;
+                        end_arg = Some(parsed);
+                    }
+                    "--overlap" => {
+                        query.range_relation = SequenceFeatureRangeRelation::Overlap;
+                        idx += 1;
+                    }
+                    "--within" => {
+                        query.range_relation = SequenceFeatureRangeRelation::Within;
+                        idx += 1;
+                    }
+                    "--contains" => {
+                        query.range_relation = SequenceFeatureRangeRelation::Contains;
+                        idx += 1;
+                    }
+                    "--strand" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--strand", "features query")?;
+                        query.strand = parse_feature_query_strand(&raw)?;
+                    }
+                    "--label" => {
+                        query.label_contains = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--label",
+                            "features query",
+                        )?);
+                    }
+                    "--label-regex" => {
+                        query.label_regex = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--label-regex",
+                            "features query",
+                        )?);
+                    }
+                    "--qual" => {
+                        let key = parse_option_path(tokens, &mut idx, "--qual", "features query")?;
+                        query
+                            .qualifier_filters
+                            .push(SequenceFeatureQualifierFilter {
+                                key,
+                                ..SequenceFeatureQualifierFilter::default()
+                            });
+                    }
+                    "--qual-contains" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--qual-contains",
+                            "features query",
+                        )?;
+                        let (key, value_contains) =
+                            parse_feature_qual_key_value(&raw, "--qual-contains")?;
+                        query
+                            .qualifier_filters
+                            .push(SequenceFeatureQualifierFilter {
+                                key,
+                                value_contains: Some(value_contains),
+                                ..SequenceFeatureQualifierFilter::default()
+                            });
+                    }
+                    "--qual-regex" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--qual-regex", "features query")?;
+                        let (key, value_regex) =
+                            parse_feature_qual_key_value(&raw, "--qual-regex")?;
+                        query
+                            .qualifier_filters
+                            .push(SequenceFeatureQualifierFilter {
+                                key,
+                                value_regex: Some(value_regex),
+                                ..SequenceFeatureQualifierFilter::default()
+                            });
+                    }
+                    "--min-len" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--min-len", "features query")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --min-len value '{raw}': {e}"))?;
+                        query.min_len_bp = Some(parsed);
+                    }
+                    "--max-len" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-len", "features query")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-len value '{raw}': {e}"))?;
+                        query.max_len_bp = Some(parsed);
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", "features query")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                        query.limit = Some(parsed);
+                    }
+                    "--offset" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--offset", "features query")?;
+                        query.offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    "--sort" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--sort", "features query")?;
+                        query.sort_by = parse_feature_query_sort(&raw)?;
+                    }
+                    "--desc" => {
+                        query.descending = true;
+                        idx += 1;
+                    }
+                    "--asc" => {
+                        query.descending = false;
+                        idx += 1;
+                    }
+                    "--include-source" => {
+                        query.include_source = true;
+                        idx += 1;
+                    }
+                    "--include-qualifiers" => {
+                        query.include_qualifiers = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for features query"));
+                    }
+                }
+            }
+
+            if range_arg.is_some() && (start_arg.is_some() || end_arg.is_some()) {
+                return Err(
+                    "features query accepts either --range START..END or --start/--end, not both"
+                        .to_string(),
+                );
+            }
+            if let Some((start, end_exclusive)) = range_arg {
+                query.start_0based = Some(start);
+                query.end_0based_exclusive = Some(end_exclusive);
+            } else if start_arg.is_some() || end_arg.is_some() {
+                let start = start_arg
+                    .ok_or_else(|| "features query --start requires matching --end".to_string())?;
+                let end_exclusive = end_arg
+                    .ok_or_else(|| "features query --end requires matching --start".to_string())?;
+                if end_exclusive <= start {
+                    return Err("--end must be > --start".to_string());
+                }
+                query.start_0based = Some(start);
+                query.end_0based_exclusive = Some(end_exclusive);
+            }
+
+            Ok(ShellCommand::FeaturesQuery { query })
+        }
+        other => Err(format!(
+            "Unknown features subcommand '{other}' (expected query)"
+        )),
+    }
+}
+
 pub(super) fn build_seeded_primer_pair_operation(
     template: &str,
     roi_start_0based: usize,

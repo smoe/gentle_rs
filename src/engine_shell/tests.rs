@@ -1693,6 +1693,37 @@ fn parse_primers_seed_from_feature_and_splicing() {
 }
 
 #[test]
+fn parse_features_query_with_filters() {
+    let cmd = parse_shell_line(
+        "features query seq_a --kind CDS --kind-not source --range 10..200 --within --strand reverse --label TP73 --label-regex ^TP73 --qual gene --qual-contains note=promoter --qual-regex product=TP73.* --min-len 30 --max-len 500 --limit 50 --offset 5 --sort start --desc --include-source --include-qualifiers",
+    )
+    .expect("parse features query");
+    match cmd {
+        ShellCommand::FeaturesQuery { query } => {
+            assert_eq!(query.seq_id, "seq_a");
+            assert_eq!(query.kind_in, vec!["CDS".to_string()]);
+            assert_eq!(query.kind_not_in, vec!["source".to_string()]);
+            assert_eq!(query.start_0based, Some(10));
+            assert_eq!(query.end_0based_exclusive, Some(200));
+            assert_eq!(query.range_relation, SequenceFeatureRangeRelation::Within);
+            assert_eq!(query.strand, SequenceFeatureStrandFilter::Reverse);
+            assert_eq!(query.label_contains.as_deref(), Some("TP73"));
+            assert_eq!(query.label_regex.as_deref(), Some("^TP73"));
+            assert_eq!(query.qualifier_filters.len(), 3);
+            assert_eq!(query.min_len_bp, Some(30));
+            assert_eq!(query.max_len_bp, Some(500));
+            assert_eq!(query.limit, Some(50));
+            assert_eq!(query.offset, 5);
+            assert_eq!(query.sort_by, SequenceFeatureSortBy::Start);
+            assert!(query.descending);
+            assert!(query.include_source);
+            assert!(query.include_qualifiers);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_tracks_import_bed() {
     let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -5488,6 +5519,58 @@ fn execute_primers_design_list_show_export() {
     );
     let text = fs::read_to_string(&export_path).expect("read export");
     assert!(text.contains("gentle.primer_design_report.v1"));
+}
+
+#[test]
+fn execute_features_query_returns_structured_rows() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: FeatureKind::from("gene"),
+        location: Location::simple_range(10, 90),
+        qualifiers: vec![
+            ("label".into(), Some("TP73".to_string())),
+            ("gene".into(), Some("TP73".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: FeatureKind::from("CDS"),
+        location: Location::Complement(Box::new(Location::simple_range(20, 80))),
+        qualifiers: vec![
+            ("label".into(), Some("TP73_DBD".to_string())),
+            ("product".into(), Some("TP73 DNA-binding".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: FeatureKind::from("misc_feature"),
+        location: Location::simple_range(120, 170),
+        qualifiers: vec![("note".into(), Some("promoter".to_string()))],
+    });
+    state.sequences.insert("tp73".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let query = SequenceFeatureQuery {
+        seq_id: "tp73".to_string(),
+        kind_in: vec!["CDS".to_string()],
+        strand: SequenceFeatureStrandFilter::Reverse,
+        start_0based: Some(0),
+        end_0based_exclusive: Some(120),
+        range_relation: SequenceFeatureRangeRelation::Within,
+        include_qualifiers: true,
+        limit: Some(10),
+        ..SequenceFeatureQuery::default()
+    };
+    let run = execute_shell_command(&mut engine, &ShellCommand::FeaturesQuery { query })
+        .expect("features query");
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.sequence_feature_query_result.v1")
+    );
+    assert_eq!(run.output["matched_count"].as_u64(), Some(1));
+    assert_eq!(run.output["returned_count"].as_u64(), Some(1));
+    assert_eq!(run.output["rows"][0]["kind"].as_str(), Some("CDS"));
+    assert_eq!(run.output["rows"][0]["strand"].as_str(), Some("reverse"));
 }
 
 #[cfg(unix)]

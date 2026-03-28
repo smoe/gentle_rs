@@ -1057,6 +1057,7 @@ Shared shell command:
     - `guides oligos-show OLIGO_SET_ID`
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
+    - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -1213,6 +1214,13 @@ Shared shell command:
       - includes ready-to-run operations:
         `operations.design_primer_pairs` (`DesignPrimerPairs`) and
         `operations.design_qpcr_assays` (`DesignQpcrAssays`)
+    - Feature query helper notes (`features query`):
+      - non-mutating structured result schema:
+        `gentle.sequence_feature_query_result.v1`
+      - deterministic filters over feature kind, range relation, strand, labels,
+        qualifiers, and length
+      - deterministic ordering (`feature_id|start|end|kind|length`) with
+        `offset`/`limit` paging suitable for agent iteration
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`

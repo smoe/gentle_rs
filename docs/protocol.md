@@ -2219,6 +2219,27 @@ Primer-design shell command family (implemented):
   - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
   - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
 
+Feature-query shell contract (implemented):
+
+- Shared-shell command:
+  - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+- Execution semantics:
+  - non-mutating engine inspection over one sequence’s feature table
+  - deterministic filter pipeline:
+    kind include/exclude, optional range relation (`overlap|within|contains`),
+    strand filter, label contains/regex, qualifier filters, and length bounds
+  - deterministic ordering by requested sort key with stable tie-breaks +
+    pagination (`offset`/`limit`)
+- Response schema:
+  - `gentle.sequence_feature_query_result.v1`
+  - fields include:
+    - `seq_id`, `sequence_length_bp`, `total_feature_count`
+    - `matched_count`, `returned_count`, `offset`, `limit`
+    - normalized `query`
+    - `rows[]` with `feature_id`, `kind`, `start_0based`,
+      `end_0based_exclusive`, `length_bp`, `strand`, `label`, `labels[]`, and
+      optional qualifier maps when requested (`--include-qualifiers`)
+
 Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:
