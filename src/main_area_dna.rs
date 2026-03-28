@@ -4351,6 +4351,91 @@ mod tests {
     }
 
     #[test]
+    fn mapping_workspace_uses_saved_report_progress_without_evidence_selection() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let report = RnaReadInterpretationReport {
+            report_id: "rna_workspace_demo".to_string(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 9,
+            read_count_total: 1,
+            read_count_seed_passed: 1,
+            read_count_aligned: 1,
+            score_density_bins: {
+                let mut bins = vec![0; 40];
+                bins[39] = 1;
+                bins
+            },
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read0".to_string(),
+                sequence: "ACGTACGT".to_string(),
+                read_length_bp: 8,
+                tested_kmers: 8,
+                matched_kmers: 8,
+                seed_hit_fraction: 1.0,
+                weighted_seed_hit_fraction: 1.0,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_feature_id: 9,
+                    transcript_id: "TX1".to_string(),
+                    transcript_label: "TX1".to_string(),
+                    strand: "+".to_string(),
+                    query_end_0based_exclusive: 8,
+                    target_start_1based: 1,
+                    target_end_1based: 8,
+                    target_end_offset_0based_exclusive: 8,
+                    matches: 8,
+                    score: 16,
+                    identity_fraction: 1.0,
+                    query_coverage_fraction: 1.0,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        };
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(report)
+            .expect("commit report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_reads_ui.report_id = "rna_workspace_demo".to_string();
+        area.rna_read_evidence_ui.selected_report_id.clear();
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            group_label: "demo".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        area.sync_rna_read_evidence_selection_to_mapping_report();
+        assert_eq!(area.rna_read_evidence_ui.selected_report_id, "rna_workspace_demo");
+
+        let progress = area
+            .current_rna_read_mapping_progress_for_view(&view)
+            .expect("workspace progress");
+        assert_eq!(progress.reads_processed, 1);
+        assert_eq!(progress.aligned, 1);
+        assert_eq!(progress.score_density_bins[39], 1);
+        assert_eq!(progress.top_hits_preview.len(), 1);
+    }
+
+    #[test]
     fn select_rna_read_report_score_bin_record_indices_matches_requested_bin() {
         let report = RnaReadInterpretationReport {
             hits: vec![
@@ -18282,7 +18367,8 @@ impl MainAreaDna {
                     );
                 }
                 let mut highlight_selection_update: Option<Option<usize>> = None;
-                let progress_snapshot = self.rna_read_progress.clone();
+                self.sync_rna_read_evidence_selection_to_mapping_report();
+                let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
                 if let Some(task) = &self.rna_read_task {
                     let compression = Self::rna_reads_input_compression_label(&task.input_path);
                     let task_label = task.operation_label.as_str();
@@ -18617,118 +18703,100 @@ impl MainAreaDna {
                     self.rna_seed_highlight_record_index = next_selection;
                 }
                 if self.rna_read_task.is_none() {
-                    let report_id = self.rna_reads_ui.report_id.trim();
-                    if !report_id.is_empty() {
-                        if let Some(engine) = &self.engine {
-                            if let Ok(guard) = engine.read() {
-                                if let Ok(report) = guard.get_rna_read_report(report_id) {
-                                    let report_seed_pass_pct = if report.read_count_total == 0 {
-                                        0.0
-                                    } else {
-                                        (report.read_count_seed_passed as f64
-                                            / report.read_count_total as f64)
-                                            * 100.0
-                                    };
-                                    ui.small(format!(
-                                        "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={} | msa-eligible(retained)={}",
-                                        report.report_id,
-                                        report.origin_mode.as_str(),
-                                        report.target_gene_ids.len(),
-                                        report.roi_seed_capture_enabled,
-                                        report.hits.len(),
-                                        report.read_count_total,
-                                        report.read_count_seed_passed,
-                                        report_seed_pass_pct,
-                                        report.read_count_aligned,
-                                        report.retained_count_msa_eligible
-                                    ));
-                                    if !report.target_gene_ids.is_empty() {
-                                        let preview = report
-                                            .target_gene_ids
-                                            .iter()
-                                            .take(8)
-                                            .cloned()
-                                            .collect::<Vec<_>>()
-                                            .join(", ");
-                                        let suffix = if report.target_gene_ids.len() > 8 {
-                                            format!(
-                                                " (+{} more)",
-                                                report.target_gene_ids.len() - 8
-                                            )
-                                        } else {
-                                            String::new()
-                                        };
-                                        ui.small(format!(
-                                            "Target genes (report): {}{}",
-                                            preview, suffix
-                                        ));
+                    if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
+                        && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
+                    {
+                        let report = report.as_ref();
+                        let report_seed_pass_pct = if report.read_count_total == 0 {
+                            0.0
+                        } else {
+                            (report.read_count_seed_passed as f64 / report.read_count_total as f64)
+                                * 100.0
+                        };
+                        ui.small(format!(
+                            "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={} | msa-eligible(retained)={}",
+                            report.report_id,
+                            report.origin_mode.as_str(),
+                            report.target_gene_ids.len(),
+                            report.roi_seed_capture_enabled,
+                            report.hits.len(),
+                            report.read_count_total,
+                            report.read_count_seed_passed,
+                            report_seed_pass_pct,
+                            report.read_count_aligned,
+                            report.retained_count_msa_eligible
+                        ));
+                        if !report.target_gene_ids.is_empty() {
+                            let preview = report
+                                .target_gene_ids
+                                .iter()
+                                .take(8)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let suffix = if report.target_gene_ids.len() > 8 {
+                                format!(" (+{} more)", report.target_gene_ids.len() - 8)
+                            } else {
+                                String::new()
+                            };
+                            ui.small(format!("Target genes (report): {}{}", preview, suffix));
+                        }
+                        egui::CollapsingHeader::new("Saved report details")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                if !report.warnings.is_empty() {
+                                    for warning in report.warnings.iter().take(2) {
+                                        ui.small(
+                                            egui::RichText::new(format!("warning: {warning}"))
+                                                .color(egui::Color32::from_rgb(180, 83, 9)),
+                                        );
                                     }
-                                    egui::CollapsingHeader::new("Saved report details")
-                                        .default_open(false)
+                                }
+                                if !report.origin_class_counts.is_empty() {
+                                    let class_parts = report
+                                        .origin_class_counts
+                                        .iter()
+                                        .map(|(class, count)| format!("{class}={count}"))
+                                        .collect::<Vec<_>>();
+                                    ui.small(format!("Origin classes: {}", class_parts.join(" | ")));
+                                }
+                                ui.collapsing("Retained read preview (top 20)", |ui| {
+                                    egui::ScrollArea::vertical()
+                                        .max_height(140.0)
                                         .show(ui, |ui| {
-                                            if !report.warnings.is_empty() {
-                                                for warning in report.warnings.iter().take(2) {
-                                                    ui.small(
-                                                        egui::RichText::new(format!(
-                                                            "warning: {warning}"
-                                                        ))
-                                                        .color(egui::Color32::from_rgb(
-                                                            180, 83, 9
-                                                        )),
-                                                    );
-                                                }
-                                            }
-                                            if !report.origin_class_counts.is_empty() {
-                                                let class_parts = report
-                                                    .origin_class_counts
-                                                    .iter()
-                                                    .map(|(class, count)| format!("{class}={count}"))
-                                                    .collect::<Vec<_>>();
-                                                ui.small(format!(
-                                                    "Origin classes: {}",
-                                                    class_parts.join(" | ")
+                                            for hit in report.hits.iter().take(20) {
+                                                let seq_preview = hit
+                                                    .sequence
+                                                    .chars()
+                                                    .take(48)
+                                                    .collect::<String>();
+                                                ui.monospace(format!(
+                                                    "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} msa={} seq={}",
+                                                    hit.record_index + 1,
+                                                    hit.header_id,
+                                                    hit.seed_hit_fraction,
+                                                    hit.weighted_seed_hit_fraction,
+                                                    if hit.seed_transcript_gap_count == 0 {
+                                                        "na".to_string()
+                                                    } else {
+                                                        format!("{:.2}", hit.seed_median_transcript_gap)
+                                                    },
+                                                    hit.seed_transcript_gap_count,
+                                                    hit.seed_chain_support_fraction,
+                                                    hit.seed_chain_support_kmers,
+                                                    hit.origin_class.as_str(),
+                                                    hit.origin_confidence,
+                                                    hit.strand_confidence,
+                                                    hit.matched_kmers,
+                                                    hit.tested_kmers,
+                                                    hit.passed_seed_filter,
+                                                    hit.msa_eligible,
+                                                    seq_preview,
                                                 ));
                                             }
-                                            ui.collapsing("Retained read preview (top 20)", |ui| {
-                                                egui::ScrollArea::vertical()
-                                                    .max_height(140.0)
-                                                    .show(ui, |ui| {
-                                                        for hit in report.hits.iter().take(20) {
-                                                            let seq_preview = hit
-                                                                .sequence
-                                                                .chars()
-                                                                .take(48)
-                                                                .collect::<String>();
-                                                            ui.monospace(format!(
-                                                                "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} msa={} seq={}",
-                                                                hit.record_index + 1,
-                                                                hit.header_id,
-                                                                hit.seed_hit_fraction,
-                                                                hit.weighted_seed_hit_fraction,
-                                                                if hit.seed_transcript_gap_count == 0 {
-                                                                    "na".to_string()
-                                                                } else {
-                                                                    format!("{:.2}", hit.seed_median_transcript_gap)
-                                                                },
-                                                                hit.seed_transcript_gap_count,
-                                                                hit.seed_chain_support_fraction,
-                                                                hit.seed_chain_support_kmers,
-                                                                hit.origin_class.as_str(),
-                                                                hit.origin_confidence,
-                                                                hit.strand_confidence,
-                                                                hit.matched_kmers,
-                                                                hit.tested_kmers,
-                                                                hit.passed_seed_filter,
-                                                                hit.msa_eligible,
-                                                                seq_preview,
-                                                            ));
-                                                        }
-                                                    });
-                                            });
                                         });
-                                }
-                            }
-                        }
+                                });
+                            });
                     }
                 }
                 if ui
@@ -19668,6 +19736,28 @@ impl MainAreaDna {
         }
     }
 
+    fn current_rna_read_mapping_workspace_report_id(&self) -> Option<String> {
+        let report_id = self.rna_reads_ui.report_id.trim();
+        if report_id.is_empty() {
+            None
+        } else {
+            Some(report_id.to_string())
+        }
+    }
+
+    fn sync_rna_read_evidence_selection_to_mapping_report(&mut self) {
+        let Some(report_id) = self.current_rna_read_mapping_workspace_report_id() else {
+            return;
+        };
+        if !self
+            .rna_read_evidence_ui
+            .selected_report_id
+            .eq_ignore_ascii_case(&report_id)
+        {
+            self.rna_read_evidence_ui.selected_report_id = report_id;
+        }
+    }
+
     fn invalidate_rna_read_report_display_cache(&mut self) {
         self.cached_saved_rna_read_report = None;
         self.cached_rna_read_report_summaries = None;
@@ -19790,16 +19880,18 @@ impl MainAreaDna {
             .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
     }
 
-    fn current_saved_rna_read_alignment_inspection(
+    fn saved_rna_read_alignment_inspection_for_report_id(
         &mut self,
+        report_id: &str,
         limit: usize,
         subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
     ) -> Result<Arc<RnaReadAlignmentInspection>, String> {
-        let report_id = self
-            .selected_rna_read_evidence_report_id()
-            .ok_or_else(|| "Select a Report first before inspecting aligned reads".to_string())?;
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Select a Report first before inspecting aligned reads".to_string());
+        }
         let cache_key = Self::rna_read_alignment_inspection_cache_key(
-            &report_id,
+            report_id,
             limit,
             subset_spec.as_ref(),
         );
@@ -19841,6 +19933,17 @@ impl MainAreaDna {
             }
         }
         result
+    }
+
+    fn current_saved_rna_read_alignment_inspection(
+        &mut self,
+        limit: usize,
+        subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
+    ) -> Result<Arc<RnaReadAlignmentInspection>, String> {
+        let report_id = self
+            .selected_rna_read_evidence_report_id()
+            .ok_or_else(|| "Select a Report first before inspecting aligned reads".to_string())?;
+        self.saved_rna_read_alignment_inspection_for_report_id(&report_id, limit, subset_spec)
     }
 
     fn selected_highlighted_rna_report_hit<'a>(
@@ -20013,7 +20116,11 @@ impl MainAreaDna {
             .map(Self::rna_read_top_hit_preview_from_hit)
             .collect::<Vec<_>>();
         let inspection = self
-            .current_saved_rna_read_alignment_inspection(report.hits.len().max(1), None)
+            .saved_rna_read_alignment_inspection_for_report_id(
+                &report.report_id,
+                report.hits.len().max(1),
+                None,
+            )
             .ok();
         let (mapped_exon_support_frequencies, mapped_junction_support_frequencies) = inspection
             .as_ref()
@@ -20112,6 +20219,20 @@ impl MainAreaDna {
             return Some(Arc::new(progress));
         }
         report.map(|row| self.synthesize_rna_read_progress_from_report(row))
+    }
+
+    fn current_rna_read_mapping_progress_for_view(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Option<Arc<RnaReadInterpretProgress>> {
+        if self.active_rna_read_task_matches_splicing_view(view)
+            && let Some(progress) = self.rna_read_progress.clone()
+        {
+            return Some(Arc::new(progress));
+        }
+        self.current_rna_read_mapping_workspace_report_id()
+            .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+            .map(|report| self.synthesize_rna_read_progress_from_report(report.as_ref()))
     }
 
     fn summarize_rna_read_alignment_effects(

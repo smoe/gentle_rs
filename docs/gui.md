@@ -404,6 +404,9 @@ Feature tree grouping:
     scope/default report)
   - owns phase-1 FASTA input, report id, scope/origin controls, checkpoint/
     resume, phase-2 alignment controls, workflow staging, and report exports
+  - when a saved `Report ID` already exists, reopening the mapping workspace
+    hydrates score density, support tables, and read inspection from that
+    saved report even if no live task is running
   - the mapping controls now spell out the biological working set explicitly:
     - `Region / gene scope` names whether the run uses the current target gene
       or all genes overlapping the selected locus

@@ -1508,6 +1508,10 @@ Status:
     foreground RNA-read mapping/splicing windows do not repeatedly deserialize
     report metadata and rebuild inspection payloads on every repaint while the
     user is simply scrolling or selecting rows.
+    The dedicated `RNA-read Mapping` workspace now also rehydrates its score
+    density, support tables, and read previews from the saved report named by
+    the current `Report ID`, instead of falling back to a gray shell once the
+    live task has finished.
   - Score-density histogram bins in Splicing Expert are now actionable:
     clicking a bar creates a formal `score_bin` subset, highlights that bin,
     selects the corresponding saved-report reads, and focuses `Mapped cDNA ->
