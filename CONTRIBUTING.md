@@ -27,6 +27,15 @@ cargo run --bin gentle_examples_docs -- --check
 cargo run --bin gentle_examples_docs -- tutorial-check
 ```
 
+Disk-usage note:
+
+- This repository configures a shared Cargo target directory in
+  `.cargo/config.toml` (`../../.gentle_target_shared`) so sibling worktrees
+  reuse compiled dependencies instead of each creating a large private
+  `target/`.
+- You can override this locally with `CARGO_TARGET_DIR` if your environment
+  needs a different path.
+
 ## Contribution Notes
 
 - Keep behavior aligned across GUI, CLI, and other interfaces when possible.

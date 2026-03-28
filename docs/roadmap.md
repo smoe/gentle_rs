@@ -11,6 +11,10 @@ order. Durable architecture constraints and decisions remain in
 ### Engine and adapter baseline in place
 
 - Shared engine core in `src/engine.rs` with operation/workflow execution.
+- Repository build-tooling baseline now includes a shared Cargo target
+  directory (`.cargo/config.toml` -> `../../.gentle_target_shared`) so sibling
+  worktrees reuse dependency build artifacts instead of duplicating large
+  per-worktree `target/` trees.
 - Engine module decomposition is now underway:
   - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)
   - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
