@@ -1892,6 +1892,12 @@ Primer pairs form:
 
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
+    - both accept numeric coordinates and `=` formulas
+      (`=KIND.start+N`, `=KIND.end-N`, optional `KIND[2]`,
+      optional `KIND[label=TP73]`)
+    - `ROI start` also accepts range form
+      (`=left .. right` or `=left to right`)
+    - `Apply ROI formula` resolves formulas into numeric coordinates
   - `min amplicon`, `max amplicon`
   - `max Tm delta`, `max pairs`
   - `report_id`
@@ -1929,6 +1935,8 @@ Primer pairs form:
 qPCR form:
 
 - same ROI/amplicon + pair constraints as primer-pair design
+- same ROI formula support as primer-pair design (`=` expressions +
+  `Apply ROI formula`)
 - adds:
   - `Probe side` with the same side-constraint fields
   - `max probe Tm delta`

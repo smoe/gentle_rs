@@ -1849,6 +1849,71 @@ mod tests {
     }
 
     #[test]
+    fn roi_coordinate_formula_resolves_feature_boundary_and_offset() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("CDS"),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        let start = area
+            .parse_required_usize_or_formula_text("=CDS.start+10", "primer_design.roi_start_0based")
+            .expect("formula start");
+        let end = area
+            .parse_required_usize_or_formula_text("=CDS.end-5", "primer_design.roi_end_0based")
+            .expect("formula end");
+
+        assert_eq!(start, 30);
+        assert_eq!(end, 75);
+    }
+
+    #[test]
+    fn roi_range_formula_in_start_field_resolves_both_coordinates() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("CDS"),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        let (start, end) = area
+            .resolve_roi_range_inputs_0based(
+                "=CDS.start+10 .. CDS.end-5",
+                "0",
+                "primer_design",
+            )
+            .expect("range formula");
+
+        assert_eq!((start, end), (30, 75));
+    }
+
+    #[test]
+    fn queue_current_primer_roi_fields_supports_range_formula() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("CDS"),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui.roi_start_0based = "=CDS.start+10 .. CDS.end-5".to_string();
+        area.primer_design_ui.roi_end_0based = "0".to_string();
+
+        area.queue_current_primer_roi_fields_for_pcr();
+
+        assert_eq!(area.pcr_queued_regions_ui.len(), 1);
+        let queued = &area.pcr_queued_regions_ui[0];
+        assert_eq!(queued.template, "seq1");
+        assert_eq!(queued.start_0based, 30);
+        assert_eq!(queued.end_0based_exclusive, 75);
+        assert_eq!(area.primer_design_ui.roi_start_0based, "30");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "75");
+    }
+
+    #[test]
     fn painted_role_interval_updates_selected_role_only() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -11253,19 +11318,10 @@ impl MainAreaDna {
             self.op_status = "No active template sequence".to_string();
             return;
         }
-        let start = match Self::parse_required_usize_text(
+        let (start, end_exclusive) = match self.resolve_roi_range_inputs_0based(
             &self.primer_design_ui.roi_start_0based,
-            "roi_start_0based",
-        ) {
-            Ok(value) => value,
-            Err(message) => {
-                self.op_status = message;
-                return;
-            }
-        };
-        let end_exclusive = match Self::parse_required_usize_text(
             &self.primer_design_ui.roi_end_0based,
-            "roi_end_0based",
+            "primer_design",
         ) {
             Ok(value) => value,
             Err(message) => {
@@ -11273,6 +11329,8 @@ impl MainAreaDna {
                 return;
             }
         };
+        self.primer_design_ui.roi_start_0based = start.to_string();
+        self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
         match self.queue_pcr_region(&template, start, end_exclusive, "primer ROI form") {
             Ok(true) => {
                 self.show_engine_ops = true;
@@ -27147,6 +27205,394 @@ impl MainAreaDna {
         }
     }
 
+    fn feature_formula_label_values(feature: &gb_io::seq::Feature) -> Vec<String> {
+        let mut labels = Vec::new();
+        for key in [
+            "label",
+            "gene",
+            "locus_tag",
+            "product",
+            "standard_name",
+            "note",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let value = value.trim();
+                if !value.is_empty() {
+                    labels.push(value.to_string());
+                }
+            }
+        }
+        labels
+    }
+
+    fn split_formula_range_expression(expr: &str) -> Option<(String, String)> {
+        if let Some((left, right)) = expr.split_once("..") {
+            let left = left.trim();
+            let right = right.trim();
+            if !left.is_empty() && !right.is_empty() {
+                return Some((left.to_string(), right.to_string()));
+            }
+        }
+        let lower = expr.to_ascii_lowercase();
+        if let Some(split_idx) = lower.find(" to ") {
+            let left = expr[..split_idx].trim();
+            let right = expr[split_idx + 4..].trim();
+            if !left.is_empty() && !right.is_empty() {
+                return Some((left.to_string(), right.to_string()));
+            }
+        }
+        None
+    }
+
+    fn parse_feature_formula_coordinate_expression(
+        &self,
+        expr: &str,
+        field_name: &str,
+    ) -> Result<usize, String> {
+        let raw = expr.trim();
+        if raw.is_empty() {
+            return Err(format!(
+                "Invalid {field_name}: empty feature formula expression"
+            ));
+        }
+
+        let mut idx = 0usize;
+        let bytes = raw.as_bytes();
+        let is_kind_char = |ch: u8| ch.is_ascii_alphanumeric() || matches!(ch, b'_' | b'-');
+        while idx < bytes.len() && is_kind_char(bytes[idx]) {
+            idx += 1;
+        }
+        if idx == 0 {
+            return Err(format!(
+                "Invalid {field_name}: expected feature kind (for example CDS.start+10)"
+            ));
+        }
+        let feature_kind = raw[..idx].trim().to_ascii_uppercase();
+
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+
+        let mut occurrence_index: Option<usize> = None;
+        let mut label_filter: Option<String> = None;
+        if idx < bytes.len() && bytes[idx] == b'[' {
+            idx += 1;
+            let start = idx;
+            while idx < bytes.len() && bytes[idx] != b']' {
+                idx += 1;
+            }
+            if idx >= bytes.len() || bytes[idx] != b']' {
+                return Err(format!(
+                    "Invalid {field_name}: missing closing ']' in feature selector"
+                ));
+            }
+            let inside = raw[start..idx].trim();
+            idx += 1;
+            if inside.is_empty() {
+                return Err(format!(
+                    "Invalid {field_name}: empty selector inside []"
+                ));
+            }
+            let inside_lower = inside.to_ascii_lowercase();
+            if let Some(value_raw) = inside_lower
+                .strip_prefix("label=")
+                .map(|_| &inside[6..])
+            {
+                let label = value_raw.trim();
+                if label.is_empty() {
+                    return Err(format!(
+                        "Invalid {field_name}: label filter must not be empty"
+                    ));
+                }
+                label_filter = Some(label.to_ascii_uppercase());
+            } else {
+                let one_based = inside.parse::<usize>().map_err(|_| {
+                    format!(
+                        "Invalid {field_name}: selector '{}' must be a 1-based occurrence index or label=...",
+                        inside
+                    )
+                })?;
+                if one_based == 0 {
+                    return Err(format!(
+                        "Invalid {field_name}: occurrence index must be >= 1"
+                    ));
+                }
+                occurrence_index = Some(one_based - 1);
+            }
+        }
+
+        let mut saw_separator = false;
+        if idx < bytes.len() && bytes[idx] == b'.' {
+            saw_separator = true;
+            idx += 1;
+        }
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            saw_separator = true;
+            idx += 1;
+        }
+        if !saw_separator {
+            return Err(format!(
+                "Invalid {field_name}: expected `.start`, `.end`, or `.middle` after feature kind"
+            ));
+        }
+
+        let boundary_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_alphabetic() {
+            idx += 1;
+        }
+        if boundary_start == idx {
+            return Err(format!(
+                "Invalid {field_name}: expected boundary token (start|end|middle)"
+            ));
+        }
+        let boundary = match raw[boundary_start..idx].trim().to_ascii_lowercase().as_str() {
+            "start" => AnchorBoundary::Start,
+            "end" => AnchorBoundary::End,
+            "middle" => AnchorBoundary::Middle,
+            other => {
+                return Err(format!(
+                    "Invalid {field_name}: unknown boundary '{other}' (expected start|end|middle)"
+                ));
+            }
+        };
+
+        let mut offset: isize = 0;
+        while idx < bytes.len() {
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            if idx >= bytes.len() {
+                break;
+            }
+            let sign = match bytes[idx] {
+                b'+' => 1isize,
+                b'-' => -1isize,
+                other => {
+                    return Err(format!(
+                        "Invalid {field_name}: unexpected character '{}' in offset suffix",
+                        other as char
+                    ));
+                }
+            };
+            idx += 1;
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            let number_start = idx;
+            while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+                idx += 1;
+            }
+            if number_start == idx {
+                return Err(format!(
+                    "Invalid {field_name}: expected integer offset after sign"
+                ));
+            }
+            let delta = raw[number_start..idx].parse::<isize>().map_err(|_| {
+                format!("Invalid {field_name}: could not parse coordinate offset")
+            })?;
+            offset += sign * delta;
+        }
+
+        let dna = self
+            .dna
+            .read()
+            .map_err(|_| format!("Could not read DNA while parsing {field_name}"))?;
+        if dna.len() == 0 {
+            return Err(format!(
+                "Invalid {field_name}: active sequence is empty"
+            ));
+        }
+
+        let mut matches: Vec<(usize, usize, usize)> = Vec::new();
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if feature.kind.to_string().eq_ignore_ascii_case("SOURCE")
+                || !feature.kind.to_string().eq_ignore_ascii_case(&feature_kind)
+            {
+                continue;
+            }
+            if let Some(label_filter) = label_filter.as_ref() {
+                let labels = Self::feature_formula_label_values(feature);
+                let found = labels.iter().any(|label| {
+                    let upper = label.to_ascii_uppercase();
+                    upper == *label_filter || upper.contains(label_filter)
+                });
+                if !found {
+                    continue;
+                }
+            }
+            let mut ranges: Vec<(usize, usize)> = Vec::new();
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.is_empty() {
+                let Ok((from, to)) = feature.location.find_bounds() else {
+                    continue;
+                };
+                if from < 0 || to < 0 {
+                    continue;
+                }
+                ranges.push((from as usize, to as usize));
+            }
+            let start = match ranges.iter().map(|(start, _)| *start).min() {
+                Some(value) => value,
+                None => continue,
+            };
+            let end_exclusive = match ranges.iter().map(|(_, end)| *end).max() {
+                Some(value) => value.min(dna.len()),
+                None => continue,
+            };
+            if end_exclusive <= start || start >= dna.len() {
+                continue;
+            }
+            let anchor_pos = match boundary {
+                AnchorBoundary::Start => start,
+                AnchorBoundary::End => end_exclusive,
+                AnchorBoundary::Middle => start + (end_exclusive.saturating_sub(start) / 2),
+            };
+            if anchor_pos <= dna.len() {
+                matches.push((start, feature_id, anchor_pos));
+            }
+        }
+
+        if matches.is_empty() {
+            return Err(format!(
+                "Invalid {field_name}: no feature matched {}{}",
+                feature_kind,
+                label_filter
+                    .as_ref()
+                    .map(|label| format!("[label={label}]"))
+                    .unwrap_or_default()
+            ));
+        }
+        matches.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        let occurrence_idx = occurrence_index.unwrap_or(0);
+        let Some((_, _, base_pos)) = matches.get(occurrence_idx) else {
+            return Err(format!(
+                "Invalid {field_name}: occurrence {} requested but only {} match(es) found",
+                occurrence_idx + 1,
+                matches.len()
+            ));
+        };
+        let resolved = *base_pos as isize + offset;
+        if resolved < 0 || resolved > dna.len() as isize {
+            return Err(format!(
+                "Invalid {field_name}: resolved coordinate {} is out of bounds for sequence length {}",
+                resolved,
+                dna.len()
+            ));
+        }
+        Ok(resolved as usize)
+    }
+
+    fn parse_coordinate_term_text(&self, raw: &str, field_name: &str) -> Result<usize, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(format!("Invalid {field_name}: expected an integer or formula"));
+        }
+        if let Ok(value) = trimmed.parse::<usize>() {
+            return Ok(value);
+        }
+        self.parse_feature_formula_coordinate_expression(trimmed, field_name)
+    }
+
+    fn parse_required_usize_or_formula_text(&self, raw: &str, field_name: &str) -> Result<usize, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(format!("Invalid {field_name}: expected an integer"));
+        }
+        if let Some(expr) = trimmed.strip_prefix('=') {
+            return self.parse_coordinate_term_text(expr, field_name);
+        }
+        trimmed
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid {field_name}: expected an integer"))
+    }
+
+    fn resolve_roi_range_inputs_0based(
+        &self,
+        roi_start_raw: &str,
+        roi_end_raw: &str,
+        field_prefix: &str,
+    ) -> Result<(usize, usize), String> {
+        let start_trimmed = roi_start_raw.trim();
+        let (start, end_exclusive) = if let Some(formula) = start_trimmed.strip_prefix('=')
+            && let Some((left, right)) = Self::split_formula_range_expression(formula)
+        {
+            (
+                self.parse_coordinate_term_text(&left, &format!("{field_prefix}.roi_start_0based"))?,
+                self.parse_coordinate_term_text(
+                    &right,
+                    &format!("{field_prefix}.roi_end_0based"),
+                )?,
+            )
+        } else {
+            (
+                self.parse_required_usize_or_formula_text(
+                    roi_start_raw,
+                    &format!("{field_prefix}.roi_start_0based"),
+                )?,
+                self.parse_required_usize_or_formula_text(
+                    roi_end_raw,
+                    &format!("{field_prefix}.roi_end_0based"),
+                )?,
+            )
+        };
+        if end_exclusive <= start {
+            return Err(format!(
+                "Invalid {field_prefix} ROI range: start ({start}) must be < end ({end_exclusive})"
+            ));
+        }
+        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if seq_len == 0 {
+            return Err(format!("Invalid {field_prefix}: active sequence is empty"));
+        }
+        if start >= seq_len {
+            return Err(format!(
+                "Invalid {field_prefix}.roi_start_0based: {start} is outside sequence length {seq_len}"
+            ));
+        }
+        if end_exclusive > seq_len {
+            return Err(format!(
+                "Invalid {field_prefix}.roi_end_0based: {end_exclusive} is outside sequence length {seq_len}"
+            ));
+        }
+        Ok((start, end_exclusive))
+    }
+
+    fn resolve_and_apply_primer_roi_fields(&mut self) {
+        match self.resolve_roi_range_inputs_0based(
+            &self.primer_design_ui.roi_start_0based,
+            &self.primer_design_ui.roi_end_0based,
+            "primer_design",
+        ) {
+            Ok((start, end_exclusive)) => {
+                self.primer_design_ui.roi_start_0based = start.to_string();
+                self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
+                self.op_status = format!(
+                    "Resolved primer ROI formula to {}..{} (0-based, end-exclusive)",
+                    start, end_exclusive
+                );
+            }
+            Err(err) => self.op_status = err,
+        }
+    }
+
+    fn resolve_and_apply_qpcr_roi_fields(&mut self) {
+        match self.resolve_roi_range_inputs_0based(
+            &self.qpcr_design_ui.roi_start_0based,
+            &self.qpcr_design_ui.roi_end_0based,
+            "qpcr_design",
+        ) {
+            Ok((start, end_exclusive)) => {
+                self.qpcr_design_ui.roi_start_0based = start.to_string();
+                self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
+                self.op_status = format!(
+                    "Resolved qPCR ROI formula to {}..{} (0-based, end-exclusive)",
+                    start, end_exclusive
+                );
+            }
+            Err(err) => self.op_status = err,
+        }
+    }
+
     fn parse_required_usize_text(raw: &str, field_name: &str) -> Result<usize, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
@@ -27618,13 +28064,15 @@ impl MainAreaDna {
         if matches!(max_pairs, Some(0)) {
             return Err("Invalid max_pairs: expected >= 1 when provided".to_string());
         }
+        let (roi_start_0based, roi_end_0based) = self.resolve_roi_range_inputs_0based(
+            &ui.roi_start_0based,
+            &ui.roi_end_0based,
+            "primer_design",
+        )?;
         Ok(Operation::DesignPrimerPairs {
             template: template.to_string(),
-            roi_start_0based: Self::parse_required_usize_text(
-                &ui.roi_start_0based,
-                "roi_start_0based",
-            )?,
-            roi_end_0based: Self::parse_required_usize_text(&ui.roi_end_0based, "roi_end_0based")?,
+            roi_start_0based,
+            roi_end_0based,
             forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
             reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
             pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
@@ -27652,13 +28100,15 @@ impl MainAreaDna {
         if matches!(max_assays, Some(0)) {
             return Err("Invalid max_assays: expected >= 1 when provided".to_string());
         }
+        let (roi_start_0based, roi_end_0based) = self.resolve_roi_range_inputs_0based(
+            &ui.roi_start_0based,
+            &ui.roi_end_0based,
+            "qpcr_design",
+        )?;
         Ok(Operation::DesignQpcrAssays {
             template: template.to_string(),
-            roi_start_0based: Self::parse_required_usize_text(
-                &ui.roi_start_0based,
-                "roi_start_0based",
-            )?,
-            roi_end_0based: Self::parse_required_usize_text(&ui.roi_end_0based, "roi_end_0based")?,
+            roi_start_0based,
+            roi_end_0based,
             forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
             reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
             probe: Self::parse_primer_side_constraint_ui(&ui.probe, "probe")?,
@@ -28560,24 +29010,24 @@ impl MainAreaDna {
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
                         ui.label("ROI start").on_hover_text(
-                            "PCR region-of-interest start coordinate (0-based). Supports large genomic coordinates.",
+                            "PCR region-of-interest start coordinate (0-based). Supports formulas: `=CDS.start+10` or range form `=CDS.start+10 .. CDS.end-500`.",
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
                                 .desired_width(168.0),
                         )
                         .on_hover_text(
-                            "0-based ROI start. This is what is queued as region metadata, not a live Primer3 process.",
+                            "0-based ROI start. Accepts `=feature.boundary(+/-offset)` formulas. If range form is used here (`=left .. right`), ROI end field is ignored for this resolve.",
                         );
                         ui.label("ROI end").on_hover_text(
-                            "PCR region-of-interest end coordinate (0-based, end-exclusive).",
+                            "PCR region-of-interest end coordinate (0-based, end-exclusive). Supports formulas: `=CDS.end-500`.",
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
                                 .desired_width(168.0),
                         )
                         .on_hover_text(
-                            "0-based end-exclusive ROI end. Together with ROI start this defines one queued region spec.",
+                            "0-based end-exclusive ROI end. Supports `=feature.boundary(+/-offset)` formulas.",
                         );
                         ui.end_row();
                         ui.label("min amplicon")
@@ -28623,6 +29073,20 @@ impl MainAreaDna {
                         );
                         ui.end_row();
                     });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button("Apply ROI formula")
+                        .on_hover_text(
+                            "Resolve current ROI fields (supports `=` formulas) into numeric 0-based coordinates",
+                        )
+                        .clicked()
+                    {
+                        self.resolve_and_apply_primer_roi_fields();
+                    }
+                    ui.small(
+                        "Formula syntax: `=KIND.start+N`, `=KIND.end-N`, optional occurrence `KIND[2]`, optional label filter `KIND[label=TP73]`, and range form `=left .. right` (or `=left to right`).",
+                    );
+                });
                 ui.group(|ui| {
                     ui.label("PCR region queue (batch source)");
                     let copy_toggle = ui.checkbox(
@@ -28913,29 +29377,29 @@ impl MainAreaDna {
                 ui.small(
                     "Tip: queue multi-region primer workflows in `Design primer pairs`; qPCR remains optional for follow-up assays.",
                 );
-                ui.horizontal(|ui| {
-                    ui.label("ROI start").on_hover_text(
-                        "PCR region-of-interest start coordinate (0-based). Supports large genomic coordinates.",
-                    );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_start_0based)
+                    ui.horizontal(|ui| {
+                        ui.label("ROI start").on_hover_text(
+                            "PCR region-of-interest start coordinate (0-based). Supports formulas: `=CDS.start+10` or range form `=CDS.start+10 .. CDS.end-500`.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_start_0based)
                             .desired_width(168.0),
-                    )
-                    .on_hover_text(
-                        "0-based ROI start. This is queued as region metadata, not a live qPCR process.",
-                    );
-                    ui.label("ROI end").on_hover_text(
-                        "PCR region-of-interest end coordinate (0-based, end-exclusive).",
-                    );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_end_0based)
+                        )
+                        .on_hover_text(
+                            "0-based ROI start. Accepts `=feature.boundary(+/-offset)` formulas.",
+                        );
+                        ui.label("ROI end").on_hover_text(
+                            "PCR region-of-interest end coordinate (0-based, end-exclusive). Supports formulas: `=CDS.end-500`.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_end_0based)
                             .desired_width(168.0),
-                    )
-                    .on_hover_text(
-                        "0-based end-exclusive ROI end. Together with ROI start this defines one queued region spec.",
-                    );
-                    ui.label("min amplicon")
-                        .on_hover_text("Minimum amplicon length in bp.");
+                        )
+                        .on_hover_text(
+                            "0-based end-exclusive ROI end. Supports `=feature.boundary(+/-offset)` formulas.",
+                        );
+                        ui.label("min amplicon")
+                            .on_hover_text("Minimum amplicon length in bp.");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.qpcr_design_ui.min_amplicon_bp)
                             .desired_width(92.0),
@@ -28943,13 +29407,27 @@ impl MainAreaDna {
                     .on_hover_text("Lower amplicon length bound.");
                     ui.label("max amplicon")
                         .on_hover_text("Maximum amplicon length in bp.");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_amplicon_bp)
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_amplicon_bp)
                             .desired_width(92.0),
-                    )
-                    .on_hover_text("Upper amplicon length bound.");
-                });
-                ui.horizontal(|ui| {
+                        )
+                        .on_hover_text("Upper amplicon length bound.");
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .button("Apply ROI formula")
+                            .on_hover_text(
+                                "Resolve current qPCR ROI fields (supports `=` formulas) into numeric 0-based coordinates",
+                            )
+                            .clicked()
+                        {
+                            self.resolve_and_apply_qpcr_roi_fields();
+                        }
+                        ui.small(
+                            "Formula syntax mirrors primer-pair ROI: `=KIND.start+N`, optional `KIND[2]` or `KIND[label=TP73]`, range form `=left .. right`.",
+                        );
+                    });
+                    ui.horizontal(|ui| {
                     Self::render_tm_delta_label(ui, "max primer ΔT")
                         .response
                         .on_hover_text("Maximum allowed ΔTₘ (°C) between qPCR primer sides.");

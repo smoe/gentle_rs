@@ -620,6 +620,17 @@ order. Durable architecture constraints and decisions remain in
   - GUI primer/qPCR forms now include field-level hover help for ROI,
     side/pair constraints, and motif-format expectations (IUPAC + comma-separated
     examples), including `require ROI flanking`
+  - ROI coordinate formulas are now baseline in primer/qPCR forms:
+    - ROI fields accept `=` feature-relative formulas
+      (`KIND.start|end|middle +/- N`)
+    - optional deterministic selector suffixes:
+      occurrence (`KIND[2]`) and label filter (`KIND[label=TP73]`)
+    - ROI-start range form (`=left .. right` or `=left to right`) now resolves
+      both coordinates in one entry
+    - explicit `Apply ROI formula` action resolves current formula text into
+      numeric 0-based coordinates before queue/run
+    - queue/run paths (`Queue current ROI spec`, `Design Primer Pairs`,
+      `Design qPCR Assays`) now use the same formula resolver
   - dedicated PCR Designer specialist window is now available:
     - `Patterns -> PCR Designer...` and command palette `PCR Designer`
     - sequence-context aware dedicated viewport with paint controls + map +
@@ -1109,28 +1120,23 @@ Notes:
      contribution while agent screenshot execution remains policy-disabled
    - unified zoom/pan behavior is now implemented for map/graph/help/list panes;
     focused-region fallback behavior and wider regression coverage are pending
-   - feature-relative coordinate formulas are not yet first-class in selection/PCR
-     ROI workflows (requested UX: Excel-like `=` expressions such as
-     `=CDS.start+10 .. CDS.start-500`)
-     - planned v1 expression grammar:
-       - anchors: `kind[index].start|end` plus label filters
-         (for example `gene[label=TP73].start`)
-       - arithmetic: `+/- integer`
-       - range form: `expr .. expr`
-     - planned v1 resolution semantics:
-       - deterministic anchor ordering (`genomic start`, then feature id)
-       - explicit disambiguation on multiple matches (no silent pick)
-       - strand-aware optional helpers in v1.1 (`tss`, `upstream(n)`)
-     - planned v1 UI wiring:
-       - shared `Selection formula` input in DNA window + PCR Designer
-       - expressions beginning with `=` evaluate on apply; parse errors are shown
-         inline with deterministic machine-readable detail in operation status
-       - successful evaluation populates the same ROI/queue interval paths used by
-         paint and direct coordinate entry
-     - planned validation and parity:
-       - engine-owned parser/resolver helper (no adapter-local biology logic)
-       - unit fixtures for parser precedence/disambiguation/errors
-       - GUI/shared-shell parity tests for equivalent evaluated intervals
+   - feature-relative coordinate formulas are partially implemented:
+     - done baseline:
+       - primer/qPCR ROI fields now accept `=` formulas
+         (`KIND.start|end|middle +/- N`)
+       - optional selectors:
+         - occurrence index (`KIND[2]`, 1-based)
+         - label filter (`KIND[label=TP73]`)
+       - ROI-start range form:
+         `=left .. right` (or `=left to right`)
+     - remaining:
+       - shared `Selection formula` input in DNA window map/selection tools is
+         still pending
+       - parser/resolver still lives in GUI adapter path; move to engine-owned
+         shared helper remains pending for stricter cross-adapter parity
+       - strand-aware helper aliases (`tss`, `upstream(n)`) remain pending
+       - broader GUI/shared-shell parity tests for formula evaluation remain
+         pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
