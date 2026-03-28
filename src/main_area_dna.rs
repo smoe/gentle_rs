@@ -1884,6 +1884,23 @@ mod tests {
     }
 
     #[test]
+    fn painted_interval_editor_applies_typed_coordinates() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.apply_pcr_painted_interval_0based(PcrPaintRole::Roi, 20, 90, false);
+        area.pcr_paint_last_drag_start_text = "31".to_string();
+        area.pcr_paint_last_drag_end_text = "101".to_string();
+
+        area.apply_pcr_post_drag_interval_editor_fields(PcrPaintRole::Roi);
+
+        assert_eq!(area.pcr_paint_intervals.roi, Some((31, 101)));
+        assert_eq!(
+            area.pcr_paint_last_drag_interval,
+            Some((PcrPaintRole::Roi, 31, 101))
+        );
+    }
+
+    #[test]
     fn painted_pair_geometry_requires_all_three_regions() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -4980,6 +4997,66 @@ mod tests {
     }
 
     #[test]
+    fn refresh_description_cache_does_not_auto_open_splicing_window() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+        area.focus_feature(0);
+
+        area.refresh_description_cache();
+
+        assert!(
+            !area.show_splicing_expert_window,
+            "single-click/selection should not auto-open Splicing Expert"
+        );
+    }
+
+    #[test]
+    fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        let opened = area.open_splicing_expert_for_feature(0, "test");
+
+        assert!(opened);
+        assert!(area.show_splicing_expert_window);
+        assert_eq!(area.splicing_expert_window_feature_id, Some(0));
+    }
+
+    #[test]
     fn tooltip_help_splicing_expert_window_mentions_transcripts_and_rna_reads() {
         let help = MainAreaDna::splicing_expert_window_help_text();
         assert!(help.contains("transcript"));
@@ -5433,6 +5510,8 @@ pub struct MainAreaDna {
     pcr_paint_intervals: PcrPaintIntervalsUiState,
     pcr_paint_drag_interval: Option<(PcrPaintRole, usize, usize)>,
     pcr_paint_last_drag_interval: Option<(PcrPaintRole, usize, usize)>,
+    pcr_paint_last_drag_start_text: String,
+    pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
@@ -5792,6 +5871,8 @@ impl MainAreaDna {
             pcr_paint_intervals: PcrPaintIntervalsUiState::default(),
             pcr_paint_drag_interval: None,
             pcr_paint_last_drag_interval: None,
+            pcr_paint_last_drag_start_text: String::new(),
+            pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
@@ -10632,6 +10713,35 @@ impl MainAreaDna {
         self.pcr_paint_intervals.clear_all();
     }
 
+    fn sync_pcr_post_drag_interval_editor_fields(&mut self, start: usize, end_exclusive: usize) {
+        self.pcr_paint_last_drag_start_text = start.to_string();
+        self.pcr_paint_last_drag_end_text = end_exclusive.to_string();
+    }
+
+    fn apply_pcr_post_drag_interval_editor_fields(&mut self, role: PcrPaintRole) {
+        let start = match Self::parse_required_usize_text(
+            &self.pcr_paint_last_drag_start_text,
+            "painted_interval.start_0based",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = format!("Invalid painted interval start: {message}");
+                return;
+            }
+        };
+        let end_exclusive = match Self::parse_required_usize_text(
+            &self.pcr_paint_last_drag_end_text,
+            "painted_interval.end_0based_exclusive",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = format!("Invalid painted interval end: {message}");
+                return;
+            }
+        };
+        self.apply_pcr_painted_interval_0based(role, start, end_exclusive, false);
+    }
+
     fn painted_pair_geometry_bp(&self) -> Option<(usize, usize, usize)> {
         let roi = self.pcr_paint_intervals.roi?;
         let upstream = self.pcr_paint_intervals.upstream_window?;
@@ -10694,6 +10804,7 @@ impl MainAreaDna {
             return;
         };
         self.pcr_paint_last_drag_interval = Some((role, start, end_exclusive));
+        self.sync_pcr_post_drag_interval_editor_fields(start, end_exclusive);
         if role == PcrPaintRole::Roi && queue_immediately {
             self.queue_painted_roi_from_interval(start, end_exclusive, "painted ROI (shift+drag)");
             self.pcr_paint_drag_interval = None;
@@ -10954,6 +11065,11 @@ impl MainAreaDna {
         let Some((role, start, end_exclusive)) = self.pcr_paint_last_drag_interval else {
             return;
         };
+        if self.pcr_paint_last_drag_start_text.trim().is_empty()
+            || self.pcr_paint_last_drag_end_text.trim().is_empty()
+        {
+            self.sync_pcr_post_drag_interval_editor_fields(start, end_exclusive);
+        }
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(
@@ -10998,6 +11114,33 @@ impl MainAreaDna {
                 }
                 if ui.small_button("Dismiss").clicked() {
                     self.pcr_paint_last_drag_interval = None;
+                    self.pcr_paint_last_drag_start_text.clear();
+                    self.pcr_paint_last_drag_end_text.clear();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Edit interval");
+                let start_response = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.pcr_paint_last_drag_start_text)
+                            .desired_width(90.0),
+                    )
+                    .on_hover_text("0-based start coordinate");
+                ui.monospace("..");
+                let end_response = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.pcr_paint_last_drag_end_text)
+                            .desired_width(90.0),
+                    )
+                    .on_hover_text("0-based end coordinate (exclusive)");
+                let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if ui
+                    .small_button("Apply")
+                    .on_hover_text("Update this painted interval from the typed coordinates")
+                    .clicked()
+                    || (enter_pressed && (start_response.lost_focus() || end_response.lost_focus()))
+                {
+                    self.apply_pcr_post_drag_interval_editor_fields(role);
                 }
             });
         });
@@ -11877,6 +12020,64 @@ impl MainAreaDna {
             .write()
             .expect("DNA display lock poisoned")
             .deselect();
+    }
+
+    fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
+        matches!(
+            kind_upper,
+            "MRNA" | "TRANSCRIPT" | "NCRNA" | "MISC_RNA" | "EXON" | "GENE" | "CDS"
+        )
+    }
+
+    fn feature_supports_splicing_expert(&self, feature_id: usize) -> bool {
+        self.dna
+            .read()
+            .ok()
+            .and_then(|dna| {
+                dna.features().get(feature_id).map(|feature| {
+                    let kind_upper = feature.kind.to_string().trim().to_ascii_uppercase();
+                    Self::feature_kind_supports_splicing_expert(kind_upper.as_str())
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    fn open_splicing_expert_window_for_view(&mut self, view: &SplicingExpertView) {
+        self.splicing_expert_window_feature_id = Some(view.target_feature_id);
+        self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+        self.show_splicing_expert_window = true;
+    }
+
+    fn open_splicing_expert_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
+        if !self.feature_supports_splicing_expert(feature_id) {
+            return false;
+        }
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::SplicingFeature {
+            feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+        }) {
+            Ok(FeatureExpertView::Splicing(view)) => {
+                self.open_splicing_expert_window_for_view(&view);
+                self.description_cache_expert_view = Some(FeatureExpertView::Splicing(view));
+                self.description_cache_expert_error = None;
+                self.op_status = format!("Opened Splicing Expert from {source}");
+                true
+            }
+            Ok(other) => {
+                self.description_cache_expert_view = Some(other);
+                self.description_cache_expert_error = Some(
+                    "Selected feature does not expose a splicing expert payload".to_string(),
+                );
+                self.op_status =
+                    "Selected feature does not expose a splicing expert payload".to_string();
+                false
+            }
+            Err(err) => {
+                self.description_cache_expert_error = Some(err.clone());
+                self.op_status = format!("Could not open Splicing Expert from {source}: {err}");
+                false
+            }
+        }
     }
 
     fn inspect_feature_expert_target(
@@ -16523,6 +16724,9 @@ impl MainAreaDna {
     fn sync_splicing_expert_window_state(&mut self) {
         if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.as_ref()
         {
+            if !self.show_splicing_expert_window {
+                return;
+            }
             let needs_refresh = self.splicing_expert_window_feature_id
                 != Some(view.target_feature_id)
                 || self
@@ -16538,7 +16742,6 @@ impl MainAreaDna {
             if needs_refresh {
                 self.splicing_expert_window_feature_id = Some(view.target_feature_id);
                 self.splicing_expert_window_view = Some(Arc::new(view.clone()));
-                self.show_splicing_expert_window = true;
             }
         }
     }
@@ -16602,9 +16805,7 @@ impl MainAreaDna {
         let Some(view) = self.rna_read_mapping_window_view.clone() else {
             return;
         };
-        self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-        self.splicing_expert_window_view = Some(view);
-        self.show_splicing_expert_window = true;
+        self.open_splicing_expert_window_for_view(view.as_ref());
         let report_id = self.rna_reads_ui.report_id.trim();
         if !report_id.is_empty() {
             self.rna_read_evidence_ui.selected_report_id = report_id.to_string();
@@ -30625,6 +30826,8 @@ impl MainAreaDna {
         self.pcr_paint_intervals = s.pcr_paint_intervals;
         self.pcr_paint_drag_interval = None;
         self.pcr_paint_last_drag_interval = None;
+        self.pcr_paint_last_drag_start_text.clear();
+        self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {
@@ -32215,6 +32418,7 @@ impl MainAreaDna {
         let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
         let mut promoter_anchor_seed_feature: Option<usize> = None;
+        let mut open_splicing_feature: Option<usize> = None;
         let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
@@ -32359,6 +32563,10 @@ impl MainAreaDna {
                                 let additive = ui.input(|i| i.modifiers.command);
                                 clicked_feature = Some((entry.id, additive));
                             }
+                            if response.double_clicked() {
+                                clicked_feature = Some((entry.id, false));
+                                open_splicing_feature = Some(entry.id);
+                            }
                             response.context_menu(|ui| {
                                 if ui
                                     .button("Focus feature (current zoom)")
@@ -32402,6 +32610,18 @@ impl MainAreaDna {
                                 if promoter_response.clicked() {
                                     clicked_feature = Some((entry.id, false));
                                     promoter_anchor_seed_feature = Some(entry.id);
+                                    ui.close();
+                                }
+                                let splicing_response = ui.add_enabled(
+                                    self.feature_supports_splicing_expert(entry.id),
+                                    egui::Button::new("Open Splicing Window"),
+                                );
+                                let splicing_response = splicing_response.on_hover_text(
+                                    "Open the dedicated Splicing Expert window for this feature",
+                                );
+                                if splicing_response.clicked() {
+                                    clicked_feature = Some((entry.id, false));
+                                    open_splicing_feature = Some(entry.id);
                                     ui.close();
                                 }
                             });
@@ -32608,6 +32828,9 @@ impl MainAreaDna {
         if let Some(feature_id) = promoter_anchor_seed_feature {
             self.seed_anchored_promoter_from_feature_id(feature_id);
         }
+        if let Some(feature_id) = open_splicing_feature {
+            self.open_splicing_expert_for_feature(feature_id, "feature tree action");
+        }
     }
 
     fn refresh_description_cache(&mut self) {
@@ -32652,10 +32875,7 @@ impl MainAreaDna {
                     let kind_upper = feature.kind.to_string().trim().to_ascii_uppercase();
                     if RenderDna::is_tfbs_feature(feature) {
                         expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
-                    } else if matches!(
-                        kind_upper.as_str(),
-                        "MRNA" | "TRANSCRIPT" | "NCRNA" | "MISC_RNA" | "EXON" | "GENE" | "CDS"
-                    ) {
+                    } else if Self::feature_kind_supports_splicing_expert(kind_upper.as_str()) {
                         expert_target = Some(FeatureExpertTarget::SplicingFeature {
                             feature_id: id,
                             scope: SplicingScopePreset::AllOverlappingBothStrands,
@@ -32757,14 +32977,14 @@ impl MainAreaDna {
                         .size(detail_font_size),
                 );
             }
-            if let Some(view) = &self.description_cache_expert_view {
+            if let Some(view) = self.description_cache_expert_view.clone() {
                 ui.separator();
                 ui.label(
                     egui::RichText::new("Expert view")
                         .strong()
                         .size(detail_font_size),
                 );
-                match view {
+                match &view {
                     FeatureExpertView::Splicing(splicing) => {
                         ui.label(
                             egui::RichText::new(
@@ -32784,9 +33004,8 @@ impl MainAreaDna {
                             )
                             .clicked()
                         {
-                            self.splicing_expert_window_feature_id = Some(splicing.target_feature_id);
-                            self.splicing_expert_window_view = Some(Arc::new(splicing.clone()));
-                            self.show_splicing_expert_window = true;
+                            let splicing = splicing.clone();
+                            self.open_splicing_expert_window_for_view(&splicing);
                             let viewport_id = Self::splicing_expert_viewport_id(
                                 &splicing.seq_id,
                                 splicing.target_feature_id,
@@ -32799,7 +33018,7 @@ impl MainAreaDna {
                                 .send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
                         }
                     }
-                    _ => self.render_feature_expert_view_ui(ui, view),
+                    _ => self.render_feature_expert_view_ui(ui, &view),
                 }
             } else if let Some(err) = &self.description_cache_expert_error {
                 ui.separator();
@@ -33285,6 +33504,29 @@ impl MainAreaDna {
                 }
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
+                let mut map_open_splicing_feature: Option<usize> = None;
+                response.context_menu(|ui| {
+                    let candidate_feature_id = self
+                        .map_dna
+                        .get_hovered_feature_id()
+                        .or_else(|| self.map_dna.get_selected_feature_id())
+                        .or_else(|| self.get_selected_feature_id());
+                    let Some(feature_id) = candidate_feature_id else {
+                        ui.label("No feature under cursor");
+                        return;
+                    };
+                    let open_response = ui.add_enabled(
+                        self.feature_supports_splicing_expert(feature_id),
+                        egui::Button::new("Open Splicing Window"),
+                    );
+                    let open_response = open_response.on_hover_text(
+                        "Open the dedicated Splicing Expert window for this feature",
+                    );
+                    if open_response.clicked() {
+                        map_open_splicing_feature = Some(feature_id);
+                        ui.close();
+                    }
+                });
 
                 if response.clicked() {
                     let additive = ctx.input(|i| i.modifiers.command);
@@ -33347,6 +33589,12 @@ impl MainAreaDna {
                     {
                         self.clear_feature_focus_keep_map_selection();
                     }
+                    if let Some(feature_id) = next_selected {
+                        self.open_splicing_expert_for_feature(feature_id, "double-clicked map feature");
+                    }
+                }
+                if let Some(feature_id) = map_open_splicing_feature {
+                    self.open_splicing_expert_for_feature(feature_id, "map context menu");
                 }
             }
         });

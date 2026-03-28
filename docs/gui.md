@@ -308,6 +308,15 @@ Feature tree grouping:
   - `Fit feature in view` (linear map mode)
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
     (seeds anchored extraction defaults with strand-aware boundary/direction)
+  - `Open Splicing Window` for splicing-compatible feature kinds
+    (`mRNA`/`transcript`/`ncRNA`/`misc_RNA`/`exon`/`gene`/`CDS`)
+- Single-click on feature rows or feature glyphs now selects/focuses only; it
+  no longer auto-opens the Splicing Expert window.
+- Open the Splicing Expert deliberately via:
+  - double-click a feature row
+  - double-click a feature glyph on the DNA map
+  - right-click context menu (`Open Splicing Window`) from feature tree or map
+  - `Open Splicing Window` button in the description pane
 - `Filter` narrows all feature rows in the tree.
   - free text searches kind/label/range and selected qualifiers
   - scoped terms are supported:
@@ -319,9 +328,6 @@ Feature tree grouping:
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
   - preset terms below the filter box are on/off toggle buttons
-- Selecting an `mRNA`/`transcript`/`ncRNA`/`misc_RNA`/`exon`/`gene`/`CDS`
-  feature opens the splicing expert view in a dedicated, resizable window
-  instead of the inline description pane.
 - Selecting a restriction-site marker keeps the inline restriction expert view
   and now shows the active enzyme's raw catalog metadata
   (`recognition_iupac`, `enzyme_cut_offset_0based`, `overlap_bp`, optional
@@ -1137,6 +1143,9 @@ Controls:
      - add selected feature(s) to PCR region queue (one queued row per feature)
    - opens Engine Ops so the user can run `Design Primer Pairs`,
      queue batch execution, or `Design qPCR Assays`.
+   - after paint-dragging on the linear map, the post-drag chip now includes
+     direct coordinate editing (`start..end`) for the painted interval, with
+     explicit apply action (0-based, end-exclusive).
 18. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).

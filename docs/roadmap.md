@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-27
+Last updated: 2026-03-28
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -594,9 +594,17 @@ order. Durable architecture constraints and decisions remain in
       preserves pan behavior with higher priority than paint
     - post-drag action chip now exposes:
       `Set PCR ROI`, `Add ROI to Queue`, `Open PCR Designer`
+    - post-drag action chip now also exposes direct coordinate entry for the
+      painted interval (`start..end`), so painted spans can be adjusted
+      numerically without repainting
     - pair-PCR live geometry preview in the primer panel now resolves through
       `pcr_assay_pair_geometry_bindings(...)` with deterministic clamping to
       baseline template maxima
+  - splicing expert opening behavior is now explicit-intent-first:
+    - single-click feature selection keeps focus/selection only
+    - `Splicing Expert` opens by deliberate actions (`double-click` feature row
+      or map glyph, description-panel button, or feature/map context-menu action
+      `Open Splicing Window`)
   - GUI primer panel now includes queued PCR batch execution:
     - queue table (`source`, `template`, `start/end/len`) with row remove/clear
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
@@ -1101,6 +1109,28 @@ Notes:
      contribution while agent screenshot execution remains policy-disabled
    - unified zoom/pan behavior is now implemented for map/graph/help/list panes;
     focused-region fallback behavior and wider regression coverage are pending
+   - feature-relative coordinate formulas are not yet first-class in selection/PCR
+     ROI workflows (requested UX: Excel-like `=` expressions such as
+     `=CDS.start+10 .. CDS.start-500`)
+     - planned v1 expression grammar:
+       - anchors: `kind[index].start|end` plus label filters
+         (for example `gene[label=TP73].start`)
+       - arithmetic: `+/- integer`
+       - range form: `expr .. expr`
+     - planned v1 resolution semantics:
+       - deterministic anchor ordering (`genomic start`, then feature id)
+       - explicit disambiguation on multiple matches (no silent pick)
+       - strand-aware optional helpers in v1.1 (`tss`, `upstream(n)`)
+     - planned v1 UI wiring:
+       - shared `Selection formula` input in DNA window + PCR Designer
+       - expressions beginning with `=` evaluate on apply; parse errors are shown
+         inline with deterministic machine-readable detail in operation status
+       - successful evaluation populates the same ROI/queue interval paths used by
+         paint and direct coordinate entry
+     - planned validation and parity:
+       - engine-owned parser/resolver helper (no adapter-local biology logic)
+       - unit fixtures for parser precedence/disambiguation/errors
+       - GUI/shared-shell parity tests for equivalent evaluated intervals
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
