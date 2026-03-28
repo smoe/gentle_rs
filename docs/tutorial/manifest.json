@@ -944,6 +944,68 @@
         "The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.",
         "The hand-written Gibson testing guide can start from this baseline without any additional sequence imports."
       ]
+    },
+    {
+      "id": "gibson_arrangements_baseline",
+      "order": 16,
+      "title": "Gibson Arrangements Starter Project (offline)",
+      "example_id": "gibson_specialist_testing_baseline",
+      "tier": "core",
+      "guide_path": "docs/tutorial/gibson_arrangements_gui.md",
+      "summary": "Build the same stable Gibson starter project, but open directly into the arrangement-focused guide for container, arrangement, and gel-export review.",
+      "narrative": "This chapter reuses the deterministic pGEX + insert starter baseline from the Gibson specialist tutorial, but changes the guide handoff so `File -> Open Tutorial Project...` can land directly on arrangement inspection and gel-export workflow instead of overlap/primer setup.",
+      "use_cases": [
+        "You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier specialist tutorial.",
+        "You want a reproducible starter state for checking singleton output containers and arrangement-level gel export.",
+        "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
+      ],
+      "gui_steps": [
+        "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
+        "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 2` onward."
+      ],
+      "learning_objectives": [
+        "Use one executable starter project to reach the arrangement walkthrough directly.",
+        "Recognize that the same deterministic Gibson baseline can support more than one tutorial guide.",
+        "Replay the same arrangement-focused setup from GUI and CLI without changing the biological inputs."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "destination seq_id = gibson_destination_pgex",
+          "where_used": "Gibson destination lane in the arrangement walkthrough",
+          "why_it_matters": "Keeps the original vector lane stable across the arrangement guide and CLI replay.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "insert seq_id = gibson_insert_demo",
+          "where_used": "Insert lane in the arrangement walkthrough",
+          "why_it_matters": "Provides the same deterministic insert lane that the Gibson arrangement is expected to reference.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "workflow example = gibson_specialist_testing_baseline",
+          "where_used": "`Open Tutorial Project...` and CLI workflow replay",
+          "why_it_matters": "The arrangement starter project intentionally reuses the same stable baseline as the Gibson specialist starter project.",
+          "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "The tutorial project opens with exactly the expected destination and insert IDs already loaded.",
+        "The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.",
+        "The arrangement guide can start from this baseline without any additional sequence imports."
+      ]
     }
   ]
 }

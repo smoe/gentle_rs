@@ -837,6 +837,12 @@ order. Durable architecture constraints and decisions remain in
   hide container/arrangement sections.
 - Main lineage pane now supports a draggable split between the
   `Table`/`Graph` area and the `Containers`/`Arrangements` area.
+- Next arrangement-adjacent planning layer should separate:
+  - semantic experiment arrangements
+  - physical rack/plate profiles
+  - concrete rack placements and printable labels
+  - built-in physical profiles should include at least small tube racks,
+    96-well plates, and 384-well plates
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows
@@ -2070,6 +2076,9 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       - assembled product
     - lineage operation reopen behavior for Gibson apply
     - protocol-cartoon preview/export from the same resolved plan
+    - arrangement reuse now makes Gibson a good first candidate for future
+      rack-placement and label-printing support, including dense plate formats
+      such as 384-well layouts when one bench day/project shares a carrier
   - next:
     - multi-fragment Gibson planning, preview, and cartoon generation
     - broader user influence over Gibson PCR/primer design beyond the current
