@@ -57,6 +57,17 @@ Screenshot capture policy:
 - `--allow-screenshots` is rejected at startup and `screenshot-window` is
   disabled in shared shell command execution.
 
+macOS auxiliary-window stability note:
+
+- On macOS, GENtle currently forces child viewports into embedded windows
+  instead of separate native OS windows.
+- This is a deliberate stability workaround for current `egui/eframe` native
+  viewport resize/maximize regressions reproduced locally with
+  `cargo run --bin gentle_egui_window_repro`.
+- The main/root GENtle window remains native; sequence/help/configuration and
+  other auxiliary workspaces are embedded inside it on macOS until the upstream
+  viewport lifecycle bug is understood or fixed.
+
 ## Configuration Window
 
 GENtle provides a project-level configuration window (not per-sequence).

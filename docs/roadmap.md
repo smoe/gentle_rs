@@ -991,6 +991,15 @@ order. Durable architecture constraints and decisions remain in
   - every child window exposes the same functionality again
   - this is intended to separate egui/eframe macOS viewport regressions from
     full GENtle DNA/engine behavior when investigating stale/respawn window bugs
+  - local reduction results on macOS:
+    - embedded `egui::Window` is stable
+    - both native child viewport modes (`show_viewport_immediate`,
+      `show_viewport_deferred`) exhibit stale/respawn twin-window failures even
+      with animation, cascading initial position, and nested-child spawning all
+      disabled
+  - GENtle now works around this by forcing `Context::set_embed_viewports(true)`
+    on macOS, so auxiliary windows render as embedded windows until the
+    upstream native viewport lifecycle issue is resolved
 - Slow-open diagnostics now emit status-bar timing hints when:
   - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
     a threshold

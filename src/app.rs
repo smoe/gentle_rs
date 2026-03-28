@@ -23330,6 +23330,20 @@ Error: `{err}`"
         cfg!(target_os = "macos")
     }
 
+    fn should_embed_child_viewports() -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    fn configure_platform_viewport_mode(ctx: &egui::Context) {
+        if Self::should_embed_child_viewports() {
+            if !ctx.embed_viewports() {
+                ctx.set_embed_viewports(true);
+            }
+        } else if ctx.embed_viewports() {
+            ctx.set_embed_viewports(false);
+        }
+    }
+
     fn sequence_window_accepts_native_close_request() -> bool {
         !cfg!(target_os = "macos")
     }
@@ -32660,6 +32674,7 @@ impl eframe::App for GENtleApp {
 impl GENtleApp {
     fn render_root_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let update_result = catch_unwind(AssertUnwindSafe(|| {
+            Self::configure_platform_viewport_mode(ctx);
             if !self.update_has_run_before {
                 egui_extras::install_image_loaders(ctx);
                 self.update_has_run_before = true;
@@ -36906,6 +36921,16 @@ mod tests {
             GENtleApp::specialist_window_close_hover_text("Prepare Reference Genome"),
             "Close this Prepare Reference Genome window (Cmd/Ctrl+W)"
         );
+    }
+
+    #[test]
+    fn configure_platform_viewport_mode_sets_expected_embed_flag() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(false);
+
+        GENtleApp::configure_platform_viewport_mode(&ctx);
+
+        assert_eq!(ctx.embed_viewports(), cfg!(target_os = "macos"));
     }
 
     #[test]

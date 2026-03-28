@@ -11,7 +11,8 @@
 
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke, Vec2};
 use eframe::{Frame, NativeOptions, Renderer};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 const DEFAULT_WINDOW_SIZE: [f32; 2] = [920.0, 640.0];
@@ -24,6 +25,29 @@ const REPAINT_DELAY_MS: u64 = 16;
 struct WindowActions {
     open_child: bool,
     close_self: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ChildViewportMode {
+    Immediate,
+    Deferred,
+    Embedded,
+}
+
+impl ChildViewportMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Immediate => "immediate native viewport",
+            Self::Deferred => "deferred native viewport",
+            Self::Embedded => "embedded egui::Window",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReproAction {
+    OpenChild,
+    CloseViewport(egui::ViewportId),
 }
 
 #[derive(Debug)]
@@ -49,21 +73,27 @@ impl ReproWindowState {
         ui: &mut egui::Ui,
         allow_close: bool,
         ctx: &egui::Context,
+        animate: bool,
+        allow_nested_children: bool,
     ) -> WindowActions {
-        ctx.request_repaint_after(Duration::from_millis(REPAINT_DELAY_MS));
+        if animate {
+            ctx.request_repaint_after(Duration::from_millis(REPAINT_DELAY_MS));
+        }
         let mut actions = WindowActions::default();
         let window_size = ctx.content_rect().size();
         let t = ctx.input(|i| i.time) as f32;
 
         ui.heading(self.title());
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("Open another window")
-                .on_hover_text("Spawn another native viewport with the same animation and controls")
-                .clicked()
-            {
-                self.opened_children = self.opened_children.saturating_add(1);
-                actions.open_child = true;
+            if allow_nested_children {
+                if ui
+                    .button("Open another window")
+                    .on_hover_text("Spawn another native viewport with the same controls")
+                    .clicked()
+                {
+                    self.opened_children = self.opened_children.saturating_add(1);
+                    actions.open_child = true;
+                }
             }
             if allow_close
                 && ui
@@ -75,8 +105,15 @@ impl ReproWindowState {
             }
             ui.separator();
             ui.small(format!(
-                "viewport {:.0} x {:.0} px | spawned children {} | t={:.2}s",
-                window_size.x, window_size.y, self.opened_children, t
+                "viewport {:.0} x {:.0} px | spawned children {}{}",
+                window_size.x,
+                window_size.y,
+                self.opened_children,
+                if animate {
+                    format!(" | t={:.2}s", t)
+                } else {
+                    String::new()
+                }
             ));
         });
         ui.small(
@@ -97,40 +134,50 @@ impl ReproWindowState {
             egui::StrokeKind::Middle,
         );
 
-        let stripe_count = 10usize;
-        for idx in 0..stripe_count {
-            let frac = idx as f32 / stripe_count as f32;
-            let y = egui::lerp(rect.top()..=rect.bottom(), frac);
-            let phase = t * 0.9 + self.serial as f32 * 0.11 + idx as f32 * 0.23;
-            let bend = phase.sin() * rect.width() * 0.07;
-            let start = Pos2::new(rect.left() + 18.0, y);
-            let mid = Pos2::new(rect.center().x + bend, y + phase.cos() * 8.0);
-            let end = Pos2::new(rect.right() - 18.0, y);
-            painter.line_segment(
-                [start, mid],
-                Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+        if animate {
+            let stripe_count = 10usize;
+            for idx in 0..stripe_count {
+                let frac = idx as f32 / stripe_count as f32;
+                let y = egui::lerp(rect.top()..=rect.bottom(), frac);
+                let phase = t * 0.9 + self.serial as f32 * 0.11 + idx as f32 * 0.23;
+                let bend = phase.sin() * rect.width() * 0.07;
+                let start = Pos2::new(rect.left() + 18.0, y);
+                let mid = Pos2::new(rect.center().x + bend, y + phase.cos() * 8.0);
+                let end = Pos2::new(rect.right() - 18.0, y);
+                painter.line_segment(
+                    [start, mid],
+                    Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+                );
+                painter.line_segment(
+                    [mid, end],
+                    Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+                );
+            }
+
+            let x = egui::lerp(
+                rect.left() + 24.0..=rect.right() - 24.0,
+                (t * 0.8 + self.serial as f32 * 0.19).sin() * 0.5 + 0.5,
             );
-            painter.line_segment(
-                [mid, end],
-                Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+            let y = egui::lerp(
+                rect.top() + 24.0..=rect.bottom() - 24.0,
+                (t * 1.15 + self.serial as f32 * 0.13).cos() * 0.5 + 0.5,
+            );
+            let color = match self.serial % 4 {
+                0 => Color32::from_rgb(30, 64, 175),
+                1 => Color32::from_rgb(180, 83, 9),
+                2 => Color32::from_rgb(21, 128, 61),
+                _ => Color32::from_rgb(190, 24, 93),
+            };
+            painter.circle_filled(Pos2::new(x, y), 16.0, color);
+        } else {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "static surface",
+                egui::FontId::proportional(24.0),
+                Color32::from_rgb(71, 85, 105),
             );
         }
-
-        let x = egui::lerp(
-            rect.left() + 24.0..=rect.right() - 24.0,
-            (t * 0.8 + self.serial as f32 * 0.19).sin() * 0.5 + 0.5,
-        );
-        let y = egui::lerp(
-            rect.top() + 24.0..=rect.bottom() - 24.0,
-            (t * 1.15 + self.serial as f32 * 0.13).cos() * 0.5 + 0.5,
-        );
-        let color = match self.serial % 4 {
-            0 => Color32::from_rgb(30, 64, 175),
-            1 => Color32::from_rgb(180, 83, 9),
-            2 => Color32::from_rgb(21, 128, 61),
-            _ => Color32::from_rgb(190, 24, 93),
-        };
-        painter.circle_filled(Pos2::new(x, y), 16.0, color);
         painter.text(
             rect.left_top() + Vec2::new(18.0, 16.0),
             egui::Align2::LEFT_TOP,
@@ -144,21 +191,29 @@ impl ReproWindowState {
 }
 
 struct ReproApp {
+    child_mode: ChildViewportMode,
+    animate_children: bool,
+    cascade_new_windows: bool,
+    nested_children: bool,
     next_serial: usize,
     root_window: ReproWindowState,
-    child_windows: BTreeMap<egui::ViewportId, ReproWindowState>,
+    child_windows: BTreeMap<egui::ViewportId, Arc<RwLock<ReproWindowState>>>,
     pending_window_positions: BTreeMap<egui::ViewportId, Pos2>,
-    windows_to_close: BTreeSet<egui::ViewportId>,
+    pending_actions: Arc<Mutex<Vec<ReproAction>>>,
 }
 
 impl ReproApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
+            child_mode: ChildViewportMode::Immediate,
+            animate_children: true,
+            cascade_new_windows: true,
+            nested_children: true,
             next_serial: 1,
             root_window: ReproWindowState::new(0),
             child_windows: BTreeMap::new(),
             pending_window_positions: BTreeMap::new(),
-            windows_to_close: BTreeSet::new(),
+            pending_actions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -178,20 +233,42 @@ impl ReproApp {
         self.next_serial += 1;
         let viewport_id = Self::child_viewport_id(serial);
         self.child_windows
-            .insert(viewport_id, ReproWindowState::new(serial));
-        self.pending_window_positions
-            .insert(viewport_id, Self::cascade_position(serial.saturating_sub(1)));
+            .insert(viewport_id, Arc::new(RwLock::new(ReproWindowState::new(serial))));
+        if self.cascade_new_windows {
+            self.pending_window_positions
+                .insert(viewport_id, Self::cascade_position(serial.saturating_sub(1)));
+        }
         eprintln!("gentle_egui_window_repro: opened child window {serial} ({viewport_id:?})");
     }
 
-    fn render_child_window(&mut self, ctx: &egui::Context, viewport_id: egui::ViewportId) {
-        let Some(title) = self.child_windows.get(&viewport_id).map(|w| w.title()) else {
+    fn reset_children(&mut self) {
+        self.child_windows.clear();
+        self.pending_window_positions.clear();
+        if let Ok(mut actions) = self.pending_actions.lock() {
+            actions.clear();
+        }
+    }
+
+    fn push_action(&self, action: ReproAction) {
+        if let Ok(mut actions) = self.pending_actions.lock() {
+            actions.push(action);
+        }
+    }
+
+    fn render_child_window_immediate(&mut self, ctx: &egui::Context, viewport_id: egui::ViewportId) {
+        let Some(window_state) = self.child_windows.get(&viewport_id).cloned() else {
+            return;
+        };
+        let Some(title) = window_state.read().ok().map(|w| w.title()) else {
             return;
         };
         let builder = egui::ViewportBuilder::default()
             .with_title(title)
             .with_inner_size(DEFAULT_WINDOW_SIZE)
             .with_min_inner_size(MIN_WINDOW_SIZE);
+        let pending_actions = self.pending_actions.clone();
+        let animate = self.animate_children;
+        let allow_nested_children = self.nested_children;
 
         ctx.show_viewport_immediate(viewport_id, builder, |ui, class| {
             if !matches!(
@@ -204,15 +281,23 @@ impl ReproApp {
             let window_ctx = ui.ctx().clone();
             let native_close_requested = window_ctx.input(|i| i.viewport().close_requested());
             let mut actions = WindowActions::default();
-            if let Some(window) = self.child_windows.get_mut(&viewport_id) {
-                actions = window.render_contents(ui, true, &window_ctx);
+            if let Ok(mut window) = window_state.write() {
+                actions = window.render_contents(
+                    ui,
+                    true,
+                    &window_ctx,
+                    animate,
+                    allow_nested_children,
+                );
             }
 
-            if actions.open_child {
-                self.spawn_child_window();
-            }
-            if actions.close_self || native_close_requested {
-                self.windows_to_close.insert(viewport_id);
+            if let Ok(mut queued) = pending_actions.lock() {
+                if actions.open_child {
+                    queued.push(ReproAction::OpenChild);
+                }
+                if actions.close_self || native_close_requested {
+                    queued.push(ReproAction::CloseViewport(viewport_id));
+                }
             }
         });
 
@@ -221,31 +306,182 @@ impl ReproApp {
         }
     }
 
-    fn close_requested_windows(&mut self) {
-        if self.windows_to_close.is_empty() {
+    fn render_child_window_deferred(&mut self, ctx: &egui::Context, viewport_id: egui::ViewportId) {
+        let Some(window_state) = self.child_windows.get(&viewport_id).cloned() else {
             return;
+        };
+        let Some(title) = window_state.read().ok().map(|w| w.title()) else {
+            return;
+        };
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title)
+            .with_inner_size(DEFAULT_WINDOW_SIZE)
+            .with_min_inner_size(MIN_WINDOW_SIZE);
+        let pending_actions = self.pending_actions.clone();
+        let animate = self.animate_children;
+        let allow_nested_children = self.nested_children;
+
+        ctx.show_viewport_deferred(viewport_id, builder, move |ui, class| {
+            if !matches!(
+                class,
+                egui::ViewportClass::Deferred | egui::ViewportClass::EmbeddedWindow
+            ) {
+                return;
+            }
+            let window_ctx = ui.ctx().clone();
+            let native_close_requested = window_ctx.input(|i| i.viewport().close_requested());
+            let mut actions = WindowActions::default();
+            if let Ok(mut window) = window_state.write() {
+                actions = window.render_contents(
+                    ui,
+                    true,
+                    &window_ctx,
+                    animate,
+                    allow_nested_children,
+                );
+            }
+            if let Ok(mut queued) = pending_actions.lock() {
+                if actions.open_child {
+                    queued.push(ReproAction::OpenChild);
+                }
+                if actions.close_self || native_close_requested {
+                    queued.push(ReproAction::CloseViewport(viewport_id));
+                }
+            }
+        });
+
+        if let Some(position) = self.pending_window_positions.remove(&viewport_id) {
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::OuterPosition(position));
         }
-        for viewport_id in self.windows_to_close.iter().copied().collect::<Vec<_>>() {
-            self.child_windows.remove(&viewport_id);
-            self.pending_window_positions.remove(&viewport_id);
+    }
+
+    fn render_child_window_embedded(
+        &mut self,
+        ctx: &egui::Context,
+        viewport_id: egui::ViewportId,
+        state: Arc<RwLock<ReproWindowState>>,
+    ) {
+        let Some(title) = state.read().ok().map(|w| w.title()) else {
+            return;
+        };
+        let mut open = true;
+        egui::Window::new(title)
+            .id(egui::Id::new(("gentle_egui_window_repro_embedded", viewport_id)))
+            .open(&mut open)
+            .default_size(Vec2::from(DEFAULT_WINDOW_SIZE))
+            .min_width(MIN_WINDOW_SIZE[0])
+            .min_height(MIN_WINDOW_SIZE[1])
+            .resizable(true)
+            .show(ctx, |ui| {
+                let window_ctx = ui.ctx().clone();
+                if let Ok(mut window) = state.write() {
+                    let actions = window.render_contents(
+                        ui,
+                        true,
+                        &window_ctx,
+                        self.animate_children,
+                        self.nested_children,
+                    );
+                    if actions.open_child {
+                        self.push_action(ReproAction::OpenChild);
+                    }
+                    if actions.close_self {
+                        self.push_action(ReproAction::CloseViewport(viewport_id));
+                    }
+                }
+            });
+        if !open {
+            self.push_action(ReproAction::CloseViewport(viewport_id));
         }
-        self.windows_to_close.clear();
+    }
+
+    fn apply_pending_actions(&mut self) {
+        let actions = if let Ok(mut queued) = self.pending_actions.lock() {
+            std::mem::take(&mut *queued)
+        } else {
+            Vec::new()
+        };
+        for action in actions {
+            match action {
+                ReproAction::OpenChild => self.spawn_child_window(),
+                ReproAction::CloseViewport(viewport_id) => {
+                    self.child_windows.remove(&viewport_id);
+                    self.pending_window_positions.remove(&viewport_id);
+                }
+            }
+        }
     }
 }
 
 impl eframe::App for ReproApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
         let ctx = ui.ctx().clone();
-        let root_actions = self.root_window.render_contents(ui, false, &ctx);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("child window mode");
+            let old_mode = self.child_mode;
+            egui::ComboBox::from_id_salt("gentle_egui_window_repro_mode")
+                .selected_text(self.child_mode.as_str())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.child_mode,
+                        ChildViewportMode::Immediate,
+                        ChildViewportMode::Immediate.as_str(),
+                    );
+                    ui.selectable_value(
+                        &mut self.child_mode,
+                        ChildViewportMode::Deferred,
+                        ChildViewportMode::Deferred.as_str(),
+                    );
+                    ui.selectable_value(
+                        &mut self.child_mode,
+                        ChildViewportMode::Embedded,
+                        ChildViewportMode::Embedded.as_str(),
+                    );
+                });
+            if self.child_mode != old_mode {
+                self.reset_children();
+            }
+            ui.small("Changing mode resets existing child windows so each test starts cleanly.");
+        });
+        ui.horizontal_wrapped(|ui| {
+            let mut reset_needed = false;
+            reset_needed |= ui
+                .checkbox(&mut self.animate_children, "animate child surfaces")
+                .changed();
+            reset_needed |= ui
+                .checkbox(&mut self.cascade_new_windows, "cascade initial position")
+                .changed();
+            reset_needed |= ui
+                .checkbox(&mut self.nested_children, "child can open child")
+                .changed();
+            if reset_needed {
+                self.reset_children();
+            }
+            ui.small("Changing reduction knobs resets existing child windows.");
+        });
+        ui.separator();
+        let root_actions = self
+            .root_window
+            .render_contents(ui, false, &ctx, true, true);
         if root_actions.open_child {
             self.spawn_child_window();
         }
 
-        let viewport_ids = self.child_windows.keys().copied().collect::<Vec<_>>();
-        for viewport_id in viewport_ids {
-            self.render_child_window(&ctx, viewport_id);
+        let child_entries = self
+            .child_windows
+            .iter()
+            .map(|(id, state)| (*id, state.clone()))
+            .collect::<Vec<_>>();
+        for (viewport_id, state) in child_entries {
+            match self.child_mode {
+                ChildViewportMode::Immediate => self.render_child_window_immediate(&ctx, viewport_id),
+                ChildViewportMode::Deferred => self.render_child_window_deferred(&ctx, viewport_id),
+                ChildViewportMode::Embedded => {
+                    self.render_child_window_embedded(&ctx, viewport_id, state)
+                }
+            }
         }
-        self.close_requested_windows();
+        self.apply_pending_actions();
     }
 }
 
