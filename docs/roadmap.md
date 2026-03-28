@@ -574,12 +574,16 @@ order. Durable architecture constraints and decisions remain in
     - export current `report_id` to JSON via save dialog
   - DNA-window `PCR ROI` menu now supports selection-first queue capture:
     - add current selection to PCR queue
-    - seed/queue from current visible linear map span (selection-independent fallback)
     - add selected feature(s) to PCR queue (one region per feature)
+    - visible-span seed/queue shortcuts were removed from default PCR actions
+      to reduce accidental ROI transfer from map viewport state
   - DNA-window toolbar now also exposes a visible `Queue PCR selection`
     action beside `Extract Sel` so the current linear selection can be queued
     without opening the menu first; the map area also shows an inline
     selection-ready hint when a non-empty span exists
+  - linear map navigation now includes explicit 1-based viewport coordinate
+    inputs (`Go start..end`) next to zoom/pan controls so users can jump to a
+    precise region without relying only on `+/-` and slider movement
   - paint-first PCR coordinate UX baseline is now in place (pair-PCR v1):
     - fixed semantic paint roles on linear DNA map:
       ROI (green), upstream primer window (red), downstream primer window (blue)
@@ -597,12 +601,13 @@ order. Durable architecture constraints and decisions remain in
     - explicit `Queue current ROI spec` action in-panel, clarifying that queue
       rows are ROI specifications (`template + start + end`) rather than
       immediate Primer3 jobs
-    - explicit `Queue visible map span` in-panel shortcut for map-first workflows
     - batch run action `Design Primer Pairs for queued regions`
     - deterministic batch report suffixing (`{base}_rNN`)
     - optional per-region `ExtractRegion` copy artifacts
     - batch-results table with per-region status and quick actions:
       `Show` / `Export` / `Open` (copy-first fallback to template)
+    - queue actions no longer overwrite active ROI form fields implicitly; ROI
+      assignment is explicit via `Set PCR ROI` / `Use ROI`
   - GUI primer/qPCR forms now include field-level hover help for ROI,
     side/pair constraints, and motif-format expectations (IUPAC + comma-separated
     examples), including `require ROI flanking`
