@@ -984,6 +984,13 @@ order. Durable architecture constraints and decisions remain in
   This specifically hardens width-resize behavior on macOS and keeps the ROI /
   `Selection formula` controls left-anchored instead of partially reflowing
   into the preceding control row.
+- A minimal native-viewport repro harness now exists as
+  `cargo run --bin gentle_egui_window_repro`:
+  - root window contains a continuously animated surface and a button that
+    opens another native child window
+  - every child window exposes the same functionality again
+  - this is intended to separate egui/eframe macOS viewport regressions from
+    full GENtle DNA/engine behavior when investigating stale/respawn window bugs
 - Slow-open diagnostics now emit status-bar timing hints when:
   - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
     a threshold
