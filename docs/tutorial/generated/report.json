@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 15,
+  "chapter_count": 16,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -23,10 +23,11 @@
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md",
     "chapters/14_tp73_cdna_genomic_dotplot_online.md",
     "chapters/15_gibson_specialist_testing_baseline.md",
+    "chapters/16_gibson_arrangements_baseline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "0cae21a74f2d7a1ea1ea2091e07534e6d8312632",
+    "README.md": "7cfb106ff5a7c41badef6acc78dd1ef927213524",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "65504e015b59188bdf16f9f2bf6549d02d2c314f",
@@ -43,7 +44,8 @@
     "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "225764e2ae64298b0401e3207640d1ed4db5aa2d",
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "c57741eb3e52d47625238e316d9d0b1f17c7fdd3",
     "chapters/14_tp73_cdna_genomic_dotplot_online.md": "c4b205f86571e21f67e8211d27f237e0a50e9fb7",
-    "chapters/15_gibson_specialist_testing_baseline.md": "2c7123f5c1716723f6d3f6c022e69141ad67dd73"
+    "chapters/15_gibson_specialist_testing_baseline.md": "2c7123f5c1716723f6d3f6c022e69141ad67dd73",
+    "chapters/16_gibson_arrangements_baseline.md": "172fe0854d76cd6cab41bb23ca4d6da03b1ebd89"
   },
   "chapters": [
     {
@@ -266,6 +268,21 @@
       "id": "gibson_specialist_testing_baseline",
       "order": 15,
       "title": "Gibson Specialist Starter Project (offline)",
+      "tier": "core",
+      "example_id": "gibson_specialist_testing_baseline",
+      "example_source": "docs/examples/workflows/gibson_specialist_testing_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "gibson_arrangements_baseline",
+      "order": 16,
+      "title": "Gibson Arrangements Starter Project (offline)",
       "tier": "core",
       "example_id": "gibson_specialist_testing_baseline",
       "example_source": "docs/examples/workflows/gibson_specialist_testing_baseline.json",
