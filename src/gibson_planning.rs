@@ -17,7 +17,7 @@ use crate::{
         ProtocolCartoonTemplateBindings, ProtocolCartoonTemplateEventBinding,
         ProtocolCartoonTemplateFeatureBinding, ProtocolCartoonTemplateMoleculeBinding,
     },
-    restriction_enzyme::RestrictionEnzymeSite,
+    restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
 };
 use gb_io::seq::{Feature, Location};
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,8 @@ pub struct GibsonPlanValidationPolicy {
     pub adjacency_overlap_mismatch: String,
     pub design_targets: GibsonPlanDesignTargets,
     pub uniqueness_checks: GibsonPlanUniquenessChecks,
+    #[serde(default)]
+    pub desired_unique_restriction_site_enzyme_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,8 +225,45 @@ pub struct GibsonAssemblyPreview {
     pub errors: Vec<String>,
     #[serde(default)]
     pub notes: Vec<String>,
+    #[serde(default)]
+    pub suggested_design_adjustments: Vec<GibsonSuggestedDesignAdjustment>,
+    #[serde(default)]
+    pub unique_restriction_site: Option<GibsonUniqueRestrictionSitePreview>,
     pub cartoon: GibsonCartoonPreview,
     pub routine_handoff: GibsonRoutineHandoffPreview,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GibsonUniqueRestrictionSitePreview {
+    pub enzyme_name: String,
+    pub status: String,
+    pub junction_id: String,
+    pub terminal_side: String,
+    pub recognition_sequence: String,
+    pub overlap_sequence: String,
+    pub motif_start_0based_in_overlap: usize,
+    pub mutated_bases: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GibsonDesignAdjustmentTarget {
+    #[default]
+    PrimingSegmentMaxLengthBp,
+    PrimingSegmentTmMinCelsius,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GibsonSuggestedDesignAdjustment {
+    pub target: GibsonDesignAdjustmentTarget,
+    pub label: String,
+    pub summary: String,
+    pub rationale: String,
+    pub current_value: f64,
+    pub suggested_value: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -362,6 +401,33 @@ struct GibsonPrimerCandidate {
 }
 
 #[derive(Debug, Clone)]
+struct GibsonPrimingFailure {
+    side: TerminalSide,
+    kind: GibsonPrimingFailureKind,
+}
+
+#[derive(Debug, Clone)]
+enum GibsonPrimingFailureKind {
+    BelowMinTm {
+        best_candidate_tm_celsius: f64,
+        best_candidate_length_bp: usize,
+        longest_evaluated_length_bp: usize,
+        available_terminus_length_bp: usize,
+    },
+    AboveMaxTm {
+        coolest_candidate_tm_celsius: f64,
+        coolest_candidate_length_bp: usize,
+    },
+    Ambiguous {
+        best_candidate_length_bp: usize,
+        best_candidate_tm_celsius: f64,
+        anneal_hits: usize,
+    },
+    NoHit,
+    EmptyInsert,
+}
+
+#[derive(Debug, Clone)]
 struct GibsonLoadedFragment {
     preview: GibsonPreviewInsert,
     dna: DNAsequence,
@@ -381,6 +447,13 @@ struct GibsonResolvedOverlap {
     overlap_sequence: String,
     overlap_source: String,
     distinct_from: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct GibsonEngineeredUniqueRestrictionSiteChoice {
+    left_overlap_sequence: String,
+    right_overlap_sequence: String,
+    preview: GibsonUniqueRestrictionSitePreview,
 }
 
 #[derive(Debug, Clone)]
@@ -917,6 +990,8 @@ pub fn preview_gibson_assembly_plan(
         warnings: vec![],
         errors: vec![],
         notes: vec![],
+        suggested_design_adjustments: vec![],
+        unique_restriction_site: None,
         cartoon: GibsonCartoonPreview {
             protocol_id: ProtocolCartoonKind::GibsonSingleInsertDualJunction
                 .id()
@@ -962,6 +1037,23 @@ pub fn preview_gibson_assembly_plan(
     preview.destination.removed_span_bp = resolved_opening.removed_span_bp;
     preview.destination.left_end_id = resolved_opening.left_end_id.clone();
     preview.destination.right_end_id = resolved_opening.right_end_id.clone();
+
+    let requested_unique_site_enzyme_name = plan
+        .validation_policy
+        .desired_unique_restriction_site_enzyme_name
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(raw_enzyme_name) = requested_unique_site_enzyme_name.as_deref()
+        && (loaded_fragments.len() != 1
+            || !resolved_opening.mode.eq_ignore_ascii_case("defined_site"))
+    {
+        preview.errors.push(format!(
+            "Introducing one new unique restriction site currently requires a defined-site single-insert Gibson plan (requested '{}').",
+            raw_enzyme_name
+        ));
+        return finalize_preview(preview);
+    }
 
     if loaded_fragments.len() > 1 {
         return preview_multi_insert_gibson_assembly_plan(
@@ -1022,7 +1114,7 @@ pub fn preview_gibson_assembly_plan(
         return finalize_preview(preview);
     };
 
-    let left_overlap = derive_terminal_overlap(
+    let mut left_overlap = derive_terminal_overlap(
         &destination.get_forward_string().to_ascii_uppercase(),
         &resolved_opening,
         TerminalSide::Left,
@@ -1030,7 +1122,7 @@ pub fn preview_gibson_assembly_plan(
         &plan.validation_policy.design_targets,
         &mut preview,
     );
-    let right_overlap = derive_terminal_overlap(
+    let mut right_overlap = derive_terminal_overlap(
         &destination.get_forward_string().to_ascii_uppercase(),
         &resolved_opening,
         TerminalSide::Right,
@@ -1038,9 +1130,13 @@ pub fn preview_gibson_assembly_plan(
         &plan.validation_policy.design_targets,
         &mut preview,
     );
-    let (Some(left_overlap), Some(right_overlap)) = (left_overlap, right_overlap) else {
+    let (Some(mut left_overlap), Some(mut right_overlap)) =
+        (left_overlap.take(), right_overlap.take())
+    else {
         return finalize_preview(preview);
     };
+    let mut left_overlap_source = left_junction.overlap_source.clone();
+    let mut right_overlap_source = right_junction.overlap_source.clone();
 
     if plan.validation_policy.require_distinct_terminal_junctions {
         let right_overlap_rc = GentleEngine::reverse_complement(&right_overlap.2);
@@ -1051,6 +1147,62 @@ pub fn preview_gibson_assembly_plan(
                 "Terminal overlap regions are not distinct enough for a destination-first Gibson plan (left='{}', right='{}')",
                 left_overlap.2, right_overlap.2
             ));
+        }
+    }
+
+    if let Some(raw_enzyme_name) = requested_unique_site_enzyme_name.as_deref() {
+        let lookup = rebase_name_lookup_by_normalized();
+        let canonical_name = canonicalize_rebase_enzyme_name(raw_enzyme_name, &lookup)
+            .unwrap_or_else(|| raw_enzyme_name.to_string());
+        let enzymes = active_restriction_enzymes();
+        let enzyme = enzymes
+            .into_iter()
+            .find(|enzyme| enzyme.name.eq_ignore_ascii_case(&canonical_name));
+        match enzyme {
+            None => preview.errors.push(format!(
+                "Requested unique restriction site enzyme '{}' was not found in the active REBASE catalog.",
+                raw_enzyme_name
+            )),
+            Some(enzyme) if !enzyme.is_palindromic() => preview.errors.push(format!(
+                "Requested unique restriction site enzyme '{}' is currently unsupported for Gibson engineered-overlap design because only palindromic recognition sequences are handled in this v1 path.",
+                enzyme.name
+            )),
+            Some(enzyme) => match choose_engineered_unique_restriction_site(
+                &destination.get_forward_string().to_ascii_uppercase(),
+                &resolved_opening,
+                &oriented_insert_seq,
+                &left_junction.id,
+                &left_overlap.2,
+                &right_junction.id,
+                &right_overlap.2,
+                &enzyme,
+                plan.validation_policy.require_distinct_terminal_junctions,
+                plan.product.topology.trim().eq_ignore_ascii_case("circular"),
+            ) {
+                Err(err) => preview.errors.push(format!(
+                    "Could not engineer requested unique {} site: {}",
+                    enzyme.name, err
+                )),
+                Ok(None) => preview.errors.push(format!(
+                    "Could not engineer one unique {} site on the current terminal Gibson overlap windows. Try a different enzyme or adjust the Gibson overlap settings.",
+                    enzyme.name
+                )),
+                Ok(Some(choice)) => {
+                    left_overlap.2 = choice.left_overlap_sequence;
+                    right_overlap.2 = choice.right_overlap_sequence;
+                    if choice.preview.status == "engineered" {
+                        if choice.preview.terminal_side.eq_ignore_ascii_case("left") {
+                            left_overlap_source =
+                                format!("engineered_unique_restriction_site:{}", choice.preview.enzyme_name);
+                        } else {
+                            right_overlap_source =
+                                format!("engineered_unique_restriction_site:{}", choice.preview.enzyme_name);
+                        }
+                    }
+                    preview.notes.push(choice.preview.message.clone());
+                    preview.unique_restriction_site = Some(choice.preview);
+                }
+            },
         }
     }
 
@@ -1065,7 +1217,7 @@ pub fn preview_gibson_assembly_plan(
             right_member_bp: 0,
             overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(left_overlap.2.as_bytes()),
             overlap_sequence: left_overlap.2.clone(),
-            overlap_source: left_junction.overlap_source.clone(),
+            overlap_source: left_overlap_source,
             distinct_from: left_junction.distinct_from.clone(),
         });
     preview
@@ -1079,10 +1231,11 @@ pub fn preview_gibson_assembly_plan(
             right_member_bp: right_overlap.1,
             overlap_tm_celsius: GentleEngine::estimate_primer_tm_c(right_overlap.2.as_bytes()),
             overlap_sequence: right_overlap.2.clone(),
-            overlap_source: right_junction.overlap_source.clone(),
+            overlap_source: right_overlap_source,
             distinct_from: right_junction.distinct_from.clone(),
         });
 
+    let mut priming_failures = Vec::new();
     let left_priming = choose_insert_priming_segment(
         &insert_template_forward,
         &oriented_insert_seq,
@@ -1090,6 +1243,12 @@ pub fn preview_gibson_assembly_plan(
         &plan.validation_policy.design_targets,
         &mut preview,
     );
+    if let Err(failure) = &left_priming {
+        preview
+            .errors
+            .push(failure.to_error_message(&plan.validation_policy.design_targets));
+        priming_failures.push(failure.clone());
+    }
     let right_priming = choose_insert_priming_segment(
         &insert_template_forward,
         &oriented_insert_seq,
@@ -1097,7 +1256,13 @@ pub fn preview_gibson_assembly_plan(
         &plan.validation_policy.design_targets,
         &mut preview,
     );
-    if let (Some(left_priming), Some(right_priming)) = (left_priming, right_priming) {
+    if let Err(failure) = &right_priming {
+        preview
+            .errors
+            .push(failure.to_error_message(&plan.validation_policy.design_targets));
+        priming_failures.push(failure.clone());
+    }
+    if let (Ok(left_priming), Ok(right_priming)) = (left_priming, right_priming) {
         let left_full = format!("{}{}", left_overlap.2, left_priming.sequence);
         let right_overlap_primer = GentleEngine::reverse_complement(&right_overlap.2);
         let right_full = format!("{}{}", right_overlap_primer, right_priming.sequence);
@@ -1176,7 +1341,13 @@ pub fn preview_gibson_assembly_plan(
         "Destination opening resolves '{}' and '{}' as the two terminal Gibson junctions.",
         resolved_opening.left_end_id, resolved_opening.right_end_id
     ));
-    push_gibson_design_review_notes(&mut preview, &plan.validation_policy.design_targets, 2, 1);
+    push_gibson_design_review_notes(
+        &mut preview,
+        &plan.validation_policy.design_targets,
+        2,
+        1,
+        &priming_failures,
+    );
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: 5' overlap plus 3' gene-specific priming segment. Full generic PCR controls remain outside this specialist flow.".to_string(),
     );
@@ -1296,29 +1467,85 @@ pub fn derive_gibson_execution_plan(
             format!("{destination_seq}{concatenated_insert_seq}")
         }
         "defined_site" => {
-            let start = preview
-                .destination
-                .opening_start_0based
-                .ok_or_else(|| EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Executable Gibson defined-site preview did not retain start_0based"
-                        .to_string(),
-                })?;
-            let end = preview
-                .destination
-                .opening_end_0based_exclusive
-                .ok_or_else(|| EngineError {
-                    code: ErrorCode::Internal,
-                    message:
-                        "Executable Gibson defined-site preview did not retain end_0based_exclusive"
-                            .to_string(),
-                })?;
-            format!(
-                "{}{}{}",
-                &destination_seq[..start],
-                concatenated_insert_seq,
-                &destination_seq[end..]
-            )
+            if preview
+                .unique_restriction_site
+                .as_ref()
+                .map(|row| row.status.eq_ignore_ascii_case("engineered"))
+                .unwrap_or(false)
+            {
+                let left_terminal_overlap =
+                    preview
+                        .resolved_junctions
+                        .first()
+                        .ok_or_else(|| {
+                            EngineError {
+                        code: ErrorCode::Internal,
+                        message:
+                            "Executable Gibson preview did not retain the left terminal junction"
+                                .to_string(),
+                    }
+                        })?;
+                let right_terminal_overlap =
+                    preview
+                        .resolved_junctions
+                        .last()
+                        .ok_or_else(|| {
+                            EngineError {
+                        code: ErrorCode::Internal,
+                        message:
+                            "Executable Gibson preview did not retain the right terminal junction"
+                                .to_string(),
+                    }
+                        })?;
+                build_defined_site_product_sequence_with_terminal_overlaps(
+                    &destination_seq,
+                    &GibsonResolvedOpening {
+                        mode: preview.destination.opening_mode.clone(),
+                        label: preview.destination.opening_label.clone(),
+                        start_0based: preview.destination.opening_start_0based,
+                        end_0based_exclusive: preview.destination.opening_end_0based_exclusive,
+                        removed_span_bp: preview.destination.removed_span_bp,
+                        left_end_id: preview.destination.left_end_id.clone(),
+                        right_end_id: preview.destination.right_end_id.clone(),
+                        destination_is_circular: destination.is_circular(),
+                    },
+                    &concatenated_insert_seq,
+                    &left_terminal_overlap.overlap_sequence,
+                    &right_terminal_overlap.overlap_sequence,
+                )
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not materialize Gibson assembled product with engineered terminal overlap: {message}"
+                    ),
+                })?
+            } else {
+                let start =
+                    preview
+                        .destination
+                        .opening_start_0based
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::Internal,
+                            message:
+                                "Executable Gibson defined-site preview did not retain start_0based"
+                                    .to_string(),
+                        })?;
+                let end = preview
+                    .destination
+                    .opening_end_0based_exclusive
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::Internal,
+                        message:
+                            "Executable Gibson defined-site preview did not retain end_0based_exclusive"
+                                .to_string(),
+                    })?;
+                format!(
+                    "{}{}{}",
+                    &destination_seq[..start],
+                    concatenated_insert_seq,
+                    &destination_seq[end..]
+                )
+            }
         }
         other => {
             return Err(EngineError {
@@ -1921,6 +2148,7 @@ fn push_gibson_design_review_notes(
     targets: &GibsonPlanDesignTargets,
     expected_junction_count: usize,
     expected_fragment_count: usize,
+    priming_failures: &[GibsonPrimingFailure],
 ) {
     let overlap_error_count = preview
         .errors
@@ -1981,11 +2209,25 @@ fn push_gibson_design_review_notes(
             targets.priming_segment_max_length_bp,
         ));
         if overlap_error_count == 0 && resolved_overlap_count == expected_junction_count {
-            preview.notes.push(format!(
-                "Design hint: the overlap side already resolves cleanly. If biologically acceptable, try increasing max priming length above {} bp or lowering the minimum priming Tm below {:.1} °C.",
-                targets.priming_segment_max_length_bp,
-                targets.priming_segment_tm_min_celsius,
-            ));
+            preview.suggested_design_adjustments =
+                build_gibson_suggested_design_adjustments(targets, priming_failures);
+            if preview.suggested_design_adjustments.is_empty() {
+                preview.notes.push(format!(
+                    "Design hint: the overlap side already resolves cleanly. If biologically acceptable, try increasing max priming length above {} bp or lowering the minimum priming Tm below {:.1} °C.",
+                    targets.priming_segment_max_length_bp,
+                    targets.priming_segment_tm_min_celsius,
+                ));
+            } else {
+                let summaries = preview
+                    .suggested_design_adjustments
+                    .iter()
+                    .map(|row| row.summary.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" Alternatively, ");
+                preview.notes.push(format!(
+                    "Design hint: the overlap side already resolves cleanly. If biologically acceptable: {summaries}"
+                ));
+            }
         }
     }
 }
@@ -2079,6 +2321,7 @@ fn preview_multi_insert_gibson_assembly_plan(
         })
         .collect();
 
+    let mut priming_failures = Vec::new();
     for fragment_id in &ordered_fragment_ids {
         let Some(fragment) = fragments_by_id.get(fragment_id) else {
             preview.errors.push(format!(
@@ -2114,6 +2357,12 @@ fn preview_multi_insert_gibson_assembly_plan(
             &plan.validation_policy.design_targets,
             &mut preview,
         );
+        if let Err(failure) = &left_priming {
+            preview
+                .errors
+                .push(failure.to_error_message(&plan.validation_policy.design_targets));
+            priming_failures.push(failure.clone());
+        }
         let right_priming = choose_insert_priming_segment(
             &fragment.template_forward,
             &fragment.oriented_sequence,
@@ -2121,7 +2370,13 @@ fn preview_multi_insert_gibson_assembly_plan(
             &plan.validation_policy.design_targets,
             &mut preview,
         );
-        if let (Some(left_priming), Some(right_priming)) = (left_priming, right_priming) {
+        if let Err(failure) = &right_priming {
+            preview
+                .errors
+                .push(failure.to_error_message(&plan.validation_policy.design_targets));
+            priming_failures.push(failure.clone());
+        }
+        if let (Ok(left_priming), Ok(right_priming)) = (left_priming, right_priming) {
             preview.primer_suggestions.push(GibsonPrimerSuggestion {
                 primer_id: format!("{}_left_insert_primer", fragment.preview.fragment_id),
                 side: "left_insert_primer".to_string(),
@@ -2237,6 +2492,7 @@ fn preview_multi_insert_gibson_assembly_plan(
         &plan.validation_policy.design_targets,
         plan.assembly_order.len().saturating_sub(1),
         loaded_fragments.len(),
+        &priming_failures,
     );
     preview.notes.push(
         "Primer suggestions stay Gibson-specific: every fragment gets one left primer and one right primer with a 5' overlap plus a 3' gene-specific priming segment.".to_string(),
@@ -2603,10 +2859,391 @@ fn resolve_opening(
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum TerminalSide {
     Left,
     Right,
+}
+
+impl TerminalSide {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+        }
+    }
+}
+
+impl GibsonPrimingFailure {
+    fn to_error_message(&self, targets: &GibsonPlanDesignTargets) -> String {
+        let side_label = self.side.label();
+        let length_window = format!(
+            "{}..{} bp",
+            targets.priming_segment_min_length_bp, targets.priming_segment_max_length_bp
+        );
+        let tm_window = format!(
+            "{:.1}..{:.1} °C",
+            targets.priming_segment_tm_min_celsius, targets.priming_segment_tm_max_celsius
+        );
+        match self.kind {
+            GibsonPrimingFailureKind::BelowMinTm {
+                best_candidate_tm_celsius,
+                best_candidate_length_bp,
+                longest_evaluated_length_bp,
+                ..
+            } => {
+                let availability_note = if longest_evaluated_length_bp
+                    < targets.priming_segment_max_length_bp
+                {
+                    format!(
+                        "Only {} bp of gene-specific sequence are available at that insert terminus within the requested {length_window}.",
+                        longest_evaluated_length_bp
+                    )
+                } else {
+                    format!(
+                        "Even the strongest candidate in the requested {length_window} stays below the minimum target."
+                    )
+                };
+                format!(
+                    "Could not derive a Gibson priming segment for the {side_label} insert end: the best available 3' gene-specific priming segment reaches only {:.1} °C at {} bp, below the requested minimum {:.1} °C (target window {tm_window}). {availability_note}",
+                    best_candidate_tm_celsius,
+                    best_candidate_length_bp,
+                    targets.priming_segment_tm_min_celsius,
+                )
+            }
+            GibsonPrimingFailureKind::AboveMaxTm {
+                coolest_candidate_tm_celsius,
+                coolest_candidate_length_bp,
+            } => format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: the coolest admissible 3' gene-specific priming segment is already {:.1} °C at {} bp, above the requested maximum {:.1} °C (target window {tm_window}, length window {length_window}).",
+                coolest_candidate_tm_celsius,
+                coolest_candidate_length_bp,
+                targets.priming_segment_tm_max_celsius,
+            ),
+            GibsonPrimingFailureKind::Ambiguous {
+                best_candidate_length_bp,
+                best_candidate_tm_celsius,
+                anneal_hits,
+            } => format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: candidate 3' priming segments in the requested {length_window} anneal too ambiguously to the insert template (best candidate: {} bp, {:.1} °C, hits={} > max {}).",
+                best_candidate_length_bp,
+                best_candidate_tm_celsius,
+                anneal_hits,
+                targets.max_anneal_hits,
+            ),
+            GibsonPrimingFailureKind::NoHit => format!(
+                "Could not derive a Gibson priming segment for the {side_label} insert end: no candidate 3' gene-specific segment in the requested {length_window} anneals to the insert template while meeting the Gibson primer constraints (target window {tm_window})."
+            ),
+            GibsonPrimingFailureKind::EmptyInsert => {
+                "Insert sequence must be non-empty for Gibson primer derivation".to_string()
+            }
+        }
+    }
+}
+
+fn floor_to_single_decimal(value: f64) -> f64 {
+    (value * 10.0).floor() / 10.0
+}
+
+fn build_gibson_suggested_design_adjustments(
+    targets: &GibsonPlanDesignTargets,
+    priming_failures: &[GibsonPrimingFailure],
+) -> Vec<GibsonSuggestedDesignAdjustment> {
+    let low_tm_failures = priming_failures
+        .iter()
+        .filter_map(|failure| match failure.kind {
+            GibsonPrimingFailureKind::BelowMinTm {
+                best_candidate_tm_celsius,
+                available_terminus_length_bp,
+                ..
+            } => Some((best_candidate_tm_celsius, available_terminus_length_bp)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if low_tm_failures.is_empty() {
+        return vec![];
+    }
+
+    let mut adjustments = Vec::new();
+    if let Some(max_available_length_bp) = low_tm_failures
+        .iter()
+        .map(|(_, available_len_bp)| *available_len_bp)
+        .filter(|available_len_bp| *available_len_bp > targets.priming_segment_max_length_bp)
+        .max()
+    {
+        let suggested_max_length_bp =
+            (targets.priming_segment_max_length_bp + 5).min(max_available_length_bp);
+        adjustments.push(GibsonSuggestedDesignAdjustment {
+            target: GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp,
+            label: format!("Set max priming length to {} bp", suggested_max_length_bp),
+            summary: format!(
+                "Increase the maximum 3' priming length from {} bp to {} bp and rerun preview.",
+                targets.priming_segment_max_length_bp, suggested_max_length_bp
+            ),
+            rationale: format!(
+                "At least one blocked insert terminus still has unused gene-specific sequence beyond the current {} bp cap.",
+                targets.priming_segment_max_length_bp
+            ),
+            current_value: targets.priming_segment_max_length_bp as f64,
+            suggested_value: suggested_max_length_bp as f64,
+        });
+    }
+
+    let suggested_tm_min_celsius = floor_to_single_decimal(
+        low_tm_failures
+            .iter()
+            .map(|(tm_celsius, _)| *tm_celsius)
+            .fold(targets.priming_segment_tm_min_celsius, f64::min),
+    );
+    if suggested_tm_min_celsius < targets.priming_segment_tm_min_celsius {
+        adjustments.push(GibsonSuggestedDesignAdjustment {
+            target: GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius,
+            label: format!(
+                "Set min priming Tm to {:.1} °C",
+                suggested_tm_min_celsius
+            ),
+            summary: format!(
+                "Lower the minimum 3' priming Tm from {:.1} °C to {:.1} °C and rerun preview.",
+                targets.priming_segment_tm_min_celsius, suggested_tm_min_celsius
+            ),
+            rationale: "The strongest currently blocked 3' priming segment still stays below the active minimum Tm target.".to_string(),
+            current_value: targets.priming_segment_tm_min_celsius,
+            suggested_value: suggested_tm_min_celsius,
+        });
+    }
+
+    adjustments
+}
+
+fn build_defined_site_product_sequence_with_terminal_overlaps(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    insert_sequence: &str,
+    left_overlap_sequence: &str,
+    right_overlap_sequence: &str,
+) -> Result<String, String> {
+    let start = opening
+        .start_0based
+        .ok_or_else(|| "Defined-site Gibson opening did not retain start_0based".to_string())?;
+    let end = opening.end_0based_exclusive.ok_or_else(|| {
+        "Defined-site Gibson opening did not retain end_0based_exclusive".to_string()
+    })?;
+    let left_len = left_overlap_sequence.len();
+    let right_len = right_overlap_sequence.len();
+    if start < left_len || end.saturating_add(right_len) > destination_seq.len() {
+        return Err(
+            "Requested unique-site engineering currently requires the opening to have non-wrapping terminal overlap windows in the displayed destination sequence."
+                .to_string(),
+        );
+    }
+    Ok(format!(
+        "{}{}{}{}{}",
+        &destination_seq[..start - left_len],
+        left_overlap_sequence,
+        insert_sequence,
+        right_overlap_sequence,
+        &destination_seq[end + right_len..]
+    ))
+}
+
+fn hamming_distance(left: &str, right: &str) -> Option<usize> {
+    if left.len() != right.len() {
+        return None;
+    }
+    Some(
+        left.as_bytes()
+            .iter()
+            .zip(right.as_bytes())
+            .filter(|(left_bp, right_bp)| left_bp != right_bp)
+            .count(),
+    )
+}
+
+fn count_enzyme_sites(
+    sequence: &str,
+    enzyme: &RestrictionEnzyme,
+    is_circular: bool,
+) -> Result<Vec<RestrictionEnzymeSite>, String> {
+    let mut dna = DNAsequence::from_sequence(sequence).map_err(|err| {
+        format!("Could not materialize engineered Gibson product candidate: {err}")
+    })?;
+    dna.set_circular(is_circular);
+    Ok(enzyme.get_sites(&dna, None))
+}
+
+fn choose_engineered_unique_restriction_site(
+    destination_seq: &str,
+    opening: &GibsonResolvedOpening,
+    insert_sequence: &str,
+    left_junction_id: &str,
+    left_overlap_sequence: &str,
+    right_junction_id: &str,
+    right_overlap_sequence: &str,
+    enzyme: &RestrictionEnzyme,
+    require_distinct_terminal_junctions: bool,
+    product_is_circular: bool,
+) -> Result<Option<GibsonEngineeredUniqueRestrictionSiteChoice>, String> {
+    let baseline_product = build_defined_site_product_sequence_with_terminal_overlaps(
+        destination_seq,
+        opening,
+        insert_sequence,
+        left_overlap_sequence,
+        right_overlap_sequence,
+    )?;
+    let baseline_sites = count_enzyme_sites(&baseline_product, enzyme, product_is_circular)?;
+    if baseline_sites.len() == 1 {
+        return Ok(Some(GibsonEngineeredUniqueRestrictionSiteChoice {
+            left_overlap_sequence: left_overlap_sequence.to_string(),
+            right_overlap_sequence: right_overlap_sequence.to_string(),
+            preview: GibsonUniqueRestrictionSitePreview {
+                enzyme_name: enzyme.name.clone(),
+                status: "already_unique".to_string(),
+                junction_id: String::new(),
+                terminal_side: String::new(),
+                recognition_sequence: enzyme.sequence.clone(),
+                overlap_sequence: String::new(),
+                motif_start_0based_in_overlap: 0,
+                mutated_bases: 0,
+                message: format!(
+                    "The assembled product already contains one unique {} site; no terminal-overlap mutation was required.",
+                    enzyme.name
+                ),
+            },
+        }));
+    }
+
+    let mut best: Option<(usize, usize, GibsonEngineeredUniqueRestrictionSiteChoice)> = None;
+    let motif_len = enzyme.sequence.len();
+    let candidates = [
+        (
+            TerminalSide::Left,
+            left_junction_id,
+            left_overlap_sequence,
+            right_overlap_sequence,
+        ),
+        (
+            TerminalSide::Right,
+            right_junction_id,
+            right_overlap_sequence,
+            left_overlap_sequence,
+        ),
+    ];
+    for (side, junction_id, baseline_overlap_sequence, other_overlap_sequence) in candidates {
+        if motif_len > baseline_overlap_sequence.len() {
+            continue;
+        }
+        for motif_offset in 0..=baseline_overlap_sequence.len() - motif_len {
+            let mut engineered_overlap = baseline_overlap_sequence.to_string();
+            engineered_overlap
+                .replace_range(motif_offset..motif_offset + motif_len, &enzyme.sequence);
+            let Some(mutated_bases) =
+                hamming_distance(&engineered_overlap, baseline_overlap_sequence)
+            else {
+                continue;
+            };
+            if mutated_bases == 0 {
+                continue;
+            }
+            let (candidate_left_overlap, candidate_right_overlap) = match side {
+                TerminalSide::Left => (
+                    engineered_overlap.clone(),
+                    other_overlap_sequence.to_string(),
+                ),
+                TerminalSide::Right => (
+                    other_overlap_sequence.to_string(),
+                    engineered_overlap.clone(),
+                ),
+            };
+            if require_distinct_terminal_junctions {
+                let right_rc = GentleEngine::reverse_complement(&candidate_right_overlap);
+                if candidate_left_overlap.eq_ignore_ascii_case(&candidate_right_overlap)
+                    || candidate_left_overlap.eq_ignore_ascii_case(&right_rc)
+                {
+                    continue;
+                }
+            }
+            let overlap_tm_celsius =
+                GentleEngine::estimate_primer_tm_c(engineered_overlap.as_bytes());
+            let candidate_product = build_defined_site_product_sequence_with_terminal_overlaps(
+                destination_seq,
+                opening,
+                insert_sequence,
+                &candidate_left_overlap,
+                &candidate_right_overlap,
+            )?;
+            let sites = count_enzyme_sites(&candidate_product, enzyme, product_is_circular)?;
+            if sites.len() != 1 {
+                continue;
+            }
+            let Some((_region_start, _region_end, expected_site_start)) = (match side {
+                TerminalSide::Left => {
+                    let start = opening.start_0based.expect("validated start");
+                    let region_start = start.saturating_sub(candidate_left_overlap.len());
+                    Some((
+                        region_start,
+                        start,
+                        region_start.saturating_add(motif_offset),
+                    ))
+                }
+                TerminalSide::Right => {
+                    let start = opening.start_0based.expect("validated start");
+                    let region_start = start.saturating_add(insert_sequence.len());
+                    Some((
+                        region_start,
+                        region_start + candidate_right_overlap.len(),
+                        region_start.saturating_add(motif_offset),
+                    ))
+                }
+            }) else {
+                continue;
+            };
+            let site_start = usize::try_from(sites[0].offset).ok();
+            if site_start != Some(expected_site_start) {
+                continue;
+            }
+            let choice = GibsonEngineeredUniqueRestrictionSiteChoice {
+                left_overlap_sequence: candidate_left_overlap,
+                right_overlap_sequence: candidate_right_overlap,
+                preview: GibsonUniqueRestrictionSitePreview {
+                    enzyme_name: enzyme.name.clone(),
+                    status: "engineered".to_string(),
+                    junction_id: junction_id.to_string(),
+                    terminal_side: side.label().to_string(),
+                    recognition_sequence: enzyme.sequence.clone(),
+                    overlap_sequence: engineered_overlap,
+                    motif_start_0based_in_overlap: motif_offset,
+                    mutated_bases,
+                    message: format!(
+                        "Engineered one unique {} site on the {} terminal Gibson overlap for junction '{}' ({} mutated bp; overlap Tm {:.1} °C).",
+                        enzyme.name,
+                        side.label(),
+                        junction_id,
+                        mutated_bases,
+                        overlap_tm_celsius
+                    ),
+                },
+            };
+            let candidate_key = match side {
+                TerminalSide::Left => 0usize,
+                TerminalSide::Right => 1usize,
+            };
+            let replace = match &best {
+                None => true,
+                Some((best_mutated_bases, best_side_key, best_choice)) => {
+                    mutated_bases < *best_mutated_bases
+                        || (mutated_bases == *best_mutated_bases && candidate_key < *best_side_key)
+                        || (mutated_bases == *best_mutated_bases
+                            && candidate_key == *best_side_key
+                            && choice.preview.motif_start_0based_in_overlap
+                                < best_choice.preview.motif_start_0based_in_overlap)
+                }
+            };
+            if replace {
+                best = Some((mutated_bases, candidate_key, choice));
+            }
+        }
+    }
+    Ok(best.map(|(_, _, choice)| choice))
 }
 
 fn resolve_overlap_partition(
@@ -3022,13 +3659,13 @@ fn choose_insert_priming_segment(
     oriented_insert_seq: &str,
     side: TerminalSide,
     targets: &GibsonPlanDesignTargets,
-    preview: &mut GibsonAssemblyPreview,
-) -> Option<GibsonPrimerSegment> {
+    _preview: &mut GibsonAssemblyPreview,
+) -> Result<GibsonPrimerSegment, GibsonPrimingFailure> {
     if oriented_insert_seq.is_empty() {
-        preview
-            .errors
-            .push("Insert sequence must be non-empty for Gibson primer derivation".to_string());
-        return None;
+        return Err(GibsonPrimingFailure {
+            side,
+            kind: GibsonPrimingFailureKind::EmptyInsert,
+        });
     }
     let target_mid =
         (targets.priming_segment_tm_min_celsius + targets.priming_segment_tm_max_celsius) / 2.0;
@@ -3123,63 +3760,47 @@ fn choose_insert_priming_segment(
     }
 
     let Some(best) = best else {
-        let side_label = match side {
-            TerminalSide::Left => "left",
-            TerminalSide::Right => "right",
-        };
-        let length_window = format!(
-            "{}..{} bp",
-            targets.priming_segment_min_length_bp, targets.priming_segment_max_length_bp
-        );
-        let tm_window = format!(
-            "{:.1}..{:.1} °C",
-            targets.priming_segment_tm_min_celsius, targets.priming_segment_tm_max_celsius
-        );
-        let message = if let Some(candidate) = best_below_tm_window {
-            let availability_note = if observed_max_len < targets.priming_segment_max_length_bp {
-                format!(
-                    "Only {} bp of gene-specific sequence are available at that insert terminus within the requested {length_window}.",
-                    observed_max_len
-                )
-            } else {
-                format!(
-                    "Even the strongest candidate in the requested {length_window} stays below the minimum target."
-                )
-            };
-            format!(
-                "Could not derive a Gibson priming segment for the {side_label} insert end: the best available 3' gene-specific priming segment reaches only {:.1} °C at {} bp, below the requested minimum {:.1} °C (target window {tm_window}). {availability_note}",
-                candidate.tm_celsius,
-                candidate.sequence.len(),
-                targets.priming_segment_tm_min_celsius,
-            )
+        let failure = if let Some(candidate) = best_below_tm_window {
+            GibsonPrimingFailure {
+                side,
+                kind: GibsonPrimingFailureKind::BelowMinTm {
+                    best_candidate_tm_celsius: candidate.tm_celsius,
+                    best_candidate_length_bp: candidate.sequence.len(),
+                    longest_evaluated_length_bp: observed_max_len,
+                    available_terminus_length_bp: oriented_insert_seq.len(),
+                },
+            }
         } else if let Some(candidate) = best_above_tm_window {
-            format!(
-                "Could not derive a Gibson priming segment for the {side_label} insert end: the coolest admissible 3' gene-specific priming segment is already {:.1} °C at {} bp, above the requested maximum {:.1} °C (target window {tm_window}, length window {length_window}).",
-                candidate.tm_celsius,
-                candidate.sequence.len(),
-                targets.priming_segment_tm_max_celsius,
-            )
+            GibsonPrimingFailure {
+                side,
+                kind: GibsonPrimingFailureKind::AboveMaxTm {
+                    coolest_candidate_tm_celsius: candidate.tm_celsius,
+                    coolest_candidate_length_bp: candidate.sequence.len(),
+                },
+            }
         } else if let Some(candidate) = best_ambiguous_candidate {
-            format!(
-                "Could not derive a Gibson priming segment for the {side_label} insert end: candidate 3' priming segments in the requested {length_window} anneal too ambiguously to the insert template (best candidate: {} bp, {:.1} °C, hits={} > max {}).",
-                candidate.sequence.len(),
-                candidate.tm_celsius,
-                candidate.anneal_hits,
-                targets.max_anneal_hits,
-            )
+            GibsonPrimingFailure {
+                side,
+                kind: GibsonPrimingFailureKind::Ambiguous {
+                    best_candidate_length_bp: candidate.sequence.len(),
+                    best_candidate_tm_celsius: candidate.tm_celsius,
+                    anneal_hits: candidate.anneal_hits,
+                },
+            }
         } else if saw_no_hit_candidate {
-            format!(
-                "Could not derive a Gibson priming segment for the {side_label} insert end: no candidate 3' gene-specific segment in the requested {length_window} anneals to the insert template while meeting the Gibson primer constraints (target window {tm_window})."
-            )
+            GibsonPrimingFailure {
+                side,
+                kind: GibsonPrimingFailureKind::NoHit,
+            }
         } else {
-            format!(
-                "Could not derive a Gibson priming segment for the {side_label} insert end within {length_window} and {tm_window}."
-            )
+            GibsonPrimingFailure {
+                side,
+                kind: GibsonPrimingFailureKind::NoHit,
+            }
         };
-        preview.errors.push(message);
-        return None;
+        return Err(failure);
     };
-    Some(GibsonPrimerSegment {
+    Ok(GibsonPrimerSegment {
         length_bp: best.sequence.len(),
         sequence: best.sequence,
         tm_celsius: best.tm_celsius,
@@ -4632,7 +5253,11 @@ mod tests {
         let engine = test_engine_with_sequences();
         let preview =
             preview_gibson_assembly_plan(&engine, &single_insert_plan()).expect("preview output");
-        assert!(preview.can_execute);
+        assert!(
+            preview.can_execute,
+            "errors={:?}; warnings={:?}; notes={:?}",
+            preview.errors, preview.warnings, preview.notes
+        );
         assert_eq!(preview.resolved_junctions.len(), 2);
         assert_eq!(preview.primer_suggestions.len(), 2);
         assert_eq!(
@@ -4913,16 +5538,16 @@ mod tests {
         plan.fragments[0].seq_id = "short_poly_a_insert".to_string();
         plan.validation_policy
             .design_targets
-            .priming_segment_tm_min_celsius = 58.0;
+            .priming_segment_tm_min_celsius = 80.0;
         plan.validation_policy
             .design_targets
-            .priming_segment_tm_max_celsius = 68.0;
+            .priming_segment_tm_max_celsius = 90.0;
         plan.validation_policy
             .design_targets
             .priming_segment_min_length_bp = 18;
         plan.validation_policy
             .design_targets
-            .priming_segment_max_length_bp = 35;
+            .priming_segment_max_length_bp = 20;
 
         let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
         assert!(!preview.can_execute);
@@ -4936,6 +5561,120 @@ mod tests {
             "The current blockers are in the 3' gene-specific priming window, not in the 5' Gibson overlaps."
         ));
         assert!(notes.contains("Design hint: the overlap side already resolves cleanly."));
+        assert_eq!(preview.suggested_design_adjustments.len(), 1);
+        assert_eq!(
+            preview.suggested_design_adjustments[0].target,
+            GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius
+        );
+        assert!(preview.suggested_design_adjustments[0].suggested_value < 58.0);
+    }
+
+    #[test]
+    fn build_gibson_suggested_design_adjustments_offers_length_and_tm_relaxations() {
+        let mut targets = GibsonPlanDesignTargets::default();
+        targets.priming_segment_tm_min_celsius = 80.0;
+        targets.priming_segment_tm_max_celsius = 90.0;
+        targets.priming_segment_min_length_bp = 18;
+        targets.priming_segment_max_length_bp = 20;
+
+        let adjustments = build_gibson_suggested_design_adjustments(
+            &targets,
+            &[GibsonPrimingFailure {
+                side: TerminalSide::Left,
+                kind: GibsonPrimingFailureKind::BelowMinTm {
+                    best_candidate_tm_celsius: 41.6,
+                    best_candidate_length_bp: 20,
+                    longest_evaluated_length_bp: 20,
+                    available_terminus_length_bp: 52,
+                },
+            }],
+        );
+        let targets = adjustments.iter().map(|row| row.target).collect::<Vec<_>>();
+        assert!(targets.contains(&GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp));
+        assert!(targets.contains(&GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius));
+        let length_adjustment = adjustments
+            .iter()
+            .find(|row| row.target == GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp)
+            .expect("length adjustment");
+        assert_eq!(length_adjustment.current_value, 20.0);
+        assert_eq!(length_adjustment.suggested_value, 25.0);
+    }
+
+    #[test]
+    fn preview_and_execution_can_engineer_requested_unique_site() {
+        let engine = test_engine_with_sequences();
+        let mut plan = single_insert_plan();
+        plan.destination.opening.start_0based = Some(20);
+        plan.destination.opening.end_0based_exclusive = Some(26);
+        plan.validation_policy.design_targets.overlap_bp_min = 20;
+        plan.validation_policy.design_targets.overlap_bp_max = 20;
+        plan.validation_policy
+            .design_targets
+            .minimum_overlap_tm_celsius = 0.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_min_celsius = 0.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_tm_max_celsius = 200.0;
+        plan.validation_policy
+            .design_targets
+            .priming_segment_max_length_bp = 24;
+        plan.validation_policy
+            .desired_unique_restriction_site_enzyme_name = Some("EcoRI".to_string());
+
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
+        assert!(preview.can_execute);
+        let engineered = preview
+            .unique_restriction_site
+            .as_ref()
+            .expect("unique-site preview");
+        assert_eq!(engineered.enzyme_name, "EcoRI");
+        assert_eq!(engineered.status, "engineered");
+        assert!(engineered.mutated_bases > 0);
+        assert!(engineered.overlap_sequence.contains("GAATTC"));
+
+        let execution =
+            derive_gibson_execution_plan(&engine, &plan).expect("execution plan output");
+        let product = execution
+            .outputs
+            .iter()
+            .find(|row| row.kind == "assembled_product")
+            .expect("assembled product output");
+        let eco_ri = active_restriction_enzymes()
+            .into_iter()
+            .find(|enzyme| enzyme.name == "EcoRI")
+            .expect("EcoRI in catalog");
+        let sites = eco_ri.get_sites(&product.dna, None);
+        assert_eq!(sites.len(), 1);
+    }
+
+    #[test]
+    fn preview_blocks_requested_unique_site_for_existing_termini_mode() {
+        let mut engine = test_engine_with_sequences();
+        engine
+            .state_mut()
+            .sequences
+            .get_mut("destination_vector")
+            .expect("destination sequence")
+            .set_circular(false);
+        let mut plan = single_insert_plan();
+        plan.destination.topology_before_opening = "linear".to_string();
+        plan.destination.opening.mode = "existing_termini".to_string();
+        plan.destination.opening.start_0based = None;
+        plan.destination.opening.end_0based_exclusive = None;
+        plan.validation_policy
+            .desired_unique_restriction_site_enzyme_name = Some("EcoRI".to_string());
+
+        let preview = preview_gibson_assembly_plan(&engine, &plan).expect("preview output");
+
+        assert!(!preview.can_execute);
+        assert!(
+            preview
+                .errors
+                .iter()
+                .any(|row| row.contains("defined-site single-insert Gibson plan"))
+        );
     }
 
     #[test]

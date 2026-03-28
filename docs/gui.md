@@ -877,6 +877,11 @@ Patterns menu:
        - minimum overlap Tm
        - priming-segment Tm window
        - priming-segment length window
+       - optional `new unique site` REBASE enzyme name:
+         request one new unique restriction site on the assembled product by
+         mutating one terminal overlap when possible
+       - current v1 limit for that unique-site request:
+         defined-site, single-insert plans with palindromic cutters
        - dedicated `Tm Model` box repeats the shared assumptions in a visually
          separate section
        - displayed Tm values use the shared nearest-neighbor model used across
@@ -905,8 +910,14 @@ Patterns menu:
          candidate explicitly, including when the insert terminus is simply too
          short / too low-`Tm` for the requested Gibson primer window
        - when overlap derivation succeeds but PCR priming still fails, the
-         review now suggests the two most likely design relaxations:
-         increase max priming length or lower the minimum priming `Tm`
+         review now exposes structured next-step relaxations with one-click
+         apply buttons:
+         increase max priming length and/or lower the minimum priming `Tm`,
+         then rerun the shared preview immediately
+       - when a `new unique site` request is present, the review shows whether
+         the product already had one unique site or which terminal overlap was
+         engineered, including the enzyme name, overlap sequence, motif offset,
+         and mutation count
        - visible findings use styled `Tₘ` rendering; the copyable findings box
          keeps plain `Tm` text for reliable copying
        - findings, resolved junctions, primer suggestions, and status text are

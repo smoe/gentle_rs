@@ -144,6 +144,11 @@ Top-level structure:
     - fragment-count-aware overlap targets
     - overlap Tm
     - destination/fragment/reference uniqueness heuristics
+  - optional design request:
+    - `desired_unique_restriction_site_enzyme_name`
+      asks the shared preview/apply path to try introducing one new unique
+      REBASE cutter site on one terminal overlap if the assembled product can
+      still remain uniquely cut there
 - `derived_design`
   - derived overlap sequences
   - primer design suggestions
@@ -377,6 +382,23 @@ Top-level structure:
     - PCR 3' priming-side success/failure
     so adapters can explain when the current blocker is priming rather than
     Gibson overlap derivation
+- `suggested_design_adjustments[]`
+  - optional structured next-step relaxations when overlap derivation already
+    succeeds and the remaining blocker is only the 3' priming window
+  - current v1 targets:
+    - increasing `priming_segment_max_length_bp`
+    - lowering `priming_segment_tm_min_celsius`
+  - intended for adapters to offer deterministic “apply and rerun preview”
+    actions without parsing prose notes
+- `unique_restriction_site`
+  - optional structured outcome for a requested
+    `validation_policy.desired_unique_restriction_site_enzyme_name`
+  - reports whether the requested site was:
+    - already unique in the assembled product
+    - newly engineered on one terminal overlap
+  - carries the enzyme name, terminal side/junction, engineered overlap
+    sequence, motif offset, mutation count, and user-facing message so adapters
+    do not have to infer this from notes/error prose
 - `cartoon`
   - built-in protocol id plus template bindings for single-insert flows
   - multi-insert previews may instead carry one fully resolved
@@ -407,6 +429,10 @@ Current v1 scope and limits:
   - multi-insert apply currently requires `destination.opening.mode=defined_site`
   - `existing_termini` remains the single-fragment path used by the current
     Routine Assistant handoff
+- current unique-site engineering limitation:
+  - only the single-insert `defined_site` path is supported
+  - only palindromic cutter recognition sequences are currently handled
+  - overlap windows must be non-wrapping in the displayed destination sequence
 - current Tₘ fields use the shared GENtle nearest-neighbor estimate with fixed
   assumptions:
   - exact complement

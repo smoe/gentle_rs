@@ -2057,6 +2057,13 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - Gibson-specific primer suggestions
       (`5' overlap + 3' gene-specific priming segment`)
     - blocking/advisory validation
+    - structured preview-side design adjustments plus one-click specialist
+      actions for the common “overlaps resolve, 3' priming still blocks”
+      case (currently: increase max priming length and/or lower min priming
+      `Tm`)
+    - optional specialist/plan request to introduce one new unique
+      restriction-endonuclease cleavage site on a terminal overlap during
+      defined-site single-insert planning for palindromic cutters
     - deterministic creation of output sequence nodes for:
       - left insert primer
       - right insert primer
@@ -2065,12 +2072,11 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
     - protocol-cartoon preview/export from the same resolved plan
   - next:
     - multi-fragment Gibson planning, preview, and cartoon generation
-    - richer user influence over Gibson PCR/primer design while still keeping
-      the specialist high-level and Gibson-specific
+    - broader user influence over Gibson PCR/primer design beyond the current
+      one-click priming-window relaxations, while still keeping the specialist
+      high-level and Gibson-specific
     - richer semantic rescue for interrupted annotations beyond the current
       trim/join/edited-locus projection rules, especially for CDS/gene models
-    - specialist option to introduce one new unique restriction-endonuclease
-      cleavage site during Gibson primer/design derivation
     - circularize-fragment workflows and richer Routine Assistant handoff
   - extend the protocol-cartoon baseline from `gibson.two_fragment` to
     multi-fragment Gibson assembly, including circular assembled products and

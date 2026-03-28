@@ -1327,6 +1327,10 @@ Rendering export commands:
   - Calls the shared non-mutating Gibson preview derivation path.
   - Accepts the single-insert destination-first subset of
     `gentle.gibson_assembly_plan.v1`.
+  - Optional plan input:
+    `validation_policy.desired_unique_restriction_site_enzyme_name`
+    requests one new unique REBASE site on a terminal overlap when the current
+    defined-site single-insert plan can support it.
   - The plan payload is resolved against the current project state, so the
     referenced `seq_id` values must already exist in memory or in the loaded
     state file.
@@ -1334,6 +1338,9 @@ Rendering export commands:
     - resolved opening/junction overlaps
     - Gibson primer suggestions (`5' overlap + 3' priming`)
     - validation/advisory findings
+    - structured suggested design adjustments for the current priming-window
+      blocker when the overlap side already resolves
+    - optional structured requested-unique-site outcome
     - protocol-cartoon bindings for the factual Gibson strip
 - `gibson apply PLAN_JSON_OR_@FILE`
   - Calls engine operation `ApplyGibsonAssemblyPlan`.

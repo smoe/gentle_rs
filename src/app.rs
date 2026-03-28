@@ -57,11 +57,12 @@ use crate::{
         PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
     },
     gibson_planning::{
-        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDestinationOpeningSuggestion,
-        GibsonPlanAssemblyMember, GibsonPlanDesignTargets, GibsonPlanDestination,
-        GibsonPlanEndStrategy, GibsonPlanFragment, GibsonPlanJunction, GibsonPlanOpening,
-        GibsonPlanOverlapPartition, GibsonPlanProduct, GibsonPlanUniquenessChecks,
-        GibsonPlanValidationPolicy, suggest_gibson_destination_openings,
+        GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDesignAdjustmentTarget,
+        GibsonDestinationOpeningSuggestion, GibsonPlanAssemblyMember, GibsonPlanDesignTargets,
+        GibsonPlanDestination, GibsonPlanEndStrategy, GibsonPlanFragment, GibsonPlanJunction,
+        GibsonPlanOpening, GibsonPlanOverlapPartition, GibsonPlanProduct,
+        GibsonPlanUniquenessChecks, GibsonPlanValidationPolicy, GibsonSuggestedDesignAdjustment,
+        suggest_gibson_destination_openings,
     },
     icons::APP_ICON,
     lineage_export::{
@@ -834,6 +835,7 @@ pub struct GENtleApp {
     gibson_priming_tm_max_celsius: String,
     gibson_priming_length_min_bp: String,
     gibson_priming_length_max_bp: String,
+    gibson_unique_restriction_site_enzyme_name: String,
     gibson_output_id_hint: String,
     gibson_show_all_unique_cutters: bool,
     gibson_status: String,
@@ -2218,6 +2220,7 @@ impl Default for GENtleApp {
             gibson_priming_tm_max_celsius: "68.0".to_string(),
             gibson_priming_length_min_bp: "18".to_string(),
             gibson_priming_length_max_bp: "35".to_string(),
+            gibson_unique_restriction_site_enzyme_name: String::new(),
             gibson_output_id_hint: String::new(),
             gibson_show_all_unique_cutters: false,
             gibson_status: String::new(),
@@ -15632,6 +15635,15 @@ Error: `{err}`"
         } else {
             self.gibson_output_id_hint.trim().to_string()
         };
+        let desired_unique_restriction_site_enzyme_name = (!self
+            .gibson_unique_restriction_site_enzyme_name
+            .trim()
+            .is_empty())
+        .then(|| {
+            self.gibson_unique_restriction_site_enzyme_name
+                .trim()
+                .to_string()
+        });
 
         let fragments = insert_rows
             .iter()
@@ -15799,6 +15811,7 @@ Error: `{err}`"
                     participating_fragments: "warn".to_string(),
                     reference_contexts: vec![],
                 },
+                desired_unique_restriction_site_enzyme_name,
             },
             derived_design: None,
         })
@@ -15878,6 +15891,11 @@ Error: `{err}`"
             .design_targets
             .priming_segment_max_length_bp
             .to_string();
+        self.gibson_unique_restriction_site_enzyme_name = plan
+            .validation_policy
+            .desired_unique_restriction_site_enzyme_name
+            .clone()
+            .unwrap_or_default();
         self.gibson_output_id_hint = plan.product.output_id_hint.trim().to_string();
     }
 
@@ -17223,16 +17241,51 @@ Error: `{err}`"
             && preview.resolved_junctions.len() == expected_junction_count
             && overlap_error_count == 0
         {
-            rows.push((
-                warn_color,
+            let adjustment_text = if preview.suggested_design_adjustments.is_empty() {
                 format!(
-                    "Design hint: if biologically acceptable, try increasing max priming length above {} bp or lowering the minimum priming Tm below {} °C.",
+                    "try increasing max priming length above {} bp or lowering the minimum priming Tm below {} °C",
                     self.gibson_priming_length_max_bp.trim(),
                     self.gibson_priming_tm_min_celsius.trim()
-                ),
+                )
+            } else {
+                preview
+                    .suggested_design_adjustments
+                    .iter()
+                    .map(Self::gibson_design_adjustment_brief)
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            };
+            rows.push((
+                warn_color,
+                format!("Design hint: if biologically acceptable, {adjustment_text}."),
             ));
         }
         rows
+    }
+
+    fn gibson_design_adjustment_brief(adjustment: &GibsonSuggestedDesignAdjustment) -> String {
+        match adjustment.target {
+            GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp => format!(
+                "set max priming length to {:.0} bp",
+                adjustment.suggested_value.round()
+            ),
+            GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius => {
+                format!("set min priming Tm to {:.1} °C", adjustment.suggested_value)
+            }
+        }
+    }
+
+    fn apply_gibson_design_adjustment(&mut self, adjustment: &GibsonSuggestedDesignAdjustment) {
+        match adjustment.target {
+            GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp => {
+                self.gibson_priming_length_max_bp =
+                    format!("{:.0}", adjustment.suggested_value.round());
+            }
+            GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius => {
+                self.gibson_priming_tm_min_celsius = format!("{:.1}", adjustment.suggested_value);
+            }
+        }
+        self.run_gibson_preview();
     }
 
     fn gibson_preview_junctions_text(preview: &GibsonAssemblyPreview) -> String {
@@ -17873,6 +17926,25 @@ Error: `{err}`"
             );
         });
         ui.horizontal(|ui| {
+            ui.label("new unique site").on_hover_text(
+                "Optional REBASE enzyme name to introduce once on the assembled product through one engineered terminal Gibson overlap. Current v1 supports defined-site, single-insert plans and palindromic cutters.",
+            );
+            ui.add(
+                egui::TextEdit::singleline(
+                    &mut self.gibson_unique_restriction_site_enzyme_name,
+                )
+                .desired_width(120.0)
+                .hint_text("e.g. EcoRI"),
+            );
+            if ui
+                .small_button("Clear")
+                .on_hover_text("Remove the optional unique-site engineering request")
+                .clicked()
+            {
+                self.gibson_unique_restriction_site_enzyme_name.clear();
+            }
+        });
+        ui.horizontal(|ui| {
             ui.label("output id hint");
             ui.add(
                 egui::TextEdit::singleline(&mut self.gibson_output_id_hint)
@@ -17880,6 +17952,9 @@ Error: `{err}`"
             );
         });
         ui.small(tm_help.as_str());
+        ui.small(
+            "Optional unique-site request: ask Gibson to introduce one new unique restriction site, such as EcoRI, by mutating one terminal overlap if the resulting assembled product still stays uniquely cut there.",
+        );
 
         ui.separator();
         Self::gibson_tm_label(ui, "", " Model", egui::TextStyle::Heading, true);
@@ -17920,6 +17995,7 @@ Error: `{err}`"
             ui.small(format!("Preview becomes available once: {reason}"));
         }
 
+        let mut selected_design_adjustment: Option<GibsonSuggestedDesignAdjustment> = None;
         if let Some(preview) = self.gibson_preview_output.clone() {
             ui.small(format!(
                 "preview schema: {} | can_execute={}",
@@ -17950,6 +18026,37 @@ Error: `{err}`"
                         });
                     }
                 });
+                if !preview.suggested_design_adjustments.is_empty() {
+                    ui.small("Suggested next adjustments");
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        for adjustment in &preview.suggested_design_adjustments {
+                            ui.horizontal_wrapped(|ui| {
+                                if ui.button(&adjustment.label).clicked() {
+                                    selected_design_adjustment = Some(adjustment.clone());
+                                }
+                                ui.small(&adjustment.summary);
+                            });
+                            ui.small(&adjustment.rationale);
+                        }
+                    });
+                }
+                if let Some(unique_site) = preview.unique_restriction_site.as_ref() {
+                    ui.small("Requested unique site");
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.small(&unique_site.message);
+                        if unique_site.status.eq_ignore_ascii_case("engineered") {
+                            ui.small(format!(
+                                "{} terminal overlap '{}' now carries {} at overlap offset {} ({} mutated bp).",
+                                unique_site.terminal_side,
+                                unique_site.junction_id,
+                                unique_site.recognition_sequence,
+                                unique_site.motif_start_0based_in_overlap,
+                                unique_site.mutated_bases
+                            ));
+                            ui.monospace(&unique_site.overlap_sequence);
+                        }
+                    });
+                }
                 ui.small("Preview findings");
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     Self::render_gibson_preview_findings_rich(ui, &preview);
@@ -18060,6 +18167,9 @@ Error: `{err}`"
             }
         } else {
             ui.small("No Gibson preview yet. Use 'Preview Gibson Plan' to resolve junctions, primers, and cartoon bindings.");
+        }
+        if let Some(adjustment) = selected_design_adjustment.as_ref() {
+            self.apply_gibson_design_adjustment(adjustment);
         }
 
         ui.separator();
@@ -32824,9 +32934,11 @@ mod tests {
             PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
         },
         gibson_planning::{
-            GibsonAssemblyPreview, GibsonCartoonPreview, GibsonDestinationOpeningSuggestion,
+            GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonCartoonPreview,
+            GibsonDesignAdjustmentTarget, GibsonDestinationOpeningSuggestion,
             GibsonPreviewDestination, GibsonPreviewInsert, GibsonPrimerSegment,
             GibsonPrimerSuggestion, GibsonResolvedJunctionPreview, GibsonRoutineHandoffPreview,
+            GibsonSuggestedDesignAdjustment,
         },
         uniprot::UniprotEntrySummary,
         window::Window,
@@ -34833,6 +34945,115 @@ mod tests {
     }
 
     #[test]
+    fn build_gibson_plan_from_ui_preserves_requested_unique_site() {
+        let mut app = GENtleApp::default();
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "destination_vector".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("destination sequence"),
+        );
+        app.engine.write().unwrap().state_mut().sequences.insert(
+            "insert_x".to_string(),
+            DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGA").expect("insert sequence"),
+        );
+        app.gibson_destination_seq_id = "destination_vector".to_string();
+        app.gibson_insert_seq_id = "insert_x".to_string();
+        app.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+        app.gibson_opening_start_0based = "4".to_string();
+        app.gibson_opening_end_0based_exclusive = "4".to_string();
+        app.gibson_unique_restriction_site_enzyme_name = "EcoRI".to_string();
+
+        let plan = app.build_gibson_plan_from_ui().expect("build Gibson plan");
+
+        assert_eq!(
+            plan.validation_policy
+                .desired_unique_restriction_site_enzyme_name
+                .as_deref(),
+            Some("EcoRI")
+        );
+    }
+
+    #[test]
+    fn load_gibson_plan_into_ui_restores_requested_unique_site() {
+        let mut app = GENtleApp::default();
+        let mut plan = GibsonAssemblyPlan::default();
+        plan.validation_policy
+            .desired_unique_restriction_site_enzyme_name = Some("EcoRI".to_string());
+
+        app.load_gibson_plan_into_ui(&plan);
+
+        assert_eq!(app.gibson_unique_restriction_site_enzyme_name, "EcoRI");
+    }
+
+    #[test]
+    fn gibson_target_review_rows_use_structured_design_adjustments() {
+        let app = GENtleApp::default();
+        let preview = GibsonAssemblyPreview {
+            fragments: vec![GibsonPreviewInsert {
+                fragment_id: "insert_1".to_string(),
+                ..Default::default()
+            }],
+            resolved_junctions: vec![
+                GibsonResolvedJunctionPreview::default(),
+                GibsonResolvedJunctionPreview::default(),
+            ],
+            errors: vec!["Could not derive a Gibson priming segment for the left insert end".to_string()],
+            suggested_design_adjustments: vec![
+                GibsonSuggestedDesignAdjustment {
+                    target: GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp,
+                    label: "Set max priming length to 40 bp".to_string(),
+                    summary: "Increase the maximum 3' priming length from 35 bp to 40 bp and rerun preview.".to_string(),
+                    rationale: "Unused sequence remains beyond the current cap.".to_string(),
+                    current_value: 35.0,
+                    suggested_value: 40.0,
+                },
+                GibsonSuggestedDesignAdjustment {
+                    target: GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius,
+                    label: "Set min priming Tm to 52.4 °C".to_string(),
+                    summary: "Lower the minimum 3' priming Tm from 58.0 °C to 52.4 °C and rerun preview.".to_string(),
+                    rationale: "The strongest blocked 3' priming segment stays below the current minimum.".to_string(),
+                    current_value: 58.0,
+                    suggested_value: 52.4,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let rows = app.gibson_target_review_rows(&preview);
+        let joined = rows
+            .iter()
+            .map(|(_, row)| row.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(joined.contains("set max priming length to 40 bp"));
+        assert!(joined.contains("set min priming Tm to 52.4 °C"));
+    }
+
+    #[test]
+    fn apply_gibson_design_adjustment_updates_target_field() {
+        let mut app = GENtleApp::default();
+        app.apply_gibson_design_adjustment(&GibsonSuggestedDesignAdjustment {
+            target: GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp,
+            label: "Set max priming length to 40 bp".to_string(),
+            summary: String::new(),
+            rationale: String::new(),
+            current_value: 35.0,
+            suggested_value: 40.0,
+        });
+        assert_eq!(app.gibson_priming_length_max_bp, "40");
+
+        app.apply_gibson_design_adjustment(&GibsonSuggestedDesignAdjustment {
+            target: GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius,
+            label: "Set min priming Tm to 52.4 °C".to_string(),
+            summary: String::new(),
+            rationale: String::new(),
+            current_value: 58.0,
+            suggested_value: 52.4,
+        });
+        assert_eq!(app.gibson_priming_tm_min_celsius, "52.4");
+    }
+
+    #[test]
     fn humanize_gibson_ui_text_formats_tm_and_celsius() {
         let raw = "minimum overlap Tm 60.0 C";
         assert_eq!(
@@ -35052,6 +35273,8 @@ mod tests {
             warnings: vec![],
             errors: vec![GENtleApp::gibson_multi_insert_defined_opening_note().to_string()],
             notes: vec![],
+            suggested_design_adjustments: vec![],
+            unique_restriction_site: None,
             cartoon: GibsonCartoonPreview::default(),
             routine_handoff: GibsonRoutineHandoffPreview::default(),
         };
