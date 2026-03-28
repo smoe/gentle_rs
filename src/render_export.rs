@@ -1,8 +1,9 @@
 //! Shared export surfaces (SVG and snapshot pathways).
 
 use crate::{
-    dna_sequence::DNAsequence, engine::DisplaySettings, feature_location::feature_is_reverse,
-    gc_contents::GcContents, restriction_enzyme::RestrictionEnzymeKey,
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, engine::DisplaySettings,
+    feature_location::feature_is_reverse, gc_contents::GcContents,
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::Feature;
 use std::collections::{HashMap, HashSet};
@@ -764,8 +765,19 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     if display.show_restriction_enzymes {
-        let mut keys: Vec<RestrictionEnzymeKey> =
-            dna.restriction_enzyme_groups().keys().cloned().collect();
+        let mut keys: Vec<RestrictionEnzymeKey> = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .filter_map(|(key, names)| {
+                DnaDisplay::restriction_group_matches_mode(
+                    display.restriction_enzyme_display_mode,
+                    &display.preferred_restriction_enzymes,
+                    key,
+                    names,
+                )
+                .then_some(key.clone())
+            })
+            .collect();
         keys.sort();
         let mut top_label_lanes: Vec<f32> = vec![];
         let mut bottom_label_lanes: Vec<f32> = vec![];
@@ -1049,8 +1061,19 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_restriction_enzymes {
-        let mut keys: Vec<RestrictionEnzymeKey> =
-            dna.restriction_enzyme_groups().keys().cloned().collect();
+        let mut keys: Vec<RestrictionEnzymeKey> = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .filter_map(|(key, names)| {
+                DnaDisplay::restriction_group_matches_mode(
+                    display.restriction_enzyme_display_mode,
+                    &display.preferred_restriction_enzymes,
+                    key,
+                    names,
+                )
+                .then_some(key.clone())
+            })
+            .collect();
         keys.sort();
         let mut last_right_y = -1e9f32;
         let mut last_left_y = 1e9f32;
@@ -1132,7 +1155,10 @@ pub fn export_svg_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::DisplaySettings;
+    use crate::{
+        engine::{DisplaySettings, RestrictionEnzymeDisplayMode},
+        enzymes::active_restriction_enzymes,
+    };
     use gb_io::{FeatureKind, seq::Location};
     #[cfg(feature = "snapshot-tests")]
     use std::fs;
@@ -1229,6 +1255,28 @@ mod tests {
         let circular_svg = export_circular_svg(&dna_circular, &display);
         assert!(circular_svg.contains("TFBS high"));
         assert!(!circular_svg.contains("TFBS low"));
+    }
+
+    #[test]
+    fn restriction_display_mode_applies_to_svg_export() {
+        let mut dna = DNAsequence::from_sequence("GAATTCAAAAGAATTCAAAAGGATCCAAA").unwrap();
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        dna.set_max_restriction_enzyme_sites(None);
+        dna.update_computed_features();
+
+        let mut display = DisplaySettings::default();
+        display.show_restriction_enzymes = true;
+        display.restriction_enzyme_display_mode = RestrictionEnzymeDisplayMode::PreferredOnly;
+        display.preferred_restriction_enzymes = vec!["EcoRI".to_string()];
+
+        let preferred_svg = export_linear_svg(&dna, &display);
+        assert!(preferred_svg.contains("EcoRI"));
+        assert!(!preferred_svg.contains("BamHI"));
+
+        display.restriction_enzyme_display_mode = RestrictionEnzymeDisplayMode::AllInView;
+        let all_svg = export_linear_svg(&dna, &display);
+        assert!(all_svg.contains("EcoRI"));
+        assert!(all_svg.contains("BamHI"));
     }
 
     #[test]

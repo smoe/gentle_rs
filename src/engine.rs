@@ -26,7 +26,7 @@ use crate::{
     DNA_LADDERS, RNA_LADDERS,
     app::GENtleApp,
     dna_sequence::DNAsequence,
-    enzymes::active_restriction_enzymes,
+    enzymes::{active_restriction_enzymes, default_preferred_restriction_enzyme_names},
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
@@ -282,6 +282,54 @@ pub enum LinearSequenceLetterLayoutMode {
     Condensed10Row,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RestrictionEnzymeDisplayMode {
+    PreferredOnly,
+    #[default]
+    PreferredAndUnique,
+    UniqueOnly,
+    AllInView,
+}
+
+impl RestrictionEnzymeDisplayMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PreferredOnly => "Preferred only",
+            Self::PreferredAndUnique => "Preferred + unique",
+            Self::UniqueOnly => "Unique only",
+            Self::AllInView => "All in view",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Self::PreferredOnly => "Pref",
+            Self::PreferredAndUnique => "Pref+uniq",
+            Self::UniqueOnly => "Unique",
+            Self::AllInView => "All",
+        }
+    }
+
+    pub fn count_label(self) -> &'static str {
+        match self {
+            Self::PreferredOnly => "preferred cutters",
+            Self::PreferredAndUnique => "preferred/unique cutters",
+            Self::UniqueOnly => "unique cutters",
+            Self::AllInView => "cut sites",
+        }
+    }
+
+    pub fn empty_state_label(self) -> &'static str {
+        match self {
+            Self::PreferredOnly => "No preferred cutters in view.",
+            Self::PreferredAndUnique => "No preferred or unique cutters in view.",
+            Self::UniqueOnly => "No unique cutters in view.",
+            Self::AllInView => "No restriction cut sites in view.",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 /// Project-level display settings persisted in `ProjectState`.
@@ -322,6 +370,10 @@ pub struct DisplaySettings {
     #[serde(default)]
     pub vcf_display_required_info_keys: Vec<String>,
     pub show_restriction_enzymes: bool,
+    #[serde(default)]
+    pub restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode,
+    #[serde(default = "DisplaySettings::default_preferred_restriction_enzymes")]
+    pub preferred_restriction_enzymes: Vec<String>,
     pub show_gc_contents: bool,
     #[serde(default = "DisplaySettings::default_gc_content_bin_size_bp")]
     pub gc_content_bin_size_bp: usize,
@@ -370,6 +422,10 @@ impl DisplaySettings {
     pub const fn default_reverse_strand_visual_opacity() -> f32 {
         0.55
     }
+
+    pub fn default_preferred_restriction_enzymes() -> Vec<String> {
+        default_preferred_restriction_enzyme_names()
+    }
 }
 
 impl Default for DisplaySettings {
@@ -406,6 +462,8 @@ impl Default for DisplaySettings {
             vcf_display_max_qual: 0.0,
             vcf_display_required_info_keys: vec![],
             show_restriction_enzymes: true,
+            restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode::default(),
+            preferred_restriction_enzymes: Self::default_preferred_restriction_enzymes(),
             show_gc_contents: true,
             gc_content_bin_size_bp: Self::default_gc_content_bin_size_bp(),
             show_open_reading_frames: false,

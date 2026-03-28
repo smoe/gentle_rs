@@ -6,6 +6,9 @@ use std::fs;
 
 const RUNTIME_REBASE_PATH: &str = "data/resources/rebase.enzymes.json";
 const BUILTIN_ENZYMES_JSON: &str = include_str!("../assets/enzymes.json");
+const DEFAULT_PREFERRED_RESTRICTION_ENZYME_NAMES: &[&str] = &[
+    "EcoRI", "SacI", "KpnI", "SmaI", "BamHI", "XbaI", "SalI", "PstI", "SphI", "HindIII",
+];
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -113,6 +116,13 @@ pub fn active_restriction_enzymes() -> Vec<RestrictionEnzyme> {
         }
     }
     load_restriction_enzymes_from_json_text(BUILTIN_ENZYMES_JSON).unwrap_or_default()
+}
+
+pub fn default_preferred_restriction_enzyme_names() -> Vec<String> {
+    DEFAULT_PREFERRED_RESTRICTION_ENZYME_NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
 }
 
 impl Default for Enzymes {

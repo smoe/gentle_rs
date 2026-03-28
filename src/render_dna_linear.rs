@@ -3,7 +3,7 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
-    engine::LinearSequenceLetterLayoutMode,
+    engine::{LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode},
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     iupac_code::IupacCode,
@@ -2353,14 +2353,23 @@ impl RenderDnaLinear {
             .read()
             .map(|dna| dna.restriction_enzyme_groups().clone())
             .unwrap_or_default();
+        let (display_mode, preferred_restriction_enzymes) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.restriction_enzyme_display_mode(),
+                    display.preferred_restriction_enzymes().to_vec(),
+                )
+            })
+            .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
 
         let mut keys: Vec<_> = groups.keys().cloned().collect();
         keys.sort();
-        let mut top_label_lanes: Vec<f32> = vec![];
-        let mut bottom_label_lanes: Vec<f32> = vec![];
-
-        for (idx, key) in keys.iter().enumerate() {
-            let names = match groups.get(key) {
+        let mut visible_groups: Vec<_> = Vec::new();
+        let mut total_groups_in_view = 0usize;
+        for key in keys {
+            let names = match groups.get(&key) {
                 Some(names) => names,
                 None => continue,
             };
@@ -2368,6 +2377,47 @@ impl RenderDnaLinear {
             if pos < viewport.start || pos >= viewport.end {
                 continue;
             }
+            total_groups_in_view = total_groups_in_view.saturating_add(1);
+            if DnaDisplay::restriction_group_matches_mode(
+                display_mode,
+                &preferred_restriction_enzymes,
+                &key,
+                names,
+            ) {
+                visible_groups.push((key, names.clone()));
+            }
+        }
+        if visible_groups.is_empty() {
+            let empty_text = if total_groups_in_view == 0
+                || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
+            {
+                RestrictionEnzymeDisplayMode::AllInView
+                    .empty_state_label()
+                    .to_string()
+            } else {
+                format!(
+                    "{} {} total cut sites hidden by the current filter.",
+                    display_mode.empty_state_label(),
+                    total_groups_in_view
+                )
+            };
+            painter.text(
+                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
+                Align2::LEFT_BOTTOM,
+                empty_text,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
+            return;
+        }
+        let mut top_label_lanes: Vec<f32> = vec![];
+        let mut bottom_label_lanes: Vec<f32> = vec![];
+
+        for (idx, (key, names)) in visible_groups.iter().enumerate() {
+            let pos = self.normalize_pos(key.pos());
             let x = self.bp_to_x(pos, viewport);
             let y = self.baseline_y();
             let mut color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());

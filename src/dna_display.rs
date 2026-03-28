@@ -1,6 +1,11 @@
 //! Shared DNA display configuration and visibility policies.
 
-use crate::{engine::LinearSequenceLetterLayoutMode, gc_contents::DEFAULT_SECTION_SIZE_BP};
+use crate::{
+    engine::{LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode},
+    enzymes::default_preferred_restriction_enzyme_names,
+    gc_contents::DEFAULT_SECTION_SIZE_BP,
+    restriction_enzyme::RestrictionEnzymeKey,
+};
 use std::collections::BTreeSet;
 
 use eframe::egui::Color32;
@@ -173,6 +178,8 @@ impl UpdateLayoutParts {
 #[derive(Debug)]
 pub struct DnaDisplay {
     show_restriction_enzymes: bool,
+    restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode,
+    preferred_restriction_enzymes: Vec<String>,
     show_reverse_complement: bool,
     auto_hide_sequence_panel_when_linear_bases_visible: bool,
     sequence_panel_max_text_length_bp: usize,
@@ -217,6 +224,67 @@ pub struct DnaDisplay {
 }
 
 impl DnaDisplay {
+    fn normalized_restriction_enzyme_name(name: &str) -> String {
+        name.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_uppercase())
+            .collect()
+    }
+
+    pub fn normalize_preferred_restriction_enzymes(names: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        for raw in names {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = Self::normalized_restriction_enzyme_name(trimmed);
+            if normalized.is_empty() || !seen.insert(normalized) {
+                continue;
+            }
+            out.push(trimmed.to_string());
+        }
+        out
+    }
+
+    pub fn parse_preferred_restriction_enzymes_csv(csv: &str) -> Vec<String> {
+        let names = csv
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        Self::normalize_preferred_restriction_enzymes(&names)
+    }
+
+    fn restriction_group_matches_preferred(preferred_names: &[String], names: &[String]) -> bool {
+        let preferred = preferred_names
+            .iter()
+            .map(|name| Self::normalized_restriction_enzyme_name(name))
+            .collect::<BTreeSet<_>>();
+        names.iter().any(|name| {
+            let normalized = Self::normalized_restriction_enzyme_name(name);
+            !normalized.is_empty() && preferred.contains(&normalized)
+        })
+    }
+
+    pub fn restriction_group_matches_mode(
+        mode: RestrictionEnzymeDisplayMode,
+        preferred_names: &[String],
+        key: &RestrictionEnzymeKey,
+        names: &[String],
+    ) -> bool {
+        let is_unique = key.number_of_cuts() == 1;
+        let is_preferred = Self::restriction_group_matches_preferred(preferred_names, names);
+        match mode {
+            RestrictionEnzymeDisplayMode::PreferredOnly => is_preferred,
+            RestrictionEnzymeDisplayMode::PreferredAndUnique => is_preferred || is_unique,
+            RestrictionEnzymeDisplayMode::UniqueOnly => is_unique,
+            RestrictionEnzymeDisplayMode::AllInView => true,
+        }
+    }
+
     fn clamp_feature_details_font_size(value: f32) -> f32 {
         value.clamp(8.0, 24.0)
     }
@@ -282,6 +350,29 @@ impl DnaDisplay {
 
     pub fn show_restriction_enzyme_sites(&self) -> bool {
         self.show_restriction_enzymes
+    }
+
+    pub fn restriction_enzyme_display_mode(&self) -> RestrictionEnzymeDisplayMode {
+        self.restriction_enzyme_display_mode
+    }
+
+    pub fn set_restriction_enzyme_display_mode(&mut self, value: RestrictionEnzymeDisplayMode) {
+        if self.restriction_enzyme_display_mode != value {
+            self.restriction_enzyme_display_mode = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn preferred_restriction_enzymes(&self) -> &[String] {
+        &self.preferred_restriction_enzymes
+    }
+
+    pub fn set_preferred_restriction_enzymes(&mut self, names: Vec<String>) {
+        let normalized = Self::normalize_preferred_restriction_enzymes(&names);
+        if self.preferred_restriction_enzymes != normalized {
+            self.preferred_restriction_enzymes = normalized;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn toggle_show_restriction_enzyme_sites(&mut self) {
@@ -839,6 +930,8 @@ impl Default for DnaDisplay {
         hidden_feature_kinds.insert("MISC_FEATURE".to_string());
         Self {
             show_restriction_enzymes: true,
+            restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode::default(),
+            preferred_restriction_enzymes: default_preferred_restriction_enzyme_names(),
             show_reverse_complement: true,
             auto_hide_sequence_panel_when_linear_bases_visible: false,
             sequence_panel_max_text_length_bp: 200_000,

@@ -37,7 +37,7 @@ use crate::{
         OperationProgress, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, ProjectState, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode,
-        RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
@@ -2627,6 +2627,11 @@ impl GENtleApp {
         target.vcf_display_max_qual = source.vcf_display_max_qual;
         target.vcf_display_required_info_keys = source.vcf_display_required_info_keys.clone();
         target.show_restriction_enzymes = source.show_restriction_enzymes;
+        target.restriction_enzyme_display_mode = source.restriction_enzyme_display_mode;
+        target.preferred_restriction_enzymes =
+            crate::dna_display::DnaDisplay::normalize_preferred_restriction_enzymes(
+                &source.preferred_restriction_enzymes,
+            );
         target.show_gc_contents = source.show_gc_contents;
         target.gc_content_bin_size_bp = source.gc_content_bin_size_bp;
         target.show_open_reading_frames = source.show_open_reading_frames;
@@ -5796,6 +5801,10 @@ Error: `{err}`"
             key.hash(&mut hasher);
         }
         display.show_restriction_enzymes.hash(&mut hasher);
+        display.restriction_enzyme_display_mode.hash(&mut hasher);
+        for name in &display.preferred_restriction_enzymes {
+            name.hash(&mut hasher);
+        }
         display.show_gc_contents.hash(&mut hasher);
         display.gc_content_bin_size_bp.hash(&mut hasher);
         display.show_open_reading_frames.hash(&mut hasher);
@@ -20091,6 +20100,7 @@ Error: `{err}`"
         let mut engine = self.engine.write().unwrap();
         for dna in engine.state_mut().sequences.values_mut() {
             enzymes.clone_into(dna.restriction_enzymes_mut());
+            dna.set_max_restriction_enzyme_sites(None);
             dna.update_computed_features();
         }
         Ok(enzymes.len())
@@ -29080,6 +29090,10 @@ Error: `{err}`"
         self.configuration_graphics.vcf_display_required_info_keys =
             defaults.vcf_display_required_info_keys.clone();
         self.configuration_graphics.show_restriction_enzymes = defaults.show_restriction_enzymes;
+        self.configuration_graphics.restriction_enzyme_display_mode =
+            defaults.restriction_enzyme_display_mode;
+        self.configuration_graphics.preferred_restriction_enzymes =
+            defaults.preferred_restriction_enzymes.clone();
         self.configuration_graphics.show_gc_contents = defaults.show_gc_contents;
         self.configuration_graphics.gc_content_bin_size_bp = defaults.gc_content_bin_size_bp;
         self.configuration_graphics.show_open_reading_frames = defaults.show_open_reading_frames;
@@ -29896,6 +29910,84 @@ Error: `{err}`"
                 "Show restriction enzymes",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("Restriction display mode");
+            let mut selected = self.configuration_graphics.restriction_enzyme_display_mode;
+            let mut mode_changed = false;
+            egui::ComboBox::from_id_salt("config_restriction_display_mode")
+                .selected_text(selected.label())
+                .show_ui(ui, |ui| {
+                    mode_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            RestrictionEnzymeDisplayMode::PreferredOnly,
+                            RestrictionEnzymeDisplayMode::PreferredOnly.label(),
+                        )
+                        .changed();
+                    mode_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            RestrictionEnzymeDisplayMode::PreferredAndUnique,
+                            RestrictionEnzymeDisplayMode::PreferredAndUnique.label(),
+                        )
+                        .changed();
+                    mode_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            RestrictionEnzymeDisplayMode::UniqueOnly,
+                            RestrictionEnzymeDisplayMode::UniqueOnly.label(),
+                        )
+                        .changed();
+                    mode_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            RestrictionEnzymeDisplayMode::AllInView,
+                            RestrictionEnzymeDisplayMode::AllInView.label(),
+                        )
+                        .changed();
+                })
+                .response
+                .on_hover_text(
+                    "Choose whether the DNA window shows preferred cutters, unique cutters, or every cut site in view.",
+                );
+            if mode_changed {
+                self.configuration_graphics.restriction_enzyme_display_mode = selected;
+                changed = true;
+            }
+        });
+        ui.label("Preferred restriction enzymes");
+        let mut preferred_csv = self
+            .configuration_graphics
+            .preferred_restriction_enzymes
+            .join(", ");
+        if ui
+            .add(
+                egui::TextEdit::singleline(&mut preferred_csv)
+                    .desired_width(360.0)
+                    .hint_text("EcoRI, BamHI, SmaI"),
+            )
+            .on_hover_text("Comma-separated REBASE enzyme names used by preferred restriction-site display modes.")
+            .changed()
+        {
+            self.configuration_graphics.preferred_restriction_enzymes =
+                crate::dna_display::DnaDisplay::parse_preferred_restriction_enzymes_csv(
+                    &preferred_csv,
+                );
+            changed = true;
+        }
+        ui.horizontal(|ui| {
+            if ui.small_button("Use pUC MCS defaults").clicked() {
+                self.configuration_graphics.preferred_restriction_enzymes =
+                    crate::enzymes::default_preferred_restriction_enzyme_names();
+                changed = true;
+            }
+            if ui.small_button("Clear preferred").clicked() {
+                self.configuration_graphics
+                    .preferred_restriction_enzymes
+                    .clear();
+                changed = true;
+            }
+        });
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_gc_contents,
@@ -32701,9 +32793,9 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
             FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
             GentleEngine, LineageEdge, LineageNode, LinearSequenceLetterLayoutMode, OpResult,
-            Operation, ProjectState, RenderSvgMode, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            SequenceOrigin,
+            Operation, ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
+            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
@@ -36144,6 +36236,12 @@ mod tests {
         source.linear_external_feature_label_background_opacity = 2.0;
         source.reverse_strand_visual_opacity = 10.0;
         source.linear_sequence_helical_phase_offset_bp = 27;
+        source.restriction_enzyme_display_mode = RestrictionEnzymeDisplayMode::UniqueOnly;
+        source.preferred_restriction_enzymes = vec![
+            " EcoRI ".to_string(),
+            "ecori".to_string(),
+            "BamHI".to_string(),
+        ];
 
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
@@ -36153,6 +36251,14 @@ mod tests {
         assert_eq!(target.linear_external_feature_label_background_opacity, 1.0);
         assert_eq!(target.reverse_strand_visual_opacity, 1.0);
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 7);
+        assert_eq!(
+            target.restriction_enzyme_display_mode,
+            RestrictionEnzymeDisplayMode::UniqueOnly
+        );
+        assert_eq!(
+            target.preferred_restriction_enzymes,
+            vec!["EcoRI".to_string(), "BamHI".to_string()]
+        );
 
         source.feature_details_font_size = f32::NAN;
         source.sequence_panel_max_text_length_bp = 0;

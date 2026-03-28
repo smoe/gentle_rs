@@ -366,7 +366,7 @@ impl DNAsequence {
             restriction_enzymes: vec![],
             restriction_enzyme_sites: vec![],
             restriction_enzyme_groups: HashMap::new(),
-            max_restriction_enzyme_sites: Some(3), // TODO default?
+            max_restriction_enzyme_sites: None,
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(),
@@ -539,7 +539,7 @@ impl DNAsequence {
             restriction_enzymes: vec![],
             restriction_enzyme_sites: vec![],
             restriction_enzyme_groups: HashMap::new(),
-            max_restriction_enzyme_sites: Some(3), // TODO default?
+            max_restriction_enzyme_sites: None,
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(), // TODO default?

@@ -387,7 +387,7 @@ impl GentleEngine {
 
     pub(super) fn prepare_sequence_light(dna: &mut DNAsequence) {
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
-        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_max_restriction_enzyme_sites(None);
         dna.set_methylation_mode(MethylationMode::both());
     }
 }

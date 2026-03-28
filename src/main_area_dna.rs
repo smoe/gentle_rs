@@ -22,12 +22,13 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
@@ -1170,12 +1171,12 @@ mod tests {
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
             LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-            RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
-            RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-            RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
-            SplicingScopePreset,
+            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
+            RnaReadOriginMode, RnaReadReportMode, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1227,7 +1228,7 @@ mod tests {
     fn restriction_ready_dna(sequence: &str) -> DNAsequence {
         let mut dna = DNAsequence::from_sequence(sequence).expect("sequence");
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
-        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_max_restriction_enzyme_sites(None);
         dna.update_computed_features();
         dna
     }
@@ -1488,6 +1489,43 @@ mod tests {
         let cds_single = MainAreaDna::parse_ids(&area.digest_enzymes_text);
         assert!(cds_single.iter().any(|name| name == "BamHI"));
         assert!(!cds_single.iter().any(|name| name == "EcoRI"));
+    }
+
+    #[test]
+    fn restriction_layer_counts_respect_display_mode_and_total_sites() {
+        let mut dna = DNAsequence::from_sequence("GAATTCAAAAGAATTCAAAAGGATCCAAA").expect("seq");
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes()
+            .into_iter()
+            .filter(|enzyme| matches!(enzyme.name.as_str(), "EcoRI" | "BamHI"))
+            .collect();
+        dna.set_max_restriction_enzyme_sites(None);
+        dna.update_computed_features();
+        let area = MainAreaDna::new(dna, Some("s".to_string()), None);
+        {
+            let mut display = area.dna_display.write().expect("display");
+            display
+                .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
+            display.set_preferred_restriction_enzymes(vec!["EcoRI".to_string()]);
+        }
+        let preferred_counts = area.compute_layer_visibility_counts();
+        assert_eq!(preferred_counts.restriction_site_total_count, 3);
+        assert_eq!(preferred_counts.restriction_site_preferred_count, 2);
+        assert_eq!(preferred_counts.restriction_site_unique_count, 1);
+        assert_eq!(preferred_counts.restriction_site_count, 2);
+
+        area.dna_display
+            .write()
+            .expect("display")
+            .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredAndUnique);
+        let preferred_and_unique_counts = area.compute_layer_visibility_counts();
+        assert_eq!(preferred_and_unique_counts.restriction_site_count, 3);
+
+        area.dna_display
+            .write()
+            .expect("display")
+            .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::AllInView);
+        let all_counts = area.compute_layer_visibility_counts();
+        assert_eq!(all_counts.restriction_site_count, 3);
     }
 
     #[test]
@@ -5159,6 +5197,9 @@ struct LayerVisibilityCounts {
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
     restriction_site_count: usize,
+    restriction_site_total_count: usize,
+    restriction_site_preferred_count: usize,
+    restriction_site_unique_count: usize,
     gc_region_count: usize,
     orf_count: usize,
     methylation_site_count: usize,
@@ -5895,6 +5936,7 @@ impl MainAreaDna {
             dotplot_locked_crosshair_bp: None,
             dotplot_last_compute_status: String::new(),
         };
+        ret.ensure_full_restriction_site_catalog_current();
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
         ret.sync_contextual_transcript_visibility_filter();
@@ -5904,6 +5946,23 @@ impl MainAreaDna {
 
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
         &self.dna
+    }
+
+    fn ensure_full_restriction_site_catalog_current(&mut self) {
+        if let Some(engine) = &self.engine {
+            if let Some(seq_id) = self.seq_id.as_deref() {
+                if let Ok(mut guard) = engine.write() {
+                    if let Some(dna) = guard.state_mut().sequences.get_mut(seq_id) {
+                        dna.set_max_restriction_enzyme_sites(None);
+                        dna.update_computed_features();
+                    }
+                }
+            }
+        }
+        if let Ok(mut dna) = self.dna.write() {
+            dna.set_max_restriction_enzyme_sites(None);
+            dna.update_computed_features();
+        }
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
@@ -6218,6 +6277,39 @@ impl MainAreaDna {
             || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
     }
 
+    fn restriction_group_cut_pos_0based(
+        key: &crate::restriction_enzyme::RestrictionEnzymeKey,
+        sequence_length: usize,
+        is_circular: bool,
+    ) -> Option<usize> {
+        if sequence_length == 0 {
+            return None;
+        }
+        let pos = if is_circular {
+            key.pos().rem_euclid(sequence_length as isize)
+        } else {
+            key.pos()
+        };
+        let pos = usize::try_from(pos.max(0)).ok()?;
+        (pos < sequence_length).then_some(pos)
+    }
+
+    fn restriction_group_in_active_viewport(
+        key: &crate::restriction_enzyme::RestrictionEnzymeKey,
+        sequence_length: usize,
+        is_circular: bool,
+        viewport: Option<(usize, usize)>,
+    ) -> bool {
+        let Some(pos) = Self::restriction_group_cut_pos_0based(key, sequence_length, is_circular)
+        else {
+            return false;
+        };
+        match viewport {
+            Some((start, end)) => pos >= start && pos < end,
+            None => true,
+        }
+    }
+
     fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
         let viewport = self.active_linear_viewport_range();
         let (
@@ -6226,6 +6318,8 @@ impl MainAreaDna {
             regulatory_feature_max_view_span_bp,
             gc_content_bin_size_bp,
             show_contextual_transcript_features,
+            restriction_display_mode,
+            preferred_restriction_enzymes,
         ) = self
             .dna_display
             .read()
@@ -6236,6 +6330,8 @@ impl MainAreaDna {
                     display.regulatory_feature_max_view_span_bp(),
                     display.gc_content_bin_size_bp(),
                     display.show_contextual_transcript_features(),
+                    display.restriction_enzyme_display_mode(),
+                    display.preferred_restriction_enzymes().to_vec(),
                 )
             })
             .unwrap_or((
@@ -6244,6 +6340,8 @@ impl MainAreaDna {
                 50_000,
                 100,
                 true,
+                RestrictionEnzymeDisplayMode::default(),
+                Vec::new(),
             ));
         let view_span_bp = viewport
             .map(|(start, end)| end.saturating_sub(start))
@@ -6300,20 +6398,40 @@ impl MainAreaDna {
                 }
             }
 
-            counts.restriction_site_count = dna
-                .restriction_enzyme_sites()
-                .iter()
-                .filter(|site| {
-                    let offset = match usize::try_from(site.offset.max(0)) {
-                        Ok(v) => v,
-                        Err(_) => return false,
-                    };
-                    match viewport {
-                        Some((start, end)) => offset >= start && offset < end,
-                        None => true,
-                    }
-                })
-                .count();
+            for (key, names) in dna.restriction_enzyme_groups() {
+                if !Self::restriction_group_in_active_viewport(
+                    key,
+                    sequence_length,
+                    dna.is_circular(),
+                    viewport,
+                ) {
+                    continue;
+                }
+                counts.restriction_site_total_count =
+                    counts.restriction_site_total_count.saturating_add(1);
+                if key.number_of_cuts() == 1 {
+                    counts.restriction_site_unique_count =
+                        counts.restriction_site_unique_count.saturating_add(1);
+                }
+                let is_preferred = DnaDisplay::restriction_group_matches_mode(
+                    RestrictionEnzymeDisplayMode::PreferredOnly,
+                    &preferred_restriction_enzymes,
+                    key,
+                    names,
+                );
+                if is_preferred {
+                    counts.restriction_site_preferred_count =
+                        counts.restriction_site_preferred_count.saturating_add(1);
+                }
+                if DnaDisplay::restriction_group_matches_mode(
+                    restriction_display_mode,
+                    &preferred_restriction_enzymes,
+                    key,
+                    names,
+                ) {
+                    counts.restriction_site_count = counts.restriction_site_count.saturating_add(1);
+                }
+            }
             counts.gc_region_count = GcContents::new_from_sequence_with_bin_size(
                 dna.forward_bytes(),
                 gc_content_bin_size_bp,
@@ -7670,7 +7788,21 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_restriction_enzyme_sites();
+            let (re_mode, preferred_restriction_enzymes) = self
+                .dna_display
+                .read()
+                .map(|display| {
+                    (
+                        display.restriction_enzyme_display_mode(),
+                        display.preferred_restriction_enzymes().to_vec(),
+                    )
+                })
+                .unwrap_or((
+                    RestrictionEnzymeDisplayMode::default(),
+                    Vec::new(),
+                ));
             let re_count = layer_counts.restriction_site_count;
+            let re_total_count = layer_counts.restriction_site_total_count;
             let button = egui::Button::image(
                 ICON_RESTRICTION_ENZYMES
                     .clone()
@@ -7681,7 +7813,10 @@ impl MainAreaDna {
             let response = ui
                 .add(button)
                 .on_hover_text(format!(
-                    "Show or hide restriction enzyme cut sites ({re_count} in current view)"
+                    "Show or hide restriction enzyme cut sites ({} {} shown in current view; {} total cut sites available)",
+                    re_count,
+                    re_mode.count_label(),
+                    re_total_count
                 ));
             if response.clicked() {
                 let visible = {
@@ -7694,7 +7829,68 @@ impl MainAreaDna {
                     .set_show_restriction_enzyme_sites(visible);
                 self.set_display_visibility(DisplayTarget::RestrictionEnzymes, visible);
             };
-            ui.small(format!("{re_count}"));
+            let count_label = if matches!(re_mode, RestrictionEnzymeDisplayMode::AllInView)
+                || re_total_count == re_count
+            {
+                format!("{re_count}")
+            } else {
+                format!("{re_count}/{re_total_count}")
+            };
+            ui.label(egui::RichText::new(count_label).small()).on_hover_text(format!(
+                "{} shown / total cut sites in current view",
+                re_mode.count_label()
+            ));
+            ui.menu_button(re_mode.short_label(), |ui| {
+                ui.label("Restriction site display mode");
+                let mut selected_mode = re_mode;
+                for candidate in [
+                    RestrictionEnzymeDisplayMode::PreferredOnly,
+                    RestrictionEnzymeDisplayMode::PreferredAndUnique,
+                    RestrictionEnzymeDisplayMode::UniqueOnly,
+                    RestrictionEnzymeDisplayMode::AllInView,
+                ] {
+                    if ui
+                        .selectable_value(&mut selected_mode, candidate, candidate.label())
+                        .changed()
+                    {
+                        self.set_restriction_display_mode(candidate);
+                    }
+                }
+                ui.separator();
+                ui.small(format!(
+                    "Current view: {} shown, {} preferred, {} unique, {} total",
+                    re_count,
+                    layer_counts.restriction_site_preferred_count,
+                    layer_counts.restriction_site_unique_count,
+                    re_total_count
+                ));
+                ui.label("Preferred enzymes (comma-separated REBASE names)");
+                let mut preferred_csv = preferred_restriction_enzymes.join(", ");
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut preferred_csv)
+                            .desired_width(220.0)
+                            .hint_text("EcoRI, BamHI, SmaI"),
+                    )
+                    .changed()
+                {
+                    self.set_preferred_restriction_enzymes(
+                        DnaDisplay::parse_preferred_restriction_enzymes_csv(&preferred_csv),
+                    );
+                }
+                ui.horizontal(|ui| {
+                    if ui.small_button("Use pUC MCS defaults").clicked() {
+                        self.set_preferred_restriction_enzymes(
+                            crate::enzymes::default_preferred_restriction_enzyme_names(),
+                        );
+                    }
+                    if ui.small_button("Clear preferred").clicked() {
+                        self.set_preferred_restriction_enzymes(Vec::new());
+                    }
+                });
+            })
+            .response
+            .on_hover_text("Restriction display mode and preferred-enzyme list");
 
             let gc_active = self
                 .dna_display
@@ -9891,6 +10087,46 @@ impl MainAreaDna {
         display.vcf_display_required_info_keys = criteria.required_info_keys.clone();
     }
 
+    fn sync_restriction_display_settings_to_engine(
+        &self,
+        mode: RestrictionEnzymeDisplayMode,
+        preferred_restriction_enzymes: Vec<String>,
+    ) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        display.restriction_enzyme_display_mode = mode;
+        display.preferred_restriction_enzymes = preferred_restriction_enzymes;
+    }
+
+    fn set_restriction_display_mode(&mut self, mode: RestrictionEnzymeDisplayMode) {
+        let preferred = self
+            .dna_display
+            .read()
+            .map(|display| display.preferred_restriction_enzymes().to_vec())
+            .unwrap_or_else(|_| vec![]);
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_restriction_enzyme_display_mode(mode);
+        }
+        self.sync_restriction_display_settings_to_engine(mode, preferred);
+    }
+
+    fn set_preferred_restriction_enzymes(&mut self, preferred_restriction_enzymes: Vec<String>) {
+        let normalized =
+            DnaDisplay::normalize_preferred_restriction_enzymes(&preferred_restriction_enzymes);
+        let mode = self
+            .dna_display
+            .read()
+            .map(|display| display.restriction_enzyme_display_mode())
+            .unwrap_or_default();
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_preferred_restriction_enzymes(normalized.clone());
+        }
+        self.sync_restriction_display_settings_to_engine(mode, normalized);
+    }
+
     fn sync_regulatory_track_placement_to_engine(&self, near_baseline: bool) {
         let Some(engine) = &self.engine else {
             return;
@@ -10044,6 +10280,8 @@ impl MainAreaDna {
         });
         self.vcf_display_required_info_keys = settings.vcf_display_required_info_keys.join(",");
         display.set_show_restriction_enzyme_sites(settings.show_restriction_enzymes);
+        display.set_restriction_enzyme_display_mode(settings.restriction_enzyme_display_mode);
+        display.set_preferred_restriction_enzymes(settings.preferred_restriction_enzymes.clone());
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_gc_content_bin_size_bp(settings.gc_content_bin_size_bp);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);

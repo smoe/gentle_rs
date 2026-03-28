@@ -4415,7 +4415,7 @@ mod tests {
     fn restriction_ready_dna(sequence: &str) -> DNAsequence {
         let mut dna = DNAsequence::from_sequence(sequence).expect("sequence");
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
-        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_max_restriction_enzyme_sites(None);
         dna.update_computed_features();
         dna
     }

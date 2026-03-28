@@ -3,6 +3,7 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    engine::RestrictionEnzymeDisplayMode,
     feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
     gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
@@ -1166,17 +1167,60 @@ impl RenderDnaCircular {
             .cloned()
             .collect();
         re_positions.sort();
+        let (display_mode, preferred_restriction_enzymes) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.restriction_enzyme_display_mode(),
+                    display.preferred_restriction_enzymes().to_vec(),
+                )
+            })
+            .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
+        let all_groups = self.dna.read().unwrap().restriction_enzyme_groups().clone();
+        let visible_groups = re_positions
+            .into_iter()
+            .filter_map(|key| {
+                let names = all_groups.get(&key)?;
+                DnaDisplay::restriction_group_matches_mode(
+                    display_mode,
+                    &preferred_restriction_enzymes,
+                    &key,
+                    names,
+                )
+                .then_some((key, names.clone()))
+            })
+            .collect::<Vec<_>>();
+        if visible_groups.is_empty() {
+            let message = if all_groups.is_empty()
+                || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
+            {
+                RestrictionEnzymeDisplayMode::AllInView
+                    .empty_state_label()
+                    .to_string()
+            } else {
+                format!(
+                    "{} {} total cut sites hidden by the current filter.",
+                    display_mode.empty_state_label(),
+                    all_groups.len()
+                )
+            };
+            painter.text(
+                Pos2::new(self.center.x, self.center.y + self.radius * 0.78),
+                Align2::CENTER_CENTER,
+                message,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
+            return;
+        }
         let mut last_rect = Rect::NOTHING;
-        for restriction_enzyme_key in re_positions {
+        for (restriction_enzyme_key, names) in visible_groups {
             let pos = restriction_enzyme_key.pos() as i64;
-            let label = self
-                .dna
-                .read()
-                .unwrap()
-                .restriction_enzyme_groups()
-                .get(&restriction_enzyme_key)
-                .unwrap()
-                .join(", ");
+            let label = names.join(", ");
             let label = if pos < self.sequence_length / 2 {
                 format!("{pos} {label}")
             } else {

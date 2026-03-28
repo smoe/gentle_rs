@@ -1093,6 +1093,16 @@ Controls:
    - Default is off.
 11. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
+   - The adjacent restriction mode control switches between:
+     - `Preferred only`
+     - `Preferred + unique`
+     - `Unique only`
+     - `All in view`
+   - Non-`All` modes show `shown/total` counts so it is clear when cutters are
+     hidden by the current filter instead of being absent.
+   - Preferred enzymes are managed as a comma-separated REBASE-name list and
+     default to the canonical pUC MCS set
+     (`EcoRI,SacI,KpnI,SmaI,BamHI,XbaI,SalI,PstI,SphI,HindIII`).
 12. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).

@@ -43,7 +43,7 @@ impl LuaInterface {
 
         // Add default enzymes and stuff
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
-        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_max_restriction_enzyme_sites(None);
         dna.set_methylation_mode(MethylationMode::both());
         dna.update_computed_features();
         Ok(dna)
