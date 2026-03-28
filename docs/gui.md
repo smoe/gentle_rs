@@ -2437,10 +2437,11 @@ Notes:
   a deterministic fallback MCS (`misc_feature`) annotation when source
   annotation does not already include one and exactly one canonical MCS motif is
   detected (non-unique matches are warned and skipped).
-- In the DNA sequence window, MCS annotations use a dedicated map color and
-  keep a visible label in linear view even when generic `misc_feature` labels
-  would normally stay collapsed, so the cloning window remains directly legible
-  at overview zoom levels.
+- In the DNA sequence window, MCS annotations use a dedicated map color plus
+  badge-backed labels in linear and circular maps; linear view keeps them
+  visible even when generic `misc_feature` labels would normally stay
+  collapsed, so the cloning window remains directly legible at overview zoom
+  levels.
 - MCS feature details expose `mcs_expected_sites` (REBASE-normalized enzyme
   names) so users can preferentially pick enzymes declared for that MCS.
 - Malformed GTF/GFF lines are now reported as warnings with file/line context

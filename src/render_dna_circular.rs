@@ -11,7 +11,8 @@ use crate::{
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
-    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, Vec2,
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, StrokeKind,
+    Vec2,
 };
 use gb_io::seq::Feature;
 use std::{
@@ -28,6 +29,9 @@ pub static GRAY_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
     width: 1.0,
     color: Color32::GRAY,
 });
+const MCS_CIRCULAR_LABEL_FONT_SIZE: f32 = 11.5;
+const MCS_CIRCULAR_LABEL_PAD_X: f32 = 12.0;
+const MCS_CIRCULAR_LABEL_PAD_Y: f32 = 5.0;
 static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
     let mut m = HashMap::new();
     m.insert(-1, Color32::LIGHT_RED);
@@ -949,7 +953,11 @@ impl RenderDnaCircular {
         }
 
         let font_feature = FontId {
-            size: if ret.is_mcs { 11.0 } else { 10.0 },
+            size: if ret.is_mcs {
+                MCS_CIRCULAR_LABEL_FONT_SIZE
+            } else {
+                10.0
+            },
             family: FontFamily::Monospace,
         };
 
@@ -961,7 +969,24 @@ impl RenderDnaCircular {
             if let Some((point, align, rect)) =
                 self.find_feature_label_placement(ret, text_size, occupied_label_rects)
             {
-                painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
+                if ret.is_mcs {
+                    painter.rect_filled(rect, 5.0, Self::mcs_badge_fill(ret.color));
+                    painter.rect_stroke(
+                        rect,
+                        5.0,
+                        Stroke::new(1.4, ret.color.gamma_multiply(0.85)),
+                        StrokeKind::Inside,
+                    );
+                    painter.text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        ret.label.to_owned(),
+                        font_feature,
+                        Color32::from_rgb(24, 24, 24),
+                    );
+                } else {
+                    painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
+                }
                 occupied_label_rects.push(rect);
             }
         }
@@ -976,6 +1001,18 @@ impl RenderDnaCircular {
             }
             _ => Rect::from_center_size(point, text_size),
         }
+    }
+
+    fn mcs_label_badge_size(text_size: Vec2) -> Vec2 {
+        Vec2::new(
+            text_size.x + MCS_CIRCULAR_LABEL_PAD_X,
+            text_size.y + MCS_CIRCULAR_LABEL_PAD_Y,
+        )
+    }
+
+    fn mcs_badge_fill(fill: Color32) -> Color32 {
+        let mix = |component: u8| -> u8 { (((component as u16) * 18 + 255 * 82) / 100) as u8 };
+        Color32::from_rgba_unmultiplied(mix(fill.r()), mix(fill.g()), mix(fill.b()), 236)
     }
 
     fn segment_midpoint(segment: &FeatureSegmentPosition) -> i64 {
@@ -1007,6 +1044,11 @@ impl RenderDnaCircular {
             return None;
         }
 
+        let occupied_size = if feature.is_mcs {
+            Self::mcs_label_badge_size(text_size)
+        } else {
+            text_size
+        };
         let label_radius = feature.outer + self.feature_thickness() * 0.35;
         let seq_len = self.sequence_length.max(1) as f32;
         let circumference_px = std::f32::consts::TAU * label_radius.max(1.0);
@@ -1031,7 +1073,7 @@ impl RenderDnaCircular {
                 continue;
             }
             let arc_px = (span as f32 / seq_len) * circumference_px;
-            if arc_px < text_size.x {
+            if arc_px < occupied_size.x {
                 continue;
             }
 
@@ -1046,7 +1088,7 @@ impl RenderDnaCircular {
                 } else {
                     Align2::LEFT_CENTER
                 };
-                let rect = Self::label_rect_from_anchor(point, align, text_size).expand(2.0);
+                let rect = Self::label_rect_from_anchor(point, align, occupied_size).expand(2.0);
                 if occupied_label_rects
                     .iter()
                     .any(|occupied| occupied.intersects(rect))
@@ -1424,6 +1466,14 @@ mod tests {
         assert_eq!(offsets.first().copied(), Some(0));
         assert_eq!(offsets.get(1).copied(), Some(3));
         assert_eq!(offsets.get(2).copied(), Some(-3));
+    }
+
+    #[test]
+    fn mcs_label_badge_size_adds_padding() {
+        let text_size = Vec2::new(52.0, 11.0);
+        let badge_size = RenderDnaCircular::mcs_label_badge_size(text_size);
+        assert!(badge_size.x > text_size.x);
+        assert!(badge_size.y > text_size.y);
     }
 
     #[test]

@@ -214,16 +214,15 @@ order. Durable architecture constraints and decisions remain in
   `misc_feature` labels would otherwise stay collapsed, and the MCS region
   uses a distinct map color so cloning-oriented users can spot the intended
   insertion/cut region faster.
+- MCS annotations now also render as dedicated badge-backed labels in linear
+  and circular maps so the cloning landmark stays directly legible without
+  manually exposing generic `misc_feature` detail first.
 - DNA-window restriction overlays now separate computation from presentation:
   sequence prep keeps the full site catalog, while GUI/SVG display can switch
   between `Preferred only`, `Preferred + unique`, `Unique only`, and
   `All in view`, with a project-persisted preferred-enzyme list (defaulting to
   the canonical pUC MCS cutters and now offering a Golden Gate Type IIS preset
   drawn from the active REBASE catalog.
-- Next UI polish target for the DNA sequence window:
-  make MCS annotations more prominent and directly legible in the sequence
-  view, so cloning-oriented users can recognize the intended insertion/cut
-  region without needing to expose `misc_feature` detail manually first.
 - New strict policy switch is available:
   `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
   verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).

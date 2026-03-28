@@ -70,6 +70,10 @@ const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
 const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
+const MCS_INLINE_LABEL_FONT_SIZE: f32 = 11.0;
+const MCS_EXTERNAL_LABEL_EXTRA_FONT_SIZE: f32 = 1.0;
+const MCS_INLINE_BADGE_PAD_X: f32 = 10.0;
+const MCS_INLINE_BADGE_PAD_Y: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -505,6 +509,22 @@ impl RenderDnaLinear {
         }
         let mix = |component: u8| -> u8 { (((component as u16) * 18 + 255 * 82) / 100) as u8 };
         Color32::from_rgba_unmultiplied(mix(fill.r()), mix(fill.g()), mix(fill.b()), alpha)
+    }
+
+    fn mcs_badge_fill(fill: Color32) -> Color32 {
+        Self::feature_external_label_fill(fill, 236, true)
+    }
+
+    fn mcs_badge_stroke(fill: Color32) -> Stroke {
+        Stroke::new(1.4, fill.gamma_multiply(0.85))
+    }
+
+    fn mcs_inline_badge_rect(label_rect: Rect, text_size: Vec2) -> Rect {
+        let desired = Vec2::new(
+            (text_size.x + MCS_INLINE_BADGE_PAD_X).min((label_rect.width() - 4.0).max(8.0)),
+            (text_size.y + MCS_INLINE_BADGE_PAD_Y).min((label_rect.height() - 2.0).max(8.0)),
+        );
+        Rect::from_center_size(label_rect.center(), desired)
     }
 
     fn should_render_feature_label(
@@ -2115,6 +2135,15 @@ impl RenderDnaLinear {
                 painter.rect_filled(*exon_rect, 1.5, feature.color);
             }
             if feature.is_mcs && !selected && !hovered {
+                let halo_fill = Color32::from_rgba_unmultiplied(
+                    feature.color.r(),
+                    feature.color.g(),
+                    feature.color.b(),
+                    28,
+                );
+                for exon_rect in &feature.exon_rects {
+                    painter.rect_filled(exon_rect.expand(2.0), 3.0, halo_fill);
+                }
                 let stroke = Stroke::new(1.1, feature.color.gamma_multiply(0.75));
                 for exon_rect in &feature.exon_rects {
                     painter.rect_stroke(exon_rect.expand(0.5), 2.0, stroke, StrokeKind::Inside);
@@ -2197,13 +2226,19 @@ impl RenderDnaLinear {
                 );
                 continue;
             }
-            let label = Self::truncate_label(feature.label.trim(), 56);
+            let label =
+                Self::truncate_label(feature.label.trim(), if feature.is_mcs { 72 } else { 56 });
             if label.is_empty() {
                 continue;
             }
             let label_width = Self::estimate_label_width(&label);
             let inline_possible = !feature.is_regulatory
-                && label_rect.height() >= FEATURE_INLINE_LABEL_FONT_SIZE + 2.0
+                && label_rect.height()
+                    >= if feature.is_mcs {
+                        MCS_INLINE_LABEL_FONT_SIZE + 2.0
+                    } else {
+                        FEATURE_INLINE_LABEL_FONT_SIZE + 2.0
+                    }
                 && label_rect.width() >= label_width + 4.0;
             let force_external = selected
                 || hovered
@@ -2214,16 +2249,45 @@ impl RenderDnaLinear {
             // Keep gene names visible whenever there is room inside the feature box,
             // even when generic feature labels are suppressed by zoom/detail heuristics.
             if inline_possible && (!force_external || is_gene_feature) {
+                let font_size = if feature.is_mcs {
+                    MCS_INLINE_LABEL_FONT_SIZE
+                } else {
+                    FEATURE_INLINE_LABEL_FONT_SIZE
+                };
+                if feature.is_mcs {
+                    let text_size = painter
+                        .layout_no_wrap(
+                            label.clone(),
+                            FontId {
+                                size: font_size,
+                                family: FontFamily::Monospace,
+                            },
+                            Color32::from_rgb(24, 24, 24),
+                        )
+                        .size();
+                    let badge_rect = Self::mcs_inline_badge_rect(label_rect, text_size);
+                    painter.rect_filled(badge_rect, 5.0, Self::mcs_badge_fill(feature.color));
+                    painter.rect_stroke(
+                        badge_rect,
+                        5.0,
+                        Self::mcs_badge_stroke(feature.color),
+                        StrokeKind::Inside,
+                    );
+                }
                 let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
                 text_painter.text(
                     label_rect.center(),
                     Align2::CENTER_CENTER,
                     &label,
                     FontId {
-                        size: FEATURE_INLINE_LABEL_FONT_SIZE,
+                        size: font_size,
                         family: FontFamily::Monospace,
                     },
-                    Self::feature_label_color(feature.color),
+                    if feature.is_mcs {
+                        Color32::from_rgb(24, 24, 24)
+                    } else {
+                        Self::feature_label_color(feature.color)
+                    },
                 );
                 continue;
             }
@@ -2289,20 +2353,28 @@ impl RenderDnaLinear {
             );
             painter.line_segment(
                 [connector_from, connector_to],
-                Stroke::new(0.8, feature.color.gamma_multiply(0.75)),
+                Stroke::new(
+                    if feature.is_mcs { 1.1 } else { 0.8 },
+                    feature.color.gamma_multiply(0.75),
+                ),
             );
             painter.rect_filled(
                 label_bg,
-                2.0,
-                Self::feature_external_label_fill(feature.color, external_bg_alpha, feature.is_mcs),
+                if feature.is_mcs { 5.0 } else { 2.0 },
+                if feature.is_mcs {
+                    Self::mcs_badge_fill(feature.color)
+                } else {
+                    Self::feature_external_label_fill(feature.color, external_bg_alpha, false)
+                },
             );
             painter.rect_stroke(
                 label_bg,
-                2.0,
-                Stroke::new(
-                    if feature.is_mcs { 1.2 } else { 1.0 },
-                    feature.color.gamma_multiply(0.75),
-                ),
+                if feature.is_mcs { 5.0 } else { 2.0 },
+                if feature.is_mcs {
+                    Self::mcs_badge_stroke(feature.color)
+                } else {
+                    Stroke::new(1.0, feature.color.gamma_multiply(0.75))
+                },
                 StrokeKind::Inside,
             );
             painter.text(
@@ -2310,7 +2382,11 @@ impl RenderDnaLinear {
                 Align2::CENTER_CENTER,
                 label,
                 FontId {
-                    size: external_font_size,
+                    size: if feature.is_mcs {
+                        external_font_size + MCS_EXTERNAL_LABEL_EXTRA_FONT_SIZE
+                    } else {
+                        external_font_size
+                    },
                     family: FontFamily::Monospace,
                 },
                 Color32::from_rgb(24, 24, 24),
@@ -2879,6 +2955,17 @@ mod tests {
             "MISC_FEATURE",
             true,
         ));
+    }
+
+    #[test]
+    fn mcs_inline_badge_rect_is_padded_but_stays_within_feature_box() {
+        let label_rect = Rect::from_center_size(Pos2::new(100.0, 50.0), Vec2::new(120.0, 18.0));
+        let text_size = Vec2::new(48.0, 10.0);
+        let badge = RenderDnaLinear::mcs_inline_badge_rect(label_rect, text_size);
+        assert!(badge.width() > text_size.x);
+        assert!(badge.height() > text_size.y);
+        assert!(label_rect.contains(badge.min));
+        assert!(label_rect.contains(badge.max));
     }
 
     #[test]
