@@ -969,6 +969,15 @@ order. Durable architecture constraints and decisions remain in
     refresh/frame
 - Window-backdrop load path now uses a stable texture-size hint so opening
   differently sized windows does not trigger per-window-size image reload paths.
+- DNA-sequence window top controls are now split into stable rows instead of a
+  single large wrapped toolbar:
+  - map/navigation
+  - display/layer toggles
+  - ROI/selection
+  - derivation/export/actions
+  This specifically hardens width-resize behavior on macOS and keeps the ROI /
+  `Selection formula` controls left-anchored instead of partially reflowing
+  into the preceding control row.
 - Slow-open diagnostics now emit status-bar timing hints when:
   - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
     a threshold

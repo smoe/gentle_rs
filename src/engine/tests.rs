@@ -5149,12 +5149,18 @@ fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
         .state_mut()
         .container_state
         .seq_to_latest_container
-        .insert("destination_vector".to_string(), "container-pool".to_string());
+        .insert(
+            "destination_vector".to_string(),
+            "container-pool".to_string(),
+        );
     engine
         .state_mut()
         .container_state
         .seq_to_latest_container
-        .insert("insert_x_amplicon".to_string(), "container-pool".to_string());
+        .insert(
+            "insert_x_amplicon".to_string(),
+            "container-pool".to_string(),
+        );
     let plan_json = r#"{
   "schema": "gentle.gibson_assembly_plan.v1",
   "id": "lineage_cli_projection_test",
@@ -5241,7 +5247,11 @@ fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
         .arrangements
         .values()
         .collect::<Vec<_>>();
-    assert_eq!(gibson_arrangements.len(), 1, "one Gibson arrangement should be created");
+    assert_eq!(
+        gibson_arrangements.len(),
+        1,
+        "one Gibson arrangement should be created"
+    );
     let arrangement = gibson_arrangements[0];
     assert_eq!(arrangement.lane_container_ids.len(), 3);
     assert!(

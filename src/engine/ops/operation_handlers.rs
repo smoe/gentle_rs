@@ -16,7 +16,12 @@ impl GentleEngine {
         let fragments_by_id = plan
             .fragments
             .iter()
-            .map(|fragment| (fragment.id.trim().to_string(), fragment.seq_id.trim().to_string()))
+            .map(|fragment| {
+                (
+                    fragment.id.trim().to_string(),
+                    fragment.seq_id.trim().to_string(),
+                )
+            })
             .collect::<HashMap<_, _>>();
         plan.assembly_order
             .iter()
@@ -58,7 +63,8 @@ impl GentleEngine {
 
         let mut lane_container_ids: Vec<String> = vec![];
         for seq_id in &lane_seq_ids {
-            let container_id = self.ensure_exact_singleton_container_for_seq(seq_id, Some(op_id))?;
+            let container_id =
+                self.ensure_exact_singleton_container_for_seq(seq_id, Some(op_id))?;
             lane_container_ids.push(container_id);
         }
 
@@ -2894,11 +2900,8 @@ impl GentleEngine {
                     insert_summary
                 ));
                 if let Some(product_seq_id) = assembled_product_seq_id.as_deref() {
-                    match self.maybe_create_gibson_arrangement(
-                        &plan,
-                        product_seq_id,
-                        &result.op_id,
-                    ) {
+                    match self.maybe_create_gibson_arrangement(&plan, product_seq_id, &result.op_id)
+                    {
                         Ok(Some(arrangement_id)) => {
                             let lane_count = self
                                 .state

@@ -7172,12 +7172,13 @@ impl MainAreaDna {
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
+        let icon_size = Self::top_panel_icon_size(ui);
+        let layer_counts = self.compute_layer_visibility_counts();
+        let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
+        let allow_derivation_tools = self.dna_presentation_mode.allows_derivation_tools();
+        let allow_engine_shell_panels = self.dna_presentation_mode.allows_engine_shell_panels();
+
         ui.horizontal_wrapped(|ui| {
-            let icon_size = Self::top_panel_icon_size(ui);
-            let layer_counts = self.compute_layer_visibility_counts();
-            let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
-            let allow_derivation_tools = self.dna_presentation_mode.allows_derivation_tools();
-            let allow_engine_shell_panels = self.dna_presentation_mode.allows_engine_shell_panels();
             let button = egui::Button::image(
                 ICON_CIRCULAR_LINEAR
                     .clone()
@@ -7436,7 +7437,9 @@ impl MainAreaDna {
                 }
             }
 
-            ui.separator();
+        });
+
+        ui.horizontal_wrapped(|ui| {
             let declutter_label = if self.declutter_snapshot.is_some() {
                 "Restore View"
             } else {
@@ -8291,13 +8294,21 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::MethylationSites, visible);
             };
             ui.small(format!("{methylation_count}"));
+        });
 
-            if allow_roi_tools || allow_derivation_tools {
-                ui.separator();
-            }
-            if allow_roi_tools {
-                let selection_roi = self.current_selection_range_0based();
-                let visible_span_roi = self.current_visible_linear_span_range_0based();
+        let selection_roi = if allow_roi_tools {
+            self.current_selection_range_0based()
+        } else {
+            None
+        };
+        let visible_span_roi = if allow_roi_tools {
+            self.current_visible_linear_span_range_0based()
+        } else {
+            None
+        };
+
+        if allow_roi_tools {
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .button("Extract Sel")
                     .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
@@ -8320,18 +8331,6 @@ impl MainAreaDna {
                 };
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
-                }
-                self.render_selection_formula_inline_controls(ui, 320.0);
-                if let Some((start, end_exclusive)) = selection_roi {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "Selection ready for PCR: {start}..{end_exclusive}. Use `Queue PCR selection` or `PCR ROI -> Add current selection to PCR queue`."
-                            ))
-                            .weak()
-                            .italics(),
-                        );
-                    });
                 }
                 ui.menu_button("PCR ROI", |ui| {
                     let selection_response = ui.add_enabled(
@@ -8430,16 +8429,28 @@ impl MainAreaDna {
                     }
                 });
                 self.render_pcr_paint_role_controls(ui, true);
-                if selection_roi.is_none() {
-                    if visible_span_roi.is_some() {
-                        ui.small(
-                            "Tip: drag-select a linear DNA stretch with the mouse, then queue that selection for PCR.",
-                        );
-                    } else {
-                        ui.small("PCR queueing requires a visible linear map and a non-empty drag selection.");
-                    }
-                }
+            });
+            self.render_selection_formula_inline_controls(ui, 420.0);
+            if let Some((start, end_exclusive)) = selection_roi {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Selection ready for PCR: {start}..{end_exclusive}. Use `Queue PCR selection` or `PCR ROI -> Add current selection to PCR queue`."
+                    ))
+                    .weak()
+                    .italics(),
+                );
+            } else if visible_span_roi.is_some() {
+                ui.small(
+                    "Tip: drag-select a linear DNA stretch with the mouse, then queue that selection for PCR.",
+                );
+            } else {
+                ui.small(
+                    "PCR queueing requires a visible linear map and a non-empty drag selection.",
+                );
             }
+        }
+
+        ui.horizontal_wrapped(|ui| {
             if allow_derivation_tools {
                 if ui
                     .button("Rev")
@@ -8579,6 +8590,7 @@ impl MainAreaDna {
                 }
             }
         });
+
         if let Some((anchor_status, is_anchored)) = self.active_sequence_genome_anchor_status() {
             let color = if is_anchored {
                 egui::Color32::from_rgb(26, 110, 43)
@@ -27726,29 +27738,32 @@ impl MainAreaDna {
     }
 
     fn render_selection_formula_inline_controls(&mut self, ui: &mut egui::Ui, desired_width: f32) {
-        ui.horizontal_wrapped(|ui| {
+        ui.vertical(|ui| {
             ui.label("Selection formula")
                 .on_hover_text("Set map/text selection from feature-relative formula range");
-            let response = ui
-                .add(
-                    egui::TextEdit::singleline(&mut self.selection_formula_text)
-                        .desired_width(desired_width)
-                        .hint_text("=CDS.start+10 .. CDS.end-500"),
-                )
-                .on_hover_text(
-                    "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
-                );
-            if response.changed() {
-                self.save_engine_ops_state();
-            }
-            let apply_clicked = ui
-                .button("Apply Sel")
-                .on_hover_text("Resolve selection formula and apply it as current map/text selection")
-                .clicked();
-            let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if apply_clicked || (enter_pressed && response.lost_focus()) {
-                self.apply_selection_formula();
-            }
+            ui.horizontal(|ui| {
+                let field_width = (ui.available_width() - 96.0).clamp(72.0, desired_width);
+                let response = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.selection_formula_text)
+                            .desired_width(field_width)
+                            .hint_text("=CDS.start+10 .. CDS.end-500"),
+                    )
+                    .on_hover_text(
+                        "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
+                    );
+                if response.changed() {
+                    self.save_engine_ops_state();
+                }
+                let apply_clicked = ui
+                    .button("Apply Sel")
+                    .on_hover_text("Resolve selection formula and apply it as current map/text selection")
+                    .clicked();
+                let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if apply_clicked || (enter_pressed && response.lost_focus()) {
+                    self.apply_selection_formula();
+                }
+            });
         });
     }
 

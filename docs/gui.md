@@ -1088,6 +1088,18 @@ The exact set depends on `Mode`:
     contextual transcript-projection features (`mRNA`/`exon`/`CDS`) are hidden
     unless explicitly enabled
 
+Toolbar layout:
+
+- The toolbar is arranged in stable left-anchored rows instead of one large
+  wrap-everything flow:
+  - map/navigation row
+  - display/layer toggles row
+  - ROI/selection row
+  - derivation/export/action row
+- The `Selection formula` / `Apply Sel` controls now stay left-aligned on
+  their own row instead of floating into the preceding button row when the
+  window becomes narrower.
+
 Controls:
 
 1. Circular/Linear toggle
