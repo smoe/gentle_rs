@@ -51,6 +51,7 @@ use crate::{
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
+    enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
     genomes::{
         DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CACHE_DIR,
@@ -3160,23 +3161,6 @@ fn normalize_compact_token(raw: &str) -> String {
         .filter(|c| c.is_ascii_alphanumeric())
         .map(|c| c.to_ascii_lowercase())
         .collect::<String>()
-}
-
-fn is_type_iis_capable_enzyme_name(name: &str) -> bool {
-    matches!(
-        normalize_compact_token(name).as_str(),
-        "eco31"
-            | "eco31i"
-            | "bsai"
-            | "bsmbi"
-            | "esp3i"
-            | "bbsi"
-            | "aari"
-            | "sapi"
-            | "btgzi"
-            | "bsmai"
-            | "bfuai"
-    )
 }
 
 fn apply_overlap_family_preflight_semantics(

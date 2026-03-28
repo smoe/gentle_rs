@@ -29902,8 +29902,17 @@ Error: `{err}`"
         }
         ui.horizontal(|ui| {
             if ui.small_button("Use pUC MCS defaults").clicked() {
+                self.configuration_graphics.restriction_enzyme_display_mode =
+                    RestrictionEnzymeDisplayMode::PreferredOnly;
                 self.configuration_graphics.preferred_restriction_enzymes =
                     crate::enzymes::default_preferred_restriction_enzyme_names();
+                changed = true;
+            }
+            if ui.small_button("Use Golden Gate Type IIS").clicked() {
+                self.configuration_graphics.restriction_enzyme_display_mode =
+                    RestrictionEnzymeDisplayMode::PreferredOnly;
+                self.configuration_graphics.preferred_restriction_enzymes =
+                    crate::enzymes::golden_gate_type_iis_preferred_restriction_enzyme_names();
                 changed = true;
             }
             if ui.small_button("Clear preferred").clicked() {

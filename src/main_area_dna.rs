@@ -7963,8 +7963,15 @@ impl MainAreaDna {
                 }
                 ui.horizontal(|ui| {
                     if ui.small_button("Use pUC MCS defaults").clicked() {
+                        self.set_restriction_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
                         self.set_preferred_restriction_enzymes(
                             crate::enzymes::default_preferred_restriction_enzyme_names(),
+                        );
+                    }
+                    if ui.small_button("Use Golden Gate Type IIS").clicked() {
+                        self.set_restriction_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
+                        self.set_preferred_restriction_enzymes(
+                            crate::enzymes::golden_gate_type_iis_preferred_restriction_enzyme_names(),
                         );
                     }
                     if ui.small_button("Clear preferred").clicked() {
@@ -12762,7 +12769,9 @@ impl MainAreaDna {
         let target = view.group_label.trim();
         match mode {
             RnaReadOriginMode::SingleGene => format!("single_gene ({target})"),
-            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse (explicit gene list)".to_string(),
+            RnaReadOriginMode::MultiGeneSparse => {
+                "multi_gene_sparse (explicit gene list)".to_string()
+            }
         }
     }
 

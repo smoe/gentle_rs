@@ -1109,8 +1109,11 @@ Controls:
    - Non-`All` modes show `shown/total` counts so it is clear when cutters are
      hidden by the current filter instead of being absent.
    - Preferred enzymes are managed as a comma-separated REBASE-name list and
-     default to the canonical pUC MCS set
-     (`EcoRI,SacI,KpnI,SmaI,BamHI,XbaI,SalI,PstI,SphI,HindIII`).
+     include preset buttons that switch the filter to `Preferred only` for the
+     canonical pUC MCS set
+     (`EcoRI,SacI,KpnI,SmaI,BamHI,XbaI,SalI,PstI,SphI,HindIII`) and a Golden
+     Gate Type IIS set (for example `BsaI`, `BsmBI`, `BbsI` when present in the
+     active REBASE catalog).
 12. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).
