@@ -1851,6 +1851,24 @@ mod tests {
     }
 
     #[test]
+    fn set_primer_roi_from_current_selection_updates_forms() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(25, 145, 400));
+
+        area.set_primer_design_roi_from_current_selection("test selection")
+            .expect("selection should seed ROI");
+
+        assert_eq!(area.primer_design_ui.roi_start_0based, "25");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "145");
+        assert_eq!(area.qpcr_design_ui.roi_start_0based, "25");
+        assert_eq!(area.qpcr_design_ui.roi_end_0based, "145");
+    }
+
+    #[test]
     fn roi_coordinate_formula_resolves_feature_boundary_and_offset() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         dna.features_mut().push(Feature {
@@ -8303,32 +8321,7 @@ impl MainAreaDna {
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
                 }
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Selection formula")
-                        .on_hover_text("Set map/text selection from feature-relative formula range");
-                    let response = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut self.selection_formula_text)
-                                .desired_width(320.0)
-                                .hint_text("=CDS.start+10 .. CDS.end-500"),
-                        )
-                        .on_hover_text(
-                            "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
-                        );
-                    if response.changed() {
-                        self.save_engine_ops_state();
-                    }
-                    let apply_clicked = ui
-                        .button("Apply Sel")
-                        .on_hover_text(
-                            "Resolve selection formula and apply it as current map/text selection",
-                        )
-                        .clicked();
-                    let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    if apply_clicked || (enter_pressed && response.lost_focus()) {
-                        self.apply_selection_formula();
-                    }
-                });
+                self.render_selection_formula_inline_controls(ui, 320.0);
                 if let Some((start, end_exclusive)) = selection_roi {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
@@ -11314,6 +11307,18 @@ impl MainAreaDna {
         self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
         self.qpcr_design_ui.roi_start_0based = start.to_string();
         self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
+    }
+
+    fn set_primer_design_roi_from_current_selection(&mut self, source: &str) -> Result<(), String> {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            return Err(
+                "No active map/sequence selection. Drag-select a region first.".to_string(),
+            );
+        };
+        self.set_primer_design_roi_fields_0based(start, end_exclusive);
+        self.op_status = format!("Set pair-PCR ROI fields from {source}: {start}..{end_exclusive}");
+        self.save_engine_ops_state();
+        Ok(())
     }
 
     fn seed_primer_design_roi_0based(&mut self, start: usize, end_exclusive: usize, source: &str) {
@@ -27720,6 +27725,33 @@ impl MainAreaDna {
         }
     }
 
+    fn render_selection_formula_inline_controls(&mut self, ui: &mut egui::Ui, desired_width: f32) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Selection formula")
+                .on_hover_text("Set map/text selection from feature-relative formula range");
+            let response = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.selection_formula_text)
+                        .desired_width(desired_width)
+                        .hint_text("=CDS.start+10 .. CDS.end-500"),
+                )
+                .on_hover_text(
+                    "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
+                );
+            if response.changed() {
+                self.save_engine_ops_state();
+            }
+            let apply_clicked = ui
+                .button("Apply Sel")
+                .on_hover_text("Resolve selection formula and apply it as current map/text selection")
+                .clicked();
+            let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if apply_clicked || (enter_pressed && response.lost_focus()) {
+                self.apply_selection_formula();
+            }
+        });
+    }
+
     fn resolve_and_apply_primer_roi_fields(&mut self) {
         match self.resolve_roi_range_inputs_0based(
             &self.primer_design_ui.roi_start_0based,
@@ -29759,6 +29791,43 @@ impl MainAreaDna {
         ui.separator();
         ui.columns(2, |columns| {
             columns[0].heading("Paint + Queue");
+            self.render_selection_formula_inline_controls(&mut columns[0], 280.0);
+            let selection_roi = self.current_selection_range_0based();
+            columns[0].horizontal_wrapped(|ui| {
+                let set_clicked = ui
+                    .add_enabled(
+                        selection_roi.is_some(),
+                        egui::Button::new("Set ROI from selection"),
+                    )
+                    .on_hover_text("Copy current map/text selection into pair-PCR ROI form fields")
+                    .clicked();
+                if set_clicked {
+                    if let Err(err) = self
+                        .set_primer_design_roi_from_current_selection("current sequence selection")
+                    {
+                        self.op_status = err;
+                    }
+                }
+                let queue_clicked = ui
+                    .add_enabled(
+                        selection_roi.is_some(),
+                        egui::Button::new("Queue selection"),
+                    )
+                    .on_hover_text("Queue current map/text selection as one PCR region")
+                    .clicked();
+                if queue_clicked {
+                    self.queue_current_selection_for_pcr();
+                }
+            });
+            if let Some((start, end_exclusive)) = selection_roi {
+                columns[0].small(format!(
+                    "Active selection: {start}..{end_exclusive} (len {} bp)",
+                    end_exclusive.saturating_sub(start)
+                ));
+            } else {
+                columns[0].small("No active selection. Use formula or drag-select on map.");
+            }
+            columns[0].separator();
             self.render_pcr_designer_map_panel(&mut columns[0], ctx);
             columns[0].separator();
             self.render_pcr_paint_interval_summary(&mut columns[0]);

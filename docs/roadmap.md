@@ -642,6 +642,9 @@ order. Durable architecture constraints and decisions remain in
     - `Patterns -> PCR Designer...` and command palette `PCR Designer`
     - sequence-context aware dedicated viewport with paint controls + map +
       queue summary on left and pair-PCR constraints/run/report panel on right
+    - specialist left pane now includes `Selection formula` + `Apply Sel`
+      plus direct `Set ROI from selection` / `Queue selection` actions so
+      formula-defined selections can be used without switching windows
     - qPCR remains in the existing Engine Ops panel for this v1 scope
     - shared-shell UI intents now include:
       `ui open pcr-design` and `ui focus pcr-design`
@@ -1139,7 +1142,6 @@ Notes:
        - ROI-start range form:
          `=left .. right` (or `=left to right`)
      - remaining:
-       - dedicated formula input in PCR Designer specialist is still pending
        - parser/resolver still lives in GUI adapter path; move to engine-owned
          shared helper remains pending for stricter cross-adapter parity
        - strand-aware helper aliases (`tss`, `upstream(n)`) remain pending

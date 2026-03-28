@@ -1150,6 +1150,9 @@ Controls:
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
      or `PCR ROI` menu actions.
+   - The same `Selection formula` + `Apply Sel` control is also shown in the
+     dedicated `PCR Designer` specialist window so pair-PCR setup can stay
+     selection-first without switching back to the sequence toolbar.
 18. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
