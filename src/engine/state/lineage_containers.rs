@@ -221,6 +221,74 @@ impl GentleEngine {
         Some(container_id)
     }
 
+    pub(super) fn exact_singleton_container_for_seq(&self, seq_id: &str) -> Option<ContainerId> {
+        if let Some(container_id) = self
+            .state
+            .container_state
+            .seq_to_latest_container
+            .get(seq_id)
+            .filter(|container_id| {
+                self.state
+                    .container_state
+                    .containers
+                    .get(*container_id)
+                    .is_some_and(|container| {
+                        matches!(container.kind, ContainerKind::Singleton)
+                            && container.members == vec![seq_id.to_string()]
+                    })
+            })
+        {
+            return Some(container_id.clone());
+        }
+
+        let mut exact_matches = self
+            .state
+            .container_state
+            .containers
+            .values()
+            .filter(|container| {
+                matches!(container.kind, ContainerKind::Singleton)
+                    && container.members == vec![seq_id.to_string()]
+            })
+            .map(|container| container.container_id.clone())
+            .collect::<Vec<_>>();
+        exact_matches.sort();
+        exact_matches.into_iter().next()
+    }
+
+    pub(super) fn ensure_exact_singleton_container_for_seq(
+        &mut self,
+        seq_id: &str,
+        created_by_op: Option<&str>,
+    ) -> Result<ContainerId, EngineError> {
+        if let Some(container_id) = self.exact_singleton_container_for_seq(seq_id) {
+            return Ok(container_id);
+        }
+        if !self.state.sequences.contains_key(seq_id) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found for singleton container creation"),
+            });
+        }
+        let name = self
+            .state
+            .sequences
+            .get(seq_id)
+            .and_then(|dna| dna.name().clone())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| seq_id.to_string());
+        self.add_container(
+            &[seq_id.to_string()],
+            ContainerKind::Singleton,
+            Some(name),
+            created_by_op,
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not create singleton container for sequence '{seq_id}'"),
+        })
+    }
+
     pub(super) fn reconcile_containers(&mut self) {
         let seq_ids: Vec<SeqId> = self.state.sequences.keys().cloned().collect();
         for seq_id in &seq_ids {
@@ -256,25 +324,10 @@ impl GentleEngine {
         ) {
             return;
         }
-        // Gibson outputs represent distinct wet-lab artifacts (two primer vials
-        // plus the assembled product) and should therefore land in separate
-        // singleton containers instead of one synthetic pool container.
+        // Gibson apply materializes explicit singleton containers and its
+        // arrangement directly inside the operation handler, so the generic
+        // fallback must stay out of the way here.
         if matches!(op, Operation::ApplyGibsonAssemblyPlan { .. }) {
-            for seq_id in &result.created_seq_ids {
-                let name = self
-                    .state
-                    .sequences
-                    .get(seq_id)
-                    .and_then(|dna| dna.name().clone())
-                    .filter(|name| !name.trim().is_empty())
-                    .or_else(|| Some(seq_id.clone()));
-                let _ = self.add_container(
-                    std::slice::from_ref(seq_id),
-                    ContainerKind::Singleton,
-                    name,
-                    Some(&result.op_id),
-                );
-            }
             return;
         }
         let kind = if matches!(op, Operation::SelectCandidate { .. }) {

@@ -6,11 +6,74 @@
 
 use super::*;
 use crate::{
+    dna_ladder::default_dna_ladders,
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     uniprot::UniprotNucleotideXref,
 };
 
 impl GentleEngine {
+    fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
+        let fragments_by_id = plan
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.id.trim().to_string(), fragment.seq_id.trim().to_string()))
+            .collect::<HashMap<_, _>>();
+        plan.assembly_order
+            .iter()
+            .filter(|member| member.kind.trim().eq_ignore_ascii_case("fragment"))
+            .filter_map(|member| fragments_by_id.get(member.id.trim()).cloned())
+            .filter(|seq_id| !seq_id.trim().is_empty())
+            .collect()
+    }
+
+    fn choose_gibson_arrangement_ladders(&self, lane_seq_ids: &[String]) -> Vec<String> {
+        let mut lengths = lane_seq_ids
+            .iter()
+            .filter_map(|seq_id| self.state.sequences.get(seq_id).map(|dna| dna.len()))
+            .filter(|bp| *bp > 0)
+            .collect::<Vec<_>>();
+        if lengths.is_empty() {
+            return vec![];
+        }
+        lengths.sort_unstable();
+        let min_bp = *lengths.first().unwrap_or(&1);
+        let max_bp = *lengths.last().unwrap_or(&min_bp);
+        default_dna_ladders().choose_for_range(min_bp, max_bp, 2)
+    }
+
+    fn maybe_create_gibson_arrangement(
+        &mut self,
+        plan: &GibsonAssemblyPlan,
+        product_seq_id: &str,
+        op_id: &str,
+    ) -> Result<Option<String>, EngineError> {
+        let destination_seq_id = plan.destination.seq_id.trim();
+        if destination_seq_id.is_empty() || product_seq_id.trim().is_empty() {
+            return Ok(None);
+        }
+
+        let mut lane_seq_ids = vec![destination_seq_id.to_string()];
+        lane_seq_ids.extend(Self::gibson_arrangement_insert_seq_ids(plan));
+        lane_seq_ids.push(product_seq_id.trim().to_string());
+
+        let mut lane_container_ids: Vec<String> = vec![];
+        for seq_id in &lane_seq_ids {
+            let container_id = self.ensure_exact_singleton_container_for_seq(seq_id, Some(op_id))?;
+            lane_container_ids.push(container_id);
+        }
+
+        let ladders = self.choose_gibson_arrangement_ladders(&lane_seq_ids);
+        let arrangement_name = Some(format!("Gibson lane set: {}", product_seq_id.trim()));
+        let arrangement_id = self.add_serial_arrangement(
+            &lane_container_ids,
+            None,
+            arrangement_name,
+            Some(ladders),
+            None,
+        )?;
+        Ok(Some(arrangement_id))
+    }
+
     fn dotplot_svg_xml_escape(raw: &str) -> String {
         raw.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -2770,6 +2833,7 @@ impl GentleEngine {
                 let execution = derive_gibson_execution_plan(self, &plan)?;
                 parent_seq_ids = execution.parent_seq_ids.clone();
                 result.warnings.extend(execution.preview.warnings.clone());
+                let mut assembled_product_seq_id: Option<String> = None;
                 for output in execution.outputs {
                     let seq_id = self.unique_seq_id(&output.base_seq_id);
                     let mut dna = output.dna;
@@ -2783,6 +2847,22 @@ impl GentleEngine {
                     self.state.sequences.insert(seq_id.clone(), dna);
                     self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
                     result.created_seq_ids.push(seq_id.clone());
+                    let container_name = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .and_then(|dna| dna.name().clone())
+                        .filter(|name| !name.trim().is_empty())
+                        .unwrap_or_else(|| seq_id.clone());
+                    let _ = self.add_container(
+                        std::slice::from_ref(&seq_id),
+                        ContainerKind::Singleton,
+                        Some(container_name),
+                        Some(&result.op_id),
+                    );
+                    if output.kind == "assembled_product" {
+                        assembled_product_seq_id = Some(seq_id.clone());
+                    }
                     result.messages.push(format!(
                         "Created Gibson {} '{}' ({} bp, {})",
                         output.kind.replace('_', " "),
@@ -2813,6 +2893,47 @@ impl GentleEngine {
                     execution.preview.destination.seq_id,
                     insert_summary
                 ));
+                if let Some(product_seq_id) = assembled_product_seq_id.as_deref() {
+                    match self.maybe_create_gibson_arrangement(
+                        &plan,
+                        product_seq_id,
+                        &result.op_id,
+                    ) {
+                        Ok(Some(arrangement_id)) => {
+                            let lane_count = self
+                                .state
+                                .container_state
+                                .arrangements
+                                .get(&arrangement_id)
+                                .map(|arrangement| arrangement.lane_container_ids.len())
+                                .unwrap_or(0);
+                            let ladders = self
+                                .state
+                                .container_state
+                                .arrangements
+                                .get(&arrangement_id)
+                                .map(|arrangement| {
+                                    if arrangement.ladders.is_empty() {
+                                        "auto".to_string()
+                                    } else {
+                                        arrangement.ladders.join(" + ")
+                                    }
+                                })
+                                .unwrap_or_else(|| "auto".to_string());
+                            result.messages.push(format!(
+                                "Created Gibson serial arrangement '{}' with {} sample lane(s) and ladders '{}'",
+                                arrangement_id, lane_count, ladders
+                            ));
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            result.warnings.push(format!(
+                                "Gibson arrangement was not created automatically: {}",
+                                err.message
+                            ));
+                        }
+                    }
+                }
             }
             Operation::CreateArrangementSerial {
                 container_ids,

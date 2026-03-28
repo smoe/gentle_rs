@@ -943,6 +943,10 @@ Patterns menu:
        - in `Containers`, those three Gibson outputs land as separate
          singleton containers rather than one pooled multi-output container,
          matching the expected separate primer/product vials
+       - in `Arrangements`, Gibson apply also records one reusable serial lane
+         setup comprising the original vector, the ordered insert lane(s), and
+         the assembled product, with recommended DNA ladders ready for gel
+         export
        - `Cancel` closes the specialist without applying anything and keeps the
          current draft available when the window is reopened
        - the assembled product carries transferred destination/insert features

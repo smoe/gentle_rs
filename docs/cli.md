@@ -1342,6 +1342,11 @@ Rendering export commands:
     - left insert primer
     - right insert primer
     - assembled product
+  - Also records one serial arrangement for gel-oriented review:
+    - original vector lane
+    - ordered insert lane(s)
+    - assembled product lane
+    - recommended DNA ladders flanking the samples on export
   - Transfers destination and insert features onto the assembled product
     deterministically.
   - Partially consumed destination annotations are trimmed or projected when a

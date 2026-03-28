@@ -1246,6 +1246,15 @@ fn execute_gibson_apply_creates_output_sequences() {
         assert!(matches!(container.kind, ContainerKind::Singleton));
         assert_eq!(container.members, vec![seq_id.to_string()]);
     }
+    let arrangements = engine
+        .state()
+        .container_state
+        .arrangements
+        .values()
+        .collect::<Vec<_>>();
+    assert_eq!(arrangements.len(), 1);
+    assert_eq!(arrangements[0].lane_container_ids.len(), 3);
+    assert!(!arrangements[0].ladders.is_empty());
 }
 
 #[test]

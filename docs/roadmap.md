@@ -92,6 +92,9 @@ order. Durable architecture constraints and decisions remain in
     - Gibson apply outputs now materialize as separate singleton containers
       (one vial per primer plus the assembled product) instead of one
       synthetic pool container
+    - Gibson apply also records one reusable serial arrangement comprising the
+      original vector, ordered insert lane(s), and assembled product, with
+      recommended DNA ladders available for flanking gel export
     - protocol-cartoon preview now shows both destination-insert junctions
       explicitly for the current single-insert flow instead of collapsing to
       one representative overlap

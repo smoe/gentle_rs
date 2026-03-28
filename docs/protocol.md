@@ -423,6 +423,11 @@ Current v1 scope and limits:
     - left insert primer
     - right insert primer
     - assembled product
+  - creates one shared serial arrangement for downstream gel review:
+    - original destination vector
+    - ordered insert lane(s)
+    - assembled product
+    - recommended DNA ladders carried with the arrangement for flanking export
   - transfers destination and insert features onto the assembled product
     deterministically through the shared engine path
   - destination features intersecting the consumed opening are now projected

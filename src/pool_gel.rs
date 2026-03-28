@@ -122,6 +122,20 @@ fn sample_bands(members: &[(String, usize)]) -> Vec<PoolGelBand> {
         .collect::<Vec<_>>()
 }
 
+fn ladder_lane_names_for_display(selected_ladders: &[String]) -> Vec<String> {
+    match selected_ladders {
+        [] => vec![],
+        [name] => vec![name.clone(), name.clone()],
+        [left, right] => vec![left.clone(), right.clone()],
+        more => {
+            let mut names = vec![more[0].clone()];
+            names.extend(more[1..more.len() - 1].iter().cloned());
+            names.push(more[more.len() - 1].clone());
+            names
+        }
+    }
+}
+
 pub fn build_serial_gel_layout(
     samples: &[GelSampleInput],
     requested_ladders: &[String],
@@ -171,7 +185,19 @@ pub fn build_serial_gel_layout(
     let mut lanes: Vec<PoolGelLane> = vec![];
     let mut all_band_bps: Vec<usize> = all_members.iter().map(|(_, bp)| *bp).collect();
 
-    for ladder_name in &selected_ladders {
+    let display_ladders = ladder_lane_names_for_display(&selected_ladders);
+    let left_ladders = display_ladders
+        .iter()
+        .take(display_ladders.len().div_ceil(2))
+        .cloned()
+        .collect::<Vec<_>>();
+    let right_ladders = display_ladders
+        .iter()
+        .skip(display_ladders.len().div_ceil(2))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for ladder_name in &left_ladders {
         let Some(ladder) = DNA_LADDERS.get(ladder_name) else {
             continue;
         };
@@ -213,6 +239,39 @@ pub fn build_serial_gel_layout(
             name: sample.name.clone(),
             is_ladder: false,
             bands: sample_bands(&sample.members),
+        });
+    }
+
+    for ladder_name in &right_ladders {
+        let Some(ladder) = DNA_LADDERS.get(ladder_name) else {
+            continue;
+        };
+        let mut parts = ladder.bands().clone();
+        parts.sort_by(|a, b| b.length_bp().total_cmp(&a.length_bp()));
+        let max_strength = parts
+            .iter()
+            .filter_map(|p| p.relative_strength)
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+        let bands = parts
+            .into_iter()
+            .map(|p| {
+                let bp = p.length_bp().round().max(1.0) as usize;
+                all_band_bps.push(bp);
+                let raw = p.relative_strength.unwrap_or(1.0).max(0.1);
+                let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;
+                PoolGelBand {
+                    bp,
+                    intensity,
+                    count: 1,
+                    labels: vec![format!("{bp} bp")],
+                }
+            })
+            .collect::<Vec<_>>();
+        lanes.push(PoolGelLane {
+            name: ladder.name().to_string(),
+            is_ladder: true,
+            bands,
         });
     }
 
@@ -478,6 +537,47 @@ mod tests {
         let svg = export_pool_gel_svg(&layout);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Serial Gel Preview"));
+    }
+
+    #[test]
+    fn test_build_serial_gel_layout_flanks_samples_with_ladders() {
+        let samples = vec![
+            GelSampleInput {
+                name: "Vector".to_string(),
+                members: vec![("vector".to_string(), 4952)],
+            },
+            GelSampleInput {
+                name: "Insert".to_string(),
+                members: vec![("insert".to_string(), 314)],
+            },
+            GelSampleInput {
+                name: "Product".to_string(),
+                members: vec![("product".to_string(), 5266)],
+            },
+        ];
+        let layout = build_serial_gel_layout(
+            &samples,
+            &[
+                "NEB 100bp DNA Ladder".to_string(),
+                "NEB 1kb DNA Ladder".to_string(),
+            ],
+        )
+        .expect("layout");
+        assert!(layout.lanes.first().is_some_and(|lane| lane.is_ladder));
+        assert!(layout.lanes.last().is_some_and(|lane| lane.is_ladder));
+        assert_eq!(
+            layout
+                .lanes
+                .iter()
+                .filter(|lane| !lane.is_ladder)
+                .map(|lane| lane.name.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                "Vector".to_string(),
+                "Insert".to_string(),
+                "Product".to_string()
+            ]
+        );
     }
 
     #[test]

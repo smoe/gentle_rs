@@ -5131,6 +5131,30 @@ fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
         .insert("insert_x_amplicon".to_string(), insert);
 
     let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().container_state.containers.insert(
+        "container-pool".to_string(),
+        Container {
+            container_id: "container-pool".to_string(),
+            kind: ContainerKind::Pool,
+            name: Some("Unrelated pooled inputs".to_string()),
+            members: vec![
+                "destination_vector".to_string(),
+                "insert_x_amplicon".to_string(),
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 1,
+        },
+    );
+    engine
+        .state_mut()
+        .container_state
+        .seq_to_latest_container
+        .insert("destination_vector".to_string(), "container-pool".to_string());
+    engine
+        .state_mut()
+        .container_state
+        .seq_to_latest_container
+        .insert("insert_x_amplicon".to_string(), "container-pool".to_string());
     let plan_json = r#"{
   "schema": "gentle.gibson_assembly_plan.v1",
   "id": "lineage_cli_projection_test",
@@ -5211,6 +5235,41 @@ fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
             plan_json: plan_json.to_string(),
         })
         .expect("apply Gibson operation");
+    let gibson_arrangements = engine
+        .state()
+        .container_state
+        .arrangements
+        .values()
+        .collect::<Vec<_>>();
+    assert_eq!(gibson_arrangements.len(), 1, "one Gibson arrangement should be created");
+    let arrangement = gibson_arrangements[0];
+    assert_eq!(arrangement.lane_container_ids.len(), 3);
+    assert!(
+        !arrangement.ladders.is_empty(),
+        "Gibson arrangement should carry recommended ladders"
+    );
+    let lane_members = arrangement
+        .lane_container_ids
+        .iter()
+        .map(|container_id| {
+            engine
+                .state()
+                .container_state
+                .containers
+                .get(container_id)
+                .map(|container| container.members.clone())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lane_members,
+        vec![
+            vec!["destination_vector".to_string()],
+            vec!["insert_x_amplicon".to_string()],
+            vec!["lineage_out".to_string()]
+        ],
+        "Gibson arrangement should use exact per-sequence lane containers, not unrelated pools"
+    );
 
     let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
     let hub_nodes: Vec<_> = nodes
