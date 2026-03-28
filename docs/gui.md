@@ -390,7 +390,7 @@ Feature tree grouping:
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:
   - direct launcher now also exists in the DNA sequence window toolbar as
-    `RNA Mapping`
+    `RNA-read Mapping`
     - enabled when the current selected feature can seed a splicing view
       (`mRNA`, `ncRNA`, `misc_RNA`, `transcript`, `exon`, `gene`, `CDS`)
     - opens or focuses the same dedicated mapping workspace for that locus
@@ -398,6 +398,14 @@ Feature tree grouping:
     scope/default report)
   - owns phase-1 FASTA input, report id, scope/origin controls, checkpoint/
     resume, phase-2 alignment controls, workflow staging, and report exports
+  - the mapping controls now spell out the biological working set explicitly:
+    - `Region / gene scope` names whether the run uses the current target gene
+      or all genes overlapping the selected locus
+    - `Gene expansion mode` names whether transcript templates come only from
+      the current target gene/group or from an explicit sparse `Target genes`
+      list
+    - a read-only summary line below these controls states exactly which region
+      and which gene set the current run configuration will use
   - `Show in Splicing Expert` returns to the viewer with the current mapping
     report selected
   - the workspace `Panel guide [?]` exposes the detailed two-phase workflow:

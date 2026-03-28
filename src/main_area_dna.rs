@@ -3652,6 +3652,63 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_scope_selection_label_mentions_target_gene_when_applicable() {
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        assert_eq!(
+            MainAreaDna::rna_read_scope_selection_label(
+                &view,
+                SplicingScopePreset::TargetGroupTargetStrand
+            ),
+            "Target gene TP73 (target strand)"
+        );
+    }
+
+    #[test]
+    fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 10,
+            region_end_1based: 50,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let (summary, _color) = MainAreaDna::rna_read_gene_scope_summary(
+            &view,
+            SplicingScopePreset::AllOverlappingTargetStrand,
+            RnaReadOriginMode::MultiGeneSparse,
+            "TP73, TP53",
+        );
+        assert!(summary.contains("all genes overlapping seq1:10..50 on the target strand"));
+        assert!(summary.contains("TP73, TP53"));
+    }
+
+    #[test]
     fn latest_matching_rna_read_report_id_prefers_most_recent_summary() {
         let summaries = vec![
             RnaReadInterpretationReportSummary {
@@ -8266,7 +8323,7 @@ impl MainAreaDna {
             let rna_mapping_seed_view = self.current_splicing_expert_view_for_primary_map();
             let rna_mapping_response = ui.add_enabled(
                 rna_mapping_seed_view.is_some(),
-                egui::Button::new("RNA Mapping"),
+                egui::Button::new("RNA-read Mapping"),
             );
             let rna_mapping_response = if let Some(view) = rna_mapping_seed_view.as_ref() {
                 rna_mapping_response.on_hover_text(format!(
@@ -12656,6 +12713,92 @@ impl MainAreaDna {
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }
 
+    fn rna_read_scope_selection_label(
+        view: &SplicingExpertView,
+        scope: SplicingScopePreset,
+    ) -> String {
+        let target = view.group_label.trim();
+        match scope {
+            SplicingScopePreset::AllOverlappingBothStrands => {
+                "All overlapping genes (both strands)".to_string()
+            }
+            SplicingScopePreset::TargetGroupAnyStrand => {
+                format!("Target gene {target} (any strand)")
+            }
+            SplicingScopePreset::AllOverlappingTargetStrand => {
+                "All overlapping genes (target strand)".to_string()
+            }
+            SplicingScopePreset::TargetGroupTargetStrand => {
+                format!("Target gene {target} (target strand)")
+            }
+        }
+    }
+
+    fn rna_read_origin_mode_selection_label(
+        view: &SplicingExpertView,
+        mode: RnaReadOriginMode,
+    ) -> String {
+        let target = view.group_label.trim();
+        match mode {
+            RnaReadOriginMode::SingleGene => format!("single_gene ({target})"),
+            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse (explicit gene list)".to_string(),
+        }
+    }
+
+    fn rna_read_gene_scope_summary(
+        view: &SplicingExpertView,
+        scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &str,
+    ) -> (String, egui::Color32) {
+        let target = view.group_label.trim();
+        let region = format!(
+            "{}:{}..{}",
+            view.seq_id, view.region_start_1based, view.region_end_1based
+        );
+        let strand_scope = match scope {
+            SplicingScopePreset::AllOverlappingBothStrands => {
+                format!("all genes overlapping {region} on both strands")
+            }
+            SplicingScopePreset::TargetGroupAnyStrand => {
+                format!("target gene '{target}' on either strand within {region}")
+            }
+            SplicingScopePreset::AllOverlappingTargetStrand => {
+                format!("all genes overlapping {region} on the target strand")
+            }
+            SplicingScopePreset::TargetGroupTargetStrand => {
+                format!("target gene '{target}' on the target strand within {region}")
+            }
+        };
+        match origin_mode {
+            RnaReadOriginMode::SingleGene => (
+                format!(
+                    "Working set: {strand_scope}. Gene expansion mode is single_gene, so only the current target group '{target}' is used for transcript templates."
+                ),
+                egui::Color32::from_rgb(71, 85, 105),
+            ),
+            RnaReadOriginMode::MultiGeneSparse => {
+                let genes = Self::parse_rna_target_gene_ids(target_gene_ids);
+                if genes.is_empty() {
+                    (
+                        format!(
+                            "Working set: {strand_scope}. Gene expansion mode is multi_gene_sparse, but no explicit Target genes are listed yet, so no additional gene-specific sparse expansion is configured."
+                        ),
+                        egui::Color32::from_rgb(180, 83, 9),
+                    )
+                } else {
+                    (
+                        format!(
+                            "Working set: {strand_scope}. Gene expansion mode is multi_gene_sparse with explicit target genes: {}.",
+                            genes.join(", ")
+                        ),
+                        egui::Color32::from_rgb(71, 85, 105),
+                    )
+                }
+            }
+        }
+    }
+
     fn dotplot_window_identity_seq_id(&self) -> Option<String> {
         self.seq_id
             .clone()
@@ -16897,14 +17040,17 @@ impl MainAreaDna {
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Scope").on_hover_text(
-                            "Controls which transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes improve specificity when you already trust the focal locus.",
+                        ui.label("Region / gene scope").on_hover_text(
+                            "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes keep the run focused on the current target gene or strand context.",
                         );
                         egui::ComboBox::from_id_salt(format!(
                             "rna_read_scope_{}_{}",
                             view.seq_id, view.target_feature_id
                         ))
-                        .selected_text(Self::splicing_scope_label(self.rna_reads_ui.scope))
+                        .selected_text(Self::rna_read_scope_selection_label(
+                            view,
+                            self.rna_reads_ui.scope,
+                        ))
                         .show_ui(ui, |ui| {
                             persist_ui_state |= ui
                                 .selectable_value(
@@ -16956,14 +17102,15 @@ impl MainAreaDna {
                     });
                     if self.rna_reads_ui.show_advanced {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label("Origin mode").on_hover_text(
-                                "Controls how transcript templates are gathered before hashing: only the current splicing scope (single_gene) or local target-gene expansion from Target genes (multi_gene_sparse). This remains local annotation-driven, not a genome-wide search.",
+                            ui.label("Gene expansion mode").on_hover_text(
+                                "Controls how transcript templates are gathered before hashing: only the current target gene/group (single_gene) or local target-gene expansion from the explicit Target genes list (multi_gene_sparse). This remains local annotation-driven, not a genome-wide search.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_origin_mode_{}_{}",
                                 view.seq_id, view.target_feature_id
                             ))
-                            .selected_text(Self::rna_read_origin_mode_label(
+                            .selected_text(Self::rna_read_origin_mode_selection_label(
+                                view,
                                 self.rna_reads_ui.origin_mode,
                             ))
                             .show_ui(ui, |ui| {
@@ -16996,7 +17143,8 @@ impl MainAreaDna {
                                     egui::TextEdit::singleline(
                                         &mut self.rna_reads_ui.target_gene_ids,
                                     )
-                                    .desired_width(280.0),
+                                    .desired_width(280.0)
+                                    .hint_text(format!("e.g. {}, TP53", view.group_label)),
                                 )
                                 .on_hover_text(
                                     "Example: TP73, TP53. Applied when origin mode is multi_gene_sparse and persisted in the report payload.",
@@ -17095,6 +17243,16 @@ impl MainAreaDna {
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
                     }
+                    let (gene_scope_summary, gene_scope_color) =
+                        Self::rna_read_gene_scope_summary(
+                            view,
+                            self.rna_reads_ui.scope,
+                            self.rna_reads_ui.origin_mode,
+                            &self.rna_reads_ui.target_gene_ids,
+                        );
+                    ui.small(
+                        egui::RichText::new(gene_scope_summary).color(gene_scope_color),
+                    );
                     ui.horizontal_wrapped(|ui| {
                         persist_ui_state |= ui
                             .checkbox(
@@ -18420,13 +18578,6 @@ impl MainAreaDna {
             SplicingScopePreset::TargetGroupAnyStrand => "target-group / any-strand",
             SplicingScopePreset::AllOverlappingTargetStrand => "all-overlap / target-strand",
             SplicingScopePreset::TargetGroupTargetStrand => "target-group / target-strand",
-        }
-    }
-
-    fn rna_read_origin_mode_label(mode: RnaReadOriginMode) -> &'static str {
-        match mode {
-            RnaReadOriginMode::SingleGene => "single_gene / baseline",
-            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse / expanded",
         }
     }
 
