@@ -431,6 +431,9 @@ Feature tree grouping:
     - release builds: read-count updates approximately every `10000` reads
     - both build types additionally emit time-based updates approximately every
       `2s` while processing continues
+  - live RNA-read progress stays in the dedicated `RNA-read Mapping` workspace;
+    it no longer rewrites the DNA sequence window status line while the
+    sequence window is only acting as the launcher/context holder
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
   - if `Report ID` is left empty, a default ID is derived from the input file

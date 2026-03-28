@@ -1388,6 +1388,9 @@ Status:
       that opens/focuses the same dedicated workspace from the currently
       selected splicing-capable feature, so users do not need to detour through
       the Splicing Expert first.
+    - live RNA-read progress no longer streams into the DNA sequence window
+      status line while the mapping workspace is running; the dedicated
+      `RNA-read Mapping` workspace now owns that live-run feedback surface.
     - the workspace now states the effective region/gene selection explicitly
       (`target gene` vs `all overlapping genes`, plus sparse target-gene list
       when configured) so users can see which biological working set a run

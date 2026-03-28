@@ -1163,8 +1163,8 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::{
-        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTaskOutcome,
-        ViewSvgExportProfile,
+        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTask,
+        RnaReadTaskMessage, RnaReadTaskOutcome, ViewSvgExportProfile,
     };
     use crate::{
         dna_display::Selection,
@@ -1188,13 +1188,14 @@ mod tests {
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
         protocol_cartoon::pcr_oe_substitution_geometry_bindings,
     };
+    use eframe::egui;
     use gb_io::seq::{Feature, FeatureKind, Location};
     use serde_json::json;
     use std::{
-        collections::BTreeSet,
+        collections::{BTreeMap, BTreeSet},
         fs,
         path::Path,
-        sync::{Arc, RwLock},
+        sync::{Arc, Mutex, RwLock, atomic::AtomicBool, mpsc},
         time::{Duration, Instant},
     };
     use tempfile::{TempDir, tempdir};
@@ -1687,6 +1688,65 @@ mod tests {
             MainAreaDna::async_task_repaint_delay(512, true),
             Duration::from_millis(20)
         );
+    }
+
+    #[test]
+    fn poll_rna_read_task_keeps_live_progress_out_of_dna_window_status() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let (_tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+        area.show_rna_read_mapping_window = true;
+        area.op_status = "keep this status in the DNA window".to_string();
+        area.rna_read_progress = Some(RnaReadInterpretProgress {
+            seq_id: "seq1".to_string(),
+            reads_processed: 8,
+            reads_total: 16,
+            read_bases_processed: 3200,
+            mean_read_length_bp: 400.0,
+            median_read_length_bp: 400,
+            p95_read_length_bp: 500,
+            input_bytes_processed: 1024,
+            input_bytes_total: 4096,
+            seed_passed: 5,
+            aligned: 1,
+            tested_kmers: 64,
+            matched_kmers: 18,
+            seed_compute_ms: 0.0,
+            align_compute_ms: 0.0,
+            io_read_ms: 0.0,
+            fasta_parse_ms: 0.0,
+            normalize_compute_ms: 0.0,
+            inference_compute_ms: 0.0,
+            progress_emit_ms: 0.0,
+            update_every_reads: 1000,
+            done: false,
+            bins: vec![],
+            score_density_bins: vec![],
+            top_hits_preview: vec![],
+            transition_support_rows: vec![],
+            isoform_support_rows: vec![],
+            mapped_exon_support_frequencies: vec![],
+            mapped_junction_support_frequencies: vec![],
+            mapped_isoform_support_rows: vec![],
+            reads_with_transition_support: 0,
+            transition_confirmations: 0,
+            junction_crossing_seed_bits_indexed: 0,
+            origin_class_counts: BTreeMap::new(),
+        });
+        area.rna_read_task = Some(RnaReadTask {
+            started: Instant::now(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 0,
+            report_id_hint: Some("rna_report".to_string()),
+            input_path: "reads.fa.gz".to_string(),
+            operation_label: "Nanopore interpretation".to_string(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: Arc::new(Mutex::new(rx)),
+        });
+
+        area.poll_rna_read_task(&egui::Context::default());
+
+        assert_eq!(area.op_status, "keep this status in the DNA window");
     }
 
     #[test]
@@ -18862,6 +18922,7 @@ impl MainAreaDna {
         let default_size = Self::rna_read_mapping_window_default_size();
         let min_size = Self::rna_read_mapping_window_min_size();
         let content_min_size = Self::rna_read_mapping_window_content_min_size();
+        let repaint_delay = Self::async_task_repaint_delay(1, false);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])
@@ -18928,6 +18989,9 @@ impl MainAreaDna {
                                 self.render_rna_read_mapping_workspace_controls(ui, &view);
                             });
                     });
+                if self.active_rna_read_task_matches_splicing_view(&view) {
+                    ctx.request_repaint_after(repaint_delay);
+                }
                 self.show_rna_read_mapping_window = open;
                 return;
             }
@@ -18968,6 +19032,9 @@ impl MainAreaDna {
                         self.render_rna_read_mapping_workspace_controls(ui, &view);
                     });
             });
+            if self.active_rna_read_task_matches_splicing_view(&view) {
+                ctx.request_repaint_after(repaint_delay);
+            }
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_rna_read_mapping_window = false;
@@ -22129,7 +22196,6 @@ impl MainAreaDna {
         let mut hit_progress_cap = false;
         let mut task_still_running = false;
         if let Some(task) = &self.rna_read_task {
-            let compression = Self::rna_reads_input_compression_label(&task.input_path);
             match task.receiver.lock() {
                 Ok(rx) => {
                     const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 512;
@@ -22191,86 +22257,6 @@ impl MainAreaDna {
                             Err(TryRecvError::Empty) => break,
                         }
                     }
-                    if done.is_none() {
-                        if let Some(progress) = &self.rna_read_progress {
-                            let elapsed_s = task.started.elapsed().as_secs_f64().max(0.001);
-                            let reads_per_sec = progress.reads_processed as f64 / elapsed_s;
-                            let bp_per_sec = progress.read_bases_processed as f64 / elapsed_s;
-                            let seed_pass_pct = if progress.reads_processed == 0 {
-                                0.0
-                            } else {
-                                (progress.seed_passed as f64 / progress.reads_processed as f64)
-                                    * 100.0
-                            };
-                            let percent = if progress.reads_total == 0 {
-                                0.0
-                            } else {
-                                (progress.reads_processed as f64 / progress.reads_total as f64)
-                                    * 100.0
-                            };
-                            self.op_status = if progress.reads_total == 0 {
-                                let byte_progress = if progress.input_bytes_total == 0 {
-                                    "bytes=?".to_string()
-                                } else {
-                                    let fraction = (progress.input_bytes_processed as f64
-                                        / progress.input_bytes_total as f64)
-                                        .clamp(0.0, 1.0);
-                                    format!(
-                                        "bytes={}/{} ({:.1}%)",
-                                        Self::format_bytes_compact(progress.input_bytes_processed),
-                                        Self::format_bytes_compact(progress.input_bytes_total),
-                                        fraction * 100.0
-                                    )
-                                };
-                                let eta_suffix = self
-                                    .rna_stream_eta_text
-                                    .clone()
-                                    .unwrap_or_else(|| "ETA: n/a".to_string());
-                                format!(
-                                    "{} scanning input FASTA ({compression}): sequences-read={}, {}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
-                                    task.operation_label,
-                                    progress.reads_processed,
-                                    byte_progress,
-                                    eta_suffix,
-                                    reads_per_sec,
-                                    Self::format_bp_rate_compact(bp_per_sec),
-                                    progress.mean_read_length_bp,
-                                    progress.median_read_length_bp,
-                                    progress.p95_read_length_bp,
-                                    progress.seed_passed,
-                                    seed_pass_pct,
-                                    progress.aligned,
-                                    progress.matched_kmers,
-                                    task.started.elapsed().as_secs_f32()
-                                )
-                            } else {
-                                format!(
-                                    "{} running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, matched_kmers={}, elapsed {:.1}s",
-                                    task.operation_label,
-                                    progress.reads_processed,
-                                    progress.reads_total,
-                                    percent,
-                                    reads_per_sec,
-                                    Self::format_bp_rate_compact(bp_per_sec),
-                                    progress.mean_read_length_bp,
-                                    progress.median_read_length_bp,
-                                    progress.p95_read_length_bp,
-                                    progress.seed_passed,
-                                    seed_pass_pct,
-                                    progress.aligned,
-                                    progress.matched_kmers,
-                                    task.started.elapsed().as_secs_f32()
-                                )
-                            };
-                        } else {
-                            self.op_status = format!(
-                                "{} running... input='{}' ({compression}), {:.1}s elapsed",
-                                task.operation_label,
-                                task.input_path,
-                                task.started.elapsed().as_secs_f32()
-                            );
-                        }
-                    }
                     processed_progress_messages = processed_progress;
                     task_still_running = done.is_none();
                 }
@@ -22283,7 +22269,7 @@ impl MainAreaDna {
             }
         }
 
-        if done.is_none() && task_still_running {
+        if done.is_none() && task_still_running && !self.show_rna_read_mapping_window {
             ctx.request_repaint_after(Self::async_task_repaint_delay(
                 processed_progress_messages,
                 hit_progress_cap,
