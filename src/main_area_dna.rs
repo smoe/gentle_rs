@@ -12065,9 +12065,8 @@ impl MainAreaDna {
             }
             Ok(other) => {
                 self.description_cache_expert_view = Some(other);
-                self.description_cache_expert_error = Some(
-                    "Selected feature does not expose a splicing expert payload".to_string(),
-                );
+                self.description_cache_expert_error =
+                    Some("Selected feature does not expose a splicing expert payload".to_string());
                 self.op_status =
                     "Selected feature does not expose a splicing expert payload".to_string();
                 false

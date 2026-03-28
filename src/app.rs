@@ -23216,6 +23216,10 @@ Error: `{err}`"
         commands
     }
 
+    fn use_immediate_sequence_viewports() -> bool {
+        cfg!(target_os = "macos")
+    }
+
     fn show_window(
         &self,
         ctx: &egui::Context,
@@ -23230,41 +23234,77 @@ Error: `{err}`"
             .unwrap_or_else(|_| "GENtle".to_string());
         let builder = egui::ViewportBuilder::default().with_title(window_title);
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
-        ctx.show_viewport_deferred(id, builder, move |ctx, class| {
-            if !matches!(
-                class,
-                egui::ViewportClass::Deferred | egui::ViewportClass::EmbeddedWindow
-            ) {
-                eprintln!(
-                    "W GENtleApp: unexpected viewport class, skipping deferred window update"
-                );
-                return;
-            }
-            if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
-                report_active_viewport_from_ui(id);
-            }
-
-            // Draw the window
-            let update_result = catch_unwind(AssertUnwindSafe(|| {
-                if let Ok(mut w) = window.write() {
-                    w.update(ctx);
-                } else {
-                    eprintln!("W GENtleApp: window lock poisoned; skipping update");
+        if Self::use_immediate_sequence_viewports() {
+            ctx.show_viewport_immediate(id, builder, move |ui, class| {
+                if !matches!(
+                    class,
+                    egui::ViewportClass::Immediate | egui::ViewportClass::EmbeddedWindow
+                ) {
+                    eprintln!(
+                        "W GENtleApp: unexpected viewport class, skipping immediate window update"
+                    );
+                    return;
                 }
-            }));
-            if update_result.is_err() {
-                eprintln!("E GENtleApp: recovered from panic while updating window");
-            }
-
-            // "Close window" action
-            if Self::viewport_close_requested_or_shortcut(ctx) {
-                if let Ok(mut to_close) = windows_to_close.write() {
-                    to_close.push(id);
-                } else {
-                    eprintln!("W GENtleApp: close-queue lock poisoned");
+                if ui.input(|i| i.viewport().focused.unwrap_or(false)) {
+                    report_active_viewport_from_ui(id);
                 }
-            }
-        });
+
+                let update_result = catch_unwind(AssertUnwindSafe(|| {
+                    if let Ok(mut w) = window.write() {
+                        w.update(ui.ctx());
+                    } else {
+                        eprintln!("W GENtleApp: window lock poisoned; skipping update");
+                    }
+                }));
+                if update_result.is_err() {
+                    eprintln!("E GENtleApp: recovered from panic while updating window");
+                }
+
+                if Self::viewport_close_requested_or_shortcut(ui.ctx()) {
+                    if let Ok(mut to_close) = windows_to_close.write() {
+                        to_close.push(id);
+                    } else {
+                        eprintln!("W GENtleApp: close-queue lock poisoned");
+                    }
+                }
+            });
+        } else {
+            ctx.show_viewport_deferred(id, builder, move |ctx, class| {
+                if !matches!(
+                    class,
+                    egui::ViewportClass::Deferred | egui::ViewportClass::EmbeddedWindow
+                ) {
+                    eprintln!(
+                        "W GENtleApp: unexpected viewport class, skipping deferred window update"
+                    );
+                    return;
+                }
+                if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
+                    report_active_viewport_from_ui(id);
+                }
+
+                // Draw the window
+                let update_result = catch_unwind(AssertUnwindSafe(|| {
+                    if let Ok(mut w) = window.write() {
+                        w.update(ctx);
+                    } else {
+                        eprintln!("W GENtleApp: window lock poisoned; skipping update");
+                    }
+                }));
+                if update_result.is_err() {
+                    eprintln!("E GENtleApp: recovered from panic while updating window");
+                }
+
+                // "Close window" action
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    if let Ok(mut to_close) = windows_to_close.write() {
+                        to_close.push(id);
+                    } else {
+                        eprintln!("W GENtleApp: close-queue lock poisoned");
+                    }
+                }
+            });
+        }
         for command in initial_commands {
             ctx.send_viewport_cmd_to(id, command);
         }
@@ -34285,6 +34325,15 @@ mod tests {
             GENtleApp::deferred_window_initial_commands(None).is_empty(),
             "no initial position should mean no one-shot viewport commands"
         );
+    }
+
+    #[test]
+    fn macos_prefers_immediate_sequence_viewports() {
+        if cfg!(target_os = "macos") {
+            assert!(GENtleApp::use_immediate_sequence_viewports());
+        } else {
+            assert!(!GENtleApp::use_immediate_sequence_viewports());
+        }
     }
 
     #[test]
