@@ -562,6 +562,7 @@ Top-level structure:
 
 - `schema`, `mode`, `cache_roots[]`
 - `selected_prepared_ids[]`
+- `selected_prepared_paths[]`
 - `include_orphaned_remnants`
 - `results[]`
 - `entry_count`, `removed_item_count`, `removed_bytes`, `removed_file_count`
@@ -599,6 +600,10 @@ Cleanup rules:
 
 - `blast_db_only` and `derived_indexes_only` apply only to manifest-backed
   prepared installs
+- selective cleanup modes accept either `selected_prepared_ids[]` or
+  `selected_prepared_paths[]`
+- `selected_prepared_paths[]` are the precise selector when duplicate prepared
+  ids exist across multiple selected cache roots
 - orphaned remnants can only be deleted through the full-delete modes
 - cleanup never scans the whole workspace; it only touches the selected roots
 - cleanup does not treat catalog JSON, `.gentle_state.json`, MCP/runtime files,

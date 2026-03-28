@@ -155,6 +155,7 @@ fn parse_cache_clear_command() {
             scope,
             cache_dirs,
             prepared_ids,
+            prepared_paths,
             include_orphans,
         } => {
             assert_eq!(
@@ -164,6 +165,39 @@ fn parse_cache_clear_command() {
             assert_eq!(scope.label(), "helpers");
             assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
             assert_eq!(prepared_ids, vec!["localproject".to_string()]);
+            assert!(prepared_paths.is_empty());
+            assert!(!include_orphans);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cache_clear_command_with_prepared_path() {
+    let cmd = parse_shell_line(
+        "cache clear selected-prepared --references --cache-dir data/genomes --prepared-path data/genomes/localproject",
+    )
+    .expect("parse cache clear with path");
+    match cmd {
+        ShellCommand::CacheClear {
+            mode,
+            scope,
+            cache_dirs,
+            prepared_ids,
+            prepared_paths,
+            include_orphans,
+        } => {
+            assert_eq!(
+                mode,
+                crate::genomes::PreparedCacheCleanupMode::SelectedPreparedInstalls
+            );
+            assert_eq!(scope.label(), "references");
+            assert_eq!(cache_dirs, vec!["data/genomes".to_string()]);
+            assert!(prepared_ids.is_empty());
+            assert_eq!(
+                prepared_paths,
+                vec!["data/genomes/localproject".to_string()]
+            );
             assert!(!include_orphans);
         }
         other => panic!("unexpected command: {other:?}"),
@@ -198,6 +232,7 @@ fn execute_cache_inspect_and_clear_are_structured() {
             scope: crate::engine_shell::CacheCleanupScope::References,
             cache_dirs: vec![root.display().to_string()],
             prepared_ids: vec!["ToyGenome".to_string()],
+            prepared_paths: vec![],
             include_orphans: false,
         },
     )
@@ -210,6 +245,41 @@ fn execute_cache_inspect_and_clear_are_structured() {
     assert!(install_dir.join("sequence.fa").exists());
     assert!(!install_dir.join("sequence.fa.fai").exists());
     assert!(!install_dir.join("genes.json").exists());
+}
+
+#[test]
+fn execute_cache_clear_can_target_duplicate_ids_by_prepared_path() {
+    let td = tempdir().expect("tempdir");
+    let root_a = td.path().join("cache_a");
+    let root_b = td.path().join("cache_b");
+    let install_a = write_shell_prepared_cache_install(&root_a, "ToyGenome");
+    let install_b = write_shell_prepared_cache_install(&root_b, "ToyGenome");
+    let expected_selected_path = std::fs::canonicalize(&install_a)
+        .unwrap_or_else(|_| install_a.clone())
+        .to_string_lossy()
+        .into_owned();
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let clear = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CacheClear {
+            mode: crate::genomes::PreparedCacheCleanupMode::SelectedPreparedInstalls,
+            scope: crate::engine_shell::CacheCleanupScope::References,
+            cache_dirs: vec![root_a.display().to_string(), root_b.display().to_string()],
+            prepared_ids: vec![],
+            prepared_paths: vec![install_a.display().to_string()],
+            include_orphans: false,
+        },
+    )
+    .expect("clear cache by path");
+
+    assert!(!clear.state_changed);
+    let selected_path = clear.output["selected_prepared_paths"][0]
+        .as_str()
+        .expect("selected prepared path");
+    assert_eq!(selected_path, expected_selected_path);
+    assert!(!install_a.exists());
+    assert!(install_b.exists());
 }
 
 #[test]

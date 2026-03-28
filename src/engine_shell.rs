@@ -652,6 +652,7 @@ pub enum ShellCommand {
         scope: CacheCleanupScope,
         cache_dirs: Vec<String>,
         prepared_ids: Vec<String>,
+        prepared_paths: Vec<String>,
         include_orphans: bool,
     },
     RenderPoolGelSvg {
@@ -4506,6 +4507,7 @@ impl ShellCommand {
                 scope,
                 cache_dirs,
                 prepared_ids,
+                prepared_paths,
                 include_orphans,
             } => {
                 let roots = if cache_dirs.is_empty() {
@@ -4518,12 +4520,18 @@ impl ShellCommand {
                 } else {
                     prepared_ids.join(",")
                 };
+                let paths = if prepared_paths.is_empty() {
+                    "-".to_string()
+                } else {
+                    prepared_paths.join(",")
+                };
                 format!(
-                    "clear prepared caches mode='{}' scope='{}' roots='{}' prepared_ids='{}' include_orphans={}",
+                    "clear prepared caches mode='{}' scope='{}' roots='{}' prepared_ids='{}' prepared_paths='{}' include_orphans={}",
                     mode.label(),
                     scope.label(),
                     roots,
                     ids,
+                    paths,
                     include_orphans
                 )
             }
@@ -7745,7 +7753,7 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "clear" => {
             if tokens.len() < 3 {
-                return Err("cache clear requires MODE [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]".to_string());
+                return Err("cache clear requires MODE [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]".to_string());
             }
             let mode = match tokens[2].as_str() {
                 "blast-db-only" => PreparedCacheCleanupMode::BlastDbOnly,
@@ -7761,6 +7769,7 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut scope = CacheCleanupScope::References;
             let mut cache_dirs: Vec<String> = vec![];
             let mut prepared_ids: Vec<String> = vec![];
+            let mut prepared_paths: Vec<String> = vec![];
             let mut include_orphans = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -7785,6 +7794,14 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "cache clear",
                         )?);
                     }
+                    "--prepared-path" => {
+                        prepared_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prepared-path",
+                            "cache clear",
+                        )?);
+                    }
                     "--include-orphans" => {
                         include_orphans = true;
                         idx += 1;
@@ -7796,9 +7813,10 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             if !matches!(mode, PreparedCacheCleanupMode::AllPreparedInCache)
                 && prepared_ids.is_empty()
+                && prepared_paths.is_empty()
             {
                 return Err(format!(
-                    "cache clear {} requires at least one --prepared-id",
+                    "cache clear {} requires at least one --prepared-id or --prepared-path",
                     tokens[2]
                 ));
             }
@@ -7807,6 +7825,7 @@ fn parse_cache_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 scope,
                 cache_dirs,
                 prepared_ids,
+                prepared_paths,
                 include_orphans,
             })
         }
@@ -11899,6 +11918,7 @@ pub fn execute_shell_command_with_options(
             scope,
             cache_dirs,
             prepared_ids,
+            prepared_paths,
             include_orphans,
         } => {
             let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
@@ -11906,6 +11926,7 @@ pub fn execute_shell_command_with_options(
                 mode: *mode,
                 cache_roots,
                 prepared_ids: prepared_ids.clone(),
+                prepared_paths: prepared_paths.clone(),
                 include_orphaned_remnants: *include_orphans,
             };
             let report =

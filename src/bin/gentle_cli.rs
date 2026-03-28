@@ -590,7 +590,7 @@ fn usage() {
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
-  gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]\n\n  \
+  gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shell help:\n  \
@@ -4104,6 +4104,7 @@ mod tests {
                 scope,
                 cache_dirs,
                 prepared_ids,
+                prepared_paths,
                 ..
             }) => {
                 assert_eq!(
@@ -4113,6 +4114,46 @@ mod tests {
                 assert_eq!(scope.label(), "helpers");
                 assert_eq!(cache_dirs, vec!["data/helper_genomes".to_string()]);
                 assert_eq!(prepared_ids, vec!["localproject".to_string()]);
+                assert!(prepared_paths.is_empty());
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cache_clear_with_prepared_path() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cache".to_string(),
+            "clear".to_string(),
+            "selected-prepared".to_string(),
+            "--references".to_string(),
+            "--cache-dir".to_string(),
+            "data/genomes".to_string(),
+            "--prepared-path".to_string(),
+            "data/genomes/localproject".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::CacheClear {
+                mode,
+                scope,
+                cache_dirs,
+                prepared_ids,
+                prepared_paths,
+                ..
+            }) => {
+                assert_eq!(
+                    mode,
+                    gentle::genomes::PreparedCacheCleanupMode::SelectedPreparedInstalls
+                );
+                assert_eq!(scope.label(), "references");
+                assert_eq!(cache_dirs, vec!["data/genomes".to_string()]);
+                assert!(prepared_ids.is_empty());
+                assert_eq!(
+                    prepared_paths,
+                    vec!["data/genomes/localproject".to_string()]
+                );
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

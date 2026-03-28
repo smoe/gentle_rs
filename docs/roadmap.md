@@ -270,12 +270,14 @@ order. Durable architecture constraints and decisions remain in
   - cleanup is rooted in known reference/helper cache dirs only and leaves
     project state files, catalog JSON, MCP/runtime files, backdrop/runtime
     caches, and `target/` untouched
-  - GUI cleanup selection is now path-keyed per discovered entry, so duplicate
-    prepared `entry_id`s across multiple selected cache roots no longer get
-    co-selected/co-cleaned accidentally
-  - deterministic coverage now includes a dedicated GUI cleanup-apply
-    regression for duplicate ids across multiple roots in addition to the
-    shared engine/shell cleanup tests
+  - current notes / follow-up:
+    - selective cleanup now keys rows by prepared install path, so duplicate
+      ids across multiple selected roots can be previewed and cleaned
+      independently in both GUI and shared shell/CLI (`--prepared-path`)
+    - deterministic coverage now includes both the GUI cleanup-apply parity
+      regression for partial cleanup refresh/selection reset/rebuild handoff
+      and a duplicate-root GUI regression alongside the shared engine/shell
+      cleanup tests
 - Genome-catalog maintenance now has a shared baseline:
   - bundled `assets/genomes.json` now includes additional Ensembl templates for
     zebrafish, chimp, dog, and Drosophila, while fixing the rat pinned release
