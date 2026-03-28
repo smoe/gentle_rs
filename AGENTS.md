@@ -76,6 +76,12 @@ Reference: the test-data provenance rule in
   - avoid creating command routes that can silently bypass that rule.
 - For UI-intent features, use shared `ui ...` shell command contracts and keep
   GUI handlers thin.
+- For external AI/automation deployment, prefer the published GHCR image in
+  headless `mcp` mode over the browser GUI container path:
+  - mount an explicit project/state file,
+  - communicate over stdio,
+  - avoid depending on noVNC/Xvfb when the task is tool-driven rather than
+    interactive.
 
 References:
 

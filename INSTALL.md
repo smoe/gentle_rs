@@ -185,6 +185,32 @@ docker run --rm -it \
   gentle:local cli capabilities
 ```
 
+### Recommended AI / MCP route
+
+For AI tools and other non-interactive automation, the easiest and lowest-latency
+container route is the published image in headless `mcp` mode.
+
+Why this is the preferred route:
+
+- no GUI startup
+- no `Xvfb` / `openbox` / `noVNC` overhead
+- stdio transport matches how MCP clients normally talk to tools
+- the same shared engine operations are used as in GUI/CLI mode
+- successful mutating MCP calls persist directly to the mounted project/state file
+
+Example:
+
+```sh
+docker run --rm -i \
+  -v "$(pwd)":/work \
+  ghcr.io/smoe/gentle_rs:latest \
+  mcp --state /work/project.gentle.json
+```
+
+This is usually the best starting point when integrating GENtle as a capability
+for another agent/tool. The GUI container route remains useful for human
+inspection, but not for low-latency tool execution.
+
 ### Pull a published release image from GHCR
 
 The GitHub workflow publishes installable container images for release tags
@@ -282,6 +308,8 @@ Container note:
 
 - the Docker image provides the same shared-entrypoint routes through
   `gui-web`, `cli`, `mcp`, `js`, and `lua`
+- for AI/tool integration, `mcp --state /work/PROJECT.gentle.json` is the
+  preferred headless route
 - full details live in `docs/container.md`
 
 ## First successful run checklist
