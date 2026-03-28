@@ -389,6 +389,11 @@ Feature tree grouping:
     support, read-effects inspection, and inline dotplot/report-driven review
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:
+  - direct launcher now also exists in the DNA sequence window toolbar as
+    `RNA Mapping`
+    - enabled when the current selected feature can seed a splicing view
+      (`mRNA`, `ncRNA`, `misc_RNA`, `transcript`, `exon`, `gene`, `CDS`)
+    - opens or focuses the same dedicated mapping workspace for that locus
   - seeded from the current splicing locus (`seq_id`, `seed_feature_id`, current
     scope/default report)
   - owns phase-1 FASTA input, report id, scope/origin controls, checkpoint/

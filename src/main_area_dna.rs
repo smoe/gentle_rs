@@ -3698,6 +3698,41 @@ mod tests {
     }
 
     #[test]
+    fn open_current_rna_read_mapping_workspace_uses_selected_splicing_feature() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        area.focus_feature(0);
+
+        let view = area
+            .open_current_rna_read_mapping_workspace()
+            .expect("open RNA-read Mapping from current selection");
+
+        assert!(area.show_rna_read_mapping_window);
+        assert_eq!(view.seq_id, "seq_gene");
+        assert_eq!(view.target_feature_id, 0);
+        assert_eq!(view.group_label, "GENE1");
+        assert_eq!(area.rna_read_mapping_window_feature_id, Some(0));
+    }
+
+    #[test]
     fn show_splicing_expert_for_rna_read_mapping_view_selects_current_mapping_report() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -8032,6 +8067,27 @@ impl MainAreaDna {
             {
                 self.export_rna_structure_svg();
             }
+            let rna_mapping_seed_view = self.current_splicing_expert_view_for_primary_map();
+            let rna_mapping_response = ui.add_enabled(
+                rna_mapping_seed_view.is_some(),
+                egui::Button::new("RNA Mapping"),
+            );
+            let rna_mapping_response = if let Some(view) = rna_mapping_seed_view.as_ref() {
+                rna_mapping_response.on_hover_text(format!(
+                    "Open the dedicated RNA-read Mapping workspace for {} feature n-{}",
+                    view.group_label, view.target_feature_id
+                ))
+            } else {
+                rna_mapping_response.on_hover_text(
+                    "Select an mRNA, ncRNA, misc_RNA, transcript, exon, gene, or CDS feature to seed the RNA-read Mapping workspace",
+                )
+            };
+            if rna_mapping_response.clicked() {
+                match self.open_current_rna_read_mapping_workspace() {
+                    Ok(view) => self.focus_rna_read_mapping_workspace_view(ui.ctx(), &view),
+                    Err(err) => self.op_status = err,
+                }
+            }
             if allow_engine_shell_panels {
                 ui.separator();
                 if ui
@@ -12339,6 +12395,27 @@ impl MainAreaDna {
             Some(FeatureExpertView::Splicing(view)) => Some(view),
             _ => None,
         }
+    }
+
+    fn open_current_rna_read_mapping_workspace(&mut self) -> Result<SplicingExpertView, String> {
+        let Some(view) = self.current_splicing_expert_view_for_primary_map() else {
+            return Err(
+                "Select an mRNA, ncRNA, misc_RNA, transcript, exon, gene, or CDS feature first to seed RNA-read Mapping"
+                    .to_string(),
+            );
+        };
+        self.open_rna_read_mapping_workspace_for_view(&view);
+        Ok(view)
+    }
+
+    fn focus_rna_read_mapping_workspace_view(
+        &self,
+        ctx: &egui::Context,
+        view: &SplicingExpertView,
+    ) {
+        let viewport_id = Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id);
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }
 
     fn dotplot_window_identity_seq_id(&self) -> Option<String> {
@@ -17808,6 +17885,7 @@ impl MainAreaDna {
                 );
             if cta.clicked() {
                 self.open_rna_read_mapping_workspace_for_view(view);
+                self.focus_rna_read_mapping_workspace_view(ui.ctx(), view);
             }
             if self.active_rna_read_task_matches_splicing_view(view) {
                 ui.small(

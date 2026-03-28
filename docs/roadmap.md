@@ -1293,6 +1293,10 @@ Status:
       `Derive + Dotplot`, `Send Group ROI -> Primer/qPCR`) remain there.
     - RNA-read run/configuration controls now live in a dedicated top-level
       `RNA-read Mapping` workspace seeded from the current splicing locus.
+    - DNA sequence windows now expose a direct `RNA Mapping` toolbar launcher
+      that opens/focuses the same dedicated workspace from the currently
+      selected splicing-capable feature, so users do not need to detour through
+      the Splicing Expert first.
     - persisted RNA-read reports bridge the two windows through shared
       engine-owned report payloads rather than GUI-local transfer state.
   - `RNA-read Mapping` `Nanopore cDNA interpretation` run path is now
