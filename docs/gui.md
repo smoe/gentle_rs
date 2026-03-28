@@ -64,9 +64,12 @@ macOS auxiliary-window stability note:
 - This is a deliberate stability workaround for current `egui/eframe` native
   viewport resize/maximize regressions reproduced locally with
   `cargo run --bin gentle_egui_window_repro`.
-- The main/root GENtle window remains native; sequence/help/configuration and
-  other auxiliary workspaces are embedded inside it on macOS until the upstream
-  viewport lifecycle bug is understood or fixed.
+- The main/root GENtle window remains native, but it now acts as a neutral
+  workspace host instead of directly being the project biology UI.
+- What used to be the privileged main/project surface is now the first hosted
+  internal window inside that root workspace, and sequence/help/configuration
+  plus other auxiliary workspaces are hosted as sibling internal windows on
+  macOS until the upstream viewport lifecycle bug is understood or fixed.
 
 ## Configuration Window
 
@@ -157,7 +160,8 @@ The project main window (lineage page) supports two views:
 Project overview screenshot:
 
 ![GENtle main window (project loaded)](screenshots/screenshot_GUI_main_project_loaded.png)<br>
-*Figure: Main lineage view with a loaded project.*
+*Figure: Project lineage workspace. On macOS this appears as a hosted internal
+window inside the neutral root workspace.*
 
 Sequence window screenshot:
 

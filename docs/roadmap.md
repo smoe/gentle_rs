@@ -167,6 +167,16 @@ order. Durable architecture constraints and decisions remain in
     - build-check on PRs / `main`
     - publish multi-arch images from `v*` release tags
     - move `latest` only on release-tag publishes
+- macOS viewport-regression containment is now using a hosted-workspace model:
+  - upstream repro remains reduced to `src/bin/gentle_egui_window_repro.rs`
+  - native child viewports are still treated as unreliable on current
+    `egui/eframe 0.34.1` macOS
+  - root GENtle window now acts as a neutral workspace host
+  - the project/lineage surface is rendered as the first hosted internal
+    window instead of being privileged root content
+  - hosted DNA windows now render through embedded/window-local panel paths
+    with per-instance scope ids so multiple hosted windows no longer share
+    root-level panel identities
 
 ### Biology/analysis capabilities already implemented
 

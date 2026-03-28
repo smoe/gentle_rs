@@ -18,6 +18,14 @@ pub(crate) fn show_central_panel<R>(
     }
 }
 
+pub(crate) fn show_central_panel_inside<R>(
+    ui: &mut egui::Ui,
+    panel: egui::CentralPanel,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    panel.show_inside(ui, add_contents)
+}
+
 pub(crate) fn show_top_panel<R>(
     ctx: &egui::Context,
     _root_id: egui::Id,
@@ -30,6 +38,14 @@ pub(crate) fn show_top_panel<R>(
     }
 }
 
+pub(crate) fn show_top_panel_inside<R>(
+    ui: &mut egui::Ui,
+    panel: egui::Panel,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    panel.show_inside(ui, add_contents)
+}
+
 pub(crate) fn show_bottom_panel<R>(
     ctx: &egui::Context,
     _root_id: egui::Id,
@@ -40,4 +56,12 @@ pub(crate) fn show_bottom_panel<R>(
     {
         panel.show(ctx, add_contents)
     }
+}
+
+pub(crate) fn show_bottom_panel_inside<R>(
+    ui: &mut egui::Ui,
+    panel: egui::Panel,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    panel.show_inside(ui, add_contents)
 }

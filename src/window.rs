@@ -24,6 +24,12 @@ impl Window {
         }
     }
 
+    pub fn update_embedded(&mut self, ui: &mut egui::Ui) {
+        match self {
+            Self::Dna(window) => window.update_embedded(ui),
+        }
+    }
+
     pub fn name(&self) -> String {
         match self {
             Self::Dna(window) => window.name(),
@@ -87,6 +93,12 @@ impl Window {
     pub fn take_close_requested(&mut self) -> bool {
         match self {
             Self::Dna(window) => window.take_close_requested(),
+        }
+    }
+
+    pub fn set_window_scope_id(&mut self, scope_id: String) {
+        match self {
+            Self::Dna(window) => window.set_window_scope_id(scope_id),
         }
     }
 }

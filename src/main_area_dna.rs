@@ -4296,9 +4296,7 @@ mod tests {
         let summaries_b = area.matching_rna_read_report_summaries_for_splicing_view(&view);
         assert!(Arc::ptr_eq(&summaries_a, &summaries_b));
 
-        let saved_report_a = area
-            .current_saved_rna_read_report()
-            .expect("saved report");
+        let saved_report_a = area.current_saved_rna_read_report().expect("saved report");
         let saved_report_b = area
             .current_saved_rna_read_report()
             .expect("saved report cache");
@@ -4424,7 +4422,10 @@ mod tests {
         };
 
         area.sync_rna_read_evidence_selection_to_mapping_report();
-        assert_eq!(area.rna_read_evidence_ui.selected_report_id, "rna_workspace_demo");
+        assert_eq!(
+            area.rna_read_evidence_ui.selected_report_id,
+            "rna_workspace_demo"
+        );
 
         let progress = area
             .current_rna_read_mapping_progress_for_view(&view)
@@ -5870,6 +5871,7 @@ pub struct MainAreaDna {
     dna_display: Arc<RwLock<DnaDisplay>>,
     engine: Option<Arc<RwLock<GentleEngine>>>,
     seq_id: Option<String>,
+    window_scope_id: String,
     map_dna: RenderDna,
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
@@ -6236,6 +6238,7 @@ impl MainAreaDna {
             dna_display: dna_display.clone(),
             engine,
             seq_id,
+            window_scope_id: String::new(),
             map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: true,
@@ -6494,6 +6497,19 @@ impl MainAreaDna {
         ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
         ret
+    }
+
+    pub fn set_window_scope_id(&mut self, scope_id: impl Into<String>) {
+        self.window_scope_id = scope_id.into();
+    }
+
+    pub fn panel_scope_key(&self) -> String {
+        let seq_scope = self.seq_id.as_deref().unwrap_or("<no-seq-id>");
+        if self.window_scope_id.trim().is_empty() {
+            seq_scope.to_string()
+        } else {
+            format!("{seq_scope}::{}", self.window_scope_id)
+        }
     }
 
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
@@ -7395,7 +7411,7 @@ impl MainAreaDna {
         {
             self.set_linear_vertical_offset_px(0.0);
         }
-        let panel_scope = self.seq_id.as_deref().unwrap_or("<no-seq-id>").to_owned();
+        let panel_scope = self.panel_scope_key();
         let top_panel_id = egui::Id::new(("dna_top_buttons", panel_scope.clone()));
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
@@ -7472,6 +7488,104 @@ impl MainAreaDna {
         }
         self.render_error_popup(ctx);
         self.render_anchor_prepared_choice_popup(ctx);
+    }
+
+    pub fn render_inside(&mut self, ui: &mut egui::Ui) {
+        self.prefill_container_ids();
+        self.poll_tfbs_task(ui.ctx());
+        self.poll_primer_design_task(ui.ctx());
+        self.poll_rna_read_task(ui.ctx());
+        self.sync_from_engine_display();
+        let backdrop_kind = if self.opened_from_pool_context {
+            WindowBackdropKind::Pool
+        } else {
+            WindowBackdropKind::Sequence
+        };
+        let mut backdrop_settings = current_window_backdrop_settings();
+        if !ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES
+            && matches!(
+                backdrop_kind,
+                WindowBackdropKind::Sequence | WindowBackdropKind::Pool
+            )
+        {
+            backdrop_settings.draw_images = false;
+            backdrop_settings.show_text_watermark = false;
+        }
+        if !ENABLE_LINEAR_VERTICAL_PAN
+            && !self.is_circular()
+            && self.current_linear_vertical_offset_px().abs() > f32::EPSILON
+        {
+            self.set_linear_vertical_offset_px(0.0);
+        }
+        let panel_scope = self.panel_scope_key();
+        let top_panel_id = egui::Id::new(("dna_top_buttons_embedded", panel_scope.clone()));
+        let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
+        let full_height = ui.available_height().max(240.0);
+        let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
+        let mut top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
+        if self.extended_top_panel_visible() {
+            self.extended_top_panel_height_px = Self::clamp_extended_top_panel_height(
+                self.extended_top_panel_height_px,
+                full_height,
+                sequence_panel_visible,
+            );
+            top_panel = top_panel
+                .min_size(EXTENDED_TOP_PANEL_MIN_HEIGHT_PX)
+                .exact_size(self.extended_top_panel_height_px);
+        }
+        crate::egui_compat::show_top_panel_inside(ui, top_panel, |ui| {
+            paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+            self.render_top_panel(ui);
+        });
+
+        if self.show_map {
+            if self.show_sequence && !auto_hidden_sequence_panel {
+                let bottom_panel_id = egui::Id::new(("dna_sequence_embedded", panel_scope.clone()));
+                crate::egui_compat::show_bottom_panel_inside(
+                    ui,
+                    egui::Panel::bottom(bottom_panel_id)
+                        .frame(Frame::NONE)
+                        .resizable(true)
+                        .default_size(full_height / 2.0)
+                        .max_size(full_height / 2.0)
+                        .min_size(full_height / 4.0),
+                    |ui| {
+                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                        self.render_sequence(ui);
+                    },
+                );
+                crate::egui_compat::show_central_panel_inside(
+                    ui,
+                    egui::CentralPanel::default().frame(Frame::NONE),
+                    |ui| {
+                        let ctx = ui.ctx().clone();
+                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                        self.render_middle(&ctx, ui);
+                    },
+                );
+            } else {
+                crate::egui_compat::show_central_panel_inside(
+                    ui,
+                    egui::CentralPanel::default().frame(Frame::NONE),
+                    |ui| {
+                        let ctx = ui.ctx().clone();
+                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                        self.render_middle(&ctx, ui);
+                    },
+                );
+            }
+        } else {
+            crate::egui_compat::show_central_panel_inside(
+                ui,
+                egui::CentralPanel::default().frame(Frame::NONE),
+                |ui| {
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                    self.render_sequence(ui);
+                },
+            );
+        }
+        self.render_error_popup(ui.ctx());
+        self.render_anchor_prepared_choice_popup(ui.ctx());
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
@@ -19773,7 +19887,10 @@ impl MainAreaDna {
         let subset_spec_json = subset_spec
             .and_then(|spec| serde_json::to_string(spec).ok())
             .unwrap_or_else(|| "null".to_string());
-        format!("report={report_id}|limit={}|subset={subset_spec_json}", limit.max(1))
+        format!(
+            "report={report_id}|limit={}|subset={subset_spec_json}",
+            limit.max(1)
+        )
     }
 
     fn get_saved_rna_read_report_by_id(
@@ -19890,21 +20007,14 @@ impl MainAreaDna {
         if report_id.is_empty() {
             return Err("Select a Report first before inspecting aligned reads".to_string());
         }
-        let cache_key = Self::rna_read_alignment_inspection_cache_key(
-            report_id,
-            limit,
-            subset_spec.as_ref(),
-        );
+        let cache_key =
+            Self::rna_read_alignment_inspection_cache_key(report_id, limit, subset_spec.as_ref());
         if let Some(cached) = self
             .cached_rna_read_alignment_inspections
             .iter()
             .find(|row| row.cache_key == cache_key)
         {
-            return cached
-                .result
-                .as_ref()
-                .map(Arc::clone)
-                .map_err(Clone::clone);
+            return cached.result.as_ref().map(Arc::clone).map_err(Clone::clone);
         }
         let result = {
             let Some(engine) = &self.engine else {
@@ -19912,7 +20022,9 @@ impl MainAreaDna {
             };
             engine
                 .read()
-                .map_err(|_| "Engine lock poisoned while inspecting RNA-read alignments".to_string())?
+                .map_err(|_| {
+                    "Engine lock poisoned while inspecting RNA-read alignments".to_string()
+                })?
                 .inspect_rna_read_alignments_with_subset(
                     &report_id,
                     RnaReadHitSelection::All,
@@ -24753,7 +24865,9 @@ impl MainAreaDna {
             .unwrap_or_default();
         let isoform_contributors = inspection
             .as_ref()
-            .map(|inspection| Self::collect_rna_read_mapped_isoform_contributors(inspection.as_ref()))
+            .map(|inspection| {
+                Self::collect_rna_read_mapped_isoform_contributors(inspection.as_ref())
+            })
             .unwrap_or_default();
         if inspection.is_some() {
             ui.small(
@@ -32131,6 +32245,10 @@ impl MainAreaDna {
         };
         let mut open = true;
         egui::Window::new("Operation Failed")
+            .id(egui::Id::new((
+                "dna_operation_failed",
+                self.panel_scope_key(),
+            )))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -32153,11 +32271,13 @@ impl MainAreaDna {
         let mut open = true;
         let mut apply_clicked = false;
         let mut cancel_clicked = false;
+        let popup_scope = self.panel_scope_key();
         {
             let Some(dialog) = self.anchor_prepared_choice_dialog.as_mut() else {
                 return;
             };
             egui::Window::new("Select Prepared Genome")
+                .id(egui::Id::new(("dna_anchor_prepared_choice", popup_scope)))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -34693,5 +34813,20 @@ impl MainAreaDna {
         self.render_splicing_expert_window(ctx);
         self.render_rna_read_mapping_window(ctx);
         self.render_isoform_expert_window(ctx);
+    }
+}
+
+#[cfg(test)]
+mod embedded_scope_tests {
+    use super::MainAreaDna;
+    use crate::dna_sequence::DNAsequence;
+
+    #[test]
+    fn panel_scope_key_uses_window_scope_id_when_present() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("valid DNA");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        assert_eq!(area.panel_scope_key(), "seq1");
+        area.set_window_scope_id("viewport-42");
+        assert_eq!(area.panel_scope_key(), "seq1::viewport-42");
     }
 }

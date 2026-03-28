@@ -232,11 +232,15 @@ impl ReproApp {
         let serial = self.next_serial;
         self.next_serial += 1;
         let viewport_id = Self::child_viewport_id(serial);
-        self.child_windows
-            .insert(viewport_id, Arc::new(RwLock::new(ReproWindowState::new(serial))));
+        self.child_windows.insert(
+            viewport_id,
+            Arc::new(RwLock::new(ReproWindowState::new(serial))),
+        );
         if self.cascade_new_windows {
-            self.pending_window_positions
-                .insert(viewport_id, Self::cascade_position(serial.saturating_sub(1)));
+            self.pending_window_positions.insert(
+                viewport_id,
+                Self::cascade_position(serial.saturating_sub(1)),
+            );
         }
         eprintln!("gentle_egui_window_repro: opened child window {serial} ({viewport_id:?})");
     }
@@ -255,7 +259,11 @@ impl ReproApp {
         }
     }
 
-    fn render_child_window_immediate(&mut self, ctx: &egui::Context, viewport_id: egui::ViewportId) {
+    fn render_child_window_immediate(
+        &mut self,
+        ctx: &egui::Context,
+        viewport_id: egui::ViewportId,
+    ) {
         let Some(window_state) = self.child_windows.get(&viewport_id).cloned() else {
             return;
         };
@@ -282,13 +290,8 @@ impl ReproApp {
             let native_close_requested = window_ctx.input(|i| i.viewport().close_requested());
             let mut actions = WindowActions::default();
             if let Ok(mut window) = window_state.write() {
-                actions = window.render_contents(
-                    ui,
-                    true,
-                    &window_ctx,
-                    animate,
-                    allow_nested_children,
-                );
+                actions =
+                    window.render_contents(ui, true, &window_ctx, animate, allow_nested_children);
             }
 
             if let Ok(mut queued) = pending_actions.lock() {
@@ -332,13 +335,8 @@ impl ReproApp {
             let native_close_requested = window_ctx.input(|i| i.viewport().close_requested());
             let mut actions = WindowActions::default();
             if let Ok(mut window) = window_state.write() {
-                actions = window.render_contents(
-                    ui,
-                    true,
-                    &window_ctx,
-                    animate,
-                    allow_nested_children,
-                );
+                actions =
+                    window.render_contents(ui, true, &window_ctx, animate, allow_nested_children);
             }
             if let Ok(mut queued) = pending_actions.lock() {
                 if actions.open_child {
@@ -366,7 +364,10 @@ impl ReproApp {
         };
         let mut open = true;
         egui::Window::new(title)
-            .id(egui::Id::new(("gentle_egui_window_repro_embedded", viewport_id)))
+            .id(egui::Id::new((
+                "gentle_egui_window_repro_embedded",
+                viewport_id,
+            )))
             .open(&mut open)
             .default_size(Vec2::from(DEFAULT_WINDOW_SIZE))
             .min_width(MIN_WINDOW_SIZE[0])
@@ -474,7 +475,9 @@ impl eframe::App for ReproApp {
             .collect::<Vec<_>>();
         for (viewport_id, state) in child_entries {
             match self.child_mode {
-                ChildViewportMode::Immediate => self.render_child_window_immediate(&ctx, viewport_id),
+                ChildViewportMode::Immediate => {
+                    self.render_child_window_immediate(&ctx, viewport_id)
+                }
                 ChildViewportMode::Deferred => self.render_child_window_deferred(&ctx, viewport_id),
                 ChildViewportMode::Embedded => {
                     self.render_child_window_embedded(&ctx, viewport_id, state)
@@ -514,7 +517,13 @@ mod tests {
 
     #[test]
     fn child_viewport_id_is_stable_for_serial() {
-        assert_eq!(ReproApp::child_viewport_id(7), ReproApp::child_viewport_id(7));
-        assert_ne!(ReproApp::child_viewport_id(7), ReproApp::child_viewport_id(8));
+        assert_eq!(
+            ReproApp::child_viewport_id(7),
+            ReproApp::child_viewport_id(7)
+        );
+        assert_ne!(
+            ReproApp::child_viewport_id(7),
+            ReproApp::child_viewport_id(8)
+        );
     }
 }

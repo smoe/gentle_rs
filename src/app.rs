@@ -23305,13 +23305,14 @@ Error: `{err}`"
         }
     }
 
-    fn register_window(&mut self, window: Window) -> ViewportId {
+    fn register_window(&mut self, mut window: Window) -> ViewportId {
         let id = format!("Viewport {}", self.viewport_id_counter);
         let id = ViewportId::from_hash_of(id);
         let position = Self::deferred_window_position(self.viewport_id_counter);
         self.viewport_id_counter += 1;
         self.mark_viewport_open_requested(id);
         self.pending_window_initial_positions.insert(id, position);
+        window.set_window_scope_id(format!("{id:?}"));
         self.windows.insert(id, Arc::new(RwLock::new(window)));
         id
     }
@@ -23367,7 +23368,7 @@ Error: `{err}`"
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
-        let builder = egui::ViewportBuilder::default().with_title(window_title);
+        let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if Self::use_immediate_sequence_viewports() {
             ctx.show_viewport_immediate(id, builder, move |ui, class| {
@@ -23386,7 +23387,27 @@ Error: `{err}`"
 
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
-                        w.update(ui.ctx());
+                        if class == egui::ViewportClass::EmbeddedWindow {
+                            let mut open = true;
+                            egui::Window::new(window_title.clone())
+                                .id(egui::Id::new(("hosted_sequence_window", id)))
+                                .open(&mut open)
+                                .resizable(true)
+                                .default_size(Vec2::new(1200.0, 860.0))
+                                .show(ui, |ui| {
+                                    w.update_embedded(ui);
+                                });
+                            if !open {
+                                w.take_close_requested();
+                                if let Ok(mut to_close) = windows_to_close.write() {
+                                    to_close.push(id);
+                                } else {
+                                    eprintln!("W GENtleApp: close-queue lock poisoned");
+                                }
+                            }
+                        } else {
+                            w.update(ui.ctx());
+                        }
                     } else {
                         eprintln!("W GENtleApp: window lock poisoned; skipping update");
                     }
@@ -23432,7 +23453,27 @@ Error: `{err}`"
                 // Draw the window
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
-                        w.update(ctx);
+                        if class == egui::ViewportClass::EmbeddedWindow {
+                            let mut open = true;
+                            egui::Window::new(window_title.clone())
+                                .id(egui::Id::new(("hosted_sequence_window", id)))
+                                .open(&mut open)
+                                .resizable(true)
+                                .default_size(Vec2::new(1200.0, 860.0))
+                                .show(ctx, |ui| {
+                                    w.update_embedded(ui);
+                                });
+                            if !open {
+                                w.take_close_requested();
+                                if let Ok(mut to_close) = windows_to_close.write() {
+                                    to_close.push(id);
+                                } else {
+                                    eprintln!("W GENtleApp: close-queue lock poisoned");
+                                }
+                            }
+                        } else {
+                            w.update(ctx);
+                        }
                     } else {
                         eprintln!("W GENtleApp: window lock poisoned; skipping update");
                     }
@@ -29119,6 +29160,42 @@ Error: `{err}`"
         }
     }
 
+    fn main_workspace_window_id() -> egui::Id {
+        egui::Id::new("main_workspace_hosted_window")
+    }
+
+    fn main_workspace_window_title(&self, project_dirty: bool) -> String {
+        let dirty_marker = if project_dirty { " *" } else { "" };
+        format!("Project — {}{}", self.current_project_name(), dirty_marker)
+    }
+
+    fn render_main_workspace_host(&mut self, ctx: &egui::Context, project_dirty: bool) {
+        let title = self.main_workspace_window_title(project_dirty);
+        egui::Window::new(title)
+            .id(Self::main_workspace_window_id())
+            .collapsible(false)
+            .resizable(true)
+            .default_pos(egui::pos2(24.0, 24.0))
+            .default_size(Vec2::new(1360.0, 900.0))
+            .min_size(Vec2::new(720.0, 420.0))
+            .show(ctx, |ui| {
+                window_backdrop::paint_window_backdrop(
+                    ui,
+                    WindowBackdropKind::Main,
+                    &self.window_backdrops,
+                );
+                with_window_content_inset(ui, |ui| {
+                    self.render_main_lineage(ui);
+                    ui.separator();
+                    if project_dirty {
+                        ui.label("Status: unsaved changes");
+                    } else {
+                        ui.label("Status: saved");
+                    }
+                });
+            });
+    }
+
     fn apply_configuration_external_apps(&mut self) {
         self.configuration_rnapkin_executable =
             self.configuration_rnapkin_executable.trim().to_string();
@@ -32818,19 +32895,10 @@ impl GENtleApp {
                 ctx,
                 egui::CentralPanel::default().frame(egui::Frame::NONE),
                 |ui| {
-                    window_backdrop::paint_window_backdrop(
-                        ui,
-                        WindowBackdropKind::Main,
-                        &self.window_backdrops,
-                    );
-                    with_window_content_inset(ui, |ui| {
-                        self.render_main_lineage(ui);
-                        if project_dirty {
-                            ui.label("Status: unsaved changes");
-                        } else {
-                            ui.label("Status: saved");
-                        }
-                    });
+                    let host_rect = ui.max_rect();
+                    ui.painter()
+                        .rect_filled(host_rect, 0.0, egui::Color32::from_gray(218));
+                    self.render_main_workspace_host(ui.ctx(), project_dirty);
                 },
             );
             self.render_reference_genome_prepare_dialog(ctx);
@@ -36657,6 +36725,20 @@ mod tests {
         assert!(
             !app.pending_viewport_focus_timestamps
                 .contains_key(&viewport_id)
+        );
+    }
+
+    #[test]
+    fn main_workspace_window_title_reflects_project_name_and_dirty_state() {
+        let mut app = GENtleApp::default();
+        assert_eq!(
+            app.main_workspace_window_title(false),
+            "Project — Untitled Project"
+        );
+        app.current_project_path = Some("/tmp/example.project.gentle.json".to_string());
+        assert_eq!(
+            app.main_workspace_window_title(true),
+            "Project — example.project.gentle.json *"
         );
     }
 

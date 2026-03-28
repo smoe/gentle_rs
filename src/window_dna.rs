@@ -111,11 +111,7 @@ impl WindowDna {
         }
     }
 
-    /// Drive one viewport update.
-    ///
-    /// This polls deferred load state, renders viewport-scoped controls, and
-    /// then delegates the actual sequence-window layout to `MainAreaDna`.
-    pub fn update(&mut self, ctx: &egui::Context) {
+    fn poll_deferred_load(&mut self) {
         if let Some(rx) = self.pending_dna_load.as_ref() {
             let recv_result = rx
                 .lock()
@@ -145,6 +141,52 @@ impl WindowDna {
                 }
             }
         }
+    }
+
+    fn render_nav_row(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .button("Help")
+                .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
+                .clicked()
+            {
+                request_open_help_from_native_menu();
+            }
+            if ui
+                .button("Main")
+                .on_hover_text("Bring the main project workspace to front")
+                .clicked()
+            {
+                ui.ctx().send_viewport_cmd_to(
+                    egui::ViewportId::ROOT,
+                    egui::ViewportCommand::Visible(true),
+                );
+                ui.ctx()
+                    .send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
+            }
+            if ui
+                .button("Configuration")
+                .on_hover_text("Open Configuration window on Graphics settings")
+                .clicked()
+            {
+                request_open_graphics_settings_from_native_menu();
+            }
+            if ui
+                .button("Close")
+                .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
+                .clicked()
+            {
+                self.close_requested = true;
+            }
+        });
+    }
+
+    /// Drive one viewport update.
+    ///
+    /// This polls deferred load state, renders viewport-scoped controls, and
+    /// then delegates the actual sequence-window layout to `MainAreaDna`.
+    pub fn update(&mut self, ctx: &egui::Context) {
+        self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
             let open_help_ctrl_f1 =
@@ -172,45 +214,7 @@ impl WindowDna {
                 egui::Panel::top(nav_panel_id).frame(egui::Frame::NONE),
                 |ui| {
                     paint_window_backdrop(ui, kind, &settings);
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button("Help")
-                            .on_hover_text(
-                                "Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)",
-                            )
-                            .clicked()
-                        {
-                            request_open_help_from_native_menu();
-                        }
-                        if ui
-                            .button("Main")
-                            .on_hover_text("Bring the main project window to front")
-                            .clicked()
-                        {
-                            ctx.send_viewport_cmd_to(
-                                egui::ViewportId::ROOT,
-                                egui::ViewportCommand::Visible(true),
-                            );
-                            ctx.send_viewport_cmd_to(
-                                egui::ViewportId::ROOT,
-                                egui::ViewportCommand::Focus,
-                            );
-                        }
-                        if ui
-                            .button("Configuration")
-                            .on_hover_text("Open Configuration window on Graphics settings")
-                            .clicked()
-                        {
-                            request_open_graphics_settings_from_native_menu();
-                        }
-                        if ui
-                            .button("Close")
-                            .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
-                            .clicked()
-                        {
-                            self.close_requested = true;
-                        }
-                    });
+                    self.render_nav_row(ui);
                 },
             );
             if self.pending_dna_load.is_some() {
@@ -253,6 +257,81 @@ impl WindowDna {
         }
     }
 
+    pub fn update_embedded(&mut self, ui: &mut egui::Ui) {
+        self.poll_deferred_load();
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
+            let open_help_ctrl_f1 =
+                egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F1);
+            let open_help_cmd_shift_slash = egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::Slash,
+            );
+            if ui.ctx().input_mut(|i| i.consume_shortcut(&open_help_f1))
+                || ui
+                    .ctx()
+                    .input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
+                || ui
+                    .ctx()
+                    .input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
+            {
+                request_open_help_from_native_menu();
+            }
+            let kind = if self.main_area.opened_from_pool_context() {
+                WindowBackdropKind::Pool
+            } else {
+                WindowBackdropKind::Sequence
+            };
+            let settings = current_window_backdrop_settings();
+            let nav_panel_id =
+                egui::Id::new(("window_dna_nav_embedded", self.main_area.panel_scope_key()));
+            crate::egui_compat::show_top_panel_inside(
+                ui,
+                egui::Panel::top(nav_panel_id).frame(egui::Frame::NONE),
+                |ui| {
+                    paint_window_backdrop(ui, kind, &settings);
+                    self.render_nav_row(ui);
+                },
+            );
+            if self.pending_dna_load.is_some() {
+                crate::egui_compat::show_central_panel_inside(
+                    ui,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
+                        paint_window_backdrop(ui, kind, &settings);
+                        with_window_content_inset(ui, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(48.0);
+                                ui.add(egui::Spinner::new());
+                                ui.add_space(6.0);
+                                ui.label(
+                                    "Opening sequence window: loading sequence content in background...",
+                                );
+                            });
+                        });
+                    },
+                );
+                ui.ctx().request_repaint();
+            } else if let Some(message) = self.deferred_load_message.as_deref() {
+                crate::egui_compat::show_central_panel_inside(
+                    ui,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
+                        paint_window_backdrop(ui, kind, &settings);
+                        with_window_content_inset(ui, |ui| {
+                            ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
+                        });
+                    },
+                );
+            } else {
+                self.main_area.render_inside(ui);
+            }
+        }));
+        if result.is_err() {
+            eprintln!("E WindowDna: recovered from panic while rendering embedded DNA window");
+        }
+    }
+
     pub fn name(&self) -> String {
         self.main_area.window_title()
     }
@@ -265,6 +344,10 @@ impl WindowDna {
         let requested = self.close_requested;
         self.close_requested = false;
         requested
+    }
+
+    pub fn set_window_scope_id(&mut self, scope_id: String) {
+        self.main_area.set_window_scope_id(scope_id);
     }
 
     pub fn selection_range_0based(&self) -> Option<(usize, usize)> {
