@@ -1503,6 +1503,11 @@ Status:
     The GUI `Read effects` table now fetches filtered rows through the same
     engine-owned subset contract used by `rna-reads inspect-alignments`, so
     GUI and shell inspection semantics stay aligned.
+    Saved-report report lists, synthesized progress payloads, and aligned-row
+    inspection subsets are now memoized in the GUI window controller so the
+    foreground RNA-read mapping/splicing windows do not repeatedly deserialize
+    report metadata and rebuild inspection payloads on every repaint while the
+    user is simply scrolling or selecting rows.
   - Score-density histogram bins in Splicing Expert are now actionable:
     clicking a bar creates a formal `score_bin` subset, highlights that bin,
     selects the corresponding saved-report reads, and focuses `Mapped cDNA ->

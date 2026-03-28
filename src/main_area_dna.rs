@@ -753,6 +753,31 @@ struct RnaReadAlignmentEffectSummary {
     seed_passed_but_unaligned: usize,
 }
 
+#[derive(Clone, Debug)]
+struct CachedRnaReadReport {
+    report_id: String,
+    report: Arc<RnaReadInterpretationReport>,
+}
+
+#[derive(Clone, Debug)]
+struct CachedRnaReadReportSummaries {
+    seq_id: String,
+    target_feature_id: usize,
+    summaries: Arc<Vec<RnaReadInterpretationReportSummary>>,
+}
+
+#[derive(Clone, Debug)]
+struct CachedRnaReadProgress {
+    report_id: String,
+    progress: Arc<RnaReadInterpretProgress>,
+}
+
+#[derive(Clone, Debug)]
+struct CachedRnaReadAlignmentInspection {
+    cache_key: String,
+    result: Result<Arc<RnaReadAlignmentInspection>, String>,
+}
+
 impl Default for RnaReadInterpretOpsUiState {
     fn default() -> Self {
         Self {
@@ -4201,6 +4226,131 @@ mod tests {
     }
 
     #[test]
+    fn saved_rna_read_report_payloads_are_cached_and_invalidated_on_commit() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let report = RnaReadInterpretationReport {
+            report_id: "rna_cache_demo".to_string(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 9,
+            read_count_total: 1,
+            read_count_seed_passed: 1,
+            read_count_aligned: 1,
+            score_density_bins: vec![0; 40],
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read0".to_string(),
+                sequence: "ACGTACGT".to_string(),
+                read_length_bp: 8,
+                tested_kmers: 8,
+                matched_kmers: 8,
+                seed_hit_fraction: 1.0,
+                passed_seed_filter: true,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_feature_id: 9,
+                    transcript_id: "TX1".to_string(),
+                    transcript_label: "TX1".to_string(),
+                    strand: "+".to_string(),
+                    query_end_0based_exclusive: 8,
+                    target_start_1based: 1,
+                    target_end_1based: 8,
+                    target_end_offset_0based_exclusive: 8,
+                    matches: 8,
+                    score: 16,
+                    identity_fraction: 1.0,
+                    query_coverage_fraction: 1.0,
+                    ..RnaReadMappingHit::default()
+                }),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        };
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(report.clone())
+            .expect("commit report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_read_evidence_ui.selected_report_id = report.report_id.clone();
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            group_label: "demo".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let summaries_a = area.matching_rna_read_report_summaries_for_splicing_view(&view);
+        let summaries_b = area.matching_rna_read_report_summaries_for_splicing_view(&view);
+        assert!(Arc::ptr_eq(&summaries_a, &summaries_b));
+
+        let saved_report_a = area
+            .current_saved_rna_read_report()
+            .expect("saved report");
+        let saved_report_b = area
+            .current_saved_rna_read_report()
+            .expect("saved report cache");
+        assert!(Arc::ptr_eq(&saved_report_a, &saved_report_b));
+
+        let progress_a = area
+            .current_rna_read_evidence_progress_for_view(&view, Some(saved_report_a.as_ref()))
+            .expect("cached progress");
+        let progress_b = area
+            .current_rna_read_evidence_progress_for_view(&view, Some(saved_report_a.as_ref()))
+            .expect("cached progress");
+        assert!(Arc::ptr_eq(&progress_a, &progress_b));
+
+        let inspection_a = area
+            .current_saved_rna_read_alignment_inspection(saved_report_a.hits.len(), None)
+            .expect("inspection");
+        let inspection_b = area
+            .current_saved_rna_read_alignment_inspection(saved_report_a.hits.len(), None)
+            .expect("inspection cache");
+        assert!(Arc::ptr_eq(&inspection_a, &inspection_b));
+
+        let mut updated_report = report.clone();
+        updated_report.read_count_total = 2;
+        updated_report.read_count_seed_passed = 2;
+        updated_report.hits.push(RnaReadInterpretationHit {
+            record_index: 1,
+            header_id: "read1".to_string(),
+            sequence: "ACGTACGA".to_string(),
+            read_length_bp: 8,
+            tested_kmers: 8,
+            matched_kmers: 7,
+            seed_hit_fraction: 0.875,
+            passed_seed_filter: true,
+            ..RnaReadInterpretationHit::default()
+        });
+        area.commit_completed_rna_read_task_outcome(RnaReadTaskOutcome::Interpret(updated_report))
+            .expect("commit updated report");
+
+        let summaries_c = area.matching_rna_read_report_summaries_for_splicing_view(&view);
+        assert!(!Arc::ptr_eq(&summaries_a, &summaries_c));
+        let saved_report_c = area
+            .current_saved_rna_read_report()
+            .expect("refreshed saved report");
+        assert!(!Arc::ptr_eq(&saved_report_a, &saved_report_c));
+        let progress_c = area
+            .current_rna_read_evidence_progress_for_view(&view, Some(saved_report_c.as_ref()))
+            .expect("refreshed progress");
+        assert!(!Arc::ptr_eq(&progress_a, &progress_c));
+        assert_eq!(progress_c.reads_processed, 2);
+    }
+
+    #[test]
     fn select_rna_read_report_score_bin_record_indices_matches_requested_bin() {
         let report = RnaReadInterpretationReport {
             hits: vec![
@@ -5790,6 +5940,10 @@ pub struct MainAreaDna {
     primer_design_task: Option<PrimerDesignTask>,
     rna_read_task: Option<RnaReadTask>,
     rna_read_progress: Option<RnaReadInterpretProgress>,
+    cached_saved_rna_read_report: Option<CachedRnaReadReport>,
+    cached_rna_read_report_summaries: Option<CachedRnaReadReportSummaries>,
+    cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
+    cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     rna_read_statistics_tab: RnaReadEvidenceSourceTab,
     rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview,
     rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter,
@@ -6153,6 +6307,10 @@ impl MainAreaDna {
             primer_design_task: None,
             rna_read_task: None,
             rna_read_progress: None,
+            cached_saved_rna_read_report: None,
+            cached_rna_read_report_summaries: None,
+            cached_saved_rna_read_progress: None,
+            cached_rna_read_alignment_inspections: vec![],
             rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
             rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview::ReadEffects,
             rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter::AllAligned,
@@ -18791,7 +18949,7 @@ impl MainAreaDna {
                     .unwrap_or_else(|| "<none>".to_string()),
             )
             .show_ui(ui, |ui| {
-                for row in &summaries {
+                for row in summaries.iter() {
                     persist_ui_state |= ui
                         .selectable_value(
                             &mut self.rna_read_evidence_ui.selected_report_id,
@@ -18847,8 +19005,8 @@ impl MainAreaDna {
         }
 
         let progress =
-            self.current_rna_read_evidence_progress_for_view(view, selected_report.as_ref());
-        if let Some(progress) = progress.as_ref() {
+            self.current_rna_read_evidence_progress_for_view(view, selected_report.as_deref());
+        if let Some(progress) = progress.as_deref() {
             if progress.bins.is_empty() {
                 ui.small(
                     egui::RichText::new(
@@ -19510,36 +19668,87 @@ impl MainAreaDna {
         }
     }
 
-    fn get_saved_rna_read_report_by_id(
-        &self,
+    fn invalidate_rna_read_report_display_cache(&mut self) {
+        self.cached_saved_rna_read_report = None;
+        self.cached_rna_read_report_summaries = None;
+        self.cached_saved_rna_read_progress = None;
+        self.cached_rna_read_alignment_inspections.clear();
+    }
+
+    fn rna_read_alignment_inspection_cache_key(
         report_id: &str,
-    ) -> Option<RnaReadInterpretationReport> {
+        limit: usize,
+        subset_spec: Option<&RnaReadAlignmentInspectionSubsetSpec>,
+    ) -> String {
+        let subset_spec_json = subset_spec
+            .and_then(|spec| serde_json::to_string(spec).ok())
+            .unwrap_or_else(|| "null".to_string());
+        format!("report={report_id}|limit={}|subset={subset_spec_json}", limit.max(1))
+    }
+
+    fn get_saved_rna_read_report_by_id(
+        &mut self,
+        report_id: &str,
+    ) -> Option<Arc<RnaReadInterpretationReport>> {
         let report_id = report_id.trim();
         if report_id.is_empty() {
             return None;
         }
-        let engine = self.engine.as_ref()?;
-        let guard = engine.read().ok()?;
-        guard.get_rna_read_report(report_id).ok()
+        if let Some(cached) = self.cached_saved_rna_read_report.as_ref()
+            && cached.report_id.eq_ignore_ascii_case(report_id)
+        {
+            return Some(cached.report.clone());
+        }
+        let report = {
+            let engine = self.engine.as_ref()?;
+            let guard = engine.read().ok()?;
+            Arc::new(guard.get_rna_read_report(report_id).ok()?)
+        };
+        self.cached_saved_rna_read_report = Some(CachedRnaReadReport {
+            report_id: report_id.to_string(),
+            report: report.clone(),
+        });
+        if self
+            .cached_saved_rna_read_progress
+            .as_ref()
+            .is_some_and(|cached| !cached.report_id.eq_ignore_ascii_case(report_id))
+        {
+            self.cached_saved_rna_read_progress = None;
+        }
+        Some(report)
     }
 
     fn matching_rna_read_report_summaries_for_splicing_view(
-        &self,
+        &mut self,
         view: &SplicingExpertView,
-    ) -> Vec<RnaReadInterpretationReportSummary> {
-        let Some(engine) = self.engine.as_ref() else {
-            return vec![];
+    ) -> Arc<Vec<RnaReadInterpretationReportSummary>> {
+        if let Some(cached) = self.cached_rna_read_report_summaries.as_ref()
+            && cached.seq_id == view.seq_id
+            && cached.target_feature_id == view.target_feature_id
+        {
+            return cached.summaries.clone();
+        }
+        let mut rows = {
+            let Some(engine) = self.engine.as_ref() else {
+                return Arc::new(vec![]);
+            };
+            let Ok(guard) = engine.read() else {
+                return Arc::new(vec![]);
+            };
+            guard.list_rna_read_reports(Some(&view.seq_id))
         };
-        let Ok(guard) = engine.read() else {
-            return vec![];
-        };
-        let mut rows = guard.list_rna_read_reports(Some(&view.seq_id));
         rows.retain(|row| row.seed_feature_id == view.target_feature_id);
         rows.sort_by(|left, right| {
             right
                 .generated_at_unix_ms
                 .cmp(&left.generated_at_unix_ms)
                 .then_with(|| left.report_id.cmp(&right.report_id))
+        });
+        let rows = Arc::new(rows);
+        self.cached_rna_read_report_summaries = Some(CachedRnaReadReportSummaries {
+            seq_id: view.seq_id.clone(),
+            target_feature_id: view.target_feature_id,
+            summaries: rows.clone(),
         });
         rows
     }
@@ -19551,7 +19760,7 @@ impl MainAreaDna {
     }
 
     fn latest_rna_read_report_id_for_splicing_view(
-        &self,
+        &mut self,
         view: &SplicingExpertView,
     ) -> Option<String> {
         let summaries = self.matching_rna_read_report_summaries_for_splicing_view(view);
@@ -19561,7 +19770,7 @@ impl MainAreaDna {
     fn ensure_selected_rna_read_evidence_report_for_view(
         &mut self,
         view: &SplicingExpertView,
-    ) -> Vec<RnaReadInterpretationReportSummary> {
+    ) -> Arc<Vec<RnaReadInterpretationReportSummary>> {
         let summaries = self.matching_rna_read_report_summaries_for_splicing_view(view);
         let selected = self.rna_read_evidence_ui.selected_report_id.trim();
         let selected_matches = !selected.is_empty()
@@ -19576,33 +19785,62 @@ impl MainAreaDna {
         summaries
     }
 
-    fn current_saved_rna_read_report(&self) -> Option<RnaReadInterpretationReport> {
+    fn current_saved_rna_read_report(&mut self) -> Option<Arc<RnaReadInterpretationReport>> {
         self.selected_rna_read_evidence_report_id()
             .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
     }
 
     fn current_saved_rna_read_alignment_inspection(
-        &self,
+        &mut self,
         limit: usize,
         subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
-    ) -> Result<RnaReadAlignmentInspection, String> {
+    ) -> Result<Arc<RnaReadAlignmentInspection>, String> {
         let report_id = self
             .selected_rna_read_evidence_report_id()
             .ok_or_else(|| "Select a Report first before inspecting aligned reads".to_string())?;
-        let Some(engine) = &self.engine else {
-            return Err("No engine attached".to_string());
+        let cache_key = Self::rna_read_alignment_inspection_cache_key(
+            &report_id,
+            limit,
+            subset_spec.as_ref(),
+        );
+        if let Some(cached) = self
+            .cached_rna_read_alignment_inspections
+            .iter()
+            .find(|row| row.cache_key == cache_key)
+        {
+            return cached
+                .result
+                .as_ref()
+                .map(Arc::clone)
+                .map_err(Clone::clone);
+        }
+        let result = {
+            let Some(engine) = &self.engine else {
+                return Err("No engine attached".to_string());
+            };
+            engine
+                .read()
+                .map_err(|_| "Engine lock poisoned while inspecting RNA-read alignments".to_string())?
+                .inspect_rna_read_alignments_with_subset(
+                    &report_id,
+                    RnaReadHitSelection::All,
+                    limit.max(1),
+                    subset_spec,
+                )
+                .map(Arc::new)
+                .map_err(|error| error.message)
         };
-        let guard = engine
-            .read()
-            .map_err(|_| "Engine lock poisoned while inspecting RNA-read alignments".to_string())?;
-        guard
-            .inspect_rna_read_alignments_with_subset(
-                &report_id,
-                RnaReadHitSelection::All,
-                limit.max(1),
-                subset_spec,
-            )
-            .map_err(|error| error.message)
+        if let Ok(inspection) = &result {
+            self.cached_rna_read_alignment_inspections
+                .push(CachedRnaReadAlignmentInspection {
+                    cache_key,
+                    result: Ok(inspection.clone()),
+                });
+            if self.cached_rna_read_alignment_inspections.len() > 8 {
+                self.cached_rna_read_alignment_inspections.remove(0);
+            }
+        }
+        result
     }
 
     fn selected_highlighted_rna_report_hit<'a>(
@@ -19732,9 +19970,14 @@ impl MainAreaDna {
     }
 
     fn synthesize_rna_read_progress_from_report(
-        &self,
+        &mut self,
         report: &RnaReadInterpretationReport,
-    ) -> RnaReadInterpretProgress {
+    ) -> Arc<RnaReadInterpretProgress> {
+        if let Some(cached) = self.cached_saved_rna_read_progress.as_ref()
+            && cached.report_id.eq_ignore_ascii_case(&report.report_id)
+        {
+            return cached.progress.clone();
+        }
         let mut lengths = report
             .hits
             .iter()
@@ -19774,7 +20017,7 @@ impl MainAreaDna {
             .ok();
         let (mapped_exon_support_frequencies, mapped_junction_support_frequencies) = inspection
             .as_ref()
-            .map(Self::mapped_support_frequencies_from_inspection)
+            .map(|inspection| Self::mapped_support_frequencies_from_inspection(inspection.as_ref()))
             .unwrap_or_else(|| (vec![], vec![]));
         let reads_with_transition_support = report
             .hits
@@ -19796,7 +20039,7 @@ impl MainAreaDna {
             .iter()
             .map(|hit| hit.matched_kmers)
             .sum::<usize>();
-        RnaReadInterpretProgress {
+        let progress = Arc::new(RnaReadInterpretProgress {
             seq_id: report.seq_id.clone(),
             reads_processed: total_reads,
             reads_total: total_reads,
@@ -19831,7 +20074,12 @@ impl MainAreaDna {
             transition_confirmations,
             junction_crossing_seed_bits_indexed: 0,
             origin_class_counts: report.origin_class_counts.clone(),
-        }
+        });
+        self.cached_saved_rna_read_progress = Some(CachedRnaReadProgress {
+            report_id: report.report_id.clone(),
+            progress: progress.clone(),
+        });
+        progress
     }
 
     fn active_rna_read_task_matches_splicing_view(&self, view: &SplicingExpertView) -> bool {
@@ -19844,10 +20092,10 @@ impl MainAreaDna {
     }
 
     fn current_rna_read_evidence_progress_for_view(
-        &self,
+        &mut self,
         view: &SplicingExpertView,
         report: Option<&RnaReadInterpretationReport>,
-    ) -> Option<RnaReadInterpretProgress> {
+    ) -> Option<Arc<RnaReadInterpretProgress>> {
         let selected_report_matches_active = self
             .rna_read_task
             .as_ref()
@@ -19861,7 +20109,7 @@ impl MainAreaDna {
             && selected_report_matches_active
             && let Some(progress) = self.rna_read_progress.clone()
         {
-            return Some(progress);
+            return Some(Arc::new(progress));
         }
         report.map(|row| self.synthesize_rna_read_progress_from_report(row))
     }
@@ -19965,7 +20213,7 @@ impl MainAreaDna {
         }
     }
 
-    fn current_rna_read_alignment_subset_spec(&self) -> RnaReadAlignmentInspectionSubsetSpec {
+    fn current_rna_read_alignment_subset_spec(&mut self) -> RnaReadAlignmentInspectionSubsetSpec {
         let score_bin_count = self
             .current_saved_rna_read_report()
             .map(|report| report.score_density_bins.len().max(40))
@@ -22161,30 +22409,36 @@ impl MainAreaDna {
         &mut self,
         outcome: RnaReadTaskOutcome,
     ) -> Result<OpResult, EngineError> {
-        let Some(engine) = self.engine.as_ref() else {
-            return Err(EngineError {
+        let result = {
+            let Some(engine) = self.engine.as_ref() else {
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "No engine attached while finalizing RNA-read task".to_string(),
+                });
+            };
+            let mut guard = engine.write().map_err(|_| EngineError {
                 code: ErrorCode::Internal,
-                message: "No engine attached while finalizing RNA-read task".to_string(),
-            });
+                message: "Engine lock poisoned while finalizing RNA-read task".to_string(),
+            })?;
+            match outcome {
+                RnaReadTaskOutcome::Interpret(report) => guard.commit_rna_read_report(report),
+                RnaReadTaskOutcome::Align {
+                    report,
+                    selection,
+                    align_config_override,
+                    selected_record_indices,
+                } => guard.commit_aligned_rna_read_report(
+                    report,
+                    selection,
+                    align_config_override,
+                    selected_record_indices,
+                ),
+            }
         };
-        let mut guard = engine.write().map_err(|_| EngineError {
-            code: ErrorCode::Internal,
-            message: "Engine lock poisoned while finalizing RNA-read task".to_string(),
-        })?;
-        match outcome {
-            RnaReadTaskOutcome::Interpret(report) => guard.commit_rna_read_report(report),
-            RnaReadTaskOutcome::Align {
-                report,
-                selection,
-                align_config_override,
-                selected_record_indices,
-            } => guard.commit_aligned_rna_read_report(
-                report,
-                selection,
-                align_config_override,
-                selected_record_indices,
-            ),
+        if result.is_ok() {
+            self.invalidate_rna_read_report_display_cache();
         }
+        result
     }
 
     fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
@@ -23174,7 +23428,7 @@ impl MainAreaDna {
                     ui,
                     view,
                     progress,
-                    saved_report.as_ref(),
+                    saved_report.as_deref(),
                     allow_mapping_actions,
                 );
             }
@@ -23182,7 +23436,7 @@ impl MainAreaDna {
                 self.render_rna_read_mapped_aggregate_support_tables(
                     ui,
                     progress,
-                    saved_report.as_ref(),
+                    saved_report.as_deref(),
                 );
             }
         }
@@ -23399,9 +23653,10 @@ impl MainAreaDna {
                 self.rna_read_alignment_effect_search.clear();
             }
         });
+        let current_subset_spec = self.current_rna_read_alignment_subset_spec();
         let filtered_inspection = match self.current_saved_rna_read_alignment_inspection(
             report.hits.len(),
-            Some(self.current_rna_read_alignment_subset_spec()),
+            Some(current_subset_spec),
         ) {
             Ok(inspection) => inspection,
             Err(message) => {
@@ -24367,15 +24622,17 @@ impl MainAreaDna {
         });
         let exon_contributors = inspection
             .as_ref()
-            .map(Self::collect_rna_read_mapped_exon_contributors)
+            .map(|inspection| Self::collect_rna_read_mapped_exon_contributors(inspection.as_ref()))
             .unwrap_or_default();
         let junction_contributors = inspection
             .as_ref()
-            .map(Self::collect_rna_read_mapped_junction_contributors)
+            .map(|inspection| {
+                Self::collect_rna_read_mapped_junction_contributors(inspection.as_ref())
+            })
             .unwrap_or_default();
         let isoform_contributors = inspection
             .as_ref()
-            .map(Self::collect_rna_read_mapped_isoform_contributors)
+            .map(|inspection| Self::collect_rna_read_mapped_isoform_contributors(inspection.as_ref()))
             .unwrap_or_default();
         if inspection.is_some() {
             ui.small(
@@ -25392,6 +25649,7 @@ impl MainAreaDna {
     }
 
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
+        self.invalidate_rna_read_report_display_cache();
         if let Some(preview) = result.protocol_cartoon_preview.as_ref() {
             self.last_protocol_cartoon_preview = Some(preview.clone());
             self.last_protocol_cartoon_preview_op_id = result.op_id.clone();
