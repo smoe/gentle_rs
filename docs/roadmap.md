@@ -1431,6 +1431,9 @@ Status:
     - live RNA-read progress no longer streams into the DNA sequence window
       status line while the mapping workspace is running; the dedicated
       `RNA-read Mapping` workspace now owns that live-run feedback surface.
+    - completed RNA-read report summaries and mapping-workspace-triggered
+      action feedback now also stay in that dedicated workspace instead of
+      surfacing as status text in the underlying DNA viewer.
     - the workspace now states the effective region/gene selection explicitly
       (`target gene` vs `all overlapping genes`, plus sparse target-gene list
       when configured) so users can see which biological working set a run

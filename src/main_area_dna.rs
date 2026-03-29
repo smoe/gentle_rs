@@ -1503,6 +1503,63 @@ mod tests {
     }
 
     #[test]
+    fn completed_rna_read_task_routes_final_status_to_mapping_workspace() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.show_rna_read_mapping_window = true;
+        area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        }));
+        area.op_status = "keep this status in the DNA window".to_string();
+        let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+        area.rna_read_task = Some(RnaReadTask {
+            started: Instant::now(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 9,
+            report_id_hint: Some("rna_report".to_string()),
+            input_path: "reads.fa.gz".to_string(),
+            operation_label: "Nanopore interpretation".to_string(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: Arc::new(Mutex::new(rx)),
+        });
+        tx.send(RnaReadTaskMessage::Done(Ok(RnaReadTaskOutcome::Interpret(
+            RnaReadInterpretationReport {
+                report_id: "rna_report".to_string(),
+                seq_id: "seq1".to_string(),
+                input_path: "reads.fa.gz".to_string(),
+                read_count_total: 1,
+                ..RnaReadInterpretationReport::default()
+            },
+        ))))
+        .expect("send outcome");
+
+        area.poll_rna_read_task(&egui::Context::default());
+
+        assert_eq!(area.op_status, "keep this status in the DNA window");
+        assert!(
+            area.rna_read_mapping_status
+                .contains("RNA-read report 'rna_report'")
+        );
+    }
+
+    #[test]
     fn commit_completed_rna_read_task_outcome_persists_report_on_ui_thread() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -5935,6 +5992,7 @@ pub struct MainAreaDna {
     rna_seed_overlay_exonic_coords: bool,
     rna_stream_eta_text: Option<String>,
     rna_stream_eta_reads_processed: usize,
+    rna_read_mapping_status: String,
     vcf_display_required_info_keys: String,
     isoform_panel_path: String,
     isoform_panel_id: String,
@@ -6303,6 +6361,7 @@ impl MainAreaDna {
             rna_seed_overlay_exonic_coords: false,
             rna_stream_eta_text: None,
             rna_stream_eta_reads_processed: 0,
+            rna_read_mapping_status: String::new(),
             vcf_display_required_info_keys: String::new(),
             isoform_panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
             isoform_panel_id: "tp53_isoforms_v1".to_string(),
@@ -13796,6 +13855,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
     ) {
+        let previous_op_status = self.op_status.clone();
         let mut persist_ui_state = false;
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -13822,6 +13882,7 @@ impl MainAreaDna {
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
+        self.render_rna_read_mapping_status(ui);
         ui.add_space(4.0);
         let nanopore_header = egui::CollapsingHeader::new("Nanopore cDNA interpretation")
             .default_open(false)
@@ -15099,6 +15160,7 @@ impl MainAreaDna {
         if persist_ui_state {
             self.save_engine_ops_state();
         }
+        self.capture_rna_read_mapping_workspace_status(previous_op_status, true);
         ui.separator();
     }
 
@@ -15373,6 +15435,53 @@ impl MainAreaDna {
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_rna_read_mapping_window = false;
             }
+        });
+    }
+
+    fn rna_read_mapping_workspace_matches_task(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+    ) -> bool {
+        self.show_rna_read_mapping_window
+            && self
+                .rna_read_mapping_window_view
+                .as_ref()
+                .map(|view| view.seq_id == seq_id && view.target_feature_id == seed_feature_id)
+                .unwrap_or(false)
+    }
+
+    fn capture_rna_read_mapping_workspace_status(
+        &mut self,
+        previous_op_status: String,
+        route_to_workspace: bool,
+    ) {
+        if route_to_workspace && self.op_status != previous_op_status {
+            self.rna_read_mapping_status = self.op_status.clone();
+            self.op_status = previous_op_status;
+        }
+    }
+
+    fn render_rna_read_mapping_status(&self, ui: &mut egui::Ui) {
+        if self.rna_read_mapping_status.trim().is_empty() {
+            return;
+        }
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("Workspace status")
+                        .strong()
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(&self.rna_read_mapping_status)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                )
+                .wrap(),
+            );
         });
     }
 
@@ -17610,7 +17719,7 @@ impl MainAreaDna {
         }
 
         if let Some(done) = done {
-            let (started, cancel_requested, operation_label) = self
+            let (started, cancel_requested, operation_label, route_status_to_workspace) = self
                 .rna_read_task
                 .as_ref()
                 .map(|task| {
@@ -17618,9 +17727,14 @@ impl MainAreaDna {
                         task.started,
                         task.cancel_requested.load(AtomicOrdering::Relaxed),
                         task.operation_label.clone(),
+                        self.rna_read_mapping_workspace_matches_task(
+                            &task.seq_id,
+                            task.seed_feature_id,
+                        ),
                     )
                 })
-                .unwrap_or_else(|| (Instant::now(), false, "RNA-read task".to_string()));
+                .unwrap_or_else(|| (Instant::now(), false, "RNA-read task".to_string(), false));
+            let previous_op_status = self.op_status.clone();
             self.rna_read_task = None;
             match done {
                 Ok(outcome) => match self.commit_completed_rna_read_task_outcome(outcome) {
@@ -17641,6 +17755,10 @@ impl MainAreaDna {
                     }
                 }
             }
+            self.capture_rna_read_mapping_workspace_status(
+                previous_op_status,
+                route_status_to_workspace,
+            );
         }
     }
 

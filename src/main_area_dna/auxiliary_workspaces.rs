@@ -3926,6 +3926,7 @@ impl MainAreaDna {
         self.rna_read_mapping_window_feature_id = Some(view.target_feature_id);
         self.rna_read_mapping_window_view = Some(Arc::new(view.clone()));
         self.show_rna_read_mapping_window = true;
+        self.rna_read_mapping_status.clear();
         if self.rna_reads_ui.report_id.trim().is_empty()
             && let Some(report_id) = desired_report_id
         {

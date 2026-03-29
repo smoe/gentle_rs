@@ -477,6 +477,9 @@ Feature tree grouping:
   - live RNA-read progress stays in the dedicated `RNA-read Mapping` workspace;
     it no longer rewrites the DNA sequence window status line while the
     sequence window is only acting as the launcher/context holder
+  - completed RNA-read report summaries and workspace-triggered mapping actions
+    now also stay in the dedicated `RNA-read Mapping` workspace status area
+    instead of leaking into the underlying DNA sequence viewer status line
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
   - if `Report ID` is left empty, a default ID is derived from the input file
