@@ -3475,6 +3475,23 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_window_uses_compact_layout_without_loaded_payload() {
+        let compact_default = MainAreaDna::dotplot_window_default_size(false);
+        let loaded_default = MainAreaDna::dotplot_window_default_size(true);
+        let compact_min = MainAreaDna::dotplot_window_min_size(false);
+        let loaded_min = MainAreaDna::dotplot_window_min_size(true);
+        let compact_content = MainAreaDna::dotplot_window_content_min_size(false);
+        let loaded_content = MainAreaDna::dotplot_window_content_min_size(true);
+
+        assert_eq!(compact_default.x, loaded_default.x);
+        assert!(compact_default.y < loaded_default.y);
+        assert!(compact_min.y < loaded_min.y);
+        assert_eq!(compact_content.x, loaded_content.x);
+        assert_eq!(compact_content.y, 0.0);
+        assert!(compact_content.y < loaded_content.y);
+    }
+
+    #[test]
     fn current_engine_ops_state_records_primary_map_mode() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, None, None);
@@ -17501,6 +17518,30 @@ impl MainAreaDna {
         format!("Dotplot - {seq_id}")
     }
 
+    fn dotplot_window_default_size(has_loaded_payload: bool) -> Vec2 {
+        if has_loaded_payload {
+            Vec2::new(1240.0, 820.0)
+        } else {
+            Vec2::new(1240.0, 520.0)
+        }
+    }
+
+    fn dotplot_window_min_size(has_loaded_payload: bool) -> Vec2 {
+        if has_loaded_payload {
+            Vec2::new(900.0, 560.0)
+        } else {
+            Vec2::new(900.0, 380.0)
+        }
+    }
+
+    fn dotplot_window_content_min_size(has_loaded_payload: bool) -> Vec2 {
+        if has_loaded_payload {
+            Vec2::new(980.0, 680.0)
+        } else {
+            Vec2::new(980.0, 0.0)
+        }
+    }
+
     fn open_dotplot_window(&mut self) {
         self.ensure_dotplot_cache_current();
         self.show_dotplot_window = true;
@@ -17565,6 +17606,11 @@ impl MainAreaDna {
         if !self.show_dotplot_window {
             return;
         }
+        self.ensure_dotplot_cache_current();
+        let has_loaded_payload = self.dotplot_cached_view.is_some();
+        let default_size = Self::dotplot_window_default_size(has_loaded_payload);
+        let min_size = Self::dotplot_window_min_size(has_loaded_payload);
+        let content_min_size = Self::dotplot_window_content_min_size(has_loaded_payload);
         let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() else {
             self.show_dotplot_window = false;
             return;
@@ -17573,8 +17619,8 @@ impl MainAreaDna {
         let viewport_id = Self::dotplot_viewport_id(&viewport_seq_id);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([1240.0, 820.0])
-            .with_min_inner_size([900.0, 560.0]);
+            .with_inner_size([default_size.x, default_size.y])
+            .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_dotplot_window;
@@ -17585,7 +17631,7 @@ impl MainAreaDna {
                     )))
                     .open(&mut open)
                     .resizable(true)
-                    .default_size(Vec2::new(1240.0, 820.0))
+                    .default_size(default_size)
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
@@ -17600,7 +17646,7 @@ impl MainAreaDna {
                                     ui,
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
-                                ui.set_min_size(Vec2::new(980.0, 680.0));
+                                ui.set_min_size(content_min_size);
                                 self.render_dotplot_workspace_ui(ui);
                             });
                     });
@@ -17622,7 +17668,7 @@ impl MainAreaDna {
                             ui,
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
-                        ui.set_min_size(Vec2::new(980.0, 680.0));
+                        ui.set_min_size(content_min_size);
                         self.render_dotplot_workspace_ui(ui);
                     });
             });

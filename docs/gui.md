@@ -205,6 +205,9 @@ Primary map modes (linear topology):
         shown)
     - `dotplot_id` / `flex_track_id` selection
   - full parameter editing and plot inspection now live in the standalone window:
+    - before a dotplot payload is loaded, the standalone window stays in a
+      compact settings-first layout instead of reserving the full plot canvas
+      height
     - self modes: `self_forward`, `self_reverse_complement`
     - pair modes: `pair_forward`, `pair_reverse_complement`
       - pair modes require `reference_seq_id`
