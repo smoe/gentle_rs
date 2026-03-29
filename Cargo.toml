@@ -107,6 +107,17 @@ objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSM
 [build-dependencies]
 winres = "0.1"
 
+[profile.dev]
+# Favor faster local iteration for the large GUI crate. Keep line-table debug
+# info for stack traces, but avoid generating full dependency debuginfo on
+# every edit/relink.
+debug = 1
+incremental = true
+codegen-units = 256
+
+[profile.dev.package."*"]
+debug = 0
+
 [profile.release]
 opt-level = 3
 lto = 'fat'
