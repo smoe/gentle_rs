@@ -3674,6 +3674,46 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_mapping_embedded_window_registers_visible_window_area() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            MainAreaDna::rna_read_mapping_embedded_window_id(&view),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.show_rna_read_mapping_window = true;
+        area.render_rna_read_mapping_embedded_window_shell(
+            &ctx,
+            &MainAreaDna::rna_read_mapping_window_title(&view),
+            &view,
+            MainAreaDna::rna_read_mapping_window_default_size(),
+            MainAreaDna::rna_read_mapping_window_content_min_size(),
+        );
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_dotplot_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -13811,8 +13851,11 @@ impl MainAreaDna {
             ] {
                 ui.small(group_label);
                 for (strand_label, is_target_strand) in [("indexed", true), ("indexed", false)] {
-                    let included =
-                        Self::rna_read_scope_cell_included(scope, is_target_group, is_target_strand);
+                    let included = Self::rna_read_scope_cell_included(
+                        scope,
+                        is_target_group,
+                        is_target_strand,
+                    );
                     let (label, color) = if included {
                         (strand_label, egui::Color32::from_rgb(21, 128, 61))
                     } else {
@@ -13843,9 +13886,7 @@ impl MainAreaDna {
                 "Gene expansion mode `multi_gene_sparse` is still one run: it adds transcript templates from the explicit Target genes list on top of the current target gene/group."
             }
         };
-        ui.small(
-            egui::RichText::new(expansion_note).color(egui::Color32::from_rgb(100, 116, 139)),
-        );
+        ui.small(egui::RichText::new(expansion_note).color(egui::Color32::from_rgb(100, 116, 139)));
     }
 
     fn dotplot_window_identity_seq_id(&self) -> Option<String> {
@@ -17604,6 +17645,81 @@ impl MainAreaDna {
         format!("RNA-read Mapping - {} ({})", view.group_label, view.seq_id)
     }
 
+    fn rna_read_mapping_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
+        egui::Id::new(format!(
+            "rna_read_mapping_window_embedded_{}_{}",
+            view.seq_id, view.target_feature_id
+        ))
+    }
+
+    fn render_rna_read_mapping_embedded_window_shell(
+        &mut self,
+        ctx: &egui::Context,
+        title: &str,
+        view: &SplicingExpertView,
+        default_size: Vec2,
+        content_min_size: Vec2,
+    ) {
+        let mut open = self.show_rna_read_mapping_window;
+        egui::Window::new(title)
+            .id(Self::rna_read_mapping_embedded_window_id(view))
+            .open(&mut open)
+            .resizable(true)
+            .default_size(default_size)
+            .show(ctx, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "rna_read_mapping_scroll_embedded_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(content_min_size);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new("Workspace guide [?]")
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                            )
+                            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+                            ui.label(
+                                egui::RichText::new(
+                                    "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
+                                )
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                            );
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            if ui
+                                .button("Show in Splicing Expert")
+                                .on_hover_text(
+                                    "Jump back to the Splicing Expert with the current mapping report selected.",
+                                )
+                                .clicked()
+                            {
+                                self.show_splicing_expert_for_rna_read_mapping_view();
+                            }
+                            ui.small(
+                                egui::RichText::new(format!(
+                                    "Locus: {} | feature n-{}",
+                                    view.seq_id, view.target_feature_id
+                                ))
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                            );
+                        });
+                        self.render_rna_read_mapping_workspace_controls(ui, view);
+                    });
+            });
+        self.show_rna_read_mapping_window = open;
+    }
+
     fn open_rna_read_mapping_workspace_for_view(&mut self, view: &SplicingExpertView) {
         let desired_report_id = self
             .selected_rna_read_evidence_report_id()
@@ -19504,57 +19620,13 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    let backdrop_settings = current_window_backdrop_settings();
-                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                    egui::ScrollArea::both()
-                        .id_salt(format!(
-                            "rna_read_mapping_scroll_embedded_{}_{}",
-                            view.seq_id, view.target_feature_id
-                        ))
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            ui.set_min_size(content_min_size);
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    egui::RichText::new("Workspace guide [?]")
-                                        .size(9.0)
-                                        .color(egui::Color32::from_rgb(71, 85, 105)),
-                                )
-                                .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-                                ui.label(
-                                    egui::RichText::new(
-                                        "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
-                                    )
-                                    .size(9.0)
-                                    .color(egui::Color32::from_rgb(100, 116, 139)),
-                                );
-                            });
-                            ui.horizontal_wrapped(|ui| {
-                                if ui
-                                    .button("Show in Splicing Expert")
-                                    .on_hover_text(
-                                        "Jump back to the Splicing Expert with the current mapping report selected.",
-                                    )
-                                    .clicked()
-                                {
-                                    self.show_splicing_expert_for_rna_read_mapping_view();
-                                }
-                                ui.small(
-                                    egui::RichText::new(format!(
-                                        "Locus: {} | feature n-{}",
-                                        view.seq_id, view.target_feature_id
-                                    ))
-                                    .color(egui::Color32::from_rgb(100, 116, 139)),
-                                );
-                            });
-                            self.render_rna_read_mapping_workspace_controls(ui, &view);
-                        });
-                });
+                self.render_rna_read_mapping_embedded_window_shell(
+                    ctx,
+                    &title,
+                    &view,
+                    default_size,
+                    content_min_size,
+                );
                 if self.active_rna_read_task_matches_splicing_view(&view) {
                     ctx.request_repaint_after(repaint_delay);
                 }
@@ -23828,9 +23900,7 @@ impl MainAreaDna {
                         .as_ref()
                         .map(|report| {
                             Self::select_rna_read_report_score_bin_record_indices(
-                                report,
-                                idx,
-                                bin_count,
+                                report, idx, bin_count,
                             )
                             .len()
                         })
@@ -23855,9 +23925,8 @@ impl MainAreaDna {
         {
             let tested_count = progress.score_density_bins.get(idx).copied().unwrap_or(0);
             if let Some(report) = saved_report {
-                let selected_record_indices = Self::select_rna_read_report_score_bin_record_indices(
-                    &report, idx, bin_count,
-                );
+                let selected_record_indices =
+                    Self::select_rna_read_report_score_bin_record_indices(&report, idx, bin_count);
                 self.rna_read_alignment_effect_score_bin_index = Some(idx);
                 self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
                 self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
@@ -25514,60 +25583,62 @@ impl MainAreaDna {
         allow_mapping_actions: bool,
     ) -> Option<Option<usize>> {
         let saved_report = self.current_saved_rna_read_report();
-        let (mut preview_rows, using_saved_report_score_bin, preview_header, preview_note) =
-            if self.rna_read_task.is_none() {
-                if let (Some(report), Some(score_bin_index)) = (
-                    saved_report.as_ref(),
-                    self.rna_read_alignment_effect_score_bin_index,
-                ) {
-                    let bin_count = report
-                        .score_density_bins
-                        .len()
-                        .max(progress.score_density_bins.len())
-                        .max(40);
-                    let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
-                        report,
-                        score_bin_index,
-                        bin_count,
-                    );
-                    let tested_count = progress
-                        .score_density_bins
-                        .get(score_bin_index.min(progress.score_density_bins.len().saturating_sub(1)))
-                        .copied()
-                        .unwrap_or(0);
-                    if !rows.is_empty() {
-                        let row_count_label = Self::format_count_compact_km(rows.len() as u64);
-                        (
-                            rows,
-                            true,
-                            format!(
-                                "Score-bin preview ({} retained saved-report rows)",
-                                row_count_label
-                            ),
-                            format!(
-                                "This table shows every retained saved-report row in score bin {} and is sorted by phase-1 Score. Ret.rank remains the saved-report retention rank. Tested histogram count for this bin: {}.",
-                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
-                                tested_count
-                            ),
-                        )
-                    } else {
-                        (
-                            Vec::new(),
-                            true,
-                            format!(
-                                "Score-bin preview (0 retained saved-report rows for {})",
-                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
-                            ),
-                            format!(
-                                "The histogram bin {} contains {} tested read(s), but none survived into the retained saved-report subset. The histogram counts all scored reads; the saved report currently stores only the retained top {} row(s).",
-                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
-                                tested_count,
-                                report.hits.len()
-                            ),
-                        )
-                    }
+        let (mut preview_rows, using_saved_report_score_bin, preview_header, preview_note) = if self
+            .rna_read_task
+            .is_none()
+        {
+            if let (Some(report), Some(score_bin_index)) = (
+                saved_report.as_ref(),
+                self.rna_read_alignment_effect_score_bin_index,
+            ) {
+                let bin_count = report
+                    .score_density_bins
+                    .len()
+                    .max(progress.score_density_bins.len())
+                    .max(40);
+                let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
+                    report,
+                    score_bin_index,
+                    bin_count,
+                );
+                let tested_count = progress
+                    .score_density_bins
+                    .get(score_bin_index.min(progress.score_density_bins.len().saturating_sub(1)))
+                    .copied()
+                    .unwrap_or(0);
+                if !rows.is_empty() {
+                    let row_count_label = Self::format_count_compact_km(rows.len() as u64);
+                    (
+                        rows,
+                        true,
+                        format!(
+                            "Score-bin preview ({} retained saved-report rows)",
+                            row_count_label
+                        ),
+                        format!(
+                            "This table shows every retained saved-report row in score bin {} and is sorted by phase-1 Score. Ret.rank remains the saved-report retention rank. Tested histogram count for this bin: {}.",
+                            Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
+                            tested_count
+                        ),
+                    )
                 } else {
                     (
+                        Vec::new(),
+                        true,
+                        format!(
+                            "Score-bin preview (0 retained saved-report rows for {})",
+                            Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
+                        ),
+                        format!(
+                            "The histogram bin {} contains {} tested read(s), but none survived into the retained saved-report subset. The histogram counts all scored reads; the saved report currently stores only the retained top {} row(s).",
+                            Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
+                            tested_count,
+                            report.hits.len()
+                        ),
+                    )
+                }
+            } else {
+                (
                         progress.top_hits_preview.clone(),
                         false,
                         format!(
@@ -25576,9 +25647,9 @@ impl MainAreaDna {
                         ),
                         "This is the capped retained-hit preview from the running/saved report. Rows are sorted here by phase-1 Score; Ret.rank remains the saved-report retention rank. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                     )
-                }
-            } else {
-                (
+            }
+        } else {
+            (
                     progress.top_hits_preview.clone(),
                     false,
                     format!(
@@ -25587,7 +25658,7 @@ impl MainAreaDna {
                     ),
                     "This is the capped retained-hit preview while the run is active. Rows are sorted here by phase-1 Score; Ret.rank remains the live retention rank. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                 )
-            };
+        };
         Self::sort_rna_read_top_hit_previews_by_phase1_score(&mut preview_rows);
         let visible_record_indices = preview_rows
             .iter()
