@@ -435,11 +435,21 @@ Feature tree grouping:
     hydrates score density, support tables, and read inspection from that
     saved report even if no live task is running
   - the mapping controls now spell out the biological working set explicitly:
-    - `Region / gene scope` names whether the run uses the current target gene
-      or all genes overlapping the selected locus
-    - `Gene expansion mode` names whether transcript templates come only from
-      the current target gene/group or from an explicit sparse `Target genes`
-      list
+    - `Region / gene scope` now explicitly means:
+      - `target gene/group` = transcript-like RNA features that resolve to the
+        same gene/group label as the selected seed feature
+      - `all overlapping` = transcript-like RNA features with any bp overlap
+        against the selected ROI; full coverage is not required
+      - `target strand` vs `both strands` controls whether opposite-strand
+        transcript templates are allowed to contribute seed hashes
+    - a compact eligibility sketch now shows, for overlapping transcript-like
+      RNA features, which combinations of target gene/group vs other overlap
+      and target strand vs opposite strand are indexed or excluded
+    - `Gene expansion mode` is still one run, not multiple invocations:
+      - `single_gene` = only the current target gene/group contributes
+        transcript templates
+      - `multi_gene_sparse` = the same run additionally includes transcript
+        templates from the explicit sparse `Target genes` list
     - a read-only summary line below these controls states exactly which region
       and which gene set the current run configuration will use
   - `Show in Splicing Expert` returns to the viewer with the current mapping
@@ -722,8 +732,17 @@ Feature tree grouping:
     - after a run has finished, clicking a score-density bar can switch this
       preview from the capped live top-20 list to the exact saved-report rows
       belonging to that selected score bin
+      - if a histogram bin has tested reads but no retained saved-report rows,
+        the UI now says so explicitly instead of silently falling back to the
+        unrelated live preview
+      - histogram hover now distinguishes:
+        - tested reads in the bin
+        - retained saved-report rows in the bin
     - the preview table now reserves about 12 visible rows before scrolling
-      and starts with `Rank`, so orientation is easier to keep while triaging
+      and starts with `Ret.rank`, so orientation is easier to keep while
+      triaging
+    - preview rows are now sorted by phase-1 `Score`, while `Ret.rank`
+      remains the saved-report/live retention-rank position
     - `Id%` and `Cov%` are shown as explicit columns:
       - `Id%` = phase-2 pairwise alignment identity
       - `Cov%` = phase-2 query coverage

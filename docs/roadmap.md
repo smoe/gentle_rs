@@ -1548,6 +1548,20 @@ Status:
     The top-read preview now also shows rank-first tabular rows with explicit
     `Id%` / `Cov%` columns and, after a run completes, can switch from the
     capped live preview to the exact saved-report rows in the chosen score bin.
+    Histogram-bin focus now also distinguishes tested-read counts from retained
+    saved-report rows, keeps the preview sorted by phase-1 score, and reports
+    explicitly when a chosen bin has no retained rows instead of silently
+    falling back to an unrelated live preview.
+  - The embedded `RNA-read Mapping` viewport now renders as a regular panel
+    rather than a nested pop-up frame, reducing chrome and keeping the
+    dedicated cDNA-mapping workspace visually separate from the older
+    Splicing-Expert-in-a-window presentation.
+  - RNA-read scope/origin controls now explain in-panel that:
+    `target gene/group` means the gene/group label of the selected seed
+    feature, `all overlapping` means any bp overlap with the ROI, opposite
+    strands are included/excluded explicitly by scope, and
+    `multi_gene_sparse` is still a single run that broadens the transcript
+    template set rather than multiple invocations.
   - Selected aligned reads in `Mapped cDNA -> Read effects` now have an inline
     pairwise dotplot preview driven by the shared engine dotplot logic, so
     manual inspection no longer starts with SVG export.

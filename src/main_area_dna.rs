@@ -3999,7 +3999,7 @@ mod tests {
                 &view,
                 SplicingScopePreset::TargetGroupTargetStrand
             ),
-            "Target gene TP73 (target strand)"
+            "Target gene/group TP73 (target strand)"
         );
     }
 
@@ -4008,6 +4008,30 @@ mod tests {
         let hover = MainAreaDna::rna_read_mapping_button_hover_text(None);
         assert!(hover.contains("Select an mRNA"));
         assert!(hover.contains("feature first"));
+    }
+
+    #[test]
+    fn rna_read_scope_cell_included_matches_scope_flags() {
+        assert!(MainAreaDna::rna_read_scope_cell_included(
+            SplicingScopePreset::AllOverlappingBothStrands,
+            false,
+            false,
+        ));
+        assert!(!MainAreaDna::rna_read_scope_cell_included(
+            SplicingScopePreset::TargetGroupAnyStrand,
+            false,
+            true,
+        ));
+        assert!(!MainAreaDna::rna_read_scope_cell_included(
+            SplicingScopePreset::AllOverlappingTargetStrand,
+            true,
+            false,
+        ));
+        assert!(MainAreaDna::rna_read_scope_cell_included(
+            SplicingScopePreset::TargetGroupTargetStrand,
+            true,
+            true,
+        ));
     }
 
     #[test]
@@ -4618,7 +4642,7 @@ mod tests {
         let rows = MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(&report, 35, 40);
         assert_eq!(
             rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
-            vec![4, 7]
+            vec![7, 4]
         );
     }
 
@@ -13669,13 +13693,13 @@ impl MainAreaDna {
                 "All overlapping genes (both strands)".to_string()
             }
             SplicingScopePreset::TargetGroupAnyStrand => {
-                format!("Target gene {target} (any strand)")
+                format!("Target gene/group {target} (any strand)")
             }
             SplicingScopePreset::AllOverlappingTargetStrand => {
                 "All overlapping genes (target strand)".to_string()
             }
             SplicingScopePreset::TargetGroupTargetStrand => {
-                format!("Target gene {target} (target strand)")
+                format!("Target gene/group {target} (target strand)")
             }
         }
     }
@@ -13745,6 +13769,83 @@ impl MainAreaDna {
                 }
             }
         }
+    }
+
+    fn rna_read_scope_cell_included(
+        scope: SplicingScopePreset,
+        is_target_group: bool,
+        is_target_strand: bool,
+    ) -> bool {
+        (!scope.restrict_to_target_group() || is_target_group)
+            && (!scope.restrict_to_target_strand() || is_target_strand)
+    }
+
+    fn render_rna_read_scope_eligibility_sketch(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+    ) {
+        ui.small(
+            egui::RichText::new(format!(
+                "Eligibility sketch for transcript-like RNA features around '{}':",
+                view.group_label
+            ))
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+        egui::Grid::new(format!(
+            "rna_scope_eligibility_grid_{}_{}",
+            view.seq_id, view.target_feature_id
+        ))
+        .num_columns(3)
+        .striped(true)
+        .show(ui, |ui| {
+            ui.small("");
+            ui.small("Target strand");
+            ui.small("Opposite strand");
+            ui.end_row();
+            for (group_label, is_target_group) in [
+                (format!("Target gene/group '{}'", view.group_label), true),
+                ("Other overlapping gene/group".to_string(), false),
+            ] {
+                ui.small(group_label);
+                for (strand_label, is_target_strand) in [("indexed", true), ("indexed", false)] {
+                    let included =
+                        Self::rna_read_scope_cell_included(scope, is_target_group, is_target_strand);
+                    let (label, color) = if included {
+                        (strand_label, egui::Color32::from_rgb(21, 128, 61))
+                    } else {
+                        ("excluded", egui::Color32::from_rgb(148, 163, 184))
+                    };
+                    ui.colored_label(color, label);
+                }
+                ui.end_row();
+            }
+        });
+        ui.small(
+            egui::RichText::new(
+                "Overlap means any transcript-like RNA feature sharing at least one bp with the target ROI; full coverage is not required.",
+            )
+            .color(egui::Color32::from_rgb(100, 116, 139)),
+        );
+        ui.small(
+            egui::RichText::new(
+                "Only transcript-like RNA features (`mRNA`, `transcript`, `ncRNA`, `misc_RNA`) contribute templates. Multi-exon features contribute exon bodies plus exon-exon junction templates; single-span features contribute body sequence only.",
+            )
+            .color(egui::Color32::from_rgb(100, 116, 139)),
+        );
+        let expansion_note = match origin_mode {
+            RnaReadOriginMode::SingleGene => {
+                "Gene expansion mode `single_gene` is still one run: only the current target gene/group contributes transcript templates."
+            }
+            RnaReadOriginMode::MultiGeneSparse => {
+                "Gene expansion mode `multi_gene_sparse` is still one run: it adds transcript templates from the explicit Target genes list on top of the current target gene/group."
+            }
+        };
+        ui.small(
+            egui::RichText::new(expansion_note).color(egui::Color32::from_rgb(100, 116, 139)),
+        );
     }
 
     fn dotplot_window_identity_seq_id(&self) -> Option<String> {
@@ -18014,10 +18115,10 @@ impl MainAreaDna {
                                 .selectable_value(
                                     &mut self.rna_reads_ui.scope,
                                     SplicingScopePreset::TargetGroupAnyStrand,
-                                    "Target group (any strand)",
+                                    "Target gene/group (any strand)",
                                 )
                                 .on_hover_text(
-                                    "Restrict to target-gene transcripts, but allow both strands inside that group.",
+                                    "Restrict to the current target gene/group, but allow both strands inside that group.",
                                 )
                                 .changed();
                             persist_ui_state |= ui
@@ -18034,10 +18135,10 @@ impl MainAreaDna {
                                 .selectable_value(
                                     &mut self.rna_reads_ui.scope,
                                     SplicingScopePreset::TargetGroupTargetStrand,
-                                    "Target group (target strand)",
+                                    "Target gene/group (target strand)",
                                 )
                                 .on_hover_text(
-                                    "Most specific mode: target-gene transcripts on target strand only.",
+                                    "Most specific mode: the current target gene/group on the target strand only.",
                                 )
                                 .changed();
                         });
@@ -18051,7 +18152,7 @@ impl MainAreaDna {
                     if self.rna_reads_ui.show_advanced {
                         ui.horizontal_wrapped(|ui| {
                             ui.label("Gene expansion mode").on_hover_text(
-                                "Controls how transcript templates are gathered before hashing: only the current target gene/group (single_gene) or local target-gene expansion from the explicit Target genes list (multi_gene_sparse). This remains local annotation-driven, not a genome-wide search.",
+                                "Controls how transcript templates are gathered before hashing. This is still one run, not multiple invocations: `single_gene` uses only the current target gene/group; `multi_gene_sparse` adds transcript templates from the explicit Target genes list. This remains local annotation-driven, not a genome-wide search.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_origin_mode_{}_{}",
@@ -18241,6 +18342,12 @@ impl MainAreaDna {
                     ui.small(
                         egui::RichText::new(scope_strand_note)
                             .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    self.render_rna_read_scope_eligibility_sketch(
+                        ui,
+                        view,
+                        self.rna_reads_ui.scope,
+                        self.rna_reads_ui.origin_mode,
                     );
                     ui.small(
                         egui::RichText::new(
@@ -19397,70 +19504,60 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
-                let mut open = self.show_rna_read_mapping_window;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(format!(
-                        "rna_read_mapping_window_embedded_{}_{}",
-                        view.seq_id, view.target_feature_id
-                    )))
-                    .open(&mut open)
-                    .resizable(true)
-                    .default_size(default_size)
-                    .show(ctx, |ui| {
-                        let backdrop_settings = current_window_backdrop_settings();
-                        paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        egui::ScrollArea::both()
-                            .id_salt(format!(
-                                "rna_read_mapping_scroll_embedded_{}_{}",
-                                view.seq_id, view.target_feature_id
-                            ))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                ui.set_min_size(content_min_size);
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        egui::RichText::new("Workspace guide [?]")
-                                            .size(9.0)
-                                            .color(egui::Color32::from_rgb(71, 85, 105)),
-                                    )
-                                    .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-                                    ui.label(
-                                        egui::RichText::new(
-                                            "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
-                                        )
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "rna_read_mapping_scroll_embedded_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Workspace guide [?]")
                                         .size(9.0)
-                                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                                    );
-                                });
-                                ui.horizontal_wrapped(|ui| {
-                                    if ui
-                                        .button("Show in Splicing Expert")
-                                        .on_hover_text(
-                                            "Jump back to the Splicing Expert with the current mapping report selected.",
-                                        )
-                                        .clicked()
-                                    {
-                                        self.show_splicing_expert_for_rna_read_mapping_view();
-                                    }
-                                    ui.small(
-                                        egui::RichText::new(format!(
-                                            "Locus: {} | feature n-{}",
-                                            view.seq_id, view.target_feature_id
-                                        ))
-                                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                                    );
-                                });
-                                self.render_rna_read_mapping_workspace_controls(ui, &view);
+                                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                                )
+                                .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+                                ui.label(
+                                    egui::RichText::new(
+                                        "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
+                                    )
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                                );
                             });
-                    });
+                            ui.horizontal_wrapped(|ui| {
+                                if ui
+                                    .button("Show in Splicing Expert")
+                                    .on_hover_text(
+                                        "Jump back to the Splicing Expert with the current mapping report selected.",
+                                    )
+                                    .clicked()
+                                {
+                                    self.show_splicing_expert_for_rna_read_mapping_view();
+                                }
+                                ui.small(
+                                    egui::RichText::new(format!(
+                                        "Locus: {} | feature n-{}",
+                                        view.seq_id, view.target_feature_id
+                                    ))
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                                );
+                            });
+                            self.render_rna_read_mapping_workspace_controls(ui, &view);
+                        });
+                });
                 if self.active_rna_read_task_matches_splicing_view(&view) {
                     ctx.request_repaint_after(repaint_delay);
                 }
-                self.show_rna_read_mapping_window = open;
                 return;
             }
 
@@ -21009,12 +21106,32 @@ impl MainAreaDna {
             Self::select_rna_read_report_score_bin_record_indices(report, target_idx, bin_count)
                 .into_iter()
                 .collect::<BTreeSet<_>>();
-        report
+        let mut rows = report
             .hits
             .iter()
             .filter(|hit| selected_record_indices.contains(&hit.record_index))
             .map(Self::rna_read_top_hit_preview_from_hit)
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+        Self::sort_rna_read_top_hit_previews_by_phase1_score(&mut rows);
+        rows
+    }
+
+    fn sort_rna_read_top_hit_previews_by_phase1_score(rows: &mut [RnaReadTopHitPreview]) {
+        rows.sort_by(|left, right| {
+            right
+                .seed_hit_fraction
+                .partial_cmp(&left.seed_hit_fraction)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    right
+                        .weighted_seed_hit_fraction
+                        .partial_cmp(&left.weighted_seed_hit_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then(right.matched_kmers.cmp(&left.matched_kmers))
+                .then(right.tested_kmers.cmp(&left.tested_kmers))
+                .then(left.record_index.cmp(&right.record_index))
+        });
     }
 
     fn selected_rna_report_hits<'a>(
@@ -23591,6 +23708,7 @@ impl MainAreaDna {
             max_count as f32
         };
         let bin_count = progress.score_density_bins.len().max(1);
+        let saved_report = self.current_saved_rna_read_report();
         let selected_bin_index = self
             .rna_read_alignment_effect_score_bin_index
             .map(|idx| idx.min(bin_count.saturating_sub(1)));
@@ -23706,10 +23824,28 @@ impl MainAreaDna {
                 if let Some(count) = progress.score_density_bins.get(idx) {
                     let left = idx as f64 / bin_count as f64;
                     let right = (idx + 1) as f64 / bin_count as f64;
+                    let retained_count = saved_report
+                        .as_ref()
+                        .map(|report| {
+                            Self::select_rna_read_report_score_bin_record_indices(
+                                report,
+                                idx,
+                                bin_count,
+                            )
+                            .len()
+                        })
+                        .unwrap_or(0);
                     response.clone().on_hover_ui_at_pointer(|ui| {
                         ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
-                        ui.monospace(format!("count: {count}"));
-                        ui.small("Click to make this score bin the formal read-effects subset.");
+                        ui.monospace(format!("tested reads in histogram: {count}"));
+                        if saved_report.is_some() {
+                            ui.monospace(format!(
+                                "retained saved-report rows in this bin: {retained_count}"
+                            ));
+                        }
+                        ui.small(
+                            "Click to focus the retained saved-report rows from this score bin.",
+                        );
                     });
                 }
             }
@@ -23717,12 +23853,11 @@ impl MainAreaDna {
         if response.clicked()
             && let Some(idx) = pointed_bin
         {
-            let report = self.current_saved_rna_read_report();
-            if let Some(report) = report {
-                let selected_record_indices =
-                    Self::select_rna_read_report_score_bin_record_indices(&report, idx, bin_count);
-                self.rna_read_statistics_tab = RnaReadEvidenceSourceTab::MappedCdna;
-                self.rna_read_mapped_cdna_subview = RnaReadMappedCdnaSubview::ReadEffects;
+            let tested_count = progress.score_density_bins.get(idx).copied().unwrap_or(0);
+            if let Some(report) = saved_report {
+                let selected_record_indices = Self::select_rna_read_report_score_bin_record_indices(
+                    &report, idx, bin_count,
+                );
                 self.rna_read_alignment_effect_score_bin_index = Some(idx);
                 self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
                 self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
@@ -23730,11 +23865,32 @@ impl MainAreaDna {
                 self.rna_seed_selected_record_indices =
                     selected_record_indices.iter().copied().collect();
                 self.rna_seed_highlight_record_index = selected_record_indices.first().copied();
-                self.op_status = format!(
-                    "Focused read effects on {} saved-report read(s) from score bin {}",
-                    selected_record_indices.len(),
-                    Self::format_rna_read_score_bin_spec(idx, bin_count)
-                );
+                if report.read_count_aligned > 0 {
+                    self.rna_read_statistics_tab = RnaReadEvidenceSourceTab::MappedCdna;
+                    self.rna_read_mapped_cdna_subview = RnaReadMappedCdnaSubview::ReadEffects;
+                } else {
+                    self.rna_read_statistics_tab = RnaReadEvidenceSourceTab::ThresholdedCdna;
+                }
+                self.op_status = if selected_record_indices.is_empty() {
+                    format!(
+                        "Score bin {} contains {} tested read(s), but 0 retained saved-report rows. The histogram counts all scored reads; the report currently stores only the retained top {} row(s).",
+                        Self::format_rna_read_score_bin_spec(idx, bin_count),
+                        tested_count,
+                        report.hits.len()
+                    )
+                } else if report.read_count_aligned > 0 {
+                    format!(
+                        "Focused mapped read effects on {} retained saved-report row(s) from score bin {}",
+                        selected_record_indices.len(),
+                        Self::format_rna_read_score_bin_spec(idx, bin_count)
+                    )
+                } else {
+                    format!(
+                        "Selected {} retained saved-report row(s) from score bin {}. Phase 2 has not been run yet, so mapped read effects stay empty until alignment.",
+                        selected_record_indices.len(),
+                        Self::format_rna_read_score_bin_spec(idx, bin_count)
+                    )
+                };
             } else {
                 self.op_status =
                     "Save or load a Report ID before focusing a score-density bin".to_string();
@@ -25358,74 +25514,81 @@ impl MainAreaDna {
         allow_mapping_actions: bool,
     ) -> Option<Option<usize>> {
         let saved_report = self.current_saved_rna_read_report();
-        let (preview_rows, using_saved_report_score_bin, preview_header, preview_note) = if self
-            .rna_read_task
-            .is_none()
-        {
-            if let (Some(report), Some(score_bin_index)) = (
-                saved_report.as_ref(),
-                self.rna_read_alignment_effect_score_bin_index,
-            ) {
-                let bin_count = report
-                    .score_density_bins
-                    .len()
-                    .max(progress.score_density_bins.len())
-                    .max(40);
-                let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
-                    report,
-                    score_bin_index,
-                    bin_count,
-                );
-                if !rows.is_empty() {
-                    let row_count_label = Self::format_count_compact_km(rows.len() as u64);
-                    (
-                        rows,
-                        true,
-                        format!(
-                            "Ranked preview ({} saved-report rows in selected score bin)",
-                            row_count_label
-                        ),
-                        format!(
-                            "This table shows every saved-report row in score bin {}. It is not capped to the old top-20 preview. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.",
-                            Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
-                        ),
-                    )
+        let (mut preview_rows, using_saved_report_score_bin, preview_header, preview_note) =
+            if self.rna_read_task.is_none() {
+                if let (Some(report), Some(score_bin_index)) = (
+                    saved_report.as_ref(),
+                    self.rna_read_alignment_effect_score_bin_index,
+                ) {
+                    let bin_count = report
+                        .score_density_bins
+                        .len()
+                        .max(progress.score_density_bins.len())
+                        .max(40);
+                    let rows = Self::collect_rna_read_top_hit_previews_for_score_bin(
+                        report,
+                        score_bin_index,
+                        bin_count,
+                    );
+                    let tested_count = progress
+                        .score_density_bins
+                        .get(score_bin_index.min(progress.score_density_bins.len().saturating_sub(1)))
+                        .copied()
+                        .unwrap_or(0);
+                    if !rows.is_empty() {
+                        let row_count_label = Self::format_count_compact_km(rows.len() as u64);
+                        (
+                            rows,
+                            true,
+                            format!(
+                                "Score-bin preview ({} retained saved-report rows)",
+                                row_count_label
+                            ),
+                            format!(
+                                "This table shows every retained saved-report row in score bin {} and is sorted by phase-1 Score. Ret.rank remains the saved-report retention rank. Tested histogram count for this bin: {}.",
+                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
+                                tested_count
+                            ),
+                        )
+                    } else {
+                        (
+                            Vec::new(),
+                            true,
+                            format!(
+                                "Score-bin preview (0 retained saved-report rows for {})",
+                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
+                            ),
+                            format!(
+                                "The histogram bin {} contains {} tested read(s), but none survived into the retained saved-report subset. The histogram counts all scored reads; the saved report currently stores only the retained top {} row(s).",
+                                Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
+                                tested_count,
+                                report.hits.len()
+                            ),
+                        )
+                    }
                 } else {
                     (
-                            progress.top_hits_preview.clone(),
-                            false,
-                            format!(
-                                "Live preview (top {} retained rows from run)",
-                                progress.top_hits_preview.len()
-                            ),
-                            "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
-                        )
-                }
-            } else {
-                (
                         progress.top_hits_preview.clone(),
                         false,
                         format!(
                             "Live preview (top {} retained rows from run)",
                             progress.top_hits_preview.len()
                         ),
-                        "This is the capped live preview from the running/saved report. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
+                        "This is the capped retained-hit preview from the running/saved report. Rows are sorted here by phase-1 Score; Ret.rank remains the saved-report retention rank. Use mapped `Read effects` above for the full aligned-read inspection surface. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                     )
-            }
-        } else {
-            (
+                }
+            } else {
+                (
                     progress.top_hits_preview.clone(),
                     false,
                     format!(
                         "Live preview (top {} retained rows from run)",
                         progress.top_hits_preview.len()
                     ),
-                    "This is the capped live preview while the run is active. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
+                    "This is the capped retained-hit preview while the run is active. Rows are sorted here by phase-1 Score; Ret.rank remains the live retention rank. Id%=phase-2 pairwise alignment identity; Cov%=query coverage.".to_string(),
                 )
-        };
-        if preview_rows.is_empty() {
-            return None;
-        }
+            };
+        Self::sort_rna_read_top_hit_previews_by_phase1_score(&mut preview_rows);
         let visible_record_indices = preview_rows
             .iter()
             .map(|row| row.record_index)
@@ -25587,8 +25750,17 @@ impl MainAreaDna {
                             ui.close();
                         }
                     });
-                    ui.small("Use ↑ / ↓ to iterate ranked rows.");
+                    ui.small("Use ↑ / ↓ to iterate listed rows.");
                 });
+                if preview_rows.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "No retained saved-report rows match the currently selected histogram bin. Clear the score-bin focus or choose a bin with retained rows.",
+                        )
+                        .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                    return;
+                }
                 let hidden_selected_count = self
                     .rna_seed_selected_record_indices
                     .iter()
@@ -25600,7 +25772,9 @@ impl MainAreaDna {
                         hidden_selected_count,
                     ));
                 }
-                ui.small("Rank is retention rank. Id%=phase-2 alignment identity. Cov%=query coverage.");
+                ui.small(
+                    "Rows are sorted by phase-1 Score. Ret.rank is retention rank. Id%=phase-2 alignment identity. Cov%=query coverage.",
+                );
                 egui::ScrollArea::both()
                     .id_salt(format!("rna_top_hits_scroll_{}", progress.seq_id))
                     .max_height(Self::default_rna_read_preview_table_height(ui))
@@ -25611,7 +25785,7 @@ impl MainAreaDna {
                             .num_columns(10)
                             .show(ui, |ui| {
                                 ui.small("");
-                                ui.small("Rank");
+                                ui.small("Ret.rank");
                                 ui.small("Read");
                                 ui.small("Score");
                                 ui.small("Phase 1 tx");
