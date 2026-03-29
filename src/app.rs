@@ -29193,51 +29193,21 @@ Error: `{err}`"
         }
     }
 
-    fn main_workspace_window_id() -> egui::Id {
-        egui::Id::new("main_workspace_hosted_window")
-    }
-
-    fn main_workspace_window_title(&self, project_dirty: bool) -> String {
-        let dirty_marker = if project_dirty { " *" } else { "" };
-        format!("Project — {}{}", self.current_project_name(), dirty_marker)
-    }
-
-    fn render_main_workspace_host(&mut self, ctx: &egui::Context, project_dirty: bool) {
-        let title = self.main_workspace_window_title(project_dirty);
-        let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
-        let min_size = Vec2::new(720.0, 420.0);
-        let default_size = crate::egui_compat::clamp_hosted_window_default_size(
-            Vec2::new(1360.0, 900.0),
-            constrain_rect,
-            min_size,
+    fn render_main_workspace_host(&mut self, ui: &mut Ui, project_dirty: bool) {
+        window_backdrop::paint_window_backdrop(
+            ui,
+            WindowBackdropKind::Main,
+            &self.window_backdrops,
         );
-        let default_pos =
-            crate::egui_compat::clamp_hosted_window_default_pos(None, constrain_rect, default_size);
-        egui::Window::new(title)
-            .id(Self::main_workspace_window_id())
-            .collapsible(false)
-            .resizable(true)
-            .default_pos(default_pos)
-            .default_size(default_size)
-            .min_size(min_size)
-            .max_size(constrain_rect.size())
-            .constrain_to(constrain_rect)
-            .show(ctx, |ui| {
-                window_backdrop::paint_window_backdrop(
-                    ui,
-                    WindowBackdropKind::Main,
-                    &self.window_backdrops,
-                );
-                with_window_content_inset(ui, |ui| {
-                    self.render_main_lineage(ui);
-                    ui.separator();
-                    if project_dirty {
-                        ui.label("Status: unsaved changes");
-                    } else {
-                        ui.label("Status: saved");
-                    }
-                });
-            });
+        with_window_content_inset(ui, |ui| {
+            self.render_main_lineage(ui);
+            ui.separator();
+            if project_dirty {
+                ui.label("Status: unsaved changes");
+            } else {
+                ui.label("Status: saved");
+            }
+        });
     }
 
     fn apply_configuration_external_apps(&mut self) {
@@ -32942,7 +32912,7 @@ impl GENtleApp {
                     let host_rect = ui.max_rect();
                     ui.painter()
                         .rect_filled(host_rect, 0.0, egui::Color32::from_gray(218));
-                    self.render_main_workspace_host(ui.ctx(), project_dirty);
+                    self.render_main_workspace_host(ui, project_dirty);
                 },
             );
             self.render_reference_genome_prepare_dialog(ctx);
@@ -36773,20 +36743,6 @@ mod tests {
     }
 
     #[test]
-    fn main_workspace_window_title_reflects_project_name_and_dirty_state() {
-        let mut app = GENtleApp::default();
-        assert_eq!(
-            app.main_workspace_window_title(false),
-            "Project — Untitled Project"
-        );
-        app.current_project_path = Some("/tmp/example.project.gentle.json".to_string());
-        assert_eq!(
-            app.main_workspace_window_title(true),
-            "Project — example.project.gentle.json *"
-        );
-    }
-
-    #[test]
     fn apply_graphics_settings_to_display_clamps_font_and_opacity_values() {
         let mut source = DisplaySettings::default();
         let mut target = DisplaySettings::default();
@@ -37057,6 +37013,23 @@ mod tests {
         GENtleApp::configure_platform_viewport_mode(&ctx);
 
         assert_eq!(ctx.embed_viewports(), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn render_main_workspace_host_does_not_spawn_hosted_window_area() {
+        let ctx = egui::Context::default();
+        let mut app = GENtleApp::default();
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("main_workspace_hosted_window"),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+            app.render_main_workspace_host(ui, false);
+        });
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        let _ = ctx.end_pass();
     }
 
     #[test]
