@@ -1557,6 +1557,12 @@ Status:
     saved-report rows, keeps the preview sorted by phase-1 score, and reports
     explicitly when a chosen bin has no retained rows instead of silently
     falling back to an unrelated live preview.
+  - Saved-report retention now has explicit high-score rescue rules:
+    - always keep the top 2000 phase-1 score rows
+    - also keep any row that lands in one of the highest 20 score-density bins
+      at or above the active `min hit` threshold
+    - this prevents obvious right-tail outliers from disappearing before
+      score-bin inspection or optional phase-2 alignment
   - The embedded `RNA-read Mapping` viewport now renders as a regular panel
     rather than a nested pop-up frame, reducing chrome and keeping the
     dedicated cDNA-mapping workspace visually separate from the older

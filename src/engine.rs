@@ -190,6 +190,8 @@ const RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL: Duration = Duration::from_secs(2);
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
 const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
+const RNA_READ_RETAINED_TOP_SCORE_GUARANTEE_COUNT: usize = 2_000;
+const RNA_READ_RETAINED_HIGH_SCORE_BIN_GUARANTEE_COUNT: usize = 20;
 const RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS: usize = 10_000;
 const RNA_READ_COOPERATIVE_YIELD_EVERY_READS: usize = 512;
 const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
@@ -428,6 +430,39 @@ impl PartialOrd for RnaReadRetentionRank {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RnaReadPhase1ScoreRank {
+    seed_hit_ppm: u32,
+    weighted_seed_hit_ppm: u32,
+    weighted_support_milli: u64,
+    matched_kmers: usize,
+    tested_kmers: usize,
+    read_length_bp: usize,
+    record_index: usize,
+}
+
+impl Ord for RnaReadPhase1ScoreRank {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.seed_hit_ppm
+            .cmp(&other.seed_hit_ppm)
+            .then(self.weighted_seed_hit_ppm.cmp(&other.weighted_seed_hit_ppm))
+            .then(
+                self.weighted_support_milli
+                    .cmp(&other.weighted_support_milli),
+            )
+            .then(self.matched_kmers.cmp(&other.matched_kmers))
+            .then(self.tested_kmers.cmp(&other.tested_kmers))
+            .then(self.read_length_bp.cmp(&other.read_length_bp))
+            .then(other.record_index.cmp(&self.record_index))
+    }
+}
+
+impl PartialOrd for RnaReadPhase1ScoreRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RetainedRnaReadHit {
     rank: RnaReadRetentionRank,
@@ -454,6 +489,34 @@ impl PartialEq for RetainedRnaReadHit {
 }
 
 impl Eq for RetainedRnaReadHit {}
+
+#[derive(Debug, Clone)]
+struct RetainedRnaReadScoreHit {
+    rank: RnaReadPhase1ScoreRank,
+    hit: RnaReadInterpretationHit,
+}
+
+impl Ord for RetainedRnaReadScoreHit {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Keep the weakest guaranteed-score hit at heap top for O(log N)
+        // replacement, mirroring the main retained-hit heap behavior.
+        other.rank.cmp(&self.rank)
+    }
+}
+
+impl PartialOrd for RetainedRnaReadScoreHit {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for RetainedRnaReadScoreHit {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank == other.rank
+    }
+}
+
+impl Eq for RetainedRnaReadScoreHit {}
 
 #[derive(Debug, Clone)]
 struct RetainedRnaReadPreviewHit {

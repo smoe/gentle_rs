@@ -562,6 +562,9 @@ Feature tree grouping:
     - `min identity`
     - `max secondary`
     - `align selection` (`seed_passed|all|aligned`)
+    - `all` is the route that also aligns rescued retained rows that were kept
+      for high phase-1 score / high-score-bin reasons even if they did not pass
+      the full composite seed gate
   - `Run alignment phase (retained report)` executes
     `AlignRnaReadReport` asynchronously for the current `Report ID`
     - tooltip explicitly notes that phase 2 reuses the saved report and does
@@ -732,6 +735,13 @@ Feature tree grouping:
   - the top-read area is explicitly a `Live preview`, not the whole retained
     report; it remains useful during runs, but post-run read inspection should
     use mapped `Read effects`
+    - saved-report retention now guarantees:
+      - the top 2000 rows by phase-1 score
+      - any retained row in one of the highest 20 score-density bins at or
+        above the current `min hit` threshold
+      - this is meant to keep obvious high-score outliers available for later
+        inspection and optional phase-2 alignment even when they would
+        otherwise fall outside the broader retention-rank cap
     - after a run has finished, clicking a score-density bar can switch this
       preview from the capped live top-20 list to the exact saved-report rows
       belonging to that selected score bin

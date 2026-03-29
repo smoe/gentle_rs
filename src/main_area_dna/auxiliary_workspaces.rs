@@ -3952,6 +3952,18 @@ impl MainAreaDna {
         egui::ViewportId::from_hash_of(("dotplot_viewport", seq_id))
     }
 
+    pub(super) fn dotplot_window_default_size(has_loaded_payload: bool) -> Vec2 {
+        Vec2::new(1240.0, if has_loaded_payload { 820.0 } else { 620.0 })
+    }
+
+    pub(super) fn dotplot_window_min_size(has_loaded_payload: bool) -> Vec2 {
+        Vec2::new(900.0, if has_loaded_payload { 560.0 } else { 420.0 })
+    }
+
+    pub(super) fn dotplot_window_content_min_size(has_loaded_payload: bool) -> Vec2 {
+        Vec2::new(1240.0, if has_loaded_payload { 760.0 } else { 0.0 })
+    }
+
     pub(super) fn dotplot_window_title(seq_id: &str) -> String {
         format!("Dotplot - {seq_id}")
     }
@@ -4026,10 +4038,15 @@ impl MainAreaDna {
         };
         let title = Self::dotplot_window_title(&self.current_dotplot_query_label());
         let viewport_id = Self::dotplot_viewport_id(&viewport_seq_id);
+        let has_loaded_payload = self.dotplot_cached_view.is_some()
+            || (self.dotplot_ui.show_flexibility_track && self.dotplot_cached_flex_track.is_some());
+        let default_size = Self::dotplot_window_default_size(has_loaded_payload);
+        let min_size = Self::dotplot_window_min_size(has_loaded_payload);
+        let content_min_size = Self::dotplot_window_content_min_size(has_loaded_payload);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([1240.0, 820.0])
-            .with_min_inner_size([900.0, 560.0]);
+            .with_inner_size([default_size.x, default_size.y])
+            .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_dotplot_window;
@@ -4040,7 +4057,7 @@ impl MainAreaDna {
                     )))
                     .open(&mut open)
                     .resizable(true)
-                    .default_size(Vec2::new(1240.0, 820.0))
+                    .default_size(default_size)
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
@@ -4055,7 +4072,7 @@ impl MainAreaDna {
                                     ui,
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
-                                ui.set_min_size(Vec2::new(980.0, 680.0));
+                                ui.set_min_size(content_min_size);
                                 self.render_dotplot_workspace_ui(ui);
                             });
                     });
@@ -4077,7 +4094,7 @@ impl MainAreaDna {
                             ui,
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
-                        ui.set_min_size(Vec2::new(980.0, 680.0));
+                        ui.set_min_size(content_min_size);
                         self.render_dotplot_workspace_ui(ui);
                     });
             });

@@ -3117,12 +3117,46 @@ impl GentleEngine {
         }
     }
 
+    pub(super) fn rna_read_phase1_score_rank(
+        hit: &RnaReadInterpretationHit,
+    ) -> RnaReadPhase1ScoreRank {
+        let weighted_support_milli = (hit.weighted_matched_kmers.max(0.0) * 1000.0).round() as u64;
+        let weighted_seed_hit_ppm =
+            (hit.weighted_seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
+        let seed_hit_ppm = (hit.seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
+        RnaReadPhase1ScoreRank {
+            seed_hit_ppm,
+            weighted_seed_hit_ppm,
+            weighted_support_milli,
+            matched_kmers: hit.matched_kmers,
+            tested_kmers: hit.tested_kmers,
+            read_length_bp: hit.read_length_bp,
+            record_index: hit.record_index,
+        }
+    }
+
     pub(super) fn sort_rna_read_hits_by_retention_rank(hits: &mut [RnaReadInterpretationHit]) {
         hits.sort_by(|left, right| {
             let left_rank = Self::rna_read_retention_rank(left);
             let right_rank = Self::rna_read_retention_rank(right);
             right_rank.cmp(&left_rank)
         });
+    }
+
+    pub(super) fn high_score_density_guarantee_bin_start(min_seed_hit_fraction: f64) -> usize {
+        let threshold_bin = Self::score_density_bin_index(min_seed_hit_fraction);
+        RNA_READ_SCORE_DENSITY_BIN_COUNT
+            .saturating_sub(RNA_READ_RETAINED_HIGH_SCORE_BIN_GUARANTEE_COUNT)
+            .max(threshold_bin)
+    }
+
+    pub(super) fn should_guarantee_rna_read_hit_by_high_score_bin(
+        hit: &RnaReadInterpretationHit,
+        min_seed_hit_fraction: f64,
+    ) -> bool {
+        hit.seed_hit_fraction + f64::EPSILON >= min_seed_hit_fraction
+            && Self::score_density_bin_index(hit.seed_hit_fraction)
+                >= Self::high_score_density_guarantee_bin_start(min_seed_hit_fraction)
     }
 
     pub(super) fn should_emit_rna_read_progress(
@@ -3153,6 +3187,31 @@ impl GentleEngine {
         }
     }
 
+    pub(super) fn retain_top_rna_read_score_hit(
+        retained_hits: &mut BinaryHeap<RetainedRnaReadScoreHit>,
+        hit: &RnaReadInterpretationHit,
+    ) {
+        let rank = Self::rna_read_phase1_score_rank(hit);
+        if retained_hits.len() < RNA_READ_RETAINED_TOP_SCORE_GUARANTEE_COUNT {
+            retained_hits.push(RetainedRnaReadScoreHit {
+                rank,
+                hit: hit.clone(),
+            });
+            return;
+        }
+        let should_replace = retained_hits
+            .peek()
+            .map(|worst| rank > worst.rank)
+            .unwrap_or(true);
+        if should_replace {
+            let _ = retained_hits.pop();
+            retained_hits.push(RetainedRnaReadScoreHit {
+                rank,
+                hit: hit.clone(),
+            });
+        }
+    }
+
     pub(super) fn retained_rna_read_hit_heap_from_rows(
         rows: &[RnaReadInterpretationHit],
     ) -> BinaryHeap<RetainedRnaReadHit> {
@@ -3161,6 +3220,57 @@ impl GentleEngine {
             Self::retain_top_rna_read_hit(&mut heap, hit);
         }
         heap
+    }
+
+    pub(super) fn retained_rna_read_score_hit_heap_from_rows(
+        rows: &[RnaReadInterpretationHit],
+    ) -> BinaryHeap<RetainedRnaReadScoreHit> {
+        let mut heap = BinaryHeap::<RetainedRnaReadScoreHit>::new();
+        for hit in rows {
+            Self::retain_top_rna_read_score_hit(&mut heap, hit);
+        }
+        heap
+    }
+
+    pub(super) fn retain_high_score_bin_rna_read_hit(
+        retained_hits: &mut BTreeMap<usize, RnaReadInterpretationHit>,
+        hit: &RnaReadInterpretationHit,
+        min_seed_hit_fraction: f64,
+    ) {
+        if Self::should_guarantee_rna_read_hit_by_high_score_bin(hit, min_seed_hit_fraction) {
+            retained_hits.insert(hit.record_index, hit.clone());
+        }
+    }
+
+    pub(super) fn retained_high_score_bin_hits_from_rows(
+        rows: &[RnaReadInterpretationHit],
+        min_seed_hit_fraction: f64,
+    ) -> BTreeMap<usize, RnaReadInterpretationHit> {
+        let mut retained = BTreeMap::<usize, RnaReadInterpretationHit>::new();
+        for hit in rows {
+            Self::retain_high_score_bin_rna_read_hit(&mut retained, hit, min_seed_hit_fraction);
+        }
+        retained
+    }
+
+    pub(super) fn collect_retained_rna_read_hits_union(
+        retained_hits: &BinaryHeap<RetainedRnaReadHit>,
+        guaranteed_score_hits: &BinaryHeap<RetainedRnaReadScoreHit>,
+        guaranteed_high_bin_hits: &BTreeMap<usize, RnaReadInterpretationHit>,
+    ) -> Vec<RnaReadInterpretationHit> {
+        let mut by_record_index = BTreeMap::<usize, RnaReadInterpretationHit>::new();
+        for row in retained_hits.iter() {
+            by_record_index.insert(row.hit.record_index, row.hit.clone());
+        }
+        for row in guaranteed_score_hits.iter() {
+            by_record_index.insert(row.hit.record_index, row.hit.clone());
+        }
+        for (record_index, hit) in guaranteed_high_bin_hits {
+            by_record_index.insert(*record_index, hit.clone());
+        }
+        let mut hits = by_record_index.into_values().collect::<Vec<_>>();
+        Self::sort_rna_read_hits_by_retention_rank(&mut hits);
+        hits
     }
 
     pub(super) fn make_rna_read_top_hit_preview(
@@ -5872,6 +5982,21 @@ impl GentleEngine {
             .as_ref()
             .map(|checkpoint| Self::retained_rna_read_hit_heap_from_rows(&checkpoint.retained_hits))
             .unwrap_or_default();
+        let mut guaranteed_score_hits = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| {
+                Self::retained_rna_read_score_hit_heap_from_rows(&checkpoint.retained_hits)
+            })
+            .unwrap_or_default();
+        let mut guaranteed_high_bin_hits = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| {
+                Self::retained_high_score_bin_hits_from_rows(
+                    &checkpoint.retained_hits,
+                    seed_filter.min_seed_hit_fraction,
+                )
+            })
+            .unwrap_or_default();
         let mut progress_top_hits = loaded_checkpoint
             .as_ref()
             .map(|checkpoint| {
@@ -6292,6 +6417,12 @@ impl GentleEngine {
                 hit.msa_eligible = msa_eligible;
                 hit.msa_eligibility_reason = msa_reason;
                 Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
+                Self::retain_top_rna_read_score_hit(&mut guaranteed_score_hits, &hit);
+                Self::retain_high_score_bin_rna_read_hit(
+                    &mut guaranteed_high_bin_hits,
+                    &hit,
+                    seed_filter.min_seed_hit_fraction,
+                );
                 Self::retain_top_rna_read_hit(&mut retained_hits, hit);
                 reads_processed = reads_processed.saturating_add(1);
                 let should_emit = Self::should_emit_rna_read_progress(
@@ -6363,8 +6494,11 @@ impl GentleEngine {
                 }
                 if let Some(path) = checkpoint_path.as_deref() {
                     if reads_processed > 0 && reads_processed % checkpoint_every_reads == 0 {
-                        let mut retained_rows = retained_hits.iter().cloned().collect::<Vec<_>>();
-                        retained_rows.sort_by(|left, right| right.rank.cmp(&left.rank));
+                        let retained_rows = Self::collect_retained_rna_read_hits_union(
+                            &retained_hits,
+                            &guaranteed_score_hits,
+                            &guaranteed_high_bin_hits,
+                        );
                         let checkpoint = RnaReadInterpretCheckpoint {
                             schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
                             created_at_unix_ms: Self::now_unix_ms(),
@@ -6409,7 +6543,7 @@ impl GentleEngine {
                             origin_class_counts: origin_class_counts.clone(),
                             bins: bins.clone(),
                             score_density_bins: score_density_bins.clone(),
-                            retained_hits: retained_rows.into_iter().map(|row| row.hit).collect(),
+                            retained_hits: retained_rows,
                         };
                         Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
                     }
@@ -6419,13 +6553,18 @@ impl GentleEngine {
         input_bytes_processed = final_visit_progress.input_bytes_processed;
         input_bytes_total = final_visit_progress.input_bytes_total;
         let reads_total = final_visit_progress.records_processed;
-        let mut ranked_hits = retained_hits.into_vec();
-        ranked_hits.sort_by(|left, right| right.rank.cmp(&left.rank));
-        let retained_hits = ranked_hits
-            .into_iter()
-            .map(|row| row.hit)
-            .collect::<Vec<_>>();
+        let retained_by_rank_count = retained_hits.len();
+        let retained_by_rank_record_indices = retained_hits
+            .iter()
+            .map(|row| row.hit.record_index)
+            .collect::<HashSet<_>>();
+        let retained_hits = Self::collect_retained_rna_read_hits_union(
+            &retained_hits,
+            &guaranteed_score_hits,
+            &guaranteed_high_bin_hits,
+        );
         let retained_hit_count = retained_hits.len();
+        let retained_rescue_count = retained_hit_count.saturating_sub(retained_by_rank_count);
         let hits = Self::apply_rna_read_report_mode_to_hits(report_mode, retained_hits.clone());
         let report_hit_count = hits.len();
         let retained_count_msa_eligible = hits.iter().filter(|hit| hit.msa_eligible).count();
@@ -6560,8 +6699,25 @@ impl GentleEngine {
         ));
         if reads_total > retained_hit_count {
             warnings.push(format!(
-                "retained_top_hits={} out of total_reads={} (scored by retention rank; alignment quality contributes when mappings are available)",
-                retained_hit_count, reads_total
+                "retained_hits={} out of total_reads={} (baseline top {} by retention rank, guaranteed top {} by phase-1 score, and guaranteed highest {} score-density bins at/above min_hit={:.3})",
+                retained_hit_count,
+                reads_total,
+                RNA_READ_RETAINED_HITS_MAX,
+                RNA_READ_RETAINED_TOP_SCORE_GUARANTEE_COUNT,
+                RNA_READ_RETAINED_HIGH_SCORE_BIN_GUARANTEE_COUNT,
+                seed_filter.min_seed_hit_fraction,
+            ));
+        }
+        if retained_rescue_count > 0 {
+            let high_bin_rescue_count = guaranteed_high_bin_hits
+                .keys()
+                .filter(|record_index| !retained_by_rank_record_indices.contains(record_index))
+                .count();
+            warnings.push(format!(
+                "retention rescue kept {} additional read(s) beyond the baseline top-{} set ({} via high-score bins; overlap with top-score guarantees is possible)",
+                retained_rescue_count,
+                RNA_READ_RETAINED_HITS_MAX,
+                high_bin_rescue_count
             ));
         }
         if report_mode == RnaReadReportMode::SeedPassedOnly {
@@ -6619,6 +6775,42 @@ mod tests {
         }
     }
 
+    fn test_rna_read_hit(
+        record_index: usize,
+        seed_hit_fraction: f64,
+        passed_seed_filter: bool,
+    ) -> RnaReadInterpretationHit {
+        RnaReadInterpretationHit {
+            record_index,
+            header_id: format!("read_{record_index}"),
+            sequence: "ACGTACGT".to_string(),
+            read_length_bp: 8,
+            tested_kmers: 64,
+            matched_kmers: (seed_hit_fraction * 64.0).round() as usize,
+            seed_hit_fraction,
+            weighted_seed_hit_fraction: seed_hit_fraction,
+            weighted_matched_kmers: seed_hit_fraction * 64.0,
+            passed_seed_filter,
+            ..RnaReadInterpretationHit::default()
+        }
+    }
+
+    fn feed_retention_trackers(
+        retained_hits: &mut BinaryHeap<RetainedRnaReadHit>,
+        guaranteed_score_hits: &mut BinaryHeap<RetainedRnaReadScoreHit>,
+        guaranteed_high_bin_hits: &mut BTreeMap<usize, RnaReadInterpretationHit>,
+        hit: RnaReadInterpretationHit,
+        min_seed_hit_fraction: f64,
+    ) {
+        GentleEngine::retain_top_rna_read_score_hit(guaranteed_score_hits, &hit);
+        GentleEngine::retain_high_score_bin_rna_read_hit(
+            guaranteed_high_bin_hits,
+            &hit,
+            min_seed_hit_fraction,
+        );
+        GentleEngine::retain_top_rna_read_hit(retained_hits, hit);
+    }
+
     #[test]
     fn make_transcript_template_reverse_strand_uses_reverse_complemented_exon_concat() {
         let dna = DNAsequence::from_sequence("AACCGGTT").expect("sequence");
@@ -6670,5 +6862,99 @@ mod tests {
         assert_eq!(row.template_first_genomic_pos_1based, 6);
         assert_eq!(row.template_last_genomic_pos_1based, 1);
         assert!(row.reverse_complemented_from_genome);
+    }
+
+    #[test]
+    fn retained_hit_union_keeps_top_phase1_scores_beyond_retention_cap() {
+        let mut retained_hits = BinaryHeap::<RetainedRnaReadHit>::new();
+        let mut guaranteed_score_hits = BinaryHeap::<RetainedRnaReadScoreHit>::new();
+        let mut guaranteed_high_bin_hits = BTreeMap::<usize, RnaReadInterpretationHit>::new();
+        let min_seed_hit_fraction = 0.30;
+
+        for record_index in 0..RNA_READ_RETAINED_HITS_MAX {
+            feed_retention_trackers(
+                &mut retained_hits,
+                &mut guaranteed_score_hits,
+                &mut guaranteed_high_bin_hits,
+                test_rna_read_hit(record_index, 0.31, true),
+                min_seed_hit_fraction,
+            );
+        }
+
+        let rescued = test_rna_read_hit(99_999, 0.49, false);
+        assert!(
+            !GentleEngine::should_guarantee_rna_read_hit_by_high_score_bin(
+                &rescued,
+                min_seed_hit_fraction
+            ),
+            "0.49 should stay below the high-score-bin rescue band at the default threshold"
+        );
+        feed_retention_trackers(
+            &mut retained_hits,
+            &mut guaranteed_score_hits,
+            &mut guaranteed_high_bin_hits,
+            rescued.clone(),
+            min_seed_hit_fraction,
+        );
+
+        let retained = GentleEngine::collect_retained_rna_read_hits_union(
+            &retained_hits,
+            &guaranteed_score_hits,
+            &guaranteed_high_bin_hits,
+        );
+
+        assert_eq!(retained.len(), RNA_READ_RETAINED_HITS_MAX + 1);
+        assert!(
+            retained
+                .iter()
+                .any(|hit| hit.record_index == rescued.record_index)
+        );
+    }
+
+    #[test]
+    fn retained_hit_union_keeps_high_score_bin_rows_even_when_not_top_2000_scores() {
+        let mut retained_hits = BinaryHeap::<RetainedRnaReadHit>::new();
+        let mut guaranteed_score_hits = BinaryHeap::<RetainedRnaReadScoreHit>::new();
+        let mut guaranteed_high_bin_hits = BTreeMap::<usize, RnaReadInterpretationHit>::new();
+        let min_seed_hit_fraction = 0.30;
+
+        for record_index in 0..RNA_READ_RETAINED_HITS_MAX {
+            feed_retention_trackers(
+                &mut retained_hits,
+                &mut guaranteed_score_hits,
+                &mut guaranteed_high_bin_hits,
+                test_rna_read_hit(record_index, 0.95, true),
+                min_seed_hit_fraction,
+            );
+        }
+
+        let rescued = test_rna_read_hit(100_000, 0.79, false);
+        assert!(
+            GentleEngine::should_guarantee_rna_read_hit_by_high_score_bin(
+                &rescued,
+                min_seed_hit_fraction
+            ),
+            "0.79 should be rescued because it sits in one of the highest score-density bins above threshold"
+        );
+        feed_retention_trackers(
+            &mut retained_hits,
+            &mut guaranteed_score_hits,
+            &mut guaranteed_high_bin_hits,
+            rescued.clone(),
+            min_seed_hit_fraction,
+        );
+
+        let retained = GentleEngine::collect_retained_rna_read_hits_union(
+            &retained_hits,
+            &guaranteed_score_hits,
+            &guaranteed_high_bin_hits,
+        );
+
+        assert_eq!(retained.len(), RNA_READ_RETAINED_HITS_MAX + 1);
+        assert!(
+            retained
+                .iter()
+                .any(|hit| hit.record_index == rescued.record_index)
+        );
     }
 }
