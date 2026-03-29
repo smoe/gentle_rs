@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-28
+Last updated: 2026-03-29
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -16,6 +16,7 @@ order. Durable architecture constraints and decisions remain in
   worktrees reuse dependency build artifacts instead of duplicating large
   per-worktree `target/` trees.
 - Engine module decomposition is now underway:
+  - `src/engine/protocol.rs` (stable public analysis/report/dotplot contracts extracted from monolithic engine file)
   - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)
   - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
   - `src/engine/analysis/candidate_metrics.rs` (candidate metrics, feature-distance helpers, and expression scoring)
@@ -28,6 +29,9 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
+- GUI module decomposition is now underway:
+  - `src/app/help_docs.rs` (help/tutorial markdown loading and rewrite helpers extracted from `src/app.rs`)
+  - `src/main_area_dna/rna_read_support.rs` (RNA-read report/cache/inspection helper routines extracted from `src/main_area_dna.rs`)
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
   - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)
