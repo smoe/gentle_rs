@@ -4004,6 +4004,13 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_mapping_button_hover_text_guides_when_no_feature_is_selected() {
+        let hover = MainAreaDna::rna_read_mapping_button_hover_text(None);
+        assert!(hover.contains("Select an mRNA"));
+        assert!(hover.contains("feature first"));
+    }
+
+    #[test]
     fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
@@ -9083,15 +9090,12 @@ impl MainAreaDna {
                 rna_mapping_seed_view.is_some(),
                 egui::Button::new("RNA-read Mapping"),
             );
-            let rna_mapping_response = if let Some(view) = rna_mapping_seed_view.as_ref() {
-                rna_mapping_response.on_hover_text(format!(
-                    "Open the dedicated RNA-read Mapping workspace for {} feature n-{}",
-                    view.group_label, view.target_feature_id
-                ))
+            let rna_mapping_hover_text =
+                Self::rna_read_mapping_button_hover_text(rna_mapping_seed_view.as_ref());
+            let rna_mapping_response = if rna_mapping_seed_view.is_some() {
+                rna_mapping_response.on_hover_text(rna_mapping_hover_text)
             } else {
-                rna_mapping_response.on_hover_text(
-                    "Select an mRNA, ncRNA, misc_RNA, transcript, exon, gene, or CDS feature to seed the RNA-read Mapping workspace",
-                )
+                rna_mapping_response.on_disabled_hover_text(rna_mapping_hover_text)
             };
             if rna_mapping_response.clicked() {
                 match self.open_current_rna_read_mapping_workspace() {
@@ -13620,6 +13624,17 @@ impl MainAreaDna {
         match self.description_cache_expert_view.clone() {
             Some(FeatureExpertView::Splicing(view)) => Some(view),
             _ => None,
+        }
+    }
+
+    fn rna_read_mapping_button_hover_text(seed_view: Option<&SplicingExpertView>) -> String {
+        if let Some(view) = seed_view {
+            format!(
+                "Open the dedicated RNA-read Mapping workspace for {} feature n-{}",
+                view.group_label, view.target_feature_id
+            )
+        } else {
+            "Select an mRNA, ncRNA, misc_RNA, transcript, exon, gene, or CDS feature first to seed the RNA-read Mapping workspace".to_string()
         }
     }
 
