@@ -23389,11 +23389,21 @@ Error: `{err}`"
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
                             let mut open = true;
+                            let default_size = Vec2::new(1200.0, 860.0);
+                            let constrain_rect =
+                                crate::egui_compat::hosted_window_safe_rect(ui.ctx());
+                            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                                initial_position,
+                                constrain_rect,
+                                default_size,
+                            );
                             egui::Window::new(window_title.clone())
                                 .id(egui::Id::new(("hosted_sequence_window", id)))
                                 .open(&mut open)
                                 .resizable(true)
-                                .default_size(Vec2::new(1200.0, 860.0))
+                                .default_pos(default_pos)
+                                .default_size(default_size)
+                                .constrain_to(constrain_rect)
                                 .show(ui, |ui| {
                                     w.update_embedded(ui);
                                 });
@@ -23455,11 +23465,20 @@ Error: `{err}`"
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
                             let mut open = true;
+                            let default_size = Vec2::new(1200.0, 860.0);
+                            let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+                            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                                initial_position,
+                                constrain_rect,
+                                default_size,
+                            );
                             egui::Window::new(window_title.clone())
                                 .id(egui::Id::new(("hosted_sequence_window", id)))
                                 .open(&mut open)
                                 .resizable(true)
-                                .default_size(Vec2::new(1200.0, 860.0))
+                                .default_pos(default_pos)
+                                .default_size(default_size)
+                                .constrain_to(constrain_rect)
                                 .show(ctx, |ui| {
                                     w.update_embedded(ui);
                                 });
@@ -29171,13 +29190,18 @@ Error: `{err}`"
 
     fn render_main_workspace_host(&mut self, ctx: &egui::Context, project_dirty: bool) {
         let title = self.main_workspace_window_title(project_dirty);
+        let default_size = Vec2::new(1360.0, 900.0);
+        let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+        let default_pos =
+            crate::egui_compat::clamp_hosted_window_default_pos(None, constrain_rect, default_size);
         egui::Window::new(title)
             .id(Self::main_workspace_window_id())
             .collapsible(false)
             .resizable(true)
-            .default_pos(egui::pos2(24.0, 24.0))
-            .default_size(Vec2::new(1360.0, 900.0))
+            .default_pos(default_pos)
+            .default_size(default_size)
             .min_size(Vec2::new(720.0, 420.0))
+            .constrain_to(constrain_rect)
             .show(ctx, |ui| {
                 window_backdrop::paint_window_backdrop(
                     ui,

@@ -177,6 +177,9 @@ order. Durable architecture constraints and decisions remain in
   - hosted DNA windows now render through embedded/window-local panel paths
     with per-instance scope ids so multiple hosted windows no longer share
     root-level panel identities
+  - hosted workspace windows are now constrained to an inset-safe root rect to
+    reduce accidental macOS menu-bar/Dock activation while moving or resizing
+    them near the physical screen edges
 
 ### Biology/analysis capabilities already implemented
 
