@@ -398,6 +398,9 @@ Feature tree grouping:
   - `Derive all mRNA`
     - derives cDNA transcript sequences for every `mRNA`/`transcript` feature
       on the active sequence.
+    - keeps the DNA-window status compact for large transcript sets instead of
+      dumping one line per derived transcript; the derived set still becomes the
+      current pool/export target in Engine Ops.
   - `Derive + Dotplot`
     - derives the selected transcript sequence, switches to transcript context,
       and opens pairwise transcript-vs-genomic dotplot.

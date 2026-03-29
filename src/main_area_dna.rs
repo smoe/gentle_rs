@@ -1261,6 +1261,53 @@ mod tests {
         dna
     }
 
+    fn transcript_derivation_test_sequence() -> DNAsequence {
+        let mut bases = vec![b'A'; 40];
+        for (idx, base) in [
+            (8usize, b'G'),
+            (9, b'T'),
+            (10, b'A'),
+            (11, b'G'),
+            (14, b'A'),
+            (15, b'G'),
+            (20, b'G'),
+            (21, b'T'),
+            (24, b'A'),
+            (25, b'G'),
+        ] {
+            bases[idx] = base;
+        }
+        let sequence = String::from_utf8(bases).expect("valid ASCII DNA");
+        let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(16, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_2".to_string())),
+                ("label".into(), Some("NM_TEST_2".to_string())),
+            ],
+        });
+        dna
+    }
+
     fn write_single_line_fasta_index(path: &Path, sequence_len: usize) {
         let line = format!(
             "chr1\t{}\t6\t{}\t{}\n",
@@ -2635,6 +2682,76 @@ mod tests {
             MainAreaDna::splicing_group_roi_range_0based(&view),
             Some((100, 640))
         );
+    }
+
+    #[test]
+    fn transcript_derivation_compact_feedback_summarizes_multi_transcript_results() {
+        let dna = transcript_derivation_test_sequence();
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        let result = area
+            .derive_transcript_sequences_with_compact_feedback(
+                "seq1".to_string(),
+                vec![],
+                None,
+                "all transcript features on 'seq1'",
+            )
+            .expect("derive transcripts");
+
+        assert_eq!(result.created_seq_ids.len(), 2);
+        assert_eq!(area.last_created_seq_ids.len(), 2);
+        assert!(area.op_status.contains("Derived 2 transcript sequence(s)"));
+        assert!(
+            area.op_status
+                .contains("Engine Ops pool/export targets now point to this set")
+        );
+        assert!(
+            area.op_status
+                .contains("created: seq1__mrna__f1__nm_test_1")
+        );
+        assert!(!area.op_status.contains("messages:"));
+        assert!(
+            !area
+                .op_status
+                .contains("Derived transcript 'seq1__mrna__f1__nm_test_1' from mRNA feature")
+        );
+    }
+
+    #[test]
+    fn transcript_derivation_compact_feedback_preserves_single_result_window_switch() {
+        let dna = transcript_derivation_test_sequence();
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        let result = area
+            .derive_transcript_sequences_with_compact_feedback(
+                "seq1".to_string(),
+                vec![0],
+                None,
+                "selected transcript lane n-1",
+            )
+            .expect("derive one transcript");
+
+        let derived_seq_id = result
+            .created_seq_ids
+            .first()
+            .cloned()
+            .expect("created sequence");
+        assert_eq!(area.seq_id.as_deref(), Some(derived_seq_id.as_str()));
+        assert!(
+            area.op_status
+                .contains(&format!("Derived transcript '{derived_seq_id}'"))
+        );
+        assert!(
+            area.op_status
+                .contains("switched this window to the new cDNA sequence")
+        );
+        assert!(!area.op_status.contains("messages:"));
     }
 
     #[test]
@@ -12093,13 +12210,12 @@ impl MainAreaDna {
             self.op_status = "No transcript lane is available in this splicing group".to_string();
             return;
         };
-        let derive_result =
-            self.apply_operation_with_feedback_and_result(Operation::DeriveTranscriptSequences {
-                seq_id: source_seq_id.clone(),
-                feature_ids: vec![transcript_feature_id],
-                scope: None,
-                output_prefix: Some(format!("{source_seq_id}__mrna")),
-            });
+        let derive_result = self.derive_transcript_sequences_with_compact_feedback(
+            source_seq_id.clone(),
+            vec![transcript_feature_id],
+            None,
+            &format!("selected transcript lane n-{}", transcript_feature_id + 1),
+        );
         let Some(derive_result) = derive_result else {
             return;
         };
@@ -17690,12 +17806,12 @@ impl MainAreaDna {
                 )
                 .clicked()
             {
-                self.apply_operation_with_feedback(Operation::DeriveTranscriptSequences {
-                    seq_id: view.seq_id.clone(),
-                    feature_ids: vec![view.target_feature_id],
-                    scope: Some(SplicingScopePreset::AllOverlappingBothStrands),
-                    output_prefix: Some(format!("{}__mrna", view.seq_id)),
-                });
+                let _ = self.derive_transcript_sequences_with_compact_feedback(
+                    view.seq_id.clone(),
+                    vec![view.target_feature_id],
+                    Some(SplicingScopePreset::AllOverlappingBothStrands),
+                    &format!("splicing group '{}'", view.group_label),
+                );
             }
             if ui
                 .button("Derive all mRNA")
@@ -17704,12 +17820,12 @@ impl MainAreaDna {
                 )
                 .clicked()
             {
-                self.apply_operation_with_feedback(Operation::DeriveTranscriptSequences {
-                    seq_id: view.seq_id.clone(),
-                    feature_ids: vec![],
-                    scope: None,
-                    output_prefix: Some(format!("{}__mrna", view.seq_id)),
-                });
+                let _ = self.derive_transcript_sequences_with_compact_feedback(
+                    view.seq_id.clone(),
+                    vec![],
+                    None,
+                    &format!("all transcript features on '{}'", view.seq_id),
+                );
             }
             if ui
                 .button("Derive + Dotplot")
@@ -21053,6 +21169,75 @@ impl MainAreaDna {
             return;
         };
         self.materialize_rna_read_report_hits(vec![record_index], "highlighted report read");
+    }
+
+    fn summarize_status_items(items: &[String], max_visible: usize, separator: &str) -> String {
+        if items.is_empty() {
+            return "-".to_string();
+        }
+        let max_visible = max_visible.max(1);
+        let visible = items.iter().take(max_visible).cloned().collect::<Vec<_>>();
+        if items.len() > max_visible {
+            format!(
+                "{} (+{} more)",
+                visible.join(separator),
+                items.len() - max_visible
+            )
+        } else {
+            visible.join(separator)
+        }
+    }
+
+    fn set_transcript_derivation_status(&mut self, source_label: &str, result: &OpResult) {
+        let created_count = result.created_seq_ids.len();
+        let mut status_lines = if created_count == 1 {
+            let derived_seq_id = result
+                .created_seq_ids
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "<derived transcript>".to_string());
+            vec![format!(
+                "Derived transcript '{}' from {} and switched this window to the new cDNA sequence.",
+                derived_seq_id, source_label
+            )]
+        } else {
+            vec![
+                format!(
+                    "Derived {created_count} transcript sequence(s) from {}. Engine Ops pool/export targets now point to this set.",
+                    source_label
+                ),
+                format!(
+                    "created: {}",
+                    Self::summarize_status_items(&result.created_seq_ids, 3, ", ")
+                ),
+            ]
+        };
+        if !result.warnings.is_empty() {
+            status_lines.push(format!(
+                "warnings: {}",
+                Self::summarize_status_items(&result.warnings, 1, " | ")
+            ));
+        }
+        self.op_status = status_lines.join("\n");
+        self.op_error_popup = None;
+    }
+
+    fn derive_transcript_sequences_with_compact_feedback(
+        &mut self,
+        seq_id: String,
+        feature_ids: Vec<usize>,
+        scope: Option<SplicingScopePreset>,
+        source_label: &str,
+    ) -> Option<OpResult> {
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::DeriveTranscriptSequences {
+                seq_id: seq_id.clone(),
+                feature_ids,
+                scope,
+                output_prefix: Some(format!("{seq_id}__mrna")),
+            })?;
+        self.set_transcript_derivation_status(source_label, &result);
+        Some(result)
     }
 
     fn ensure_materialized_rna_read_dotplot_query_sequence(
@@ -25896,14 +26081,11 @@ impl MainAreaDna {
             // keep the current view stable and let the user select products explicitly.
             if result.created_seq_ids.len() == 1 {
                 if let Some(new_seq_id) = result.created_seq_ids.first() {
-                    if let Some(new_dna) = engine
-                        .read()
-                        .expect("Engine lock poisoned")
-                        .state()
-                        .sequences
-                        .get(new_seq_id)
-                        .cloned()
-                    {
+                    let new_dna = {
+                        let guard = engine.read().expect("Engine lock poisoned");
+                        guard.state().sequences.get(new_seq_id).cloned()
+                    };
+                    if let Some(new_dna) = new_dna {
                         self.seq_id = Some(new_seq_id.clone());
                         self.replace_active_dna(new_dna, true);
                     }
@@ -25914,14 +26096,11 @@ impl MainAreaDna {
                     .iter()
                     .any(|id| id == &current_seq_id)
                 {
-                    if let Some(updated_dna) = engine
-                        .read()
-                        .expect("Engine lock poisoned")
-                        .state()
-                        .sequences
-                        .get(&current_seq_id)
-                        .cloned()
-                    {
+                    let updated_dna = {
+                        let guard = engine.read().expect("Engine lock poisoned");
+                        guard.state().sequences.get(&current_seq_id).cloned()
+                    };
+                    if let Some(updated_dna) = updated_dna {
                         self.replace_active_dna(updated_dna, true);
                     }
                 }
@@ -26393,14 +26572,11 @@ impl MainAreaDna {
         drop(guard);
 
         if let Some(new_seq_id) = new_seq {
-            if let Some(new_dna) = engine
-                .read()
-                .expect("Engine lock poisoned")
-                .state()
-                .sequences
-                .get(&new_seq_id)
-                .cloned()
-            {
+            let new_dna = {
+                let guard = engine.read().expect("Engine lock poisoned");
+                guard.state().sequences.get(&new_seq_id).cloned()
+            };
+            if let Some(new_dna) = new_dna {
                 self.seq_id = Some(new_seq_id);
                 self.replace_active_dna(new_dna, true);
             }
