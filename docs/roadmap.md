@@ -16,7 +16,7 @@ order. Durable architecture constraints and decisions remain in
   worktrees reuse dependency build artifacts instead of duplicating large
   per-worktree `target/` trees.
 - Engine module decomposition is now underway:
-  - `src/engine/protocol.rs` (stable public analysis/report/dotplot contracts extracted from monolithic engine file)
+  - `src/engine/protocol.rs` (stable public analysis/report/dotplot + workflow/progress/error/state-summary contracts extracted from monolithic engine file)
   - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)
   - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
   - `src/engine/analysis/candidate_metrics.rs` (candidate metrics, feature-distance helpers, and expression scoring)
@@ -32,6 +32,7 @@ order. Durable architecture constraints and decisions remain in
 - GUI module decomposition is now underway:
   - `src/app/help_docs.rs` (help/tutorial markdown loading and rewrite helpers extracted from `src/app.rs`)
   - `src/main_area_dna/rna_read_support.rs` (RNA-read report/cache/inspection helper routines extracted from `src/main_area_dna.rs`)
+  - `src/main_area_dna/auxiliary_workspaces.rs` (dotplot support plus splicing/RNA-mapping auxiliary workspace helpers extracted from `src/main_area_dna.rs`)
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
   - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)

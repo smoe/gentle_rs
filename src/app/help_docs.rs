@@ -132,7 +132,10 @@ impl GENtleApp {
         out
     }
 
-    pub(super) fn rewrite_inline_image_destination(span: &str, absolute_dest: &Path) -> Option<String> {
+    pub(super) fn rewrite_inline_image_destination(
+        span: &str,
+        absolute_dest: &Path,
+    ) -> Option<String> {
         let (dest_start, dest_end) = Self::find_inline_image_destination(span)?;
         let mut rewritten = String::with_capacity(span.len() + 64);
         let absolute_uri = Self::file_uri_from_path(absolute_dest);

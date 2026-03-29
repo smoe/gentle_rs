@@ -67,8 +67,6 @@ use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
     env,
-    error::Error,
-    fmt,
     fs::{File, OpenOptions},
     hash::{Hash, Hasher},
     io::{BufRead, BufReader, BufWriter, Read, Write},
@@ -646,7 +644,6 @@ struct RnaReadInterpretCheckpoint {
     score_density_bins: Vec<u64>,
     retained_hits: Vec<RnaReadInterpretationHit>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
@@ -3434,7 +3431,6 @@ impl GenomeGeneExtractMode {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SequencingConfirmationStatus {
@@ -3654,132 +3650,6 @@ pub struct FlexibilityTrackSummary {
     pub bin_count: usize,
     pub min_score: f64,
     pub max_score: f64,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureRangeRelation {
-    #[default]
-    Overlap,
-    Within,
-    Contains,
-}
-
-impl SequenceFeatureRangeRelation {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Overlap => "overlap",
-            Self::Within => "within",
-            Self::Contains => "contains",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureStrandFilter {
-    #[default]
-    Any,
-    Forward,
-    Reverse,
-}
-
-impl SequenceFeatureStrandFilter {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::Forward => "forward",
-            Self::Reverse => "reverse",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureSortBy {
-    FeatureId,
-    #[default]
-    Start,
-    End,
-    Kind,
-    Length,
-}
-
-impl SequenceFeatureSortBy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::FeatureId => "feature_id",
-            Self::Start => "start",
-            Self::End => "end",
-            Self::Kind => "kind",
-            Self::Length => "length",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQualifierFilter {
-    pub key: String,
-    pub value_contains: Option<String>,
-    pub value_regex: Option<String>,
-    pub case_sensitive: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQuery {
-    pub seq_id: SeqId,
-    pub include_source: bool,
-    pub include_qualifiers: bool,
-    pub kind_in: Vec<String>,
-    pub kind_not_in: Vec<String>,
-    pub start_0based: Option<usize>,
-    pub end_0based_exclusive: Option<usize>,
-    pub range_relation: SequenceFeatureRangeRelation,
-    pub strand: SequenceFeatureStrandFilter,
-    pub label_contains: Option<String>,
-    pub label_regex: Option<String>,
-    pub qualifier_filters: Vec<SequenceFeatureQualifierFilter>,
-    pub min_len_bp: Option<usize>,
-    pub max_len_bp: Option<usize>,
-    pub limit: Option<usize>,
-    pub offset: usize,
-    pub sort_by: SequenceFeatureSortBy,
-    pub descending: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQueryRow {
-    pub feature_id: usize,
-    pub kind: String,
-    pub start_0based: usize,
-    pub end_0based_exclusive: usize,
-    pub length_bp: usize,
-    pub strand: String,
-    pub label: String,
-    pub labels: Vec<String>,
-    pub qualifiers: BTreeMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQueryResult {
-    pub schema: String,
-    pub seq_id: SeqId,
-    pub sequence_length_bp: usize,
-    pub total_feature_count: usize,
-    pub matched_count: usize,
-    pub returned_count: usize,
-    pub offset: usize,
-    pub limit: usize,
-    pub range_relation: String,
-    pub strand_filter: String,
-    pub sort_by: String,
-    pub descending: bool,
-    pub query: SequenceFeatureQuery,
-    pub rows: Vec<SequenceFeatureQueryRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5240,68 +5110,6 @@ impl MetricExpressionParser {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// One deterministic workflow run: ordered operations with a caller-supplied
-/// `run_id`.
-///
-/// Operations are applied sequentially. The current workflow executor is not
-/// transactional: if a later step fails, earlier successful steps remain in
-/// state and in the operation journal.
-pub struct Workflow {
-    pub run_id: RunId,
-    pub ops: Vec<Operation>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Canonical result payload returned after one operation completes.
-///
-/// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
-/// for which sequence windows/views may need refresh after an operation.
-pub struct OpResult {
-    pub op_id: OpId,
-    pub created_seq_ids: Vec<SeqId>,
-    pub changed_seq_ids: Vec<SeqId>,
-    pub warnings: Vec<String>,
-    pub messages: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub protocol_cartoon_preview: Option<ProtocolCartoonPreviewTelemetry>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub genome_annotation_projection: Option<GenomeAnnotationProjectionTelemetry>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sequence_alignment: Option<SequenceAlignmentReport>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Optional protocol-cartoon preview payload emitted by operations that can
-/// project a deterministic mechanism strip from operation geometry.
-pub struct ProtocolCartoonPreviewTelemetry {
-    pub protocol: String,
-    pub flank_bp: usize,
-    pub overlap_bp: usize,
-    pub insert_bp: usize,
-    pub bindings: ProtocolCartoonTemplateBindings,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Structured annotation projection telemetry emitted by genomic extraction
-/// operations (`ExtractGenomeRegion`, `ExtractGenomeGene`).
-pub struct GenomeAnnotationProjectionTelemetry {
-    pub requested_scope: String,
-    pub effective_scope: String,
-    pub max_features_cap: Option<usize>,
-    pub candidate_feature_count: usize,
-    pub attached_feature_count: usize,
-    pub dropped_feature_count: usize,
-    pub genes_attached: usize,
-    pub transcripts_attached: usize,
-    pub exons_attached: usize,
-    pub cds_attached: usize,
-    pub fallback_applied: bool,
-    pub fallback_reason: Option<String>,
-}
-
 #[derive(Debug, Clone, Default)]
 struct ExtractRegionAnnotationProjectionBatch {
     features: Vec<gb_io::seq::Feature>,
@@ -5329,122 +5137,6 @@ struct ExonConcatenatedBlock {
 struct ExonConcatenatedProjection {
     sequence: String,
     blocks: Vec<ExonConcatenatedBlock>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Progress payload emitted by TFBS annotation operations.
-pub struct TfbsProgress {
-    pub seq_id: String,
-    pub motif_id: String,
-    pub motif_index: usize,
-    pub motif_count: usize,
-    pub scanned_steps: usize,
-    pub total_steps: usize,
-    pub motif_percent: f64,
-    pub total_percent: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Progress payload emitted by genome track import operations.
-pub struct GenomeTrackImportProgress {
-    pub seq_id: String,
-    pub source: String,
-    pub path: String,
-    pub parsed_records: usize,
-    pub imported_features: usize,
-    pub skipped_records: usize,
-    pub done: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Union of long-running operation progress events.
-pub enum OperationProgress {
-    Tfbs(TfbsProgress),
-    GenomePrepare(PrepareGenomeProgress),
-    GenomeTrackImport(GenomeTrackImportProgress),
-    RnaReadInterpret(RnaReadInterpretProgress),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Immutable operation journal row.
-pub struct OperationRecord {
-    pub run_id: RunId,
-    pub op: Operation,
-    pub result: OpResult,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-/// Stable high-level error class for engine operation failures.
-pub enum ErrorCode {
-    InvalidInput,
-    NotFound,
-    Unsupported,
-    Io,
-    Internal,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Shared structured error payload returned by engine operations/adapters.
-pub struct EngineError {
-    pub code: ErrorCode,
-    pub message: String,
-}
-
-impl fmt::Display for EngineError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
-    }
-}
-
-impl Error for EngineError {}
-
-/// Engine capability snapshot used by adapters for discovery/negotiation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capabilities {
-    pub protocol_version: String,
-    pub supported_operations: Vec<String>,
-    pub supported_export_formats: Vec<String>,
-    pub deterministic_operation_log: bool,
-}
-
-/// Compact sequence row used by state-summary style adapter surfaces.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineSequenceSummary {
-    pub id: String,
-    pub name: Option<String>,
-    pub length: usize,
-    pub circular: bool,
-}
-
-/// Compact container row used by shell/CLI inspection surfaces.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineContainerSummary {
-    pub id: String,
-    pub kind: String,
-    pub member_count: usize,
-    pub members: Vec<String>,
-}
-
-/// Compact arrangement row used by shell/CLI inspection surfaces.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineArrangementSummary {
-    pub id: String,
-    pub mode: String,
-    pub lane_count: usize,
-    pub lane_container_ids: Vec<String>,
-    pub ladders: Vec<String>,
-}
-
-/// Machine-readable snapshot of top-level engine state counts and summaries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineStateSummary {
-    pub sequence_count: usize,
-    pub sequences: Vec<EngineSequenceSummary>,
-    pub container_count: usize,
-    pub containers: Vec<EngineContainerSummary>,
-    pub arrangement_count: usize,
-    pub arrangements: Vec<EngineArrangementSummary>,
-    pub display: DisplaySettings,
 }
 
 /// Minimal execution contract shared by concrete engine implementations.

@@ -165,9 +165,7 @@ impl RnaReadSelectedExportKind {
     pub(super) fn empty_selection_message(self) -> &'static str {
         match self {
             Self::Fasta => "Select one or more reads first to export selected FASTA",
-            Self::AlignmentsTsv => {
-                "Select one or more aligned rows first to export them as TSV"
-            }
+            Self::AlignmentsTsv => "Select one or more aligned rows first to export them as TSV",
             Self::ExonPathsTsv => {
                 "Select one or more aligned rows first to export their exon paths"
             }
@@ -423,7 +421,9 @@ impl MainAreaDna {
         summaries
     }
 
-    pub(super) fn current_saved_rna_read_report(&mut self) -> Option<Arc<RnaReadInterpretationReport>> {
+    pub(super) fn current_saved_rna_read_report(
+        &mut self,
+    ) -> Option<Arc<RnaReadInterpretationReport>> {
         self.selected_rna_read_evidence_report_id()
             .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
     }
@@ -500,7 +500,9 @@ impl MainAreaDna {
             .find(|hit| hit.record_index == selected_index)
     }
 
-    pub(super) fn rna_read_top_hit_preview_from_hit(hit: &RnaReadInterpretationHit) -> RnaReadTopHitPreview {
+    pub(super) fn rna_read_top_hit_preview_from_hit(
+        hit: &RnaReadInterpretationHit,
+    ) -> RnaReadTopHitPreview {
         let mapping = hit.best_mapping.as_ref();
         let sequence_preview = if hit.sequence.len() > 120 {
             format!("{}...", &hit.sequence[..120])
@@ -732,7 +734,10 @@ impl MainAreaDna {
         progress
     }
 
-    pub(super) fn active_rna_read_task_matches_splicing_view(&self, view: &SplicingExpertView) -> bool {
+    pub(super) fn active_rna_read_task_matches_splicing_view(
+        &self,
+        view: &SplicingExpertView,
+    ) -> bool {
         self.rna_read_task
             .as_ref()
             .map(|task| {
@@ -813,9 +818,7 @@ impl MainAreaDna {
         match effect {
             RnaReadAlignmentEffect::ConfirmedAssignment => "confirmed",
             RnaReadAlignmentEffect::ReassignedTranscript => "reassigned",
-            RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment => {
-                "aligned (no phase-1 tx)"
-            }
+            RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment => "aligned (no phase-1 tx)",
         }
     }
 
@@ -873,17 +876,15 @@ impl MainAreaDna {
     ) -> RnaReadAlignmentInspectionSortKey {
         match sort_key {
             RnaReadAlignmentEffectSortKey::Rank => RnaReadAlignmentInspectionSortKey::Rank,
-            RnaReadAlignmentEffectSortKey::Identity => {
-                RnaReadAlignmentInspectionSortKey::Identity
-            }
-            RnaReadAlignmentEffectSortKey::Coverage => {
-                RnaReadAlignmentInspectionSortKey::Coverage
-            }
+            RnaReadAlignmentEffectSortKey::Identity => RnaReadAlignmentInspectionSortKey::Identity,
+            RnaReadAlignmentEffectSortKey::Coverage => RnaReadAlignmentInspectionSortKey::Coverage,
             RnaReadAlignmentEffectSortKey::Score => RnaReadAlignmentInspectionSortKey::Score,
         }
     }
 
-    pub(super) fn current_rna_read_alignment_subset_spec(&mut self) -> RnaReadAlignmentInspectionSubsetSpec {
+    pub(super) fn current_rna_read_alignment_subset_spec(
+        &mut self,
+    ) -> RnaReadAlignmentInspectionSubsetSpec {
         let score_bin_count = self
             .current_saved_rna_read_report()
             .map(|report| report.score_density_bins.len().max(40))
@@ -1098,7 +1099,10 @@ impl MainAreaDna {
         self.rna_read_alignment_effect_score_bin_index = None;
     }
 
-    pub(super) fn rna_read_score_density_bin_bounds(bin_index: usize, bin_count: usize) -> (f64, f64) {
+    pub(super) fn rna_read_score_density_bin_bounds(
+        bin_index: usize,
+        bin_count: usize,
+    ) -> (f64, f64) {
         let bin_count = bin_count.max(1);
         let left = bin_index.min(bin_count.saturating_sub(1)) as f64 / bin_count as f64;
         let right = (bin_index.min(bin_count.saturating_sub(1)) + 1) as f64 / bin_count as f64;
@@ -1194,7 +1198,10 @@ impl MainAreaDna {
             .join("\n")
     }
 
-    pub(super) fn compact_rna_read_transcript_label(transcript_id: &str, transcript_label: &str) -> String {
+    pub(super) fn compact_rna_read_transcript_label(
+        transcript_id: &str,
+        transcript_label: &str,
+    ) -> String {
         let id = transcript_id.trim();
         let label = transcript_label.trim();
         if id.is_empty() && label.is_empty() {
@@ -1208,7 +1215,9 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn format_rna_read_mapped_exon_support_compact(row: &RnaReadAlignmentInspectionRow) -> String {
+    pub(super) fn format_rna_read_mapped_exon_support_compact(
+        row: &RnaReadAlignmentInspectionRow,
+    ) -> String {
         if row.mapped_exon_support.is_empty() {
             "none".to_string()
         } else {
@@ -1234,7 +1243,10 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn rna_read_score_density_bin_index(seed_hit_fraction: f64, bin_count: usize) -> usize {
+    pub(super) fn rna_read_score_density_bin_index(
+        seed_hit_fraction: f64,
+        bin_count: usize,
+    ) -> usize {
         if bin_count <= 1 {
             return 0;
         }
@@ -1328,7 +1340,9 @@ impl MainAreaDna {
         rows
     }
 
-    pub(super) fn sort_rna_read_top_hit_previews_by_phase1_score(rows: &mut [RnaReadTopHitPreview]) {
+    pub(super) fn sort_rna_read_top_hit_previews_by_phase1_score(
+        rows: &mut [RnaReadTopHitPreview],
+    ) {
         rows.sort_by(|left, right| {
             right
                 .seed_hit_fraction
@@ -1458,8 +1472,7 @@ impl MainAreaDna {
         }
         let report_id = self.rna_reads_ui.report_id.trim().to_string();
         if report_id.is_empty() {
-            self.op_status =
-                "Load/save a Report ID before materializing RNA-read hits".to_string();
+            self.op_status = "Load/save a Report ID before materializing RNA-read hits".to_string();
             return;
         }
         let Some(engine) = self.engine.clone() else {
