@@ -7669,10 +7669,7 @@ impl MainAreaDna {
             ui.separator();
             ui.label("Mode");
             let mut mode_changed = false;
-            egui::ComboBox::from_id_salt((
-                "dna_presentation_mode",
-                self.seq_id.as_deref().unwrap_or("<no-seq-id>"),
-            ))
+            egui::ComboBox::from_id_salt(("dna_presentation_mode", self.panel_scope_key()))
             .selected_text(self.dna_presentation_mode.label())
             .show_ui(ui, |ui| {
                 for mode in [
@@ -10562,7 +10559,7 @@ impl MainAreaDna {
                 split_rect,
                 ui.make_persistent_id(format!(
                     "extended_top_panel_split_{}",
-                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                    self.panel_scope_key()
                 )),
                 egui::Sense::click_and_drag(),
             );
@@ -33347,7 +33344,7 @@ impl MainAreaDna {
                 }
             });
         }
-        let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
+        let seq_key = self.panel_scope_key();
         let viewport = self.active_linear_viewport_range();
         let viewport_limited = viewport.is_some();
         ui.horizontal(|ui| {
@@ -34364,7 +34361,7 @@ impl MainAreaDna {
                                         egui::ScrollArea::vertical()
                                             .id_salt(format!(
                                                 "feature_tree_scroll_{}",
-                                                self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                                                self.panel_scope_key()
                                             ))
                                             .scroll_bar_visibility(
                                                 egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
@@ -34396,7 +34393,7 @@ impl MainAreaDna {
                                     split_rect,
                                     ui.make_persistent_id(format!(
                                         "feature_tree_vertical_split_{}",
-                                        self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                                        self.panel_scope_key()
                                     )),
                                     egui::Sense::click_and_drag(),
                                 );
@@ -34456,7 +34453,7 @@ impl MainAreaDna {
                     split_rect,
                     ui.make_persistent_id(format!(
                         "feature_tree_horizontal_split_{}",
-                        self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                        self.panel_scope_key()
                     )),
                     egui::Sense::click_and_drag(),
                 );

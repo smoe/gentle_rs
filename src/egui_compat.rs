@@ -48,6 +48,19 @@ pub(crate) fn clamp_hosted_window_default_pos(
     )
 }
 
+pub(crate) fn clamp_hosted_window_default_size(
+    desired: egui::Vec2,
+    constrain_rect: egui::Rect,
+    min_size: egui::Vec2,
+) -> egui::Vec2 {
+    let max_width = constrain_rect.width().max(min_size.x);
+    let max_height = constrain_rect.height().max(min_size.y);
+    egui::vec2(
+        desired.x.clamp(min_size.x, max_width),
+        desired.y.clamp(min_size.y, max_height),
+    )
+}
+
 pub(crate) fn show_central_panel<R>(
     ctx: &egui::Context,
     panel: egui::CentralPanel,
@@ -112,7 +125,7 @@ mod tests {
     use super::{
         HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
         HOSTED_WINDOW_SAFE_INSET_X_PX, clamp_hosted_window_default_pos,
-        hosted_window_safe_rect_for_rect,
+        clamp_hosted_window_default_size, hosted_window_safe_rect_for_rect,
     };
     use eframe::egui::{Rect, pos2, vec2};
 
@@ -135,5 +148,13 @@ mod tests {
         assert!(pos.y <= safe.max.y - 240.0);
         assert!(pos.x >= safe.min.x);
         assert!(pos.y >= safe.min.y);
+    }
+
+    #[test]
+    fn clamp_hosted_window_default_size_fits_large_defaults_into_safe_rect() {
+        let safe = Rect::from_min_max(pos2(28.0, 36.0), pos2(972.0, 758.0));
+        let size = clamp_hosted_window_default_size(vec2(1360.0, 900.0), safe, vec2(720.0, 420.0));
+        assert_eq!(size.x, safe.width());
+        assert_eq!(size.y, safe.height());
     }
 }

@@ -180,6 +180,12 @@ order. Durable architecture constraints and decisions remain in
   - hosted workspace windows are now constrained to an inset-safe root rect to
     reduce accidental macOS menu-bar/Dock activation while moving or resizing
     them near the physical screen edges
+  - hosted project/sequence windows now clamp their initial size to that safe
+    rect so resize handles remain reachable and arrangement/detail panes are
+    not born beyond the hosted workspace
+  - remaining feature-tree split/scroll ids are now keyed by per-window scope
+    so sequence-panel show/hide relayouts do not briefly collide across hosted
+    windows showing the same sequence
 
 ### Biology/analysis capabilities already implemented
 

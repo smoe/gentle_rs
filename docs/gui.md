@@ -73,6 +73,9 @@ macOS auxiliary-window stability note:
 - Hosted windows are kept inside a small safety inset from the root workspace
   edges so resizing/moving them does not immediately hit the physical screen
   border and trigger the macOS menu bar or Dock.
+- Hosted project and sequence windows also clamp their initial size to that
+  inset-safe workspace so resize handles remain reachable and large panes such
+  as arrangements and feature details are not born partly off-screen.
 
 ## Configuration Window
 
@@ -311,6 +314,9 @@ Feature tree grouping:
   (including short features), improving disambiguation.
 - The feature-tree pane is horizontally resizable; when narrowed, the tree uses
   horizontal scrolling for long labels.
+- In hosted windows, the feature tree and its split/scroll widgets use
+  per-window ids so temporary relayouts such as toggling the sequence text
+  panel do not collide with another hosted view of the same sequence.
 - For large/feature-dense sequences, initial feature-tree/detail rendering can
   be deferred to improve window-open responsiveness and is then auto-loaded on
   the next frame (no manual button click required).
