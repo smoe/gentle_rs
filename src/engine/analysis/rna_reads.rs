@@ -3460,13 +3460,17 @@ impl GentleEngine {
 
     pub(super) fn apply_rna_read_report_mode_to_hits(
         report_mode: RnaReadReportMode,
+        min_seed_hit_fraction: f64,
         hits: Vec<RnaReadInterpretationHit>,
     ) -> Vec<RnaReadInterpretationHit> {
         match report_mode {
             RnaReadReportMode::Full => hits,
             RnaReadReportMode::SeedPassedOnly => hits
                 .into_iter()
-                .filter(|hit| hit.passed_seed_filter)
+                .filter(|hit| {
+                    hit.passed_seed_filter
+                        || hit.seed_hit_fraction + f64::EPSILON >= min_seed_hit_fraction
+                })
                 .collect::<Vec<_>>(),
         }
     }
@@ -4823,7 +4827,7 @@ impl GentleEngine {
             .contains_key(report.report_id.as_str());
         self.upsert_rna_read_report(report.clone())?;
         result.messages.push(format!(
-            "{} RNA-read report '{}' (profile={}, origin_mode={}, report_mode={}, targets={}, reads={}, seed_passed={}, aligned={}, msa_eligible(retained)={}, {})",
+            "{} RNA-read report '{}' (profile={}, origin_mode={}, report_mode={}, targets={}, reads={}, retained_hits={}, seed_passed={}, aligned={}, msa_eligible(retained)={}, {})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.profile.as_str(),
@@ -4831,6 +4835,7 @@ impl GentleEngine {
             report.report_mode.as_str(),
             report.target_gene_ids.len(),
             report.read_count_total,
+            report.hits.len(),
             report.read_count_seed_passed,
             report.read_count_aligned,
             report.retained_count_msa_eligible,
@@ -6631,7 +6636,11 @@ impl GentleEngine {
         );
         let retained_hit_count = retained_hits.len();
         let retained_rescue_count = retained_hit_count.saturating_sub(retained_by_rank_count);
-        let hits = Self::apply_rna_read_report_mode_to_hits(report_mode, retained_hits.clone());
+        let hits = Self::apply_rna_read_report_mode_to_hits(
+            report_mode,
+            seed_filter.min_seed_hit_fraction,
+            retained_hits.clone(),
+        );
         let report_hit_count = hits.len();
         let retained_count_msa_eligible = hits.iter().filter(|hit| hit.msa_eligible).count();
         isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
@@ -6788,8 +6797,10 @@ impl GentleEngine {
         }
         if report_mode == RnaReadReportMode::SeedPassedOnly {
             warnings.push(format!(
-                "report_mode=seed_passed_only kept {} of {} retained hits",
-                report_hit_count, retained_hit_count
+                "report_mode=seed_passed_only kept {} of {} retained hits (composite seed-pass rows plus retained rows at or above raw min_hit={:.3})",
+                report_hit_count,
+                retained_hit_count,
+                seed_filter.min_seed_hit_fraction,
             ));
         }
 

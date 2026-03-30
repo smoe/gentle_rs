@@ -14266,7 +14266,7 @@ impl MainAreaDna {
                                         "seed_passed_only",
                                     )
                                     .on_hover_text(
-                                        "Persist only retained hits that passed the seed gate (smaller reports).",
+                                        "Persist a smaller retained report that still keeps rows useful for later review: composite seed-pass hits plus retained rows at or above raw min_hit.",
                                     )
                                     .changed();
                             });
@@ -18520,7 +18520,7 @@ impl MainAreaDna {
                 });
         });
         ui.small(format!(
-            "Seed-pass summary: {} reads passed the current seed gate.",
+            "Composite seed-pass summary: {} reads passed the full current seed gate.",
             progress.seed_passed
         ));
     }
@@ -18578,6 +18578,18 @@ impl MainAreaDna {
         };
         let bin_count = progress.score_density_bins.len().max(1);
         let saved_report = self.current_saved_rna_read_report();
+        let min_seed_hit_fraction = saved_report
+            .as_ref()
+            .map(|report| report.seed_filter.min_seed_hit_fraction)
+            .or_else(|| {
+                Self::parse_required_f64_text(
+                    &self.rna_reads_ui.min_seed_hit_fraction,
+                    "min_seed_hit_fraction",
+                )
+                .ok()
+            })
+            .unwrap_or(0.30)
+            .clamp(0.0, 1.0);
         let selected_bin_index = self
             .rna_read_alignment_effect_score_bin_index
             .map(|idx| idx.min(bin_count.saturating_sub(1)));
@@ -18648,7 +18660,7 @@ impl MainAreaDna {
             ],
             egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
         );
-        let threshold_x = rect.left() + rect.width() * 0.30;
+        let threshold_x = rect.left() + rect.width() * min_seed_hit_fraction as f32;
         painter.line_segment(
             [
                 egui::pos2(threshold_x, plot_top),
@@ -18673,7 +18685,7 @@ impl MainAreaDna {
         painter.text(
             egui::pos2(threshold_x + 2.0, plot_top + 1.0),
             egui::Align2::LEFT_TOP,
-            "0.30",
+            format!("{min_seed_hit_fraction:.2}"),
             egui::FontId::monospace(9.0),
             egui::Color32::from_rgb(220, 38, 38),
         );
@@ -18775,6 +18787,9 @@ impl MainAreaDna {
         } else {
             ui.small("Selected score bin: <none>");
         }
+        ui.small(format!(
+            "Red line = raw min_hit threshold ({min_seed_hit_fraction:.2}) only. Crossing it is necessary but not sufficient for the full composite seed gate; weighted support, unique matched k-mers, chain consistency, transcript-gap, and transition requirements are checked separately."
+        ));
     }
 
     fn render_rna_read_statistics_tabs(

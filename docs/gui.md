@@ -519,6 +519,13 @@ Feature tree grouping:
     `InterpretRnaReads` engine operation (GUI/CLI/JS/Lua parity)
   - `Apply TP73 specificity preset` sets a stricter seed gate and scope
     (`target-group / target-strand`) for focused pilot filtering runs
+  - `report_mode=seed_passed_only` now keeps a smaller but still reviewable
+    retained set:
+    - composite seed-pass rows
+    - retained rows at or above raw `min hit`
+    - this keeps "reasonable seed" candidates available for later phase-2
+      alignment and manual inspection even when they fail the stricter
+      composite seed gate
   - default splicing scope is broad (`all overlapping / both strands`) with
     optional narrowing presets
   - advanced `Origin mode` controls are available:
@@ -566,6 +573,8 @@ Feature tree grouping:
       `raw >= min hit AND weighted >= min weighted AND unique >= min(min unique, tested kmers) AND chain >= min chain AND median transcript gap <= max median gap AND confirmed transitions >= min transitions AND confirmed transition fraction >= min transition frac`
   - phase-1 hashing now exposes only the real density controls:
     `k-mer` and `hash stride`
+  - in the score-density plot, the red vertical line marks raw `min hit` only;
+    it is not the full composite seed-pass boundary
     - full-read hashing is always used in phase 1
     - removed legacy short/long sampled-window knobs are no longer shown
   - alignment fields are active for phase-2 retained-read mapping:

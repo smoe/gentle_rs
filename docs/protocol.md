@@ -2380,8 +2380,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       implemented
   - report compaction and resume behavior:
     - `report_mode=full` keeps retained top hits exactly as ranked
-    - `report_mode=seed_passed_only` keeps only retained hits that passed the
-      composite seed gate (counters remain based on the full stream)
+    - `report_mode=seed_passed_only` keeps a smaller retained subset for later
+      inspection/alignment:
+      - retained hits that passed the composite seed gate
+      - retained hits at or above raw `min hit`
+      - counters still remain based on the full stream
     - `checkpoint_path` + `checkpoint_every_reads` writes deterministic JSON
       snapshots (`gentle.rna_read_interpret_checkpoint.v1`) during streaming
     - `resume_from_checkpoint=true` resumes from the checkpoint snapshot and

@@ -12390,6 +12390,34 @@ fn test_align_rna_read_report_progress_uses_stride_one() {
 }
 
 #[test]
+fn test_seed_passed_only_report_mode_keeps_raw_min_hit_candidates() {
+    let kept = GentleEngine::apply_rna_read_report_mode_to_hits(
+        RnaReadReportMode::SeedPassedOnly,
+        0.30,
+        vec![
+            RnaReadInterpretationHit {
+                record_index: 1,
+                header_id: "raw_candidate".to_string(),
+                seed_hit_fraction: 0.31,
+                passed_seed_filter: false,
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                record_index: 2,
+                header_id: "below_min_hit".to_string(),
+                seed_hit_fraction: 0.12,
+                passed_seed_filter: false,
+                ..RnaReadInterpretationHit::default()
+            },
+        ],
+    );
+
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].header_id, "raw_candidate");
+    assert!(!kept[0].passed_seed_filter);
+}
+
+#[test]
 fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     let mut state = ProjectState::default();
     state
