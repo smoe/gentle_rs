@@ -2,6 +2,12 @@
 //!
 //! Keep reusable candidate inspection/reporting code here so candidate-related
 //! operations and adapters share one scoring vocabulary.
+//!
+//! Look here for:
+//! - candidate-set paging and summary views
+//! - metric-name discovery and weighted-objective helpers
+//! - reusable sort/filter/scoring logic that should stay independent from
+//!   shell/GUI command routing
 
 use super::*;
 

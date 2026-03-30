@@ -4,6 +4,11 @@
 //! later crate separation easier: the sequence window can depend on one
 //! coherent mapping/report slice instead of a long interleaved block inside the
 //! monolithic `main_area_dna.rs` file.
+//!
+//! Look here for:
+//! - persisted RNA-read workspace UI state/defaults
+//! - cached report/summary wrappers reused by the DNA window
+//! - selection/filter/export helper types for `Mapped cDNA -> Read effects`
 
 use super::*;
 

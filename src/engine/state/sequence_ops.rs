@@ -3,6 +3,11 @@
 //!
 //! Keep low-level sequence manipulation helpers here so restriction/ligation,
 //! primer design, and export paths reuse one implementation.
+//!
+//! Look here for:
+//! - restriction digest and fragment/overhang handling
+//! - primer/overhang utility routines reused by cloning workflows
+//! - shared sequence export/pool materialization helpers
 
 use super::*;
 

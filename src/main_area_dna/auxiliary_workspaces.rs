@@ -3,6 +3,11 @@
 //! This submodule groups the heavyweight secondary workspaces and their shared
 //! dotplot support so the main sequence-window file can shrink toward clearer
 //! GUI slices ahead of a later crate split.
+//!
+//! Look here for:
+//! - dotplot UI state and export helpers
+//! - secondary workspace rendering shared by splicing/RNA-read/dotplot panes
+//! - window-sizing/default helpers for extracted auxiliary tools
 
 use super::*;
 

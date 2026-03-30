@@ -1,8 +1,16 @@
-//! Stable public analysis/report contracts extracted from the monolithic engine.
+//! Stable public analysis/report contracts extracted from the monolithic
+//! engine.
 //!
-//! This module keeps adapter-facing RNA-read and dotplot record types in one
-//! place so future crate splitting can give GUI/CLI frontends a smaller,
-//! slower-changing protocol surface than the full execution engine.
+//! This is the narrow, serialization-friendly layer that GUI/CLI/JS/Lua/Python
+//! adapters should lean on when they only need record shapes rather than full
+//! engine execution.
+//!
+//! Look here for:
+//! - persisted report/result payloads such as RNA-read, dotplot, planning, and
+//!   sequencing-confirmation records
+//! - small enums that appear in JSON-facing operation contracts
+//! - state-summary structs that should remain slower-changing than
+//!   `src/engine.rs`
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, error::Error, fmt};

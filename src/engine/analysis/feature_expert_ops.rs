@@ -3,6 +3,11 @@
 //!
 //! This module keeps feature-oriented interpretation logic close together so
 //! inspection/render/export operations reuse the same qualifier parsing rules.
+//!
+//! Look here for:
+//! - feature qualifier normalization/parsing helpers
+//! - splicing-reference derivation and isoform-path interpretation logic
+//! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
 

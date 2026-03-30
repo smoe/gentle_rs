@@ -4,6 +4,12 @@
 //! Keep large command-family token parsing here so `engine_shell.rs` can remain
 //! the readable public contract surface while still routing every family
 //! through one shared parser.
+//!
+//! Look here for:
+//! - token-to-`ShellCommand` parsing for the larger command families
+//! - family-specific option validation that should stay shared across GUI shell
+//!   and CLI shell mode
+//! - places to extend when a shell family gets too large for `engine_shell.rs`
 
 use super::*;
 

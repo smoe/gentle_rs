@@ -2,6 +2,11 @@
 //!
 //! Parsers and generated-feature cleanup live here so every track-ingestion path
 //! reuses the same normalization rules.
+//!
+//! Look here for:
+//! - text/track reader helpers
+//! - generated-feature tagging and cleanup for imported overlays
+//! - BED/BigWig/VCF/BLAST projection rules shared by GUI, shell, and CLI
 
 use super::*;
 
