@@ -2,6 +2,11 @@
 //!
 //! Container-first project semantics and lineage bookkeeping live together here
 //! because most mutations need to keep both models in sync.
+//!
+//! Look here for:
+//! - lineage-node creation and lookup helpers
+//! - container/arrangement bookkeeping tied to sequence mutations
+//! - macro-instance/container-state synchronization utilities
 
 use super::*;
 

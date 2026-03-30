@@ -36,6 +36,10 @@ order. Durable architecture constraints and decisions remain in
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
   - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)
+- The newly extracted engine/GUI/shell modules now carry navigation-oriented
+  top-level `//!` docs that explicitly say "look here for ..." so future
+  refactors, cargo-doc output, and AI/code-search triage can reach the right
+  file faster instead of treating the split modules as anonymous shards.
 - Engine-shell agent recursion guardrail is now hardened transitively:
   - nested `agents ask` invocations are blocked not only as direct suggested
     commands, but also when they are wrapped inside `macros run` or expanded

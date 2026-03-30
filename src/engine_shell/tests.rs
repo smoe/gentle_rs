@@ -3,6 +3,11 @@
 //! These tests exercise the public shell surface across parser helpers,
 //! execution routing, and engine integration instead of treating each helper as
 //! an isolated API.
+//!
+//! Start here when you need examples of:
+//! - shell-token parsing expectations
+//! - `execute_shell_command` behavior over real engine state
+//! - CLI-like round trips that should stay in parity with GUI shell mode
 
 use super::*;
 use crate::dna_sequence::DNAsequence;

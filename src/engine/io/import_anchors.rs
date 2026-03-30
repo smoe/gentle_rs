@@ -2,6 +2,11 @@
 //!
 //! Import-time heuristics stay here to keep file-format interpretation out of
 //! adapters and out of unrelated operation handlers.
+//!
+//! Look here for:
+//! - GenBank-like path/header heuristics
+//! - inferred genome-anchor metadata attached during import
+//! - import-origin/source parsing that should stay consistent across adapters
 
 use super::*;
 

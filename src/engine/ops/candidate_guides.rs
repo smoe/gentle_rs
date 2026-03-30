@@ -2,6 +2,12 @@
 //!
 //! Add new candidate/guide operation families here when they share storage or
 //! scoring helpers, rather than branching adapter-specific command paths.
+//!
+//! Look here for:
+//! - candidate-set generation, filtering, ranking, and macro-template ops
+//! - guide-design execution that mutates engine state or emits `OpResult`
+//! - operation families that need dispatch-local glue around the reusable
+//!   helpers in `analysis/candidate_metrics.rs`
 
 use super::*;
 

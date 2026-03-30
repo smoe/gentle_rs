@@ -2,6 +2,11 @@
 //!
 //! These tests intentionally exercise the public engine surface across helper
 //! module boundaries instead of re-testing each private extraction in isolation.
+//!
+//! Start here when you want deterministic examples of:
+//! - complete `Operation` application flows
+//! - report/export behavior that must stay adapter-neutral
+//! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
 use crate::genomes::BlastHit;

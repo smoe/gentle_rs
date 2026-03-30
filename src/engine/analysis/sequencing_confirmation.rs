@@ -2,6 +2,11 @@
 //!
 //! Phase 1 focuses on deterministic confirmation from already-called read
 //! sequences. Raw ABI/AB1/SCF intake and trace-aware enrichment follow later.
+//!
+//! Look here for:
+//! - sequencing-confirmation report-store helpers
+//! - target-by-target evidence aggregation from pairwise alignments
+//! - JSON/TSV-facing construct-confirmation exports and verdict logic
 
 use super::*;
 

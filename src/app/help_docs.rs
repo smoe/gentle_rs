@@ -3,6 +3,11 @@
 //! This submodule keeps the top-level app file focused on window/session state
 //! while the help-system path owns its markdown parsing, tutorial discovery,
 //! and relative-image rewriting in one place.
+//!
+//! Look here for:
+//! - markdown cleanup/rewrite helpers used before rendering docs in-app
+//! - tutorial/help discovery and path resolution
+//! - relative asset/image rewriting for embedded help pages
 
 use super::*;
 

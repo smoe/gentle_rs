@@ -3,6 +3,11 @@
 //! This file is the mutation hub that maps one `Operation` variant onto the
 //! appropriate helper routines. Keep adapter entry points thin and route new
 //! engine behavior through this shared dispatch path.
+//!
+//! Start here when tracing:
+//! - which helper actually executes a given `Operation` variant
+//! - state mutations, `OpResult` messages, and journal side effects
+//! - cross-cutting operation glue that does not belong in adapter code
 
 use super::*;
 use crate::{

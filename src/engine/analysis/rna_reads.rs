@@ -3,6 +3,13 @@
 //! The RNA-read pipeline is large enough to deserve its own implementation
 //! slice, but it still extends the shared engine contract rather than creating
 //! a separate subsystem.
+//!
+//! Look here for:
+//! - phase-1 `InterpretRnaReads` report creation, score-bin handling, and
+//!   checkpoint/resume logic
+//! - phase-2 `AlignRnaReadReport` selection, pairwise alignment, and mapped
+//!   support aggregation
+//! - RNA-read inspection/export/report-store helpers used across GUI and CLI
 
 use super::*;
 
