@@ -391,6 +391,68 @@ impl GentleEngine {
         }
     }
 
+    fn collect_rna_read_alignment_phase_selected_indices(
+        report: &RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        explicit_record_filter: &HashSet<usize>,
+    ) -> (Vec<usize>, Option<String>) {
+        let mut selected_indices = report
+            .hits
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, hit)| {
+                if !explicit_record_filter.is_empty() {
+                    explicit_record_filter
+                        .contains(&hit.record_index)
+                        .then_some(idx)
+                } else {
+                    Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
+                }
+            })
+            .collect::<Vec<_>>();
+        if !explicit_record_filter.is_empty()
+            || !selected_indices.is_empty()
+            || !matches!(selection, RnaReadHitSelection::SeedPassed)
+        {
+            return (selected_indices, None);
+        }
+
+        selected_indices = report
+            .hits
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, hit)| {
+                (hit.seed_hit_fraction >= report.seed_filter.min_seed_hit_fraction).then_some(idx)
+            })
+            .collect::<Vec<_>>();
+        if !selected_indices.is_empty() {
+            let fallback_count = selected_indices.len();
+            return (
+                selected_indices,
+                Some(format!(
+                    "alignment phase selection 'seed_passed' matched no retained hits; fell back to {} retained row(s) at or above raw min_hit={:.3} so phase-2 can score them",
+                    fallback_count, report.seed_filter.min_seed_hit_fraction,
+                )),
+            );
+        }
+
+        if let Some((best_idx, best_hit)) = report.hits.iter().enumerate().max_by(|left, right| {
+            Self::rna_read_phase1_score_rank(left.1).cmp(&Self::rna_read_phase1_score_rank(right.1))
+        }) {
+            return (
+                vec![best_idx],
+                Some(format!(
+                    "alignment phase selection 'seed_passed' matched no retained hits above raw min_hit={:.3}; fell back to highest phase-1 score retained row #{} ({:.3}) so round 2 still yields a similarity check",
+                    report.seed_filter.min_seed_hit_fraction,
+                    best_hit.record_index + 1,
+                    best_hit.seed_hit_fraction,
+                )),
+            );
+        }
+
+        (selected_indices, None)
+    }
+
     fn include_rna_read_hit_by_selection_and_indices(
         hit: &RnaReadInterpretationHit,
         selection: RnaReadHitSelection,
@@ -5027,20 +5089,12 @@ impl GentleEngine {
             .iter()
             .copied()
             .collect::<HashSet<_>>();
-        let selected_indices = report
-            .hits
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, hit)| {
-                if !explicit_record_filter.is_empty() {
-                    explicit_record_filter
-                        .contains(&hit.record_index)
-                        .then_some(idx)
-                } else {
-                    Self::include_rna_read_hit_by_selection(hit, selection).then_some(idx)
-                }
-            })
-            .collect::<Vec<_>>();
+        let (selected_indices, selection_fallback_warning) =
+            Self::collect_rna_read_alignment_phase_selected_indices(
+                &report,
+                selection,
+                &explicit_record_filter,
+            );
         let selected_total = selected_indices.len();
         let mut cumulative_read_bases_processed = 0u64;
         let mut read_length_counts = vec![0u64; 1];
@@ -5248,16 +5302,12 @@ impl GentleEngine {
             }
             cumulative_inference_compute_ms += inference_started.elapsed().as_secs_f64() * 1000.0;
             let align_started = Instant::now();
-            let (best_mapping, secondary_mappings) = if passed_seed_filter {
-                Self::align_read_to_templates(
-                    &normalized_sequence,
-                    &templates,
-                    &align_config,
-                    report.seed_filter.kmer_len,
-                )
-            } else {
-                (None, vec![])
-            };
+            let (best_mapping, secondary_mappings) = Self::align_read_to_templates(
+                &normalized_sequence,
+                &templates,
+                &align_config,
+                report.seed_filter.kmer_len,
+            );
             cumulative_align_compute_ms += align_started.elapsed().as_secs_f64() * 1000.0;
             if passed_seed_filter {
                 seed_passed = seed_passed.saturating_add(1);
@@ -5423,11 +5473,14 @@ impl GentleEngine {
             report.read_count_aligned,
             report.retained_count_msa_eligible,
         ));
+        if let Some(warning) = selection_fallback_warning {
+            report.warnings.push(warning);
+        }
         if selected_total == 0 {
             if explicit_record_filter.is_empty() {
                 report.warnings.push(format!(
-                    "alignment phase selection '{}' matched no retained hits",
-                    selection.as_str()
+                    "alignment phase selection '{}' matched no retained hits; use selection='all' to align every retained row regardless of seed-pass state",
+                    selection.as_str(),
                 ));
             } else {
                 report.warnings.push(format!(

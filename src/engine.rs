@@ -253,7 +253,7 @@ pub use protocol::*;
 // Shared default helpers used by both engine operations and the extracted
 // public protocol layer.
 fn default_rna_align_report_selection() -> RnaReadHitSelection {
-    RnaReadHitSelection::SeedPassed
+    RnaReadHitSelection::All
 }
 
 fn default_true() -> bool {

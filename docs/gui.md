@@ -565,9 +565,14 @@ Feature tree grouping:
     - `min identity`
     - `max secondary`
     - `align selection` (`seed_passed|all|aligned`)
-    - `all` is the route that also aligns rescued retained rows that were kept
-      for high phase-1 score / high-score-bin reasons even if they did not pass
-      the full composite seed gate
+    - `all` is now the default/recommended round-2 setting because it also
+      aligns rescued retained rows that were kept for high phase-1 score /
+      high-score-bin reasons even if they did not pass the full composite seed
+      gate
+    - `seed_passed` remains available as the narrower/faster rerun mode; if it
+      matches no retained rows, phase 2 falls back to retained rows at or above
+      the raw `min hit` threshold so the run does not silently produce zero
+      similarity scores
   - `Run alignment phase (retained report)` executes
     `AlignRnaReadReport` asynchronously for the current `Report ID`
     - tooltip explicitly notes that phase 2 reuses the saved report and does
@@ -585,6 +590,9 @@ Feature tree grouping:
     chosen mode is exported in read/report mapping summaries
     - backend uses `bio::alignment::pairwise::banded`; `align band` controls
       the band width around the seed backbone
+    - selected retained rows are pairwise aligned even when their recomputed
+      seed-pass flag remains `no`, so round 2 can still expose `Id%` / `Cov%`
+      for strong outliers that the composite seed gate would otherwise hide
   - run executes asynchronously (non-blocking UI) with live read-progress
     indicators
   - workflow access routes for the same payload are available in the panel:

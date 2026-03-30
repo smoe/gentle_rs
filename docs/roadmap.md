@@ -1566,6 +1566,14 @@ Status:
       at or above the active `min hit` threshold
     - this prevents obvious right-tail outliers from disappearing before
       score-bin inspection or optional phase-2 alignment
+  - Phase-2 retained-read alignment now treats round 2 as the adjudication
+    pass rather than a second hidden seed gate:
+    - default adapter selection is now `all`
+    - selected retained rows are pairwise aligned even when their recomputed
+      composite seed-pass flag remains `no`
+    - `seed_passed` no longer silently produces a zero-row second pass; when it
+      matches nothing, the engine falls back to raw-`min hit` retained rows
+      (and then the single highest phase-1 score retained row if needed)
   - The embedded `RNA-read Mapping` viewport now renders as a regular panel
     rather than a nested pop-up frame, reducing chrome and keeping the
     dedicated cDNA-mapping workspace visually separate from the older

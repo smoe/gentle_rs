@@ -81,7 +81,7 @@ impl Default for RnaReadInterpretOpsUiState {
             align_band_width_bp: "24".to_string(),
             align_min_identity_fraction: "0.60".to_string(),
             align_max_secondary_mappings: "0".to_string(),
-            align_phase_selection: RnaReadHitSelection::SeedPassed,
+            align_phase_selection: RnaReadHitSelection::All,
             show_advanced: false,
         }
     }

@@ -231,6 +231,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
     - supports explicit row filtering via
       `--record-indices i,j,k` (0-based stored `record_index` values);
       when provided, this overrides `--selection`.
+    - default adapter behavior now uses `selection=all` so rescued retained
+      rows also receive round-2 similarity/coverage scores.
   - `inspect-alignments`: non-mutating ranked alignment inspection
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.

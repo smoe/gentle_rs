@@ -5438,6 +5438,18 @@ mod tests {
         assert!(help.contains("Report ID"));
         assert!(help.contains("whole-genome mapper"));
     }
+
+    #[test]
+    fn default_rna_align_selection_prefers_all_retained_rows() {
+        assert_eq!(
+            super::default_rna_align_selection(),
+            RnaReadHitSelection::All
+        );
+        assert_eq!(
+            super::RnaReadInterpretOpsUiState::default().align_phase_selection,
+            RnaReadHitSelection::All
+        );
+    }
 }
 
 fn default_true() -> bool {
@@ -5461,7 +5473,7 @@ fn default_rna_checkpoint_every_reads_text() -> String {
 }
 
 fn default_rna_align_selection() -> RnaReadHitSelection {
-    RnaReadHitSelection::SeedPassed
+    RnaReadHitSelection::All
 }
 
 fn default_primer_backend_auto() -> PrimerDesignBackend {
@@ -14541,7 +14553,7 @@ impl MainAreaDna {
                                 )
                                 .changed();
                             ui.label("align selection").on_hover_text(
-                                "Which retained-hit subset from the saved report is re-aligned in phase 2. Use this to spend alignment time only on seed-passed rows, all retained rows, or rows that already have a mapping.",
+                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `all` setting gives rescued high-score rows a pairwise similarity score in round 2; `seed_passed` is the narrower/faster rerun mode.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_align_selection_{}_{}",
@@ -14556,7 +14568,7 @@ impl MainAreaDna {
                                         "seed_passed",
                                     )
                                     .on_hover_text(
-                                        "Recommended: align only retained reads that passed the seed gate.",
+                                        "Align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
@@ -14566,7 +14578,7 @@ impl MainAreaDna {
                                         "all",
                                     )
                                     .on_hover_text(
-                                        "Align all retained reads (including seed-failed rows).",
+                                        "Default and recommended: align all retained reads, including rescued high-score rows that failed the composite seed gate.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
@@ -20305,7 +20317,7 @@ impl MainAreaDna {
                                 egui::Button::new("Evaluate Top Hits (phase-2)"),
                             )
                             .on_hover_text(format!(
-                                "Runs AlignRnaReadReport for report '{}' using current align selection '{}', then refreshes top-hit alignment columns.",
+                                "Runs AlignRnaReadReport for report '{}' using current align selection '{}', then refreshes top-hit alignment columns and similarity metrics.",
                                 self.rna_reads_ui.report_id.trim(),
                                 self.rna_reads_ui.align_phase_selection.as_str()
                             ))

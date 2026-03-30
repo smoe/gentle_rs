@@ -2391,12 +2391,21 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       retained subset (`all|seed_passed|aligned`)
     - optional `selected_record_indices[]` (0-based stored `record_index`)
       overrides the selection preset and aligns only the explicit subset
+    - default adapter behavior now prefers `selection=all` so rescued retained
+      rows receive round-2 similarity/coverage scores
+    - if `selection=seed_passed` matches no retained hits and no explicit
+      record indices were supplied, the engine falls back to retained rows at
+      or above raw `min hit`, and if that is still empty, to the highest
+      phase-1 score retained row
     - aligner configuration uses `align_config_override` when supplied,
       otherwise the report-stored `align_config`
     - mapping backend uses `bio::alignment::pairwise::banded` with
       `align_band_bp` as band width (`w`) and transcript-seed `kmer_len` as
       seed length (`k`), plus deterministic dense fallback when the banded
       solver yields no mapping
+    - selected retained rows are pairwise aligned regardless of whether their
+      recomputed composite seed-pass flag remains true; the seed-pass result is
+      still recomputed and stored independently for later inspection
     - updated report fields include:
       - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
       - per-hit `msa_eligible` and `msa_eligibility_reason`

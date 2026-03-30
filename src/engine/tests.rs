@@ -12219,6 +12219,133 @@ fn test_transition_support_counts_only_seed_passed_reads() {
     );
 }
 
+fn seed_failed_but_alignable_rna_read_report() -> (GentleEngine, String) {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+    let read_sequence = {
+        let splicing = engine
+            .build_splicing_expert_view(
+                "seq_a",
+                feature_id,
+                SplicingScopePreset::AllOverlappingBothStrands,
+            )
+            .expect("splicing view");
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence for transcript template");
+        let template =
+            GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+        String::from_utf8(template.sequence).expect("template sequence utf-8")
+    };
+    let report_id = "rna_reads_seed_failed_alignment".to_string();
+    let strict_seed_filter = RnaReadSeedFilterConfig {
+        min_confirmed_exon_transitions: 99,
+        ..RnaReadSeedFilterConfig::default()
+    };
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: RNA_READ_REPORT_SCHEMA.to_string(),
+            report_id: report_id.clone(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            seed_filter: strict_seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read_0".to_string(),
+                sequence: read_sequence.clone(),
+                read_length_bp: read_sequence.len(),
+                tested_kmers: read_sequence
+                    .len()
+                    .saturating_sub(kmer_len)
+                    .saturating_add(1),
+                matched_kmers: read_sequence
+                    .len()
+                    .saturating_sub(kmer_len)
+                    .saturating_add(1),
+                seed_hit_fraction: 1.0,
+                weighted_seed_hit_fraction: 1.0,
+                weighted_matched_kmers: read_sequence.len() as f64,
+                passed_seed_filter: false,
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert seed-failed report");
+    (engine, report_id)
+}
+
+#[test]
+fn test_align_rna_read_report_aligns_selected_retained_rows_even_when_seed_gate_stays_false() {
+    let (mut engine, report_id) = seed_failed_but_alignable_rna_read_report();
+
+    engine
+        .apply(Operation::AlignRnaReadReport {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::All,
+            align_config_override: Some(RnaReadAlignConfig {
+                band_width_bp: 24,
+                min_identity_fraction: 0.60,
+                max_secondary_mappings: 0,
+            }),
+            selected_record_indices: vec![],
+        })
+        .expect("align all retained rows");
+
+    let report = engine
+        .get_rna_read_report(&report_id)
+        .expect("stored RNA-read report");
+    assert_eq!(report.read_count_aligned, 1);
+    assert_eq!(report.hits.len(), 1);
+    assert!(!report.hits[0].passed_seed_filter);
+    assert!(report.hits[0].best_mapping.is_some());
+}
+
+#[test]
+fn test_align_rna_read_report_seed_passed_falls_back_to_raw_min_hit_rows() {
+    let (mut engine, report_id) = seed_failed_but_alignable_rna_read_report();
+
+    engine
+        .apply(Operation::AlignRnaReadReport {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::SeedPassed,
+            align_config_override: Some(RnaReadAlignConfig {
+                band_width_bp: 24,
+                min_identity_fraction: 0.60,
+                max_secondary_mappings: 0,
+            }),
+            selected_record_indices: vec![],
+        })
+        .expect("align with seed_passed fallback");
+
+    let report = engine
+        .get_rna_read_report(&report_id)
+        .expect("stored RNA-read report");
+    assert_eq!(report.read_count_aligned, 1);
+    assert!(report.hits[0].best_mapping.is_some());
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("selection 'seed_passed' matched no retained hits")
+            && warning.contains("fell back to 1 retained row(s) at or above raw min_hit")
+    }));
+}
+
 #[test]
 fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     let mut state = ProjectState::default();
