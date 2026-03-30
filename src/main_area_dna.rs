@@ -5779,6 +5779,22 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_align_selection_ui_labels_are_distinct_and_explicit() {
+        assert_eq!(
+            super::MainAreaDna::rna_read_align_selection_ui_label(RnaReadHitSelection::SeedPassed),
+            "seed_passed"
+        );
+        assert_eq!(
+            super::MainAreaDna::rna_read_align_selection_ui_label(RnaReadHitSelection::All),
+            "all retained"
+        );
+        assert_eq!(
+            super::MainAreaDna::rna_read_align_selection_ui_label(RnaReadHitSelection::Aligned),
+            "already_aligned"
+        );
+    }
+
+    #[test]
     fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
         assert_eq!(
             super::MainAreaDna::format_rna_read_progress_eta(25, 100, 10.0).as_deref(),
@@ -14924,90 +14940,6 @@ impl MainAreaDna {
                             "Usually left empty for RNA-read dotplots unless the compared spans become very large.",
                         )
                         .changed();
-                });
-                ui.small(
-                    egui::RichText::new(
-                        "These dotplot knobs are the exact settings used by `Export dotplot...` and `Export dotplots for selected reads...` in the read-effects panel.",
-                    )
-                    .color(egui::Color32::from_rgb(100, 116, 139)),
-                );
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("align band").on_hover_text(
-                        "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
-                    );
-                    persist_ui_state |= ui
-                        .add(
-                            egui::TextEdit::singleline(
-                                &mut self.rna_reads_ui.align_band_width_bp,
-                            )
-                            .desired_width(54.0),
-                        )
-                        .on_hover_text(
-                            "Banded aligner width used when aligning retained reads in phase 2.",
-                        )
-                        .changed();
-                    ui.label("min identity").on_hover_text(
-                        "Minimum identity fraction for phase-2 retained-read alignment.",
-                    );
-                    persist_ui_state |= ui
-                        .add(
-                            egui::TextEdit::singleline(
-                                &mut self.rna_reads_ui.align_min_identity_fraction,
-                            )
-                            .desired_width(56.0),
-                        )
-                        .on_hover_text("Alignments below this identity are discarded.")
-                        .changed();
-                    ui.label("max secondary").on_hover_text(
-                        "Maximum number of secondary mappings kept per read in phase 2.",
-                    );
-                    persist_ui_state |= ui
-                        .add(
-                            egui::TextEdit::singleline(
-                                &mut self.rna_reads_ui.align_max_secondary_mappings,
-                            )
-                            .desired_width(42.0),
-                        )
-                        .on_hover_text("Set to 0 to keep only the best mapping.")
-                        .changed();
-                    ui.label("align selection").on_hover_text(
-                        "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `all` setting gives rescued high-score rows a pairwise similarity score in round 2; `seed_passed` is the narrower/faster rerun mode.",
-                    );
-                    egui::ComboBox::from_id_salt(format!(
-                        "rna_read_align_selection_{}_{}",
-                        view.seq_id, view.target_feature_id
-                    ))
-                    .selected_text(self.rna_reads_ui.align_phase_selection.as_str())
-                    .show_ui(ui, |ui| {
-                        persist_ui_state |= ui
-                            .selectable_value(
-                                &mut self.rna_reads_ui.align_phase_selection,
-                                RnaReadHitSelection::SeedPassed,
-                                "seed_passed",
-                            )
-                            .on_hover_text(
-                                "Align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
-                            )
-                            .changed();
-                        persist_ui_state |= ui
-                            .selectable_value(
-                                &mut self.rna_reads_ui.align_phase_selection,
-                                RnaReadHitSelection::All,
-                                "all",
-                            )
-                            .on_hover_text(
-                                "Default and recommended: align all retained reads, including rescued high-score rows that failed the composite seed gate.",
-                            )
-                            .changed();
-                        persist_ui_state |= ui
-                            .selectable_value(
-                                &mut self.rna_reads_ui.align_phase_selection,
-                                RnaReadHitSelection::Aligned,
-                                "aligned",
-                            )
-                            .on_hover_text("Re-align only rows that already have a mapping.")
-                            .changed();
-                    });
                 });
                 ui.small(
                     egui::RichText::new(
