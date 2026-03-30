@@ -36,9 +36,10 @@ use crate::{
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
-        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
-        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
+        RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
+        RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary, SnpMutationSpec,
+        SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -884,7 +885,8 @@ mod tests {
             RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
             RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
-            RnaReadOriginMode, RnaReadReportMode, RnaReadSeedFilterConfig, SplicingScopePreset,
+            RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+            RnaReadSeedFilterConfig, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1475,6 +1477,7 @@ mod tests {
             done: false,
             bins: vec![],
             score_density_bins: vec![],
+            seed_pass_score_density_bins: vec![],
             top_hits_preview: vec![],
             transition_support_rows: vec![],
             isoform_support_rows: vec![],
@@ -4403,8 +4406,46 @@ mod tests {
             ..RnaReadInterpretationReport::default()
         };
         assert_eq!(
-            MainAreaDna::select_rna_read_report_score_bin_record_indices(&report, 35, 40),
+            MainAreaDna::select_rna_read_report_score_bin_record_indices(
+                &report,
+                35,
+                40,
+                RnaReadScoreDensityVariant::AllScored,
+            ),
             vec![4, 7]
+        );
+    }
+
+    #[test]
+    fn select_rna_read_report_score_bin_record_indices_composite_gate_respects_passed_seed_filter()
+    {
+        let report = RnaReadInterpretationReport {
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 4,
+                    seed_hit_fraction: 0.88,
+                    passed_seed_filter: false,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 7,
+                    seed_hit_fraction: 0.89,
+                    passed_seed_filter: true,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            score_density_bins: vec![0; 40],
+            seed_pass_score_density_bins: vec![0; 40],
+            ..RnaReadInterpretationReport::default()
+        };
+        assert_eq!(
+            MainAreaDna::select_rna_read_report_score_bin_record_indices(
+                &report,
+                35,
+                40,
+                RnaReadScoreDensityVariant::CompositeSeedGate,
+            ),
+            vec![7]
         );
     }
 
@@ -4480,7 +4521,12 @@ mod tests {
             score_density_bins: vec![0; 40],
             ..RnaReadInterpretationReport::default()
         };
-        let rows = MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(&report, 35, 40);
+        let rows = MainAreaDna::collect_rna_read_top_hit_previews_for_score_bin(
+            &report,
+            35,
+            40,
+            RnaReadScoreDensityVariant::AllScored,
+        );
         assert_eq!(
             rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
             vec![7, 4]
@@ -4756,20 +4802,22 @@ mod tests {
                 super::RnaReadAlignmentEffectFilter::DisagreementOnly,
                 "tp53",
                 super::RnaReadAlignmentEffectSortKey::Score,
+                RnaReadScoreDensityVariant::AllScored,
                 Some(39),
                 40,
             ),
-            "filter=disagreement only | score_bin=39/40 [0.975,1.000) | sort=score | search=tp53"
+            "filter=disagreement only | histogram=all scored | score_bin=39/40 [0.975,1.000) | sort=score | search=tp53"
         );
         assert_eq!(
             MainAreaDna::rna_read_alignment_effect_subset_spec(
                 super::RnaReadAlignmentEffectFilter::AllAligned,
                 "   ",
                 super::RnaReadAlignmentEffectSortKey::Rank,
+                RnaReadScoreDensityVariant::CompositeSeedGate,
                 None,
                 40,
             ),
-            "filter=all aligned | score_bin=<none> | sort=rank | search=<none>"
+            "filter=all aligned | histogram=composite gate | score_bin=<none> | sort=rank | search=<none>"
         );
     }
 
@@ -4781,6 +4829,7 @@ mod tests {
             " tp53 ",
             super::RnaReadAlignmentEffectSortKey::Score,
             &selected,
+            RnaReadScoreDensityVariant::CompositeSeedGate,
             Some(7),
             40,
         );
@@ -4794,6 +4843,10 @@ mod tests {
         );
         assert_eq!(subset.search, "tp53");
         assert_eq!(subset.selected_record_indices, vec![2, 9]);
+        assert_eq!(
+            subset.score_density_variant,
+            crate::engine::RnaReadScoreDensityVariant::CompositeSeedGate
+        );
         assert_eq!(subset.score_bin_index, Some(7));
         assert_eq!(subset.score_bin_count, 40);
     }
@@ -4955,6 +5008,7 @@ mod tests {
             done: true,
             bins: vec![],
             score_density_bins: vec![],
+            seed_pass_score_density_bins: vec![],
             top_hits_preview: vec![],
             transition_support_rows: vec![],
             isoform_support_rows: vec![
@@ -5055,8 +5109,10 @@ mod tests {
             ],
             ..RnaReadInterpretationReport::default()
         };
-        let indices =
-            MainAreaDna::select_rna_read_report_rightmost_score_bin_record_indices(&report);
+        let indices = MainAreaDna::select_rna_read_report_rightmost_score_bin_record_indices(
+            &report,
+            RnaReadScoreDensityVariant::AllScored,
+        );
         assert_eq!(indices, vec![5, 7]);
     }
 
@@ -15080,6 +15136,28 @@ impl MainAreaDna {
                                     "Draw score-density bar heights using log(1+count) to emphasize sparse bins.",
                                 )
                                 .changed();
+                            ui.separator();
+                            ui.small("Population:");
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_read_evidence_ui.score_density_variant,
+                                    RnaReadScoreDensityVariant::AllScored,
+                                    "All scored",
+                                )
+                                .on_hover_text(
+                                    "Show the phase-1 score distribution across all scored reads, before the full composite seed gate is applied.",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_read_evidence_ui.score_density_variant,
+                                    RnaReadScoreDensityVariant::CompositeSeedGate,
+                                    "Composite gate",
+                                )
+                                .on_hover_text(
+                                    "Show only reads that passed the full composite seed gate under the recorded phase-1 thresholds for this run.",
+                                )
+                                .changed();
                         });
                         self.render_rna_read_score_density_plot(
                             ui,
@@ -15161,6 +15239,28 @@ impl MainAreaDna {
                             )
                             .on_hover_text(
                                 "Draw score-density bar heights using log(1+count) to emphasize sparse bins.",
+                            )
+                            .changed();
+                        ui.separator();
+                        ui.small("Population:");
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_read_evidence_ui.score_density_variant,
+                                RnaReadScoreDensityVariant::AllScored,
+                                "All scored",
+                            )
+                            .on_hover_text(
+                                "Show the phase-1 score distribution across all scored reads, before the full composite seed gate is applied.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_read_evidence_ui.score_density_variant,
+                                RnaReadScoreDensityVariant::CompositeSeedGate,
+                                "Composite gate",
+                            )
+                            .on_hover_text(
+                                "Show only reads that passed the full composite seed gate under the recorded phase-1 thresholds for this run.",
                             )
                             .changed();
                     });
@@ -15588,6 +15688,22 @@ impl MainAreaDna {
                         &mut self.rna_read_evidence_ui.score_density_use_log_scale,
                         true,
                         "Log",
+                    )
+                    .changed();
+                ui.separator();
+                ui.small("Population:");
+                persist_ui_state |= ui
+                    .selectable_value(
+                        &mut self.rna_read_evidence_ui.score_density_variant,
+                        RnaReadScoreDensityVariant::AllScored,
+                        "All scored",
+                    )
+                    .changed();
+                persist_ui_state |= ui
+                    .selectable_value(
+                        &mut self.rna_read_evidence_ui.score_density_variant,
+                        RnaReadScoreDensityVariant::CompositeSeedGate,
+                        "Composite gate",
                     )
                     .changed();
             });
@@ -17435,7 +17551,11 @@ impl MainAreaDna {
             self.op_error_popup = Some(message);
             return;
         }
-        let default_name = format!("{report_id}_score_density.svg");
+        let variant_suffix = match self.rna_read_evidence_ui.score_density_variant {
+            RnaReadScoreDensityVariant::AllScored => "all_scored",
+            RnaReadScoreDensityVariant::CompositeSeedGate => "composite_gate",
+        };
+        let default_name = format!("{report_id}_score_density_{variant_suffix}.svg");
         let Some(path) = rfd::FileDialog::new()
             .set_file_name(&default_name)
             .add_filter("SVG", &["svg"])
@@ -17448,10 +17568,12 @@ impl MainAreaDna {
         } else {
             RnaReadScoreDensityScale::Linear
         };
+        let variant = self.rna_read_evidence_ui.score_density_variant;
         self.apply_operation_with_feedback(Operation::ExportRnaReadScoreDensitySvg {
             report_id,
             path: path.display().to_string(),
             scale,
+            variant,
         });
     }
 
@@ -18498,7 +18620,10 @@ impl MainAreaDna {
         progress: &RnaReadInterpretProgress,
         use_log_scale: bool,
     ) {
-        if progress.score_density_bins.is_empty() {
+        let score_density_variant = self.rna_read_evidence_ui.score_density_variant;
+        let score_density_bins =
+            Self::rna_read_score_density_bins_for_progress(progress, score_density_variant);
+        if score_density_bins.is_empty() {
             ui.small("No score-density bins available yet.");
             return;
         }
@@ -18508,7 +18633,11 @@ impl MainAreaDna {
             "linear counts"
         };
         ui.small(format!(
-            "Seed-hit score density across tested reads ({scale_label})"
+            "Seed-hit score density across {} ({scale_label})",
+            Self::rna_read_score_density_variant_label(score_density_variant)
+        ));
+        ui.small(Self::rna_read_score_density_variant_note(
+            score_density_variant,
         ));
         let desired = Vec2::new(ui.available_width().max(280.0), 120.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click());
@@ -18525,6 +18654,11 @@ impl MainAreaDna {
             .copied()
             .max()
             .unwrap_or(0);
+        let max_count = score_density_bins
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(max_count);
         if max_count == 0 {
             painter.text(
                 rect.center(),
@@ -18543,7 +18677,7 @@ impl MainAreaDna {
         } else {
             max_count as f32
         };
-        let bin_count = progress.score_density_bins.len().max(1);
+        let bin_count = score_density_bins.len().max(1);
         let saved_report = self.current_saved_rna_read_report();
         let min_seed_hit_fraction = saved_report
             .as_ref()
@@ -18561,12 +18695,12 @@ impl MainAreaDna {
             .rna_read_alignment_effect_score_bin_index
             .map(|idx| idx.min(bin_count.saturating_sub(1)));
         let bin_w = rect.width() / bin_count as f32;
-        for (idx, count) in progress.score_density_bins.iter().enumerate() {
+        for (idx, count) in score_density_bins.iter().enumerate() {
             if *count == 0 {
                 continue;
             }
             let x0 = rect.left() + idx as f32 * bin_w + 0.8;
-            let x1 = if idx + 1 == progress.score_density_bins.len() {
+            let x1 = if idx + 1 == score_density_bins.len() {
                 rect.right() - 0.8
             } else {
                 rect.left() + (idx + 1) as f32 * bin_w - 0.8
@@ -18669,21 +18803,27 @@ impl MainAreaDna {
                     idx = bin_count.saturating_sub(1);
                 }
                 pointed_bin = Some(idx);
-                if let Some(count) = progress.score_density_bins.get(idx) {
+                if let Some(count) = score_density_bins.get(idx) {
                     let left = idx as f64 / bin_count as f64;
                     let right = (idx + 1) as f64 / bin_count as f64;
                     let retained_count = saved_report
                         .as_ref()
                         .map(|report| {
                             Self::select_rna_read_report_score_bin_record_indices(
-                                report, idx, bin_count,
+                                report,
+                                idx,
+                                bin_count,
+                                score_density_variant,
                             )
                             .len()
                         })
                         .unwrap_or(0);
                     response.clone().on_hover_ui_at_pointer(|ui| {
                         ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
-                        ui.monospace(format!("tested reads in histogram: {count}"));
+                        ui.monospace(format!(
+                            "{} in histogram: {count}",
+                            Self::rna_read_score_density_variant_label(score_density_variant)
+                        ));
                         if saved_report.is_some() {
                             ui.monospace(format!(
                                 "retained saved-report rows in this bin: {retained_count}"
@@ -18699,10 +18839,14 @@ impl MainAreaDna {
         if response.clicked()
             && let Some(idx) = pointed_bin
         {
-            let tested_count = progress.score_density_bins.get(idx).copied().unwrap_or(0);
+            let tested_count = score_density_bins.get(idx).copied().unwrap_or(0);
             if let Some(report) = saved_report {
-                let selected_record_indices =
-                    Self::select_rna_read_report_score_bin_record_indices(&report, idx, bin_count);
+                let selected_record_indices = Self::select_rna_read_report_score_bin_record_indices(
+                    &report,
+                    idx,
+                    bin_count,
+                    score_density_variant,
+                );
                 self.rna_read_alignment_effect_score_bin_index = Some(idx);
                 self.rna_read_alignment_effect_filter = RnaReadAlignmentEffectFilter::SelectedOnly;
                 self.rna_read_alignment_effect_sort_key = RnaReadAlignmentEffectSortKey::Score;
@@ -18718,21 +18862,24 @@ impl MainAreaDna {
                 }
                 self.op_status = if selected_record_indices.is_empty() {
                     format!(
-                        "Score bin {} contains {} tested read(s), but 0 retained saved-report rows. The histogram counts all scored reads; the report currently stores only the retained top {} row(s).",
+                        "Score bin {} contains {} {} in the histogram, but 0 retained saved-report rows. The histogram and saved report use different populations here; the report currently stores only the retained top {} row(s).",
                         Self::format_rna_read_score_bin_spec(idx, bin_count),
                         tested_count,
+                        Self::rna_read_score_density_variant_label(score_density_variant),
                         report.hits.len()
                     )
                 } else if report.read_count_aligned > 0 {
                     format!(
-                        "Focused mapped read effects on {} retained saved-report row(s) from score bin {}",
+                        "Focused mapped read effects on {} retained saved-report row(s) from {} score bin {}",
                         selected_record_indices.len(),
+                        Self::rna_read_score_density_variant_label(score_density_variant),
                         Self::format_rna_read_score_bin_spec(idx, bin_count)
                     )
                 } else {
                     format!(
-                        "Selected {} retained saved-report row(s) from score bin {}. Phase 2 has not been run yet, so mapped read effects stay empty until alignment.",
+                        "Selected {} retained saved-report row(s) from {} score bin {}. Phase 2 has not been run yet, so mapped read effects stay empty until alignment.",
                         selected_record_indices.len(),
+                        Self::rna_read_score_density_variant_label(score_density_variant),
                         Self::format_rna_read_score_bin_spec(idx, bin_count)
                     )
                 };
@@ -18743,7 +18890,7 @@ impl MainAreaDna {
         }
         ui.small(format!(
             "Score bins: {} | max bin count: {}",
-            progress.score_density_bins.len(),
+            score_density_bins.len(),
             max_count
         ));
         if let Some(idx) = selected_bin_index {
@@ -18754,9 +18901,14 @@ impl MainAreaDna {
         } else {
             ui.small("Selected score bin: <none>");
         }
-        ui.small(format!(
-            "Red line = raw min_hit threshold ({min_seed_hit_fraction:.2}) only. Crossing it is necessary but not sufficient for the full composite seed gate; weighted support, unique matched k-mers, chain consistency, transcript-gap, and transition requirements are checked separately."
-        ));
+        match score_density_variant {
+            RnaReadScoreDensityVariant::AllScored => ui.small(format!(
+                "Red line = raw min_hit threshold ({min_seed_hit_fraction:.2}) only. Crossing it is necessary but not sufficient for the full composite seed gate; weighted support, unique matched k-mers, chain consistency, transcript-gap, and transition requirements are checked separately."
+            )),
+            RnaReadScoreDensityVariant::CompositeSeedGate => ui.small(format!(
+                "Bars already respect the full composite seed gate recorded for this run. The red line still marks the raw min_hit component ({min_seed_hit_fraction:.2}) inside that stricter gate."
+            )),
+        };
     }
 
     fn render_rna_read_statistics_tabs(
@@ -18991,7 +19143,10 @@ impl MainAreaDna {
             let selected_record_indices = if focus_max_score_outliers {
                 Self::select_rna_read_report_max_score_record_indices(report)
             } else {
-                Self::select_rna_read_report_rightmost_score_bin_record_indices(report)
+                Self::select_rna_read_report_rightmost_score_bin_record_indices(
+                    report,
+                    self.rna_read_evidence_ui.score_density_variant,
+                )
             };
             if focus_rightmost_bin {
                 let bin_count = report.score_density_bins.len().max(40);
@@ -19119,6 +19274,7 @@ impl MainAreaDna {
             self.rna_read_alignment_effect_filter,
             &self.rna_read_alignment_effect_search,
             self.rna_read_alignment_effect_sort_key,
+            self.rna_read_evidence_ui.score_density_variant,
             self.rna_read_alignment_effect_score_bin_index,
             score_bin_count,
         );
@@ -19132,10 +19288,14 @@ impl MainAreaDna {
                 report,
                 score_bin_index,
                 score_bin_count,
+                self.rna_read_evidence_ui.score_density_variant,
             );
             ui.small(format!(
-                "Score-bin provenance: {} saved-report read(s) in bin {}, {} aligned row(s) currently match the subset.",
+                "Score-bin provenance: {} saved-report read(s) in {} bin {}, {} aligned row(s) currently match the subset.",
                 selected_from_bin.len(),
+                Self::rna_read_score_density_variant_label(
+                    self.rna_read_evidence_ui.score_density_variant
+                ),
                 Self::format_rna_read_score_bin_spec(score_bin_index, score_bin_count),
                 filtered_inspection.subset_match_count
             ));
@@ -19158,7 +19318,10 @@ impl MainAreaDna {
                 if ui.button("Select rightmost score bin").clicked() {
                     let bin_count = report.score_density_bins.len().max(40);
                     let selected_record_indices =
-                        Self::select_rna_read_report_rightmost_score_bin_record_indices(report);
+                        Self::select_rna_read_report_rightmost_score_bin_record_indices(
+                            report,
+                            self.rna_read_evidence_ui.score_density_variant,
+                        );
                     self.rna_read_alignment_effect_score_bin_index =
                         selected_record_indices.first().and_then(|record_index| {
                             report
@@ -20462,10 +20625,14 @@ impl MainAreaDna {
                     report,
                     score_bin_index,
                     bin_count,
+                    self.rna_read_evidence_ui.score_density_variant,
                 );
-                let tested_count = progress
-                    .score_density_bins
-                    .get(score_bin_index.min(progress.score_density_bins.len().saturating_sub(1)))
+                let score_density_bins = Self::rna_read_score_density_bins_for_progress(
+                    progress,
+                    self.rna_read_evidence_ui.score_density_variant,
+                );
+                let tested_count = score_density_bins
+                    .get(score_bin_index.min(score_density_bins.len().saturating_sub(1)))
                     .copied()
                     .unwrap_or(0);
                 if !rows.is_empty() {
@@ -20478,7 +20645,10 @@ impl MainAreaDna {
                             row_count_label
                         ),
                         format!(
-                            "This table shows every retained saved-report row in score bin {} and is sorted by phase-1 Score. Ret.rank remains the saved-report retention rank. Tested histogram count for this bin: {}.",
+                            "This table shows every retained saved-report row in {} score bin {} and is sorted by phase-1 Score. Ret.rank remains the saved-report retention rank. Histogram count for this bin: {}.",
+                            Self::rna_read_score_density_variant_label(
+                                self.rna_read_evidence_ui.score_density_variant
+                            ),
                             Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
                             tested_count
                         ),
@@ -20492,7 +20662,10 @@ impl MainAreaDna {
                             Self::format_rna_read_score_bin_spec(score_bin_index, bin_count)
                         ),
                         format!(
-                            "The histogram bin {} contains {} tested read(s), but none survived into the retained saved-report subset. The histogram counts all scored reads; the saved report currently stores only the retained top {} row(s).",
+                            "The {} histogram bin {} contains {} read(s), but none survived into the retained saved-report subset. The saved report currently stores only the retained top {} row(s).",
+                            Self::rna_read_score_density_variant_label(
+                                self.rna_read_evidence_ui.score_density_variant
+                            ),
                             Self::format_rna_read_score_bin_spec(score_bin_index, bin_count),
                             tested_count,
                             report.hits.len()
@@ -20561,7 +20734,10 @@ impl MainAreaDna {
                             }
                             if ui.button("Select rightmost score bin").clicked() {
                                 self.rna_seed_selected_record_indices =
-                                    Self::select_rna_read_report_rightmost_score_bin_record_indices(&report)
+                                    Self::select_rna_read_report_rightmost_score_bin_record_indices(
+                                        &report,
+                                        self.rna_read_evidence_ui.score_density_variant,
+                                    )
                                         .into_iter()
                                         .collect::<BTreeSet<_>>();
                                 self.op_status = format!(

@@ -591,12 +591,18 @@ impl GentleEngine {
 
     fn rna_read_alignment_inspection_matches_score_bin(
         row: &RnaReadAlignmentInspectionRow,
+        score_density_variant: RnaReadScoreDensityVariant,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
     ) -> bool {
         let Some(score_bin_index) = score_bin_index else {
             return true;
         };
+        if score_density_variant == RnaReadScoreDensityVariant::CompositeSeedGate
+            && !row.passed_seed_filter
+        {
+            return false;
+        }
         let score_bin_count = score_bin_count.max(1);
         let clamped = row.seed_hit_fraction.clamp(0.0, 1.0);
         let scaled = (clamped * score_bin_count as f64).floor() as usize;
@@ -751,6 +757,7 @@ impl GentleEngine {
             ) && Self::rna_read_alignment_inspection_matches_search(row, &subset_spec.search)
                 && Self::rna_read_alignment_inspection_matches_score_bin(
                     row,
+                    subset_spec.score_density_variant,
                     subset_spec.score_bin_index,
                     subset_spec.score_bin_count,
                 )
@@ -1583,6 +1590,39 @@ impl GentleEngine {
         (bins, true)
     }
 
+    pub(super) fn derive_seed_pass_score_density_bins_from_report(
+        report: &RnaReadInterpretationReport,
+    ) -> (Vec<u64>, bool) {
+        if !report.seed_pass_score_density_bins.is_empty() {
+            return (report.seed_pass_score_density_bins.clone(), false);
+        }
+        let mut bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
+        for hit in &report.hits {
+            if !hit.passed_seed_filter {
+                continue;
+            }
+            let idx = Self::score_density_bin_index(hit.seed_hit_fraction);
+            if let Some(bucket) = bins.get_mut(idx) {
+                *bucket = bucket.saturating_add(1);
+            }
+        }
+        (bins, true)
+    }
+
+    pub(super) fn score_density_bins_for_report(
+        report: &RnaReadInterpretationReport,
+        variant: RnaReadScoreDensityVariant,
+    ) -> (Vec<u64>, bool) {
+        match variant {
+            RnaReadScoreDensityVariant::AllScored => {
+                Self::derive_score_density_bins_from_report(report)
+            }
+            RnaReadScoreDensityVariant::CompositeSeedGate => {
+                Self::derive_seed_pass_score_density_bins_from_report(report)
+            }
+        }
+    }
+
     pub(super) fn escape_svg_text(raw: &str) -> String {
         raw.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -1615,6 +1655,7 @@ impl GentleEngine {
         report: &RnaReadInterpretationReport,
         bins: &[u64],
         scale: RnaReadScoreDensityScale,
+        variant: RnaReadScoreDensityVariant,
     ) -> String {
         let width = 960.0f64;
         let height = 300.0f64;
@@ -1643,7 +1684,11 @@ impl GentleEngine {
         } else {
             "linear count"
         };
-        let title = format!("RNA-read seed-hit score density ({scale_text})");
+        let variant_text = match variant {
+            RnaReadScoreDensityVariant::AllScored => "all scored reads",
+            RnaReadScoreDensityVariant::CompositeSeedGate => "composite seed-gate reads",
+        };
+        let title = format!("RNA-read seed-hit score density ({scale_text}; {variant_text})");
         let subtitle = format!(
             "report={} | reads={} seed-passed={} aligned={}",
             report.report_id,
@@ -1652,17 +1697,29 @@ impl GentleEngine {
             report.read_count_aligned
         );
         let provenance = format!(
-            "profile={} mode={} scope={} origin={} | {}",
+            "profile={} mode={} scope={} origin={} variant={} | {}",
             report.profile.as_str(),
             report.report_mode.as_str(),
             report.scope.as_str(),
             report.origin_mode.as_str(),
+            variant.as_str(),
             Self::rna_read_seed_filter_summary(&report.seed_filter),
         );
-        let bins_source = if report.score_density_bins.is_empty() {
-            "score-density bins derived from retained hits"
-        } else {
-            "score-density bins stored in report"
+        let bins_source = match variant {
+            RnaReadScoreDensityVariant::AllScored => {
+                if report.score_density_bins.is_empty() {
+                    "score-density bins derived from retained hits"
+                } else {
+                    "score-density bins stored in report"
+                }
+            }
+            RnaReadScoreDensityVariant::CompositeSeedGate => {
+                if report.seed_pass_score_density_bins.is_empty() {
+                    "composite-gate score-density bins derived from retained hits"
+                } else {
+                    "composite-gate score-density bins stored in report"
+                }
+            }
         };
 
         let mut svg = String::new();
@@ -1787,6 +1844,7 @@ impl GentleEngine {
         report_id: &str,
         path: &str,
         scale: RnaReadScoreDensityScale,
+        variant: RnaReadScoreDensityVariant,
     ) -> Result<RnaReadScoreDensitySvgExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -1797,8 +1855,8 @@ impl GentleEngine {
             });
         }
         let (bins, derived_from_report_hits_only) =
-            Self::derive_score_density_bins_from_report(&report);
-        let svg = Self::render_rna_read_score_density_svg_text(&report, &bins, scale);
+            Self::score_density_bins_for_report(&report, variant);
+        let svg = Self::render_rna_read_score_density_svg_text(&report, &bins, scale, variant);
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read score-density SVG to '{path}': {e}"),
@@ -1808,6 +1866,7 @@ impl GentleEngine {
             path: path.to_string(),
             report_id: report.report_id,
             scale,
+            variant,
             bin_count: bins.len(),
             max_bin_count: bins.iter().copied().max().unwrap_or(0),
             total_scored_reads: bins.iter().copied().sum::<u64>(),
@@ -5432,6 +5491,7 @@ impl GentleEngine {
                 done: false,
                 bins: bins.clone(),
                 score_density_bins: report.score_density_bins.clone(),
+                seed_pass_score_density_bins: report.seed_pass_score_density_bins.clone(),
                 top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows: transition_support_rows.clone(),
                 isoform_support_rows: Self::collect_isoform_support_rows(
@@ -5694,6 +5754,7 @@ impl GentleEngine {
                         done: false,
                         bins: bins.clone(),
                         score_density_bins: report.score_density_bins.clone(),
+                        seed_pass_score_density_bins: report.seed_pass_score_density_bins.clone(),
                         top_hits_preview: Self::collect_rna_read_top_hit_previews(
                             &progress_top_hits,
                         ),
@@ -5820,6 +5881,7 @@ impl GentleEngine {
                 done: true,
                 bins,
                 score_density_bins: report.score_density_bins.clone(),
+                seed_pass_score_density_bins: report.seed_pass_score_density_bins.clone(),
                 top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows,
                 isoform_support_rows: report.isoform_support_rows.clone(),
@@ -6299,6 +6361,13 @@ impl GentleEngine {
         if score_density_bins.len() != RNA_READ_SCORE_DENSITY_BIN_COUNT {
             score_density_bins.resize(RNA_READ_SCORE_DENSITY_BIN_COUNT, 0);
         }
+        let mut seed_pass_score_density_bins = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.seed_pass_score_density_bins.clone())
+            .unwrap_or_else(|| vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT]);
+        if seed_pass_score_density_bins.len() != RNA_READ_SCORE_DENSITY_BIN_COUNT {
+            seed_pass_score_density_bins.resize(RNA_READ_SCORE_DENSITY_BIN_COUNT, 0);
+        }
         if let Some(checkpoint) = loaded_checkpoint.as_ref() {
             if !checkpoint.bins.is_empty() {
                 bins = checkpoint.bins.clone();
@@ -6480,6 +6549,7 @@ impl GentleEngine {
                 done: false,
                 bins: bins.clone(),
                 score_density_bins: score_density_bins.clone(),
+                seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
                 top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows: transition_support_rows.clone(),
                 isoform_support_rows: isoform_support_rows.clone(),
@@ -6688,6 +6758,11 @@ impl GentleEngine {
                 if let Some(bin) = score_density_bins.get_mut(density_idx) {
                     *bin = bin.saturating_add(1);
                 }
+                if passed_seed_filter
+                    && let Some(bin) = seed_pass_score_density_bins.get_mut(density_idx)
+                {
+                    *bin = bin.saturating_add(1);
+                }
                 let align_started = Instant::now();
                 let (best_mapping, secondary_mappings) = if passed_seed_filter && alignment_enabled
                 {
@@ -6810,6 +6885,7 @@ impl GentleEngine {
                             done: false,
                             bins: bins.clone(),
                             score_density_bins: score_density_bins.clone(),
+                            seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
                             top_hits_preview: Self::collect_rna_read_top_hit_previews(
                                 &progress_top_hits,
                             ),
@@ -6889,6 +6965,7 @@ impl GentleEngine {
                             origin_class_counts: origin_class_counts.clone(),
                             bins: bins.clone(),
                             score_density_bins: score_density_bins.clone(),
+                            seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
                             retained_hits: retained_rows,
                         };
                         Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
@@ -6958,6 +7035,7 @@ impl GentleEngine {
             done: true,
             bins: bins.clone(),
             score_density_bins: score_density_bins.clone(),
+            seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
             top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
             transition_support_rows: transition_support_rows.clone(),
             isoform_support_rows: isoform_support_rows.clone(),
@@ -7021,6 +7099,7 @@ impl GentleEngine {
                 origin_class_counts: origin_class_counts.clone(),
                 bins: bins.clone(),
                 score_density_bins: score_density_bins.clone(),
+                seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
                 retained_hits: retained_hits.clone(),
             };
             Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
@@ -7111,6 +7190,7 @@ impl GentleEngine {
             mapped_isoform_support_rows,
             origin_class_counts,
             score_density_bins,
+            seed_pass_score_density_bins,
         })
     }
 }

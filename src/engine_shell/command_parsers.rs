@@ -2037,6 +2037,22 @@ pub(super) fn parse_rna_read_alignment_sort_key(
     }
 }
 
+pub(super) fn parse_rna_read_score_density_variant(
+    raw: &str,
+) -> Result<RnaReadScoreDensityVariant, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all_scored" | "all-scored" | "all" => Ok(RnaReadScoreDensityVariant::AllScored),
+        "composite_seed_gate"
+        | "composite-seed-gate"
+        | "composite_gate"
+        | "composite-gate"
+        | "composite" => Ok(RnaReadScoreDensityVariant::CompositeSeedGate),
+        other => Err(format!(
+            "Unsupported RNA-read score-density variant '{other}', expected all_scored|composite_seed_gate"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_read_record_indices(raw: &str) -> Result<Vec<usize>, String> {
     let mut indices = raw
         .split(',')
@@ -3425,6 +3441,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut sort_key = RnaReadAlignmentInspectionSortKey::Rank;
             let mut search = String::new();
             let mut selected_record_indices: Vec<usize> = vec![];
+            let mut score_density_variant = RnaReadScoreDensityVariant::AllScored;
             let mut score_bin_index: Option<usize> = None;
             let mut score_bin_count = 0usize;
             let mut idx = 3usize;
@@ -3478,6 +3495,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             "rna-reads inspect-alignments",
                         )?;
                     }
+                    "--score-bin-variant" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--score-bin-variant",
+                            "rna-reads inspect-alignments",
+                        )?;
+                        score_density_variant = parse_rna_read_score_density_variant(&raw)?;
+                    }
                     "--record-indices" => {
                         let raw = parse_option_path(
                             tokens,
@@ -3528,6 +3554,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 sort_key,
                 search,
                 selected_record_indices,
+                score_density_variant,
                 score_bin_index,
                 score_bin_count,
             })
@@ -3765,13 +3792,14 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "export-score-density-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads export-score-density-svg requires REPORT_ID OUTPUT.svg [--scale linear|log]"
+                    "rna-reads export-score-density-svg requires REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]"
                         .to_string(),
                 );
             }
             let report_id = tokens[2].clone();
             let path = tokens[3].clone();
             let mut scale = RnaReadScoreDensityScale::Log;
+            let mut variant = RnaReadScoreDensityVariant::AllScored;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3784,6 +3812,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         scale = parse_rna_read_score_density_scale(&raw)?;
                     }
+                    "--variant" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant",
+                            "rna-reads export-score-density-svg",
+                        )?;
+                        variant = parse_rna_read_score_density_variant(&raw)?;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads export-score-density-svg"
@@ -3795,6 +3832,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 path,
                 scale,
+                variant,
             })
         }
         "export-alignments-tsv" => {

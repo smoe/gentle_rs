@@ -98,6 +98,8 @@ pub(super) struct RnaReadEvidenceUiState {
     pub(super) selected_report_id: String,
     #[serde(default = "super::default_true")]
     pub(super) score_density_use_log_scale: bool,
+    #[serde(default)]
+    pub(super) score_density_variant: RnaReadScoreDensityVariant,
 }
 
 impl Default for RnaReadEvidenceUiState {
@@ -105,6 +107,7 @@ impl Default for RnaReadEvidenceUiState {
         Self {
             selected_report_id: String::new(),
             score_density_use_log_scale: true,
+            score_density_variant: RnaReadScoreDensityVariant::AllScored,
         }
     }
 }
@@ -773,6 +776,7 @@ impl MainAreaDna {
             done: true,
             bins: vec![],
             score_density_bins: report.score_density_bins.clone(),
+            seed_pass_score_density_bins: report.seed_pass_score_density_bins.clone(),
             top_hits_preview,
             transition_support_rows: report.transition_support_rows.clone(),
             isoform_support_rows: report.isoform_support_rows.clone(),
@@ -951,6 +955,7 @@ impl MainAreaDna {
             &self.rna_read_alignment_effect_search,
             self.rna_read_alignment_effect_sort_key,
             &self.rna_seed_selected_record_indices,
+            self.rna_read_evidence_ui.score_density_variant,
             self.rna_read_alignment_effect_score_bin_index,
             score_bin_count,
         )
@@ -961,6 +966,7 @@ impl MainAreaDna {
         search: &str,
         sort_key: RnaReadAlignmentEffectSortKey,
         selected_record_indices: &BTreeSet<usize>,
+        score_density_variant: RnaReadScoreDensityVariant,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
     ) -> RnaReadAlignmentInspectionSubsetSpec {
@@ -969,6 +975,7 @@ impl MainAreaDna {
             sort_key: Self::engine_rna_read_alignment_sort_key(sort_key),
             search: search.trim().to_string(),
             selected_record_indices: selected_record_indices.iter().copied().collect(),
+            score_density_variant,
             score_bin_index,
             score_bin_count: score_bin_count.max(1),
         }
@@ -1117,6 +1124,7 @@ impl MainAreaDna {
         filter: RnaReadAlignmentEffectFilter,
         search: &str,
         sort_key: RnaReadAlignmentEffectSortKey,
+        score_density_variant: RnaReadScoreDensityVariant,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
     ) -> String {
@@ -1125,12 +1133,35 @@ impl MainAreaDna {
             .map(|idx| Self::format_rna_read_score_bin_spec(idx, score_bin_count))
             .unwrap_or_else(|| "<none>".to_string());
         format!(
-            "filter={} | score_bin={} | sort={} | search={}",
+            "filter={} | histogram={} | score_bin={} | sort={} | search={}",
             Self::rna_read_alignment_effect_filter_label(filter),
+            Self::rna_read_score_density_variant_label(score_density_variant),
             score_bin,
             Self::rna_read_alignment_effect_sort_key_label(sort_key),
             if search.is_empty() { "<none>" } else { search }
         )
+    }
+
+    pub(super) fn rna_read_score_density_variant_label(
+        variant: RnaReadScoreDensityVariant,
+    ) -> &'static str {
+        match variant {
+            RnaReadScoreDensityVariant::AllScored => "all scored",
+            RnaReadScoreDensityVariant::CompositeSeedGate => "composite gate",
+        }
+    }
+
+    pub(super) fn rna_read_score_density_variant_note(
+        variant: RnaReadScoreDensityVariant,
+    ) -> &'static str {
+        match variant {
+            RnaReadScoreDensityVariant::AllScored => {
+                "Histogram over all scored reads from phase 1."
+            }
+            RnaReadScoreDensityVariant::CompositeSeedGate => {
+                "Histogram over reads that passed the full composite seed gate during phase 1."
+            }
+        }
     }
 
     pub(super) fn focus_rna_read_alignment_effect_record_indices(
@@ -1173,6 +1204,16 @@ impl MainAreaDna {
             bin_index.min(bin_count.saturating_sub(1)),
             bin_count.max(1)
         )
+    }
+
+    pub(super) fn rna_read_score_density_bins_for_progress<'a>(
+        progress: &'a RnaReadInterpretProgress,
+        variant: RnaReadScoreDensityVariant,
+    ) -> &'a [u64] {
+        match variant {
+            RnaReadScoreDensityVariant::AllScored => &progress.score_density_bins,
+            RnaReadScoreDensityVariant::CompositeSeedGate => &progress.seed_pass_score_density_bins,
+        }
     }
 
     pub(super) fn collect_rna_read_mapped_exon_contributors(
@@ -1333,6 +1374,7 @@ impl MainAreaDna {
 
     pub(super) fn select_rna_read_report_rightmost_score_bin_record_indices(
         report: &RnaReadInterpretationReport,
+        variant: RnaReadScoreDensityVariant,
     ) -> Vec<usize> {
         if report.hits.is_empty() {
             return vec![];
@@ -1340,6 +1382,9 @@ impl MainAreaDna {
         let bin_count = report.score_density_bins.len().max(40);
         let mut rightmost_idx = None;
         for hit in &report.hits {
+            if variant == RnaReadScoreDensityVariant::CompositeSeedGate && !hit.passed_seed_filter {
+                continue;
+            }
             let idx = Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count);
             rightmost_idx = Some(rightmost_idx.map_or(idx, |current: usize| current.max(idx)));
         }
@@ -1350,8 +1395,9 @@ impl MainAreaDna {
             .hits
             .iter()
             .filter(|hit| {
-                Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
-                    == target_idx
+                (variant != RnaReadScoreDensityVariant::CompositeSeedGate || hit.passed_seed_filter)
+                    && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                        == target_idx
             })
             .map(|hit| hit.record_index)
             .collect::<Vec<_>>()
@@ -1361,6 +1407,7 @@ impl MainAreaDna {
         report: &RnaReadInterpretationReport,
         target_idx: usize,
         bin_count: usize,
+        variant: RnaReadScoreDensityVariant,
     ) -> Vec<usize> {
         if report.hits.is_empty() {
             return vec![];
@@ -1371,8 +1418,9 @@ impl MainAreaDna {
             .hits
             .iter()
             .filter(|hit| {
-                Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
-                    == target_idx
+                (variant != RnaReadScoreDensityVariant::CompositeSeedGate || hit.passed_seed_filter)
+                    && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                        == target_idx
             })
             .map(|hit| hit.record_index)
             .collect::<Vec<_>>()
@@ -1382,11 +1430,13 @@ impl MainAreaDna {
         report: &RnaReadInterpretationReport,
         target_idx: usize,
         bin_count: usize,
+        variant: RnaReadScoreDensityVariant,
     ) -> Vec<RnaReadTopHitPreview> {
-        let selected_record_indices =
-            Self::select_rna_read_report_score_bin_record_indices(report, target_idx, bin_count)
-                .into_iter()
-                .collect::<BTreeSet<_>>();
+        let selected_record_indices = Self::select_rna_read_report_score_bin_record_indices(
+            report, target_idx, bin_count, variant,
+        )
+        .into_iter()
+        .collect::<BTreeSet<_>>();
         let mut rows = report
             .hits
             .iter()

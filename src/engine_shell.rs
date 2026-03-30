@@ -44,10 +44,10 @@ use crate::{
         RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
-        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-        SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
+        RnaReadSeedFilterConfig, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
+        SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
@@ -1334,6 +1334,7 @@ pub enum ShellCommand {
         sort_key: RnaReadAlignmentInspectionSortKey,
         search: String,
         selected_record_indices: Vec<usize>,
+        score_density_variant: RnaReadScoreDensityVariant,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
     },
@@ -1372,6 +1373,7 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
         scale: RnaReadScoreDensityScale,
+        variant: RnaReadScoreDensityVariant,
     },
     RnaReadsExportAlignmentsTsv {
         report_id: String,
@@ -6270,10 +6272,11 @@ impl ShellCommand {
                 sort_key,
                 search,
                 selected_record_indices,
+                score_density_variant,
                 score_bin_index,
                 score_bin_count,
             } => format!(
-                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={}, effect_filter={}, sort_key={}, search='{}', selected_record_indices={}, score_bin_index={}, score_bin_count={})",
+                "inspect ranked RNA-read alignments for '{}' (selection={}, limit={}, effect_filter={}, sort_key={}, search='{}', selected_record_indices={}, score_density_variant={}, score_bin_index={}, score_bin_count={})",
                 report_id,
                 selection.as_str(),
                 limit,
@@ -6285,6 +6288,7 @@ impl ShellCommand {
                     search.trim()
                 },
                 selected_record_indices.len(),
+                score_density_variant.as_str(),
                 score_bin_index
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "<none>".to_string()),
@@ -6356,11 +6360,13 @@ impl ShellCommand {
                 report_id,
                 path,
                 scale,
+                variant,
             } => format!(
-                "export RNA-read score-density SVG from '{}' to '{}' (scale={})",
+                "export RNA-read score-density SVG from '{}' to '{}' (scale={}, variant={})",
                 report_id,
                 path,
-                scale.as_str()
+                scale.as_str(),
+                variant.as_str()
             ),
             Self::RnaReadsExportAlignmentsTsv {
                 report_id,
@@ -15938,6 +15944,7 @@ pub fn execute_shell_command_with_options(
             sort_key,
             search,
             selected_record_indices,
+            score_density_variant,
             score_bin_index,
             score_bin_count,
         } => {
@@ -15951,6 +15958,7 @@ pub fn execute_shell_command_with_options(
                         sort_key: *sort_key,
                         search: search.clone(),
                         selected_record_indices: selected_record_indices.clone(),
+                        score_density_variant: *score_density_variant,
                         score_bin_index: *score_bin_index,
                         score_bin_count: *score_bin_count,
                     }),
@@ -16093,9 +16101,10 @@ pub fn execute_shell_command_with_options(
             report_id,
             path,
             scale,
+            variant,
         } => {
             let export = engine
-                .export_rna_read_score_density_svg(report_id, path, *scale)
+                .export_rna_read_score_density_svg(report_id, path, *scale, *variant)
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -16104,6 +16113,7 @@ pub fn execute_shell_command_with_options(
                     "report_id": export.report_id,
                     "path": export.path,
                     "scale": export.scale.as_str(),
+                    "variant": export.variant.as_str(),
                     "bin_count": export.bin_count,
                     "max_bin_count": export.max_bin_count,
                     "total_scored_reads": export.total_scored_reads,

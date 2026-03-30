@@ -14489,6 +14489,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 sort_key: RnaReadAlignmentInspectionSortKey::Score,
                 search: "aligned_hi_cov".to_string(),
                 selected_record_indices: vec![1, 1],
+                score_density_variant: RnaReadScoreDensityVariant::AllScored,
                 score_bin_index: None,
                 score_bin_count: 0,
             }),
@@ -14521,6 +14522,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 sort_key: RnaReadAlignmentInspectionSortKey::Score,
                 search: String::new(),
                 selected_record_indices: vec![],
+                score_density_variant: RnaReadScoreDensityVariant::AllScored,
                 score_bin_index: None,
                 score_bin_count: 0,
             }),
@@ -14544,6 +14546,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 sort_key: RnaReadAlignmentInspectionSortKey::Rank,
                 search: String::new(),
                 selected_record_indices: vec![],
+                score_density_variant: RnaReadScoreDensityVariant::AllScored,
                 score_bin_index: Some(target_score_bin_index),
                 score_bin_count: 40,
             }),
@@ -15315,6 +15318,7 @@ fn test_export_rna_read_score_density_svg() {
             "rna_reads_density",
             log_svg.to_str().expect("log svg path"),
             RnaReadScoreDensityScale::Log,
+            RnaReadScoreDensityVariant::AllScored,
         )
         .expect("export score-density log svg");
     assert_eq!(log_export.scale, RnaReadScoreDensityScale::Log);
@@ -15341,6 +15345,7 @@ fn test_export_rna_read_score_density_svg() {
             "rna_reads_density",
             linear_svg.to_str().expect("linear svg path"),
             RnaReadScoreDensityScale::Linear,
+            RnaReadScoreDensityVariant::AllScored,
         )
         .expect("export score-density linear svg");
     assert_eq!(linear_export.scale, RnaReadScoreDensityScale::Linear);
@@ -15370,11 +15375,46 @@ fn test_export_rna_read_score_density_svg_includes_compact_bar_labels() {
             "rna_reads_density_labels",
             svg_path.to_str().expect("svg path"),
             RnaReadScoreDensityScale::Log,
+            RnaReadScoreDensityVariant::AllScored,
         )
         .expect("export score-density svg with labels");
     let svg_text = fs::read_to_string(&svg_path).expect("read svg");
     assert!(svg_text.contains("1.2k"));
     assert!(svg_text.contains(">15<"));
+}
+
+#[test]
+fn test_export_rna_read_score_density_svg_composite_variant_uses_seed_pass_bins() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_density_composite".to_string(),
+            seq_id: "seq_density".to_string(),
+            score_density_bins: vec![9, 0, 0, 0],
+            seed_pass_score_density_bins: vec![2, 0, 0, 0],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert composite density report");
+
+    let td = tempdir().expect("tempdir");
+    let svg_path = td.path().join("score_density_composite.svg");
+    let export = engine
+        .export_rna_read_score_density_svg(
+            "rna_reads_density_composite",
+            svg_path.to_str().expect("svg path"),
+            RnaReadScoreDensityScale::Linear,
+            RnaReadScoreDensityVariant::CompositeSeedGate,
+        )
+        .expect("export composite score-density svg");
+    assert_eq!(
+        export.variant,
+        RnaReadScoreDensityVariant::CompositeSeedGate
+    );
+    assert_eq!(export.total_scored_reads, 2);
+    let svg_text = fs::read_to_string(&svg_path).expect("read svg");
+    assert!(svg_text.contains("composite seed-gate reads"));
+    assert!(svg_text.contains("variant=composite_seed_gate"));
 }
 
 #[test]

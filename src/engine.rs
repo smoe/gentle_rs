@@ -707,6 +707,7 @@ struct RnaReadInterpretCheckpoint {
     origin_class_counts: BTreeMap<String, usize>,
     bins: Vec<RnaReadSeedHistogramBin>,
     score_density_bins: Vec<u64>,
+    seed_pass_score_density_bins: Vec<u64>,
     retained_hits: Vec<RnaReadInterpretationHit>,
 }
 
@@ -4362,6 +4363,8 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         scale: RnaReadScoreDensityScale,
+        #[serde(default)]
+        variant: RnaReadScoreDensityVariant,
     },
     ExportRnaReadAlignmentsTsv {
         report_id: String,

@@ -641,9 +641,18 @@ Feature tree grouping:
     for direct seed-location vs exon-context inspection
   - coordinate mode toggle supports genomic coordinates or exonic-only compact
     coordinates (merged exons adjacent without intronic gaps)
-  - Seed-hit score-density chart includes a `Linear`/`Log` scale toggle
-    (default `Log`); log mode uses `log(1+count)` so sparse high-score bins
-    remain visible during strongly skewed runs
+  - Seed-hit score-density chart includes:
+    - a `Linear`/`Log` scale toggle (default `Log`); log mode uses
+      `log(1+count)` so sparse high-score bins remain visible during strongly
+      skewed runs
+    - a population toggle:
+      - `All scored`: every scored phase-1 read
+      - `Composite gate`: only reads that passed the full composite seed gate
+        under the recorded run thresholds
+    - the explanatory note changes with that population mode:
+      - `All scored` keeps the raw `min_hit` red-line interpretation
+      - `Composite gate` makes clear that the bars already respect the full
+        gate, while the red line still marks the raw `min_hit` component
   - support statistics now live behind source tabs:
     - `Reported transcript`
     - `Thresholded cDNA`
@@ -682,8 +691,11 @@ Feature tree grouping:
         - the clicked bin also becomes the checkbox-selected saved-report
           subset, so the table, exports, and follow-up alignment actions all
           refer to the same explicit reads
-        - the current subset line now states `filter=... | score_bin=... |
-          sort=... | search=...`
+        - the current subset line now states
+          `filter=... | histogram=... | score_bin=... | sort=... | search=...`
+        - in `Composite gate` mode, clicking a bar only selects retained
+          saved-report rows in that bin that actually passed the full
+          composite seed gate
       - filter controls let you focus on:
         - all aligned rows
         - `confirmed` rows only
@@ -709,7 +721,8 @@ Feature tree grouping:
         alignment, FASTA copy, materialization, or dotplot export
       - the panel states both:
         - the formal subset specification
-        - score-bin provenance (`N saved-report reads in bin X, M aligned rows
+        - score-bin provenance
+          (`N saved-report reads in histogram mode X / bin Y, M aligned rows
           currently match`)
       - one row per aligned retained read with:
         - phase-1 transcript guess
@@ -792,7 +805,8 @@ Feature tree grouping:
         the UI now says so explicitly instead of silently falling back to the
         unrelated live preview
       - histogram hover now distinguishes:
-        - tested reads in the bin
+        - the current histogram population count (`All scored` or
+          `Composite gate`)
         - retained saved-report rows in the bin
     - the preview table now reserves about 12 visible rows before scrolling
       and starts with `Ret.rank`, so orientation is easier to keep while

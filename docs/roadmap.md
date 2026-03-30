@@ -1639,6 +1639,10 @@ Status:
     selects the corresponding saved-report reads, and focuses `Mapped cDNA ->
     Read effects` on that reproducible subset instead of the old top-20-only
     preview.
+    The histogram now also has a second engine-backed population mode for the
+    full composite seed gate, so users can switch between `all scored` and the
+    stricter `composite gate` population without changing the reproducible
+    subset/export semantics.
     The top-read preview now also shows rank-first tabular rows with explicit
     `Id%` / `Cov%` columns and, after a run completes, can switch from the
     capped live preview to the exact saved-report rows in the chosen score bin.

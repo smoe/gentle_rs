@@ -708,7 +708,7 @@ Current draft operations:
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
 - `ExportRnaReadExonPathsTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
-- `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
+- `ExportRnaReadScoreDensitySvg { report_id, path, scale, variant }`
 - `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
@@ -2437,8 +2437,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         effect labels, and `#record_index` labels`
       - `selected_record_indices[]` provides the explicit subset for
         `selected_only`
+      - `score_density_variant = all_scored|composite_seed_gate`
       - `score_bin_index` + `score_bin_count` provide a formal
         score-density-bin subset for reproducible histogram-driven inspection
+        within that chosen histogram population
     - inspection payload now includes:
       - `aligned_count`: aligned rows admitted by coarse `selection`
       - `subset_match_count`: aligned rows matching the structured subset
@@ -2487,6 +2489,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - report payload now includes per-report:
     - `exon_support_frequencies[]`
     - `junction_support_frequencies[]`
+    - `score_density_bins[]` (`all_scored` phase-1 histogram)
+    - `seed_pass_score_density_bins[]` (`composite_seed_gate` histogram)
     - storage/streaming controls:
       - `report_mode` (`full` or `seed_passed_only`)
       - `checkpoint_path` / `checkpoint_every_reads`
@@ -2530,7 +2534,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - `limit`
       - normalized `subset_spec`
         (`effect_filter`, `sort_key`, `search`,
-        `selected_record_indices[]`, `score_bin_index`, `score_bin_count`)
+        `selected_record_indices[]`, `score_density_variant`,
+        `score_bin_index`, `score_bin_count`)
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
@@ -2544,13 +2549,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
-  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-index N] [--score-bin-count M]`
+  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
-  - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
+  - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
   - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
   - shell output convenience fields:
@@ -2562,7 +2567,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads inspect-alignments` returns aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics), plus a
       structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,
-      `selected_record_indices`, `score_bin_index`, `score_bin_count`) and
+      `selected_record_indices`, `score_density_variant`, `score_bin_index`,
+      `score_bin_count`) and
       `subset_match_count`
 - Alignment-TSV export:
   - operation:
@@ -2583,6 +2589,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - Score-density SVG export:
   - `rna-reads export-score-density-svg` writes the same report summary used by
     the GUI plus seed-screen provenance in the SVG header:
+    - `variant = all_scored|composite_seed_gate`
     - `profile`, `report_mode`, `scope`, `origin_mode`
     - seed-filter summary with `k`, `seed_stride_bp`, thresholds, and
       overlap/order-density wording

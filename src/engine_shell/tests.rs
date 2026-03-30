@@ -9142,12 +9142,12 @@ fn parse_rna_reads_commands() {
     ));
 
     let inspect = parse_shell_line(
-        "rna-reads inspect-alignments tp73_reads --selection aligned --limit 25 --effect-filter disagreement_only --sort score --search tp53 --record-indices 2,7,9 --score-bin-index 39 --score-bin-count 40",
+        "rna-reads inspect-alignments tp73_reads --selection aligned --limit 25 --effect-filter disagreement_only --sort score --search tp53 --record-indices 2,7,9 --score-bin-variant composite_seed_gate --score-bin-index 39 --score-bin-count 40",
     )
     .expect("parse rna-reads inspect-alignments");
     assert!(matches!(
         inspect,
-        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit, effect_filter, sort_key, search, selected_record_indices, score_bin_index, score_bin_count }
+        ShellCommand::RnaReadsInspectAlignments { report_id, selection, limit, effect_filter, sort_key, search, selected_record_indices, score_density_variant, score_bin_index, score_bin_count }
             if report_id == "tp73_reads"
                 && selection == RnaReadHitSelection::Aligned
                 && limit == 25
@@ -9155,6 +9155,7 @@ fn parse_rna_reads_commands() {
                 && sort_key == RnaReadAlignmentInspectionSortKey::Score
                 && search == "tp53"
                 && selected_record_indices == vec![2, 7, 9]
+                && score_density_variant == RnaReadScoreDensityVariant::CompositeSeedGate
                 && score_bin_index == Some(39)
                 && score_bin_count == 40
     ));
@@ -9223,15 +9224,16 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_score_density = parse_shell_line(
-        "rna-reads export-score-density-svg tp73_reads score_density.svg --scale linear",
+        "rna-reads export-score-density-svg tp73_reads score_density.svg --scale linear --variant composite_seed_gate",
     )
     .expect("parse rna-reads export-score-density-svg");
     assert!(matches!(
         export_score_density,
-        ShellCommand::RnaReadsExportScoreDensitySvg { report_id, path, scale }
+        ShellCommand::RnaReadsExportScoreDensitySvg { report_id, path, scale, variant }
             if report_id == "tp73_reads"
                 && path == "score_density.svg"
                 && scale == RnaReadScoreDensityScale::Linear
+                && variant == RnaReadScoreDensityVariant::CompositeSeedGate
     ));
 
     let export_alignments_tsv = parse_shell_line(
@@ -9684,6 +9686,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             sort_key: RnaReadAlignmentInspectionSortKey::Score,
             search: "read_1".to_string(),
             selected_record_indices: vec![0],
+            score_density_variant: RnaReadScoreDensityVariant::CompositeSeedGate,
             score_bin_index: Some(39),
             score_bin_count: 40,
         },
@@ -9714,6 +9717,10 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .as_array()
             .map(|values| values.len()),
         Some(1)
+    );
+    assert_eq!(
+        inspected.output["inspection"]["subset_spec"]["score_density_variant"].as_str(),
+        Some("composite_seed_gate")
     );
     assert_eq!(
         inspected.output["inspection"]["subset_spec"]["score_bin_index"].as_u64(),
@@ -9857,6 +9864,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id: "rna_reads_test".to_string(),
             path: exported_density_svg.display().to_string(),
             scale: RnaReadScoreDensityScale::Log,
+            variant: RnaReadScoreDensityVariant::CompositeSeedGate,
         },
     )
     .expect("export rna-read score density svg");

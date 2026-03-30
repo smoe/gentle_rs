@@ -182,6 +182,23 @@ impl RnaReadScoreDensityScale {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadScoreDensityVariant {
+    #[default]
+    AllScored,
+    CompositeSeedGate,
+}
+
+impl RnaReadScoreDensityVariant {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllScored => "all_scored",
+            Self::CompositeSeedGate => "composite_seed_gate",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RnaReadSeedFilterConfig {
@@ -508,6 +525,8 @@ pub struct RnaReadScoreDensitySvgExport {
     pub path: String,
     pub report_id: String,
     pub scale: RnaReadScoreDensityScale,
+    #[serde(default)]
+    pub variant: RnaReadScoreDensityVariant,
     pub bin_count: usize,
     pub max_bin_count: u64,
     pub total_scored_reads: u64,
@@ -629,6 +648,8 @@ pub struct RnaReadAlignmentInspectionSubsetSpec {
     pub sort_key: RnaReadAlignmentInspectionSortKey,
     pub search: String,
     pub selected_record_indices: Vec<usize>,
+    #[serde(default)]
+    pub score_density_variant: RnaReadScoreDensityVariant,
     pub score_bin_index: Option<usize>,
     pub score_bin_count: usize,
 }
@@ -827,6 +848,8 @@ pub struct RnaReadInterpretationReport {
     pub origin_class_counts: BTreeMap<String, usize>,
     #[serde(default)]
     pub score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub seed_pass_score_density_bins: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1066,6 +1089,8 @@ pub struct RnaReadInterpretProgress {
     pub done: bool,
     pub bins: Vec<RnaReadSeedHistogramBin>,
     pub score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub seed_pass_score_density_bins: Vec<u64>,
     #[serde(default)]
     pub top_hits_preview: Vec<RnaReadTopHitPreview>,
     #[serde(default)]
