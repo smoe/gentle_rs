@@ -195,3 +195,77 @@ cargo run --quiet --bin gentle_examples_docs -- \
   docs/figures/tp73_cdna_genomic_dotplot.png \
   --drop-dotplot-metadata
 ```
+
+## Planned VKORC1/rs9923231 Pattern-to-Construct Showcase
+
+The next README/community-facing showcase should be a
+**VKORC1/rs9923231 pattern-to-study-construct** story aligned with the
+ClawBio/OpenClaw handoff model:
+
+- ClawBio identifies the warfarin-associated `rs9923231` signal in one genome
+- GENtle retrieves the relevant `VKORC1` context, derives allele-specific
+  upstream regulatory fragments, and plans luciferase reporter constructs
+- the run yields both explanation figures and a reproducibility bundle
+- the baseline claim is allele-specific promoter activity; any warfarin
+  treatment arm is a later extension, not the first assay claim
+
+The intended asset set is:
+
+1. `vkorc1_rs9923231_pattern_panel.*`
+   - upstream warfarin/PGx summary panel from the ClawBio side
+   - likely assembled from the ClawBio skill/report layer rather than from a
+     pure GENtle render
+2. `vkorc1_rs9923231_context_map.*`
+   - planned GENtle figure showing the local `rs9923231` / `VKORC1` /
+     `LOC124903680` neighborhood
+   - should make the assembly/build and reverse-strand promoter orientation
+     explicit
+3. `vkorc1_rs9923231_promoter_fragments.*`
+   - planned GENtle figure showing the exact promoter fragment(s) taken forward
+     for study
+   - likely one of:
+     - allele-paired promoter fragment schematic
+     - bounded regional annotation map
+     - anchor/feature expert export
+4. `vkorc1_rs9923231_luciferase_protocol_cartoon.svg`
+   - planned VKORC1-targeted promoter->luciferase cloning mechanism strip
+   - should come from the same protocol-cartoon engine family already used for
+     Gibson README figures
+5. `vkorc1_rs9923231_luciferase_lineage.svg`
+   - planned lineage/provenance export showing allele-specific inserts,
+     primers, and assembled reporter construct(s) from the same project state
+6. `vkorc1_rs9923231_clawbio_bundle_panel.*`
+   - compact visual summary of `report.md`, `result.json`, and reproducibility
+     bundle contents from the ClawBio/OpenClaw wrapper
+
+The existing repository assets that should anchor the first implementation are:
+
+- `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
+  - promoter->luciferase planning skeleton already covering extraction,
+    candidate generation, vector import, assembly preview, and primer/qPCR
+    reporting
+- `docs/examples/workflows/tp63_extend_anchor_online.json`
+  - anchored-region extension baseline for genome-context expansion
+- `docs/examples/workflows/digest_ligation_extract_region_minimal.json`
+  - cloning/export baseline for deterministic construct materialization
+- `assets/helper_genomes.json`
+  - includes the luciferase destination helper entry used for existing reporter
+    planning examples
+
+Recommended execution order for implementing the full showcase:
+
+1. Add one genomic-context figure showing `rs9923231` in the local `VKORC1` /
+   `LOC124903680` neighborhood on the correct assembly/build.
+2. Add one allele-paired promoter-fragment figure that answers:
+   "what exact regulatory sequence are we taking forward into the reporter
+   assay?"
+3. Add one `VKORC1`-targeted luciferase construct workflow that produces:
+   - a promoter->luciferase mechanism/cartoon export
+   - a lineage/provenance export
+   - primer/qPCR reports for the reporter construct
+4. Add one ClawBio-wrapper demo/report snapshot tying the whole run back to the
+   pharmacogenomics story and reproducibility bundle.
+
+Current status: the repository already contains promoter/luciferase workflow
+scaffolding, but this specific `VKORC1` / `rs9923231` showcase is still a
+deliberate implementation target rather than a completed asset set.

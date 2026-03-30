@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-29
+Last updated: 2026-03-30
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -557,6 +557,72 @@ order. Durable architecture constraints and decisions remain in
       (`docs/examples/workflows/guides_export_csv_and_protocol.json`)
     - TP73 promoter luciferase assay planning
       (`docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`)
+  - planned ClawBio-facing showcase moved out of the top-level README until the
+    assets exist:
+    - working title: `From Pattern To Study Construct`
+    - division of labor:
+      - ClawBio interprets one genome and identifies an interesting pattern
+      - GENtle turns that pattern into a concrete construct-design workflow for
+        downstream study
+    - intended narrative:
+      1. start from ClawBio's existing warfarin pharmacogenomics story, where
+         `rs9923231` marks increased VKORC1-associated warfarin sensitivity
+      2. make the coordinate handoff explicit:
+         current dbSNP/GRCh38 uses `chr16:31096368`, while 23andMe-style demo
+         data may still use the older GRCh37-space coordinate
+      3. hand the locus into GENtle as an explicit retrieval/design target and
+         render the local `rs9923231` / `VKORC1` / `LOC124903680` context
+      4. derive one or more strand-aware upstream regulatory fragments for the
+         reverse-strand `VKORC1` promoter region
+      5. materialize paired reporter inserts for the reference and variant
+         alleles rather than only one generic study fragment
+      6. move directly into promoter->luciferase reporter assembly planning for
+         those fragments and one luciferase destination vector
+      7. execute the workflow through the ClawBio skill wrapper so the run
+         emits the reproducibility bundle and machine-readable result
+      8. export explanation artifacts from the same project state
+      9. optional follow-up, not first claim:
+         add a warfarin-treatment assay arm after the baseline allele-specific
+         promoter-activity workflow is in place
+    - intended figure set:
+      - one upstream pattern panel stating that ClawBio found `rs9923231` in a
+        warfarin-sensitivity interpretation
+      - one GENtle context figure showing the local `VKORC1`/`LOC124903680`
+        genomic neighborhood and the SNP position
+      - one derived-fragment figure showing the exact promoter fragment(s)
+        taken forward for study
+      - one promoter->luciferase assembly cartoon showing the planned cloning
+        mechanism
+      - one lineage/provenance graph showing the workflow inputs and assembled
+        reporter construct(s)
+      - one compact artifact panel showing the ClawBio/OpenClaw run bundle
+        (`report.md`, `result.json`, `reproducibility/commands.sh`)
+    - first concrete implementation target: `VKORC1` / `rs9923231`
+      - ClawBio already uses this exact pharmacogenomic story, so the handoff
+        reads like a continuation instead of a topic switch
+      - the locus supports a mechanistic follow-up experiment:
+        allele-specific promoter luciferase reporter design
+      - the reverse-strand promoter geometry is the kind of directionality
+        detail GENtle can make explicit and reproducible
+      - existing promoter/luciferase workflow scaffolding in this repository is
+        close enough to adapt without inventing a new engine family
+    - planned exact workflow skeleton:
+      1. retrieve `VKORC1` from prepared `Human GRCh38 Ensembl 116`
+      2. extend the anchored view far enough to include `rs9923231` plus local
+         neighboring annotation
+      3. define one promoter window anchored on the reverse-strand gene start
+         and ensure the SNP falls inside the candidate fragment
+      4. duplicate that fragment into reference-allele and variant-allele
+         inserts
+      5. import the luciferase destination backbone
+      6. preview/apply the reporter-vector assembly
+      7. export construct map, lineage graph, protocol cartoon, and primer/qPCR
+         reports
+    - target message:
+      - ClawBio can say "this genome carries the warfarin-associated
+        `rs9923231` VKORC1 signal"
+      - GENtle can answer "here are the exact allele-specific promoter
+        luciferase constructs we should build to study that signal"
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command
