@@ -7,30 +7,21 @@
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Build the same stable Gibson starter project, but open directly into the
-arrangement-focused guide for container, arrangement, and gel-export review.
+Build the same stable Gibson starter project, but open directly into the arrangement-focused guide for container, arrangement, and gel-export review.
 
-This chapter reuses the deterministic pGEX + insert starter baseline from the
-Gibson specialist tutorial, but changes the guide handoff so
-`File -> Open Tutorial Project...` can land directly on arrangement inspection
-and gel-export workflow instead of overlap/primer setup.
+This chapter reuses the deterministic pGEX + insert starter baseline from the Gibson specialist tutorial, but changes the guide handoff so `File -> Open Tutorial Project...` can land directly on arrangement inspection and gel-export workflow instead of overlap/primer setup.
 
 ## When This Routine Is Useful
 
-- You want to inspect the arrangement that Gibson apply creates without first
-  navigating through the earlier specialist tutorial.
-- You want a reproducible starter state for checking singleton output
-  containers and arrangement-level gel export.
-- You want one offline tutorial-project entry that opens directly on the
-  arrangement guide in Help/Tutorial.
+- You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier specialist tutorial.
+- You want a reproducible starter state for checking singleton output containers and arrangement-level gel export.
+- You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial.
 
 ## What You Learn
 
 - Use one executable starter project to reach the arrangement walkthrough directly.
-- Recognize that the same deterministic Gibson baseline can support more than
-  one tutorial guide.
-- Replay the same arrangement-focused setup from GUI and CLI without changing
-  the biological inputs.
+- Recognize that the same deterministic Gibson baseline can support more than one tutorial guide.
+- Replay the same arrangement-focused setup from GUI and CLI without changing the biological inputs.
 
 ## Concepts and Recurrence
 
