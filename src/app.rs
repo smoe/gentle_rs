@@ -1,4 +1,30 @@
 //! Top-level GUI application wiring and event loop state.
+//!
+//! `GENtleApp` owns application-wide GUI state that spans projects, windows,
+//! background jobs, help/settings surfaces, lineage views, and specialist
+//! dialogs. It is the GUI-side coordinator above individual `MainAreaDna`
+//! sequence windows.
+//!
+//! File map (source order):
+//! - extracted helper modules first:
+//!   - `app/help_docs.rs` for markdown/help loading and rewrite helpers
+//! - top-level imports/constants plus native-menu open/focus request helpers
+//! - persisted configuration and background-job state records
+//! - genome-preparation, BLAST, lineage, Gibson, planning, and command-palette
+//!   UI structs/enums
+//! - `GENtleApp` is the main application state object
+//! - the main `impl GENtleApp` blocks then handle startup/persistence, menu and
+//!   dialog orchestration, background-task polling, lineage/planning/routine
+//!   windows, and cross-window coordination
+//! - the `eframe::App` impl near the end is the event-loop entry point
+//! - tests and large embedded markdown fixtures live at the tail of the file
+//!
+//! Start here when...
+//! - changing app-wide menus, dialogs, or background jobs: search for
+//!   `pub struct GENtleApp`
+//! - changing help/tutorial markdown loading: look in `app/help_docs.rs` first
+//! - debugging per-sequence editing/rendering: jump to `src/main_area_dna.rs`
+//!   instead of adding more logic here
 
 #[path = "app/help_docs.rs"]
 mod help_docs;

@@ -9,6 +9,27 @@
 //! - biological/business logic belongs in the engine
 //! - `MainAreaDna` coordinates sequence-window UI state and presentation
 //!   without becoming a second engine
+//!
+//! File map (source order):
+//! - extracted helper modules first:
+//!   - `main_area_dna/auxiliary_workspaces.rs` for dotplot/splicing/RNA helper
+//!     workspaces
+//!   - `main_area_dna/rna_read_support.rs` for RNA-read report/cache helpers
+//! - early enums and UI-state structs define the sequence-window control
+//!   surface: primer/qPCR dialogs, genome-anchor actions, and engine-op panels
+//! - `MainAreaDna` itself is the central mutable window state record
+//! - the large `impl MainAreaDna` block then handles construction, menu/tool
+//!   actions, shell/engine dispatch, rendering, export helpers, and background
+//!   task polling
+//! - focused embedded tests live near the end of the file
+//!
+//! Start here when...
+//! - wiring a new sequence-window tool or dialog: search for `pub struct
+//!   MainAreaDna`
+//! - debugging RNA-read or auxiliary workspace behavior: check the extracted
+//!   helper modules above first
+//! - tracing viewport rendering/layout changes: search inside the main
+//!   `impl MainAreaDna` block for the relevant panel or mode name
 
 #[path = "main_area_dna/auxiliary_workspaces.rs"]
 mod auxiliary_workspaces;

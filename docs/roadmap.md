@@ -35,9 +35,11 @@ order. Durable architecture constraints and decisions remain in
     highest-traffic public contracts: candidate/planning/report records,
     sequencing-confirmation payloads, BLAST provenance/options, UI-intent
     shell enums, and the shared parse/execute entry points
-  - the next documentation targets now shift to the large GUI orchestration
-    files (`src/main_area_dna.rs` and `src/app.rs`) for file-map style
-    navigation comments
+  - `src/main_area_dna.rs` and `src/app.rs` now carry top-of-file "file map"
+    navigation notes so future GUI work can find the right orchestration region
+    before digging into implementation details
+  - the next documentation targets now shift from file-level maps to richer
+    public-API docs on the remaining GUI-facing state records where warranted
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
 - GUI module decomposition is now underway:
