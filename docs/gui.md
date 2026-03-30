@@ -210,7 +210,22 @@ Primary map modes (linear topology):
       height
     - self modes: `self_forward`, `self_reverse_complement`
     - pair modes: `pair_forward`, `pair_reverse_complement`
-      - pair modes require `reference_seq_id`
+    - pair modes require `reference_seq_id`
+      - reference controls now include:
+        - `Use query as ref`
+          - resets the reference to the current query sequence and expands the
+            reference span to the full query length for pair-forward self-vs-self
+            testing
+        - `Use locus DNA`
+          - restores the current splicing/RNA-mapping locus DNA sequence as the
+            reference and resets `ref_start/ref_end` to the current locus ROI
+        - `Annotated mRNA ref...`
+          - derives one annotated transcript/mRNA sequence for the active locus
+            and uses it as the pairwise reference without switching the active
+            DNA/query window
+      - changing the reference to a shorter sequence now automatically
+        normalizes stale reference spans so old genomic `ref_end` values do not
+        survive into RNA-read or transcript-reference computes
       - optional `ref_start` / `ref_end` set y-axis reference span
       - default behavior when `ref_start/ref_end` are empty:
         - run an initial full-reference pass

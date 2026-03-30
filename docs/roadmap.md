@@ -1696,6 +1696,17 @@ Status:
     RNA-read query override, so dotplot parameters can be adjusted in place for
     the same read-vs-ROI comparison without respawning/exporting a separate
     artifact.
+  - The dotplot workspace now exposes explicit pair-reference shortcuts for
+    RNA-read inspection:
+    - `Use query as ref` for self-vs-self density checks on the selected read
+    - `Use locus DNA` to restore the current splicing/RNA-mapping ROI as the
+      reference
+    - `Annotated mRNA ref...` to derive one locus transcript reference on
+      demand without switching the active query window
+  - Pair-reference changes now normalize stale reference spans immediately, so
+    switching from a long genomic ROI to a short RNA-read or transcript
+    reference no longer carries invalid `ref_end` coordinates into
+    `ComputeDotplot`.
   - RNA-read background runs now return completed reports to the GUI thread for
     final commit instead of making the worker grab the engine write lock after
     EOF, reducing end-of-run stalls where progress reached the final read count

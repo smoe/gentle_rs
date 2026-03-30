@@ -191,6 +191,226 @@ impl MainAreaDna {
         ids
     }
 
+    pub(super) fn current_dotplot_reference_splicing_view(
+        &self,
+    ) -> Option<Arc<SplicingExpertView>> {
+        self.rna_read_mapping_window_view
+            .clone()
+            .or_else(|| self.splicing_expert_window_view.clone())
+    }
+
+    pub(super) fn dotplot_transcript_reference_choices(&self) -> Vec<(usize, String)> {
+        let Some(view) = self.current_dotplot_reference_splicing_view() else {
+            return vec![];
+        };
+        view.transcripts
+            .iter()
+            .map(|lane| {
+                let label = if lane.label.trim().is_empty() {
+                    lane.transcript_id.trim()
+                } else {
+                    lane.label.trim()
+                };
+                (
+                    lane.transcript_feature_id,
+                    format!(
+                        "n-{} {} ({})",
+                        lane.transcript_feature_id + 1,
+                        label,
+                        lane.strand.trim()
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    pub(super) fn set_dotplot_reference_to_sequence(
+        &mut self,
+        reference_seq_id: &str,
+    ) -> Result<(), String> {
+        let reference_seq_id = reference_seq_id.trim();
+        if reference_seq_id.is_empty() {
+            return Err("Reference sequence id cannot be empty".to_string());
+        }
+        let reference_len = if self.seq_id.as_deref() == Some(reference_seq_id) {
+            self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0)
+        } else {
+            let Some(engine) = self.engine.as_ref() else {
+                return Err("No engine attached while resolving dotplot reference".to_string());
+            };
+            let guard = engine.read().map_err(|_| {
+                "Engine lock poisoned while resolving dotplot reference".to_string()
+            })?;
+            guard
+                .state()
+                .sequences
+                .get(reference_seq_id)
+                .map(|dna| dna.len())
+                .ok_or_else(|| format!("Reference sequence '{}' not found", reference_seq_id))?
+        };
+        if reference_len == 0 {
+            return Err(format!(
+                "Reference sequence '{}' is empty and cannot be used for dotplot comparison",
+                reference_seq_id
+            ));
+        }
+        self.dotplot_ui.reference_seq_id = reference_seq_id.to_string();
+        if let Some(view) = self
+            .current_dotplot_reference_splicing_view()
+            .filter(|view| view.seq_id == reference_seq_id)
+        {
+            self.dotplot_ui.reference_span_start_0based =
+                view.region_start_1based.saturating_sub(1).to_string();
+            self.dotplot_ui.reference_span_end_0based = view.region_end_1based.to_string();
+        } else {
+            self.dotplot_ui.reference_span_start_0based = "0".to_string();
+            self.dotplot_ui.reference_span_end_0based = reference_len.to_string();
+        }
+        self.invalidate_dotplot_cache();
+        Ok(())
+    }
+
+    pub(super) fn maybe_normalize_dotplot_reference_from_current_input(&mut self) -> bool {
+        let reference_seq_id = self.dotplot_ui.reference_seq_id.trim().to_string();
+        if reference_seq_id.is_empty() {
+            return false;
+        }
+        self.set_dotplot_reference_to_sequence(&reference_seq_id)
+            .is_ok()
+    }
+
+    pub(super) fn use_current_query_as_dotplot_reference(&mut self) -> Result<(), String> {
+        let Some(query_seq_id) = self.current_dotplot_query_seq_id() else {
+            return Err("No active dotplot query is available".to_string());
+        };
+        self.dotplot_ui.mode = DotplotMode::PairForward;
+        self.set_dotplot_reference_to_sequence(&query_seq_id)?;
+        self.op_status = format!(
+            "Using current query '{}' as the dotplot reference in pair-forward mode.",
+            query_seq_id
+        );
+        Ok(())
+    }
+
+    pub(super) fn use_annotated_transcript_as_dotplot_reference(
+        &mut self,
+        transcript_feature_id: usize,
+    ) -> Result<(), String> {
+        let Some(view) = self.current_dotplot_reference_splicing_view() else {
+            return Err(
+                "Annotated transcript references are only available when a splicing or RNA-read mapping locus is active."
+                    .to_string(),
+            );
+        };
+        let lane = view
+            .transcripts
+            .iter()
+            .find(|lane| lane.transcript_feature_id == transcript_feature_id)
+            .ok_or_else(|| {
+                format!(
+                    "Annotated transcript n-{} is not available in the current locus",
+                    transcript_feature_id + 1
+                )
+            })?;
+        let lane_label = if lane.label.trim().is_empty() {
+            lane.transcript_id.trim()
+        } else {
+            lane.label.trim()
+        };
+        let derived_seq_id = self
+            .derive_transcript_sequence_for_dotplot_reference(
+                view.seq_id.clone(),
+                transcript_feature_id,
+                &format!(
+                    "annotated transcript n-{} '{}'",
+                    transcript_feature_id + 1,
+                    lane_label
+                ),
+            )
+            .ok_or_else(|| {
+                format!(
+                    "Could not derive annotated transcript n-{} for dotplot reference use",
+                    transcript_feature_id + 1
+                )
+            })?;
+        self.dotplot_ui.mode = DotplotMode::PairForward;
+        self.set_dotplot_reference_to_sequence(&derived_seq_id)?;
+        self.op_status = format!(
+            "{}\nUsing '{}' as the current dotplot reference in pair-forward mode.",
+            self.op_status, derived_seq_id
+        );
+        Ok(())
+    }
+
+    pub(super) fn render_dotplot_reference_quick_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        id_namespace: &str,
+        save_state: &mut bool,
+    ) {
+        if ui
+            .small_button("Use query as ref")
+            .on_hover_text(
+                "Set the current query sequence as the reference too and reset the reference span to the full query length. This is useful for self-vs-self density checks and should give a clean diagonal in pair-forward mode.",
+            )
+            .clicked()
+        {
+            match self.use_current_query_as_dotplot_reference() {
+                Ok(()) => *save_state = true,
+                Err(message) => self.op_status = message,
+            }
+        }
+        if let Some(view) = self.current_dotplot_reference_splicing_view() {
+            let locus_seq_id = view.seq_id.clone();
+            let locus_label = view.group_label.clone();
+            if ui
+                .small_button("Use locus DNA")
+                .on_hover_text(
+                    "Restore the current locus DNA sequence as the pairwise reference and reset ref_start/ref_end to the current splicing/RNA-mapping ROI.",
+                )
+                .clicked()
+            {
+                self.dotplot_ui.mode = DotplotMode::PairForward;
+                match self.set_dotplot_reference_to_sequence(&locus_seq_id) {
+                    Ok(()) => {
+                        self.op_status = format!(
+                            "Using locus DNA '{}' for {} as the dotplot reference in pair-forward mode.",
+                            locus_seq_id, locus_label
+                        );
+                        *save_state = true;
+                    }
+                    Err(message) => self.op_status = message,
+                }
+            }
+        }
+        let transcript_choices = self.dotplot_transcript_reference_choices();
+        if !transcript_choices.is_empty() {
+            let mut selected_feature_id: Option<usize> = None;
+            let transcript_combo = egui::ComboBox::from_id_salt(format!(
+                "dotplot_transcript_reference_{id_namespace}_{}",
+                self.dotplot_window_identity_seq_id()
+                    .unwrap_or_else(|| "<none>".to_string())
+            ))
+            .selected_text("Annotated mRNA ref...")
+            .show_ui(ui, |ui| {
+                for (feature_id, label) in &transcript_choices {
+                    if ui.selectable_label(false, label).clicked() {
+                        selected_feature_id = Some(*feature_id);
+                    }
+                }
+            });
+            transcript_combo.response.on_hover_text(
+                "Derive one annotated transcript/mRNA sequence for the current locus and use it as the dotplot reference in pair-forward mode.",
+            );
+            if let Some(feature_id) = selected_feature_id {
+                match self.use_annotated_transcript_as_dotplot_reference(feature_id) {
+                    Ok(()) => *save_state = true,
+                    Err(message) => self.op_status = message,
+                }
+            }
+        }
+    }
+
     pub(super) fn comparable_pair_forward_point_count(&self, view: &DotplotView) -> Option<usize> {
         if !matches!(view.mode, DotplotMode::PairReverseComplement) {
             return None;
@@ -821,6 +1041,9 @@ impl MainAreaDna {
             self.dotplot_ui.dotplot_id.trim().to_string()
         };
         let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
+        if requires_reference {
+            self.maybe_normalize_dotplot_reference_from_current_input();
+        }
         let reference_seq_id = if requires_reference {
             let value = self.dotplot_ui.reference_seq_id.trim();
             if value.is_empty() {
@@ -2221,6 +2444,7 @@ impl MainAreaDna {
                                 )
                                 .changed()
                             {
+                                self.maybe_normalize_dotplot_reference_from_current_input();
                                 save_state = true;
                             }
                             if !reference_seq_ids.is_empty() {
@@ -2244,7 +2468,7 @@ impl MainAreaDna {
                                             )
                                             .clicked()
                                         {
-                                            self.dotplot_ui.reference_seq_id = id.clone();
+                                            let _ = self.set_dotplot_reference_to_sequence(id);
                                             save_state = true;
                                         }
                                     }
@@ -2263,6 +2487,11 @@ impl MainAreaDna {
                             {
                                 save_state = true;
                             }
+                            self.render_dotplot_reference_quick_actions(
+                                ui,
+                                "compact",
+                                &mut save_state,
+                            );
                         });
                     }
 
@@ -2671,6 +2900,7 @@ impl MainAreaDna {
                                 )
                                 .changed()
                             {
+                                self.maybe_normalize_dotplot_reference_from_current_input();
                                 save_state = true;
                             }
                             if !reference_seq_ids.is_empty() {
@@ -2694,7 +2924,7 @@ impl MainAreaDna {
                                             )
                                             .clicked()
                                         {
-                                            self.dotplot_ui.reference_seq_id = id.clone();
+                                            let _ = self.set_dotplot_reference_to_sequence(id);
                                             save_state = true;
                                         }
                                     }
@@ -2741,6 +2971,11 @@ impl MainAreaDna {
                             {
                                 save_state = true;
                             }
+                            self.render_dotplot_reference_quick_actions(
+                                ui,
+                                "full",
+                                &mut save_state,
+                            );
                             ui.small("Leave ref_start/ref_end empty for automatic first-pass full-span compute followed by automatic hit-envelope refit.");
                         });
                     }

@@ -1410,6 +1410,133 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_reference_normalization_replaces_stale_genomic_span_for_short_query_reference() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        state.sequences.insert(
+            "read_query".to_string(),
+            DNAsequence::from_sequence("ACGTTTAA").expect("read"),
+        );
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.dotplot_query_override_seq_id = "read_query".to_string();
+        area.dotplot_ui.reference_seq_id = "read_query".to_string();
+        area.dotplot_ui.reference_span_start_0based = "0".to_string();
+        area.dotplot_ui.reference_span_end_0based = "25768".to_string();
+
+        assert!(area.maybe_normalize_dotplot_reference_from_current_input());
+        assert_eq!(area.dotplot_ui.reference_span_start_0based, "0");
+        assert_eq!(area.dotplot_ui.reference_span_end_0based, "8");
+    }
+
+    #[test]
+    fn dotplot_transcript_reference_choices_follow_active_mapping_locus() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![SplicingTranscriptLane {
+                transcript_feature_id: 4,
+                transcript_id: "NM_005427.4".to_string(),
+                label: "TP73".to_string(),
+                strand: "+".to_string(),
+                exons: vec![],
+                exon_cds_phases: vec![],
+                introns: vec![],
+                has_target_feature: true,
+            }],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        }));
+
+        let choices = area.dotplot_transcript_reference_choices();
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].0, 4);
+        assert!(choices[0].1.contains("TP73"));
+    }
+
+    #[test]
+    fn dotplot_can_derive_annotated_transcript_reference_without_switching_query_window() {
+        let dna = transcript_derivation_test_sequence();
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine.clone()));
+        area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 0,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 40,
+            transcript_count: 2,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![
+                SplicingTranscriptLane {
+                    transcript_feature_id: 0,
+                    transcript_id: "NM_TEST_1".to_string(),
+                    label: "NM_TEST_1".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: true,
+                },
+                SplicingTranscriptLane {
+                    transcript_feature_id: 1,
+                    transcript_id: "NM_TEST_2".to_string(),
+                    label: "NM_TEST_2".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![],
+                    exon_cds_phases: vec![],
+                    introns: vec![],
+                    has_target_feature: false,
+                },
+            ],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        }));
+
+        area.use_annotated_transcript_as_dotplot_reference(0)
+            .expect("derive transcript reference");
+
+        assert_eq!(area.seq_id.as_deref(), Some("seq1"));
+        assert_eq!(area.dotplot_ui.mode, DotplotMode::PairForward);
+        assert_eq!(
+            area.dotplot_ui.reference_seq_id,
+            "seq1__mrna__f1__nm_test_1"
+        );
+        assert_eq!(area.dotplot_ui.reference_span_start_0based, "0");
+        let guard = engine.read().expect("engine");
+        let derived_len = guard
+            .state()
+            .sequences
+            .get("seq1__mrna__f1__nm_test_1")
+            .map(|dna| dna.len())
+            .expect("derived transcript sequence");
+        assert_eq!(
+            area.dotplot_ui.reference_span_end_0based,
+            derived_len.to_string()
+        );
+    }
+
+    #[test]
     fn rna_read_dotplot_svg_default_filename_mentions_parameters() {
         let hit = RnaReadInterpretationHit {
             record_index: 6,
@@ -16560,6 +16687,62 @@ impl MainAreaDna {
             })?;
         self.set_transcript_derivation_status(source_label, &result);
         Some(result)
+    }
+
+    fn derive_transcript_sequence_for_dotplot_reference(
+        &mut self,
+        seq_id: String,
+        transcript_feature_id: usize,
+        source_label: &str,
+    ) -> Option<String> {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return None;
+        };
+        let result = {
+            let Ok(mut guard) = engine.write() else {
+                self.op_status =
+                    "Engine lock poisoned while deriving transcript reference".to_string();
+                return None;
+            };
+            match guard.apply(Operation::DeriveTranscriptSequences {
+                seq_id: seq_id.clone(),
+                feature_ids: vec![transcript_feature_id],
+                scope: None,
+                output_prefix: Some(format!("{seq_id}__mrna")),
+            }) {
+                Ok(result) => result,
+                Err(error) => {
+                    self.op_status = error.message.clone();
+                    self.op_error_popup = Some(error.message);
+                    return None;
+                }
+            }
+        };
+        if !result.created_seq_ids.is_empty() {
+            self.last_created_seq_ids = result.created_seq_ids.clone();
+            self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
+        }
+        let Some(derived_seq_id) = result.created_seq_ids.first().cloned() else {
+            self.op_status = format!(
+                "Transcript derivation from {} completed without a created reference sequence",
+                source_label
+            );
+            return None;
+        };
+        let mut status_lines = vec![format!(
+            "Derived transcript '{}' from {} for dotplot reference use. The active query window was left unchanged.",
+            derived_seq_id, source_label
+        )];
+        if !result.warnings.is_empty() {
+            status_lines.push(format!(
+                "warnings: {}",
+                Self::summarize_status_items(&result.warnings, 1, " | ")
+            ));
+        }
+        self.op_status = status_lines.join("\n");
+        self.op_error_popup = None;
+        Some(derived_seq_id)
     }
 
     fn ensure_materialized_rna_read_dotplot_query_sequence(
