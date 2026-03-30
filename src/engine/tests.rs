@@ -12123,6 +12123,98 @@ fn test_align_rna_read_report_selected_record_indices_overrides_selection() {
 }
 
 #[test]
+fn test_inspect_rna_read_alignment_detail_reconstructs_template_alignment() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+    let read_sequence = {
+        let splicing = engine
+            .build_splicing_expert_view(
+                "seq_a",
+                feature_id,
+                SplicingScopePreset::AllOverlappingBothStrands,
+            )
+            .expect("splicing view");
+        let dna = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence for transcript template");
+        let template =
+            GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+        String::from_utf8(template.sequence).expect("template sequence utf-8")
+    };
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("reads_align_detail.fa");
+    fs::write(&input_path, format!(">read_0\n{read_sequence}\n")).expect("write reads");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    engine
+        .apply(Operation::InterpretRnaReads {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path: input_path.display().to_string(),
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("rna_reads_align_detail".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        })
+        .expect("interpret FASTA");
+
+    engine
+        .apply(Operation::AlignRnaReadReport {
+            report_id: "rna_reads_align_detail".to_string(),
+            selection: RnaReadHitSelection::SeedPassed,
+            align_config_override: None,
+            selected_record_indices: vec![],
+        })
+        .expect("align retained row");
+
+    let detail = engine
+        .inspect_rna_read_alignment_detail("rna_reads_align_detail", 0)
+        .expect("alignment detail");
+    assert_eq!(detail.report_id, "rna_reads_align_detail");
+    assert_eq!(detail.record_index, 0);
+    assert_eq!(detail.header_id, "read_0");
+    assert!(detail.aligned_columns > 0);
+    assert_eq!(detail.matches, detail.aligned_columns);
+    assert_eq!(detail.mismatches, 0);
+    assert_eq!(detail.insertions, 0);
+    assert_eq!(detail.deletions, 0);
+    assert!((detail.identity_fraction - 1.0).abs() < 1e-9);
+    assert!((detail.query_coverage_fraction - 1.0).abs() < 1e-9);
+    assert_eq!(detail.aligned_query, detail.aligned_target);
+    assert!(detail.aligned_relation.chars().all(|ch| ch == '|'));
+}
+
+#[test]
 fn test_transition_support_counts_only_seed_passed_reads() {
     let mut state = ProjectState::default();
     state

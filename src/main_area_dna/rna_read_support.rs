@@ -86,7 +86,7 @@ impl Default for RnaReadInterpretOpsUiState {
             align_band_width_bp: "24".to_string(),
             align_min_identity_fraction: "0.60".to_string(),
             align_max_secondary_mappings: "0".to_string(),
-            align_phase_selection: RnaReadHitSelection::All,
+            align_phase_selection: RnaReadHitSelection::SeedPassed,
             show_advanced: false,
         }
     }
@@ -274,6 +274,12 @@ pub(super) struct CachedRnaReadAlignmentInspection {
     pub(super) result: Result<Arc<RnaReadAlignmentInspection>, String>,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct CachedRnaReadAlignmentDetail {
+    pub(super) cache_key: String,
+    pub(super) result: Result<Arc<RnaReadPairwiseAlignmentDetail>, String>,
+}
+
 impl MainAreaDna {
     pub(super) fn selected_rna_read_evidence_report_id(&self) -> Option<String> {
         let report_id = self.rna_read_evidence_ui.selected_report_id.trim();
@@ -311,6 +317,8 @@ impl MainAreaDna {
         self.cached_rna_read_report_summaries = None;
         self.cached_saved_rna_read_progress = None;
         self.cached_rna_read_alignment_inspections.clear();
+        self.cached_rna_read_alignment_detail = None;
+        self.rna_read_alignment_detail_visible_key = None;
     }
 
     pub(super) fn rna_read_alignment_inspection_cache_key(
@@ -492,6 +500,50 @@ impl MainAreaDna {
             .selected_rna_read_evidence_report_id()
             .ok_or_else(|| "Select a Report first before inspecting aligned reads".to_string())?;
         self.saved_rna_read_alignment_inspection_for_report_id(&report_id, limit, subset_spec)
+    }
+
+    pub(super) fn rna_read_alignment_detail_cache_key(
+        report_id: &str,
+        record_index: usize,
+    ) -> String {
+        format!("{}|{}", report_id.trim(), record_index)
+    }
+
+    pub(super) fn saved_rna_read_alignment_detail_for_report_id(
+        &mut self,
+        report_id: &str,
+        record_index: usize,
+    ) -> Result<Arc<RnaReadPairwiseAlignmentDetail>, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Select a Report first before inspecting alignment detail".to_string());
+        }
+        let cache_key = Self::rna_read_alignment_detail_cache_key(report_id, record_index);
+        if let Some(cached) = self
+            .cached_rna_read_alignment_detail
+            .as_ref()
+            .filter(|cached| cached.cache_key == cache_key)
+        {
+            return cached.result.as_ref().map(Arc::clone).map_err(Clone::clone);
+        }
+        let result = {
+            let Some(engine) = &self.engine else {
+                return Err("No engine attached".to_string());
+            };
+            engine
+                .read()
+                .map_err(|_| {
+                    "Engine lock poisoned while inspecting RNA-read alignment detail".to_string()
+                })?
+                .inspect_rna_read_alignment_detail(report_id, record_index)
+                .map(Arc::new)
+                .map_err(|error| error.message)
+        };
+        self.cached_rna_read_alignment_detail = Some(CachedRnaReadAlignmentDetail {
+            cache_key,
+            result: result.clone(),
+        });
+        result
     }
 
     pub(super) fn selected_highlighted_rna_report_hit<'a>(
@@ -1386,7 +1438,7 @@ impl MainAreaDna {
                 }
             }
             RnaReadHitSelection::Aligned => format!(
-                "Phase-2 selection='aligned' aligns only retained rows that already have a stored phase-2 mapping ({aligned_retained})."
+                "Phase-2 selection='already_aligned' aligns only retained rows that already have a stored phase-2 mapping from an earlier pass ({aligned_retained})."
             ),
         }
     }

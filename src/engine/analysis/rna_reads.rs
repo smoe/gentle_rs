@@ -24,6 +24,19 @@ struct RnaReadAlignmentScatterPoint {
     score: isize,
 }
 
+#[derive(Debug, Clone)]
+struct ComputedRnaReadTemplateAlignment {
+    mapping: RnaReadMappingHit,
+    backend: RnaReadAlignmentBackend,
+    operations: Vec<bio::alignment::AlignmentOperation>,
+    query_bases: Vec<u8>,
+    target_bases: Vec<u8>,
+    aligned_columns: usize,
+    insertions: usize,
+    deletions: usize,
+    cigar: String,
+}
+
 impl GentleEngine {
     pub(super) fn read_rna_read_report_store_from_metadata(
         value: Option<&serde_json::Value>,
@@ -760,6 +773,107 @@ impl GentleEngine {
             align_min_identity_fraction: report.align_config.min_identity_fraction,
             max_secondary_mappings: report.align_config.max_secondary_mappings,
             rows,
+        })
+    }
+
+    pub fn inspect_rna_read_alignment_detail(
+        &self,
+        report_id: &str,
+        record_index: usize,
+    ) -> Result<RnaReadPairwiseAlignmentDetail, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let hit = report
+            .hits
+            .iter()
+            .find(|row| row.record_index == record_index)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "RNA-read report '{}' has no retained row with record_index={}",
+                    report.report_id, record_index
+                ),
+            })?;
+        let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "RNA-read report '{}' retained row #{} has no stored phase-2 alignment",
+                report.report_id,
+                record_index + 1
+            ),
+        })?;
+        let templates = self.collect_rna_seed_templates(
+            &report.seq_id,
+            report.seed_feature_id,
+            report.scope,
+            &report.seed_filter,
+        )?;
+        let template = templates
+            .iter()
+            .find(|template| {
+                template.transcript_feature_id == mapping.transcript_feature_id
+                    && template.transcript_id == mapping.transcript_id
+            })
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Could not rebuild transcript template '{}' for RNA-read report '{}'",
+                    mapping.transcript_id, report.report_id
+                ),
+            })?;
+        let computed = Self::align_read_to_template_detail_with_mode(
+            hit.sequence.as_bytes(),
+            template,
+            &report.align_config,
+            report.seed_filter.kmer_len,
+            mapping.alignment_mode,
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not reconstruct phase-2 alignment detail for retained row #{} in report '{}'",
+                record_index + 1,
+                report.report_id
+            ),
+        })?;
+        let (aligned_query, aligned_relation, aligned_target) =
+            Self::render_pairwise_alignment_rows(
+                &computed.operations,
+                &computed.query_bases,
+                &computed.target_bases,
+            );
+        Ok(RnaReadPairwiseAlignmentDetail {
+            schema: RNA_READ_ALIGNMENT_DETAIL_SCHEMA.to_string(),
+            report_id: report.report_id,
+            seq_id: report.seq_id,
+            record_index,
+            header_id: hit.header_id.clone(),
+            transcript_id: computed.mapping.transcript_id.clone(),
+            transcript_label: computed.mapping.transcript_label.clone(),
+            strand: computed.mapping.strand.clone(),
+            alignment_mode: computed.mapping.alignment_mode,
+            backend: computed.backend,
+            query_length_bp: hit.read_length_bp,
+            target_length_bp: template.sequence.len(),
+            aligned_query_start_0based: computed.mapping.query_start_0based,
+            aligned_query_end_0based_exclusive: computed.mapping.query_end_0based_exclusive,
+            aligned_target_start_offset_0based: computed.mapping.target_start_offset_0based,
+            aligned_target_end_offset_0based_exclusive: computed
+                .mapping
+                .target_end_offset_0based_exclusive,
+            target_start_1based: computed.mapping.target_start_1based,
+            target_end_1based: computed.mapping.target_end_1based,
+            aligned_columns: computed.aligned_columns,
+            matches: computed.mapping.matches,
+            mismatches: computed.mapping.mismatches,
+            insertions: computed.insertions,
+            deletions: computed.deletions,
+            score: computed.mapping.score,
+            identity_fraction: computed.mapping.identity_fraction,
+            query_coverage_fraction: computed.mapping.query_coverage_fraction,
+            cigar: computed.cigar,
+            aligned_query,
+            aligned_relation,
+            aligned_target,
         })
     }
 
@@ -4536,6 +4650,16 @@ impl GentleEngine {
         config: &RnaReadAlignConfig,
         mode: RnaReadAlignmentMode,
     ) -> Option<RnaReadMappingHit> {
+        Self::align_read_to_template_dense_detail_with_mode(read, template, config, mode)
+            .map(|detail| detail.mapping)
+    }
+
+    fn align_read_to_template_dense_detail_with_mode(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        mode: RnaReadAlignmentMode,
+    ) -> Option<ComputedRnaReadTemplateAlignment> {
         let mut aligner = bio::alignment::pairwise::Aligner::new(-5, -1, &|a: u8, b: u8| {
             if a.eq_ignore_ascii_case(&b) {
                 2i32
@@ -4547,7 +4671,14 @@ impl GentleEngine {
             RnaReadAlignmentMode::Local => aligner.local(read, &template.sequence),
             RnaReadAlignmentMode::Semiglobal => aligner.semiglobal(read, &template.sequence),
         };
-        Self::rna_mapping_hit_from_alignment(read, template, config, mode, alignment)
+        Self::computed_rna_alignment_from_alignment(
+            read,
+            template,
+            config,
+            mode,
+            RnaReadAlignmentBackend::DenseFallback,
+            alignment,
+        )
     }
 
     fn effective_banded_k(seed_kmer_len: usize, read_len: usize, template_len: usize) -> usize {
@@ -4565,6 +4696,23 @@ impl GentleEngine {
         seed_kmer_len: usize,
         mode: RnaReadAlignmentMode,
     ) -> Option<RnaReadMappingHit> {
+        Self::align_read_to_template_banded_detail_with_mode(
+            read,
+            template,
+            config,
+            seed_kmer_len,
+            mode,
+        )
+        .map(|detail| detail.mapping)
+    }
+
+    fn align_read_to_template_banded_detail_with_mode(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        seed_kmer_len: usize,
+        mode: RnaReadAlignmentMode,
+    ) -> Option<ComputedRnaReadTemplateAlignment> {
         let k = Self::effective_banded_k(seed_kmer_len, read.len(), template.sequence.len());
         let w = config.band_width_bp.max(1);
         let mut aligner = bio::alignment::pairwise::banded::Aligner::new(
@@ -4584,16 +4732,24 @@ impl GentleEngine {
             RnaReadAlignmentMode::Local => aligner.local(read, &template.sequence),
             RnaReadAlignmentMode::Semiglobal => aligner.semiglobal(read, &template.sequence),
         };
-        Self::rna_mapping_hit_from_alignment(read, template, config, mode, alignment)
+        Self::computed_rna_alignment_from_alignment(
+            read,
+            template,
+            config,
+            mode,
+            RnaReadAlignmentBackend::Banded,
+            alignment,
+        )
     }
 
-    fn rna_mapping_hit_from_alignment(
+    fn computed_rna_alignment_from_alignment(
         read: &[u8],
         template: &SplicingTranscriptTemplate,
         config: &RnaReadAlignConfig,
         mode: RnaReadAlignmentMode,
+        backend: RnaReadAlignmentBackend,
         alignment: bio::alignment::Alignment,
-    ) -> Option<RnaReadMappingHit> {
+    ) -> Option<ComputedRnaReadTemplateAlignment> {
         if alignment.operations.is_empty() {
             return None;
         }
@@ -4606,18 +4762,53 @@ impl GentleEngine {
         }
         let mut matches = 0usize;
         let mut mismatches = 0usize;
-        let mut indels = 0usize;
+        let mut insertions = 0usize;
+        let mut deletions = 0usize;
+        let mut cigar = String::new();
+        let mut run_len = 0usize;
+        let mut run_code = 'M';
         for op in &alignment.operations {
-            match op {
-                bio::alignment::AlignmentOperation::Match => matches += 1,
-                bio::alignment::AlignmentOperation::Subst => mismatches += 1,
-                bio::alignment::AlignmentOperation::Del => indels += 1,
-                bio::alignment::AlignmentOperation::Ins => indels += 1,
-                bio::alignment::AlignmentOperation::Xclip(_)
-                | bio::alignment::AlignmentOperation::Yclip(_) => {}
+            let code = match op {
+                bio::alignment::AlignmentOperation::Match => {
+                    matches += 1;
+                    Some('=')
+                }
+                bio::alignment::AlignmentOperation::Subst => {
+                    mismatches += 1;
+                    Some('X')
+                }
+                bio::alignment::AlignmentOperation::Ins => {
+                    insertions += 1;
+                    Some('I')
+                }
+                bio::alignment::AlignmentOperation::Del => {
+                    deletions += 1;
+                    Some('D')
+                }
+                bio::alignment::AlignmentOperation::Xclip(_) => Some('S'),
+                bio::alignment::AlignmentOperation::Yclip(_) => None,
+            };
+            let Some(code) = code else {
+                continue;
+            };
+            if run_len == 0 {
+                run_code = code;
+                run_len = 1;
+            } else if run_code == code {
+                run_len += 1;
+            } else {
+                cigar.push_str(&format!("{run_len}{run_code}"));
+                run_code = code;
+                run_len = 1;
             }
         }
-        let aligned_columns = matches + mismatches + indels;
+        if run_len > 0 {
+            cigar.push_str(&format!("{run_len}{run_code}"));
+        }
+        if cigar.is_empty() {
+            cigar = "*".to_string();
+        }
+        let aligned_columns = matches + mismatches + insertions + deletions;
         if aligned_columns == 0 {
             return None;
         }
@@ -4645,23 +4836,107 @@ impl GentleEngine {
         } else {
             (target_end_1based, target_start_1based)
         };
-        Some(RnaReadMappingHit {
-            alignment_mode: mode,
-            transcript_feature_id: template.transcript_feature_id,
-            transcript_id: template.transcript_id.clone(),
-            transcript_label: template.transcript_label.clone(),
-            strand: template.strand.clone(),
-            query_start_0based: alignment.xstart,
-            query_end_0based_exclusive: alignment.xend,
-            target_start_1based,
-            target_end_1based,
-            target_start_offset_0based: alignment.ystart,
-            target_end_offset_0based_exclusive: alignment.yend,
-            matches,
-            mismatches,
-            score: alignment.score as isize,
-            identity_fraction,
-            query_coverage_fraction,
+        Some(ComputedRnaReadTemplateAlignment {
+            mapping: RnaReadMappingHit {
+                alignment_mode: mode,
+                transcript_feature_id: template.transcript_feature_id,
+                transcript_id: template.transcript_id.clone(),
+                transcript_label: template.transcript_label.clone(),
+                strand: template.strand.clone(),
+                query_start_0based: alignment.xstart,
+                query_end_0based_exclusive: alignment.xend,
+                target_start_1based,
+                target_end_1based,
+                target_start_offset_0based: alignment.ystart,
+                target_end_offset_0based_exclusive: alignment.yend,
+                matches,
+                mismatches,
+                score: alignment.score as isize,
+                identity_fraction,
+                query_coverage_fraction,
+            },
+            backend,
+            operations: alignment.operations,
+            query_bases: read.to_vec(),
+            target_bases: template.sequence.clone(),
+            aligned_columns,
+            insertions,
+            deletions,
+            cigar,
+        })
+    }
+
+    fn render_pairwise_alignment_rows(
+        operations: &[bio::alignment::AlignmentOperation],
+        query_bases: &[u8],
+        target_bases: &[u8],
+    ) -> (String, String, String) {
+        let mut query_out = String::new();
+        let mut relation_out = String::new();
+        let mut target_out = String::new();
+        let mut query_pos = 0usize;
+        let mut target_pos = 0usize;
+        for op in operations {
+            match op {
+                bio::alignment::AlignmentOperation::Match => {
+                    let query = query_bases.get(query_pos).copied().unwrap_or(b'N') as char;
+                    let target = target_bases.get(target_pos).copied().unwrap_or(b'N') as char;
+                    query_out.push(query);
+                    relation_out.push('|');
+                    target_out.push(target);
+                    query_pos += 1;
+                    target_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Subst => {
+                    let query = query_bases.get(query_pos).copied().unwrap_or(b'N') as char;
+                    let target = target_bases.get(target_pos).copied().unwrap_or(b'N') as char;
+                    query_out.push(query);
+                    relation_out.push('.');
+                    target_out.push(target);
+                    query_pos += 1;
+                    target_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Ins => {
+                    let query = query_bases.get(query_pos).copied().unwrap_or(b'N') as char;
+                    query_out.push(query);
+                    relation_out.push(' ');
+                    target_out.push('-');
+                    query_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Del => {
+                    let target = target_bases.get(target_pos).copied().unwrap_or(b'N') as char;
+                    query_out.push('-');
+                    relation_out.push(' ');
+                    target_out.push(target);
+                    target_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Xclip(len) => {
+                    query_pos = query_pos.saturating_add(*len);
+                }
+                bio::alignment::AlignmentOperation::Yclip(len) => {
+                    target_pos = target_pos.saturating_add(*len);
+                }
+            }
+        }
+        (query_out, relation_out, target_out)
+    }
+
+    fn align_read_to_template_detail_with_mode(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        seed_kmer_len: usize,
+        mode: RnaReadAlignmentMode,
+    ) -> Option<ComputedRnaReadTemplateAlignment> {
+        Self::align_read_to_template_banded_detail_with_mode(
+            read,
+            template,
+            config,
+            seed_kmer_len,
+            mode,
+        )
+        .or_else(|| {
+            Self::align_read_to_template_dense_detail_with_mode(read, template, config, mode)
         })
     }
 

@@ -35,8 +35,8 @@ use crate::{
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
-        RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
+        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary,
         SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
@@ -5486,14 +5486,30 @@ mod tests {
     }
 
     #[test]
-    fn default_rna_align_selection_prefers_all_retained_rows() {
+    fn default_rna_align_selection_prefers_seed_passed_rows() {
         assert_eq!(
             super::default_rna_align_selection(),
-            RnaReadHitSelection::All
+            RnaReadHitSelection::SeedPassed
         );
         assert_eq!(
             super::RnaReadInterpretOpsUiState::default().align_phase_selection,
-            RnaReadHitSelection::All
+            RnaReadHitSelection::SeedPassed
+        );
+    }
+
+    #[test]
+    fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(25, 100, 10.0).as_deref(),
+            Some("ETA: 30s")
+        );
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(0, 100, 10.0),
+            None
+        );
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(100, 100, 10.0),
+            Some("ETA: 0s".to_string())
         );
     }
 }
@@ -5519,7 +5535,7 @@ fn default_rna_checkpoint_every_reads_text() -> String {
 }
 
 fn default_rna_align_selection() -> RnaReadHitSelection {
-    RnaReadHitSelection::All
+    RnaReadHitSelection::SeedPassed
 }
 
 fn default_primer_backend_auto() -> PrimerDesignBackend {
@@ -6032,6 +6048,7 @@ pub struct MainAreaDna {
     cached_rna_read_report_summaries: Option<CachedRnaReadReportSummaries>,
     cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
+    cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
     rna_read_statistics_tab: RnaReadEvidenceSourceTab,
     rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview,
     rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter,
@@ -6042,9 +6059,7 @@ pub struct MainAreaDna {
     rna_seed_template_audit_preview: Vec<RnaSeedHashTemplateAuditEntry>,
     rna_seed_highlight_record_index: Option<usize>,
     rna_seed_selected_record_indices: BTreeSet<usize>,
-    rna_read_inline_dotplot_cache_key: String,
-    rna_read_inline_dotplot_view: Option<DotplotView>,
-    rna_read_inline_dotplot_error: Option<String>,
+    rna_read_alignment_detail_visible_key: Option<String>,
     rna_seed_overlay_show_exons: bool,
     rna_seed_overlay_show_introns: bool,
     rna_seed_overlay_exonic_coords: bool,
@@ -6401,6 +6416,7 @@ impl MainAreaDna {
             cached_rna_read_report_summaries: None,
             cached_saved_rna_read_progress: None,
             cached_rna_read_alignment_inspections: vec![],
+            cached_rna_read_alignment_detail: None,
             rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
             rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview::ReadEffects,
             rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter::AllAligned,
@@ -6411,9 +6427,7 @@ impl MainAreaDna {
             rna_seed_template_audit_preview: vec![],
             rna_seed_highlight_record_index: None,
             rna_seed_selected_record_indices: BTreeSet::new(),
-            rna_read_inline_dotplot_cache_key: String::new(),
-            rna_read_inline_dotplot_view: None,
-            rna_read_inline_dotplot_error: None,
+            rna_read_alignment_detail_visible_key: None,
             rna_seed_overlay_show_exons: true,
             rna_seed_overlay_show_introns: false,
             rna_seed_overlay_exonic_coords: false,
@@ -14690,13 +14704,15 @@ impl MainAreaDna {
                                 )
                                 .changed();
                             ui.label("align selection").on_hover_text(
-                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `all` setting gives rescued high-score rows a pairwise similarity score in round 2; `seed_passed` is the narrower/faster rerun mode.",
+                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `seed_passed` setting is the narrower/faster rerun mode; `all retained` is broader; `already_aligned` is mainly for rerunning phase 2 on rows that already received a mapping in an earlier pass.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_align_selection_{}_{}",
                                 view.seq_id, view.target_feature_id
                             ))
-                            .selected_text(self.rna_reads_ui.align_phase_selection.as_str())
+                            .selected_text(Self::rna_read_align_selection_ui_label(
+                                self.rna_reads_ui.align_phase_selection,
+                            ))
                             .show_ui(ui, |ui| {
                                 persist_ui_state |= ui
                                     .selectable_value(
@@ -14705,27 +14721,27 @@ impl MainAreaDna {
                                         "seed_passed",
                                     )
                                     .on_hover_text(
-                                        "Align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
+                                        "Default: align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
                                     .selectable_value(
                                         &mut self.rna_reads_ui.align_phase_selection,
                                         RnaReadHitSelection::All,
-                                        "all",
+                                        "all retained",
                                     )
                                     .on_hover_text(
-                                        "Default and recommended: align all retained reads, including rescued high-score rows that failed the composite seed gate.",
+                                        "Align every retained row in the saved report, including rescued high-score rows that failed the composite seed gate.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
                                     .selectable_value(
                                         &mut self.rna_reads_ui.align_phase_selection,
                                         RnaReadHitSelection::Aligned,
-                                        "aligned",
+                                        "already_aligned",
                                     )
                                     .on_hover_text(
-                                        "Re-align only rows that already have a mapping.",
+                                        "Re-align only rows that already have a stored phase-2 mapping from an earlier alignment pass. This is mostly useful when you want to rerun phase 2 with different band/identity settings without broadening the working set.",
                                     )
                                     .changed();
                             });
@@ -14743,6 +14759,12 @@ impl MainAreaDna {
                                 .color(egui::Color32::from_rgb(100, 116, 139)),
                             );
                         }
+                        ui.small(
+                            egui::RichText::new(
+                                "Phase-2 algorithm: reference-guided pairwise alignment against each admitted transcript template. We try banded semiglobal and local alignment first, then fall back to deterministic dense semiglobal/local alignment if the banded pass yields no hit; the best mapping is ranked by score, then identity and query coverage.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
                     }
                 });
                 if !controls_enabled {
@@ -14754,7 +14776,9 @@ impl MainAreaDna {
                 let mut highlight_selection_update: Option<Option<usize>> = None;
                 self.sync_rna_read_evidence_selection_to_mapping_report();
                 let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
-                let align_selection_label = self.rna_reads_ui.align_phase_selection.as_str().to_string();
+                let align_selection_label =
+                    Self::rna_read_align_selection_ui_label(self.rna_reads_ui.align_phase_selection)
+                        .to_string();
                 let active_alignment_selection_summary = if self
                     .rna_read_task
                     .as_ref()
@@ -14792,6 +14816,13 @@ impl MainAreaDna {
                                 (progress.reads_processed as f64 / progress.reads_total as f64)
                                     * 100.0
                             };
+                            let row_eta_suffix =
+                                Self::format_rna_read_progress_eta(
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    elapsed_s,
+                                )
+                                .unwrap_or_else(|| "ETA: n/a".to_string());
                             if progress.reads_total == 0 {
                                 let byte_progress = if progress.input_bytes_total == 0 {
                                     "unknown".to_string()
@@ -14837,7 +14868,7 @@ impl MainAreaDna {
                                     String::new()
                                 };
                                 ui.label(format!(
-                                    "{task_label} running: reads {}/{} ({:.1}%){}{}, input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
+                                    "{task_label} running: reads {}/{} ({:.1}%){}{}, input={compression}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
                                     progress.reads_processed,
                                     progress.reads_total,
                                     percent,
@@ -14847,6 +14878,7 @@ impl MainAreaDna {
                                         ""
                                     },
                                     selection_suffix,
+                                    row_eta_suffix,
                                     reads_per_sec,
                                     Self::format_bp_rate_compact(bp_per_sec),
                                     progress.mean_read_length_bp,
@@ -16016,6 +16048,34 @@ impl MainAreaDna {
         }
     }
 
+    fn format_rna_read_progress_eta(
+        reads_processed: usize,
+        reads_total: usize,
+        elapsed_s: f64,
+    ) -> Option<String> {
+        if reads_total == 0 || reads_processed == 0 {
+            return None;
+        }
+        let elapsed_s = elapsed_s.max(0.001);
+        let fraction_done = (reads_processed as f64 / reads_total as f64).clamp(0.0, 1.0);
+        if fraction_done <= 0.0 {
+            return None;
+        }
+        let estimated_total_s = elapsed_s / fraction_done;
+        Some(format!(
+            "ETA: {}",
+            Self::format_duration_compact((estimated_total_s - elapsed_s).max(0.0))
+        ))
+    }
+
+    fn rna_read_align_selection_ui_label(selection: RnaReadHitSelection) -> &'static str {
+        match selection {
+            RnaReadHitSelection::SeedPassed => "seed_passed",
+            RnaReadHitSelection::All => "all retained",
+            RnaReadHitSelection::Aligned => "already_aligned",
+        }
+    }
+
     fn default_cdna_report_id_from_input_path(input_path: &str) -> String {
         let path = Path::new(input_path);
         let file_name = path
@@ -16399,97 +16459,6 @@ impl MainAreaDna {
             DotplotMode::PairReverseComplement
         } else {
             DotplotMode::PairForward
-        }
-    }
-
-    fn rna_read_inline_dotplot_cache_key(
-        &self,
-        view: &SplicingExpertView,
-        hit: &RnaReadInterpretationHit,
-    ) -> String {
-        format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
-            self.rna_reads_ui.report_id.trim(),
-            hit.record_index,
-            view.seq_id,
-            view.region_start_1based,
-            view.region_end_1based,
-            self.dotplot_ui.word_size.trim(),
-            self.dotplot_ui.step_bp.trim(),
-            self.dotplot_ui.max_mismatches.trim(),
-            self.dotplot_ui.tile_bp.trim(),
-            Self::rna_read_dotplot_mode_from_hit(hit).as_str()
-        )
-    }
-
-    fn ensure_rna_read_alignment_effect_inline_dotplot(
-        &mut self,
-        view: &SplicingExpertView,
-        hit: &RnaReadInterpretationHit,
-    ) {
-        let cache_key = self.rna_read_inline_dotplot_cache_key(view, hit);
-        if self.rna_read_inline_dotplot_cache_key == cache_key {
-            return;
-        }
-        self.rna_read_inline_dotplot_cache_key = cache_key;
-        self.rna_read_inline_dotplot_view = None;
-        self.rna_read_inline_dotplot_error = None;
-
-        let reference_text = match self.dna.read() {
-            Ok(dna) => dna.get_forward_string(),
-            Err(_) => {
-                self.rna_read_inline_dotplot_error =
-                    Some("Sequence lock poisoned while preparing inline dotplot".to_string());
-                return;
-            }
-        };
-        let reference_span_start_0based = view.region_start_1based.saturating_sub(1);
-        let reference_span_end_0based = view.region_end_1based;
-        let reference_span_bp = reference_span_end_0based
-            .saturating_sub(reference_span_start_0based)
-            .max(1);
-        let requested_word_size =
-            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word_size")
-                .unwrap_or(7);
-        let requested_step_bp =
-            Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp")
-                .unwrap_or(1);
-        let max_mismatches = Self::parse_optional_usize_text(
-            &self.dotplot_ui.max_mismatches,
-            "dotplot max_mismatches",
-        )
-        .ok()
-        .flatten()
-        .unwrap_or(0);
-        let tile_bp = Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp")
-            .ok()
-            .flatten()
-            .filter(|value| *value > 0);
-        let (word_size, step_bp) = Self::resolve_rna_read_sequence_dotplot_word_and_step(
-            hit.sequence.len(),
-            reference_span_bp,
-            requested_word_size,
-            requested_step_bp,
-        );
-        match GentleEngine::preview_pair_dotplot_view(
-            &format!("rna_read_r{}", hit.record_index + 1),
-            &hit.sequence,
-            &view.seq_id,
-            &reference_text,
-            reference_span_start_0based,
-            reference_span_end_0based,
-            Self::rna_read_dotplot_mode_from_hit(hit),
-            word_size,
-            step_bp,
-            max_mismatches,
-            tile_bp,
-        ) {
-            Ok(dotplot_view) => {
-                self.rna_read_inline_dotplot_view = Some(dotplot_view);
-            }
-            Err(error) => {
-                self.rna_read_inline_dotplot_error = Some(error.message);
-            }
         }
     }
 
@@ -17579,9 +17548,7 @@ impl MainAreaDna {
         self.rna_seed_highlight_record_index = None;
         self.rna_seed_selected_record_indices.clear();
         self.rna_read_alignment_effect_score_bin_index = None;
-        self.rna_read_inline_dotplot_cache_key.clear();
-        self.rna_read_inline_dotplot_view = None;
-        self.rna_read_inline_dotplot_error = None;
+        self.rna_read_alignment_detail_visible_key = None;
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
         if let Some(report_id) = task_report_id_hint.as_deref()
@@ -18921,7 +18888,7 @@ impl MainAreaDna {
             "Read effects compare phase-1 thresholded interpretation against phase-2 pairwise transcript alignment for each aligned retained read.",
         );
         ui.small(
-            "Workflow: 1) click a score-density bar above to define a formal score_bin subset, 2) refine with filter/search, 3) select a row to inspect the pairwise alignment and inline dotplot.",
+            "Workflow: 1) click a score-density bar above to define a formal score_bin subset, 2) refine with filter/search, 3) select a row to inspect the pairwise alignment, then open the external dotplot only when you actually want it.",
         );
         let Some(report) = report else {
             ui.small(
@@ -19477,6 +19444,7 @@ impl MainAreaDna {
         };
         self.render_rna_read_alignment_effect_detail(
             ui,
+            &report.report_id,
             view,
             progress,
             selected_row,
@@ -19487,6 +19455,7 @@ impl MainAreaDna {
     fn render_rna_read_alignment_effect_detail(
         &mut self,
         ui: &mut egui::Ui,
+        report_id: &str,
         view: &SplicingExpertView,
         progress: &RnaReadInterpretProgress,
         row: &RnaReadAlignmentInspectionRow,
@@ -19525,6 +19494,30 @@ impl MainAreaDna {
                 }
                 if ui.button("Materialize highlighted").clicked() {
                     self.materialize_highlighted_rna_read_report_hit();
+                }
+                let alignment_cache_key =
+                    Self::rna_read_alignment_detail_cache_key(report_id, row.record_index);
+                let alignment_visible = self
+                    .rna_read_alignment_detail_visible_key
+                    .as_deref()
+                    == Some(alignment_cache_key.as_str());
+                if ui
+                    .button(if alignment_visible {
+                        "Hide alignment"
+                    } else {
+                        "Show alignment"
+                    })
+                    .on_hover_text(
+                        "Inspect the exact phase-2 read-vs-transcript-template pairwise alignment that justified this mapping.",
+                    )
+                    .clicked()
+                {
+                    if alignment_visible {
+                        self.rna_read_alignment_detail_visible_key = None;
+                    } else {
+                        self.rna_read_alignment_detail_visible_key =
+                            Some(alignment_cache_key.clone());
+                    }
                 }
                 if ui.button("Open interactive dotplot").clicked() {
                     self.open_rna_read_dotplot_workspace(view, hit);
@@ -19607,32 +19600,63 @@ impl MainAreaDna {
                 Self::format_rna_read_mapped_junction_support_compact(row)
             ));
             ui.separator();
-            ui.label(egui::RichText::new("Inline dotplot").strong());
-            ui.small(
-                "This preview uses the current RNA-read dotplot word/step/mismatch/tile settings against the current splicing ROI.",
-            );
-            ui.small(self.rna_read_dotplot_parameter_summary());
-            self.ensure_rna_read_alignment_effect_inline_dotplot(view, hit);
-            if let Some(message) = self.rna_read_inline_dotplot_error.as_ref() {
-                ui.small(
-                    egui::RichText::new(message).color(egui::Color32::from_rgb(180, 83, 9)),
-                );
-            } else if let Some(dotplot_view) = self.rna_read_inline_dotplot_view.clone() {
-                egui::ScrollArea::both()
-                    .id_salt(format!("rna_alignment_effect_dotplot_{}", row.record_index))
-                    .max_height(320.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        self.render_dotplot_density_ui(
-                            ui,
-                            &dotplot_view,
-                            None,
-                            self.dotplot_ui.display_density_threshold,
-                            self.dotplot_ui.display_intensity_gain,
+            let alignment_cache_key = Self::rna_read_alignment_detail_cache_key(report_id, row.record_index);
+            if self
+                .rna_read_alignment_detail_visible_key
+                .as_deref()
+                == Some(alignment_cache_key.as_str())
+            {
+                ui.label(egui::RichText::new("Phase-2 alignment detail").strong());
+                match self.saved_rna_read_alignment_detail_for_report_id(report_id, row.record_index)
+                {
+                    Ok(detail) => {
+                        ui.small(format!(
+                            "Backend={} mode={} cigar={} aligned={} columns | query {}..{} / {} bp | template offsets {}..{} / {} bp | genomic {}..{}",
+                            detail.backend.as_str(),
+                            detail.alignment_mode.as_str(),
+                            detail.cigar,
+                            detail.aligned_columns,
+                            detail.aligned_query_start_0based,
+                            detail.aligned_query_end_0based_exclusive,
+                            detail.query_length_bp,
+                            detail.aligned_target_start_offset_0based,
+                            detail.aligned_target_end_offset_0based_exclusive,
+                            detail.target_length_bp,
+                            detail.target_start_1based,
+                            detail.target_end_1based
+                        ));
+                        ui.small(format!(
+                            "Matches={} mismatches={} insertions={} deletions={} | id={:.1}% cov={:.1}% score={}",
+                            detail.matches,
+                            detail.mismatches,
+                            detail.insertions,
+                            detail.deletions,
+                            detail.identity_fraction * 100.0,
+                            detail.query_coverage_fraction * 100.0,
+                            detail.score
+                        ));
+                        ui.small(
+                            "Only the aligned query span contributes to phase-2 confirmation; clipped read tails remain outside the local/semiglobal alignment.",
                         );
-                    });
+                        egui::ScrollArea::both()
+                            .id_salt(format!("rna_alignment_effect_detail_{}", row.record_index))
+                            .max_height(240.0)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                Self::render_rna_read_pairwise_alignment_detail(ui, &detail);
+                            });
+                    }
+                    Err(message) => {
+                        ui.small(
+                            egui::RichText::new(message)
+                                .color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                    }
+                }
             } else {
-                ui.small("No inline dotplot preview is available for this read yet.");
+                ui.small(
+                    "Alignment detail is available on demand. Use `Show alignment` to inspect the exact phase-2 read-vs-transcript-template comparison, and `Open interactive dotplot` only when you want the external visual view.",
+                );
             }
             ui.separator();
             ui.label(egui::RichText::new("Sequence").strong());
@@ -19647,6 +19671,32 @@ impl MainAreaDna {
                     ui.monospace(hit.sequence.as_str());
                 });
         });
+    }
+
+    fn render_rna_read_pairwise_alignment_detail(
+        ui: &mut egui::Ui,
+        detail: &RnaReadPairwiseAlignmentDetail,
+    ) {
+        const ALIGNMENT_BLOCK_WIDTH: usize = 96;
+        let query_bytes = detail.aligned_query.as_bytes();
+        let relation_bytes = detail.aligned_relation.as_bytes();
+        let target_bytes = detail.aligned_target.as_bytes();
+        if query_bytes.is_empty() || target_bytes.is_empty() {
+            ui.small("No aligned columns are available for this detail view.");
+            return;
+        }
+        let mut offset = 0usize;
+        while offset < query_bytes.len() {
+            let end = (offset + ALIGNMENT_BLOCK_WIDTH).min(query_bytes.len());
+            let query_chunk = String::from_utf8_lossy(&query_bytes[offset..end]);
+            let relation_chunk = String::from_utf8_lossy(&relation_bytes[offset..end]);
+            let target_chunk = String::from_utf8_lossy(&target_bytes[offset..end]);
+            ui.monospace(format!("Q {offset:>5}  {query_chunk}"));
+            ui.monospace(format!("           {relation_chunk}"));
+            ui.monospace(format!("T {offset:>5}  {target_chunk}"));
+            ui.add_space(4.0);
+            offset = end;
+        }
     }
 
     fn collect_thresholded_cdna_exon_support_rows(
