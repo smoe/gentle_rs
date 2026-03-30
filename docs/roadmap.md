@@ -1526,8 +1526,11 @@ Status:
       will use before starting interpretation/alignment.
     - persisted RNA-read reports bridge the two windows through shared
       engine-owned report payloads rather than GUI-local transfer state.
-  - `RNA-read Mapping` `Nanopore cDNA interpretation` run path is now
+  - `RNA-read Mapping` phase-1 interpretation run path is now
     asynchronous (non-blocking UI) with live progress updates.
+  - The dedicated `RNA-read Mapping` workspace now shows its main mapping
+    parameters immediately on open instead of hiding them behind a collapsed
+    section; only optional tuning remains behind `Show advanced`.
   - `RNA-read Mapping` now exposes a regular workflow access route for the same
     cDNA mapping payload:
     `Prepare Workflow Op` stages `run_id + ops` in Engine Ops workflow runner,

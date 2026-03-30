@@ -5597,10 +5597,25 @@ mod tests {
     fn tooltip_help_nanopore_cdna_panel_mentions_two_phase_report_flow() {
         let help = MainAreaDna::splicing_nanopore_cdna_panel_help_text();
         assert!(help.contains("two-phase"));
+        assert!(help.contains("shared across mapping profiles"));
         assert!(help.contains("InterpretRnaReads"));
         assert!(help.contains("AlignRnaReadReport"));
         assert!(help.contains("Report ID"));
         assert!(help.contains("whole-genome mapper"));
+    }
+
+    #[test]
+    fn rna_read_mapping_labels_are_profile_generic() {
+        assert_eq!(
+            MainAreaDna::rna_read_mapping_parameter_section_title(),
+            "RNA-read mapping parameters"
+        );
+        assert_eq!(
+            MainAreaDna::rna_read_mapping_run_button_label(),
+            "Run RNA-read interpretation"
+        );
+        assert!(!MainAreaDna::rna_read_mapping_parameter_section_title().contains("Nanopore"));
+        assert!(!MainAreaDna::rna_read_mapping_run_button_label().contains("Nanopore"));
     }
 
     #[test]
@@ -14165,758 +14180,828 @@ impl MainAreaDna {
         });
         self.render_rna_read_mapping_status(ui);
         ui.add_space(4.0);
-        let nanopore_header = egui::CollapsingHeader::new("Nanopore cDNA interpretation")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        egui::RichText::new("Panel guide [?]")
-                            .size(9.0)
-                            .color(egui::Color32::from_rgb(71, 85, 105)),
-                    )
-                    .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-                    ui.label(
-                        egui::RichText::new(
-                            "Phase 1 keeps a retained top-hit report; phase 2 aligns that saved report and refreshes exon/junction support.",
-                        )
-                        .size(9.0)
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                    );
-                });
-                ui.label(
-                    egui::RichText::new(
-                        "Phase-1 path: FASTA input (.fa/.fasta, optional .gz); .sra requires external conversion.",
-                    )
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new(Self::rna_read_mapping_parameter_section_title())
+                    .strong()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            ui.small(
+                egui::RichText::new(format!(
+                    "Current profile: {}",
+                    self.rna_reads_ui.profile.as_str()
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new("Mapping guide [?]")
                     .size(9.0)
-                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+            )
+            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+            ui.label(
+                egui::RichText::new(
+                    "Phase 1 keeps a retained top-hit report; phase 2 aligns that saved report and refreshes exon/junction support.",
                 )
-                .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-                let controls_enabled = self.rna_read_task.is_none();
-                ui.add_enabled_ui(controls_enabled, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Input FASTA").on_hover_text(
-                            "Path to phase-1 input reads in FASTA format (.fa/.fasta, optional .gz). Reads are streamed sequentially from this file; .sra must be converted externally first.",
-                        );
-                        if ui
-                            .text_edit_singleline(&mut self.rna_reads_ui.input_path)
-                            .on_hover_text(
-                                "InterpretRnaReads streams reads from this file during phase 1. The retained report stores scored rows, not the original reads file itself, so keep the path if you plan to rerun with different thresholds.",
-                            )
-                            .changed()
-                        {
-                            persist_ui_state = true;
-                        }
-                        if ui
-                            .button("Browse...")
-                            .on_hover_text(
-                                "Open a file chooser for FASTA/FASTA.gz input. If Report ID is empty, it is auto-derived from the filename.",
-                            )
-                            .clicked()
-                        {
-                            let report_id_was_empty = self.rna_reads_ui.report_id.trim().is_empty();
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter("FASTA", &["fa", "fasta", "gz"])
-                                .pick_file()
-                            {
-                                self.rna_reads_ui.input_path = path.display().to_string();
-                                if report_id_was_empty {
-                                    self.rna_reads_ui.report_id =
-                                        Self::default_cdna_report_id_from_input_path(
-                                            &self.rna_reads_ui.input_path,
-                                        );
-                                }
-                                persist_ui_state = true;
-                            }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Report ID").on_hover_text(
-                            "Identifier used to store and retrieve the retained top-hit report produced by phase 1. The same ID is reused by phase-2 alignment, inspection, and TSV/SVG export actions.",
-                        );
-                        if ui
-                            .text_edit_singleline(&mut self.rna_reads_ui.report_id)
-                            .on_hover_text(
-                                "Leave empty to auto-derive from the input filename. This becomes the stable handle for report lookup across GUI, CLI, JS, and Lua.",
-                            )
-                            .changed()
-                        {
-                            persist_ui_state = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Region / gene scope").on_hover_text(
-                            "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes keep the run focused on the current target gene or strand context.",
-                        );
-                        egui::ComboBox::from_id_salt(format!(
-                            "rna_read_scope_{}_{}",
-                            view.seq_id, view.target_feature_id
-                        ))
-                        .selected_text(Self::rna_read_scope_selection_label(
-                            view,
-                            self.rna_reads_ui.scope,
-                        ))
-                        .show_ui(ui, |ui| {
-                            persist_ui_state |= ui
-                                .selectable_value(
-                                    &mut self.rna_reads_ui.scope,
-                                    SplicingScopePreset::AllOverlappingBothStrands,
-                                    "All overlapping (both strands)",
-                                )
-                                .on_hover_text(
-                                    "Broadest mode: include all overlapping transcripts on both strands.",
-                                )
-                                .changed();
-                            persist_ui_state |= ui
-                                .selectable_value(
-                                    &mut self.rna_reads_ui.scope,
-                                    SplicingScopePreset::TargetGroupAnyStrand,
-                                    "Target gene/group (any strand)",
-                                )
-                                .on_hover_text(
-                                    "Restrict to the current target gene/group, but allow both strands inside that group.",
-                                )
-                                .changed();
-                            persist_ui_state |= ui
-                                .selectable_value(
-                                    &mut self.rna_reads_ui.scope,
-                                    SplicingScopePreset::AllOverlappingTargetStrand,
-                                    "All overlapping (target strand)",
-                                )
-                                .on_hover_text(
-                                    "Include all overlapping transcripts only on the target strand.",
-                                )
-                                .changed();
-                            persist_ui_state |= ui
-                                .selectable_value(
-                                    &mut self.rna_reads_ui.scope,
-                                    SplicingScopePreset::TargetGroupTargetStrand,
-                                    "Target gene/group (target strand)",
-                                )
-                                .on_hover_text(
-                                    "Most specific mode: the current target gene/group on the target strand only.",
-                                )
-                                .changed();
-                        });
-                        persist_ui_state |= ui
-                            .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
-                            .on_hover_text(
-                                "Show deterministic seed-gate, origin-expansion, checkpoint/resume, and phase-2 alignment controls shared with InterpretRnaReads/AlignRnaReadReport across GUI, CLI, JS, and Lua.",
-                            )
-                            .changed();
-                    });
-                    if self.rna_reads_ui.show_advanced {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("Gene expansion mode").on_hover_text(
-                                "Controls how transcript templates are gathered before hashing. This is still one run, not multiple invocations: `single_gene` uses only the current target gene/group; `multi_gene_sparse` adds transcript templates from the explicit Target genes list. This remains local annotation-driven, not a genome-wide search.",
-                            );
-                            egui::ComboBox::from_id_salt(format!(
-                                "rna_read_origin_mode_{}_{}",
-                                view.seq_id, view.target_feature_id
-                            ))
-                            .selected_text(Self::rna_read_origin_mode_selection_label(
-                                view,
-                                self.rna_reads_ui.origin_mode,
-                            ))
-                            .show_ui(ui, |ui| {
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.origin_mode,
-                                        RnaReadOriginMode::SingleGene,
-                                        "single_gene (baseline)",
-                                    )
-                                    .on_hover_text(
-                                        "Current deterministic baseline: use current seed feature/scope only.",
-                                    )
-                                    .changed();
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.origin_mode,
-                                        RnaReadOriginMode::MultiGeneSparse,
-                                        "multi_gene_sparse",
-                                    )
-                                    .on_hover_text(
-                                        "Expand transcript templates from target_gene_ids (local annotation, deterministic). ROI seed-capture remains a planned follow-up.",
-                                    )
-                                    .changed();
-                            });
-                            ui.label("Target genes").on_hover_text(
-                                "Optional gene IDs for multi-gene sparse mode. Comma/space/semicolon separated.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.target_gene_ids,
-                                    )
-                                    .desired_width(280.0)
-                                    .hint_text(format!("e.g. {}, TP53", view.group_label)),
-                                )
-                                .on_hover_text(
-                                    "Example: TP73, TP53. Applied when origin mode is multi_gene_sparse and persisted in the report payload.",
-                                )
-                                .changed();
-                            persist_ui_state |= ui
-                                .checkbox(
-                                    &mut self.rna_reads_ui.roi_seed_capture_enabled,
-                                    "ROI seed capture (planned)",
-                                )
-                                .on_hover_text(
-                                    "Planned annotation-independent ROI seed-capture layer. Persisted now; engine emits a deterministic warning until implemented.",
-                                )
-                                .changed();
-                        });
-                        ui.small(
-                            egui::RichText::new(
-                                "Sparse-origin settings are persisted in report metadata. multi_gene_sparse actively expands local transcript templates; ROI seed capture remains a planned follow-up.",
-                            )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                        );
-                        ui.add_space(4.0);
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("Report mode").on_hover_text(
-                                "Controls how much of the retained top-hit set is persisted under Report ID. This affects later inspection/export size, not the live seed scoring decisions themselves.",
-                            );
-                            egui::ComboBox::from_id_salt(format!(
-                                "rna_read_report_mode_{}_{}",
-                                view.seq_id, view.target_feature_id
-                            ))
-                            .selected_text(self.rna_reads_ui.report_mode.as_str())
-                            .show_ui(ui, |ui| {
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.report_mode,
-                                        RnaReadReportMode::Full,
-                                        "full",
-                                    )
-                                    .on_hover_text(
-                                        "Persist retained hits exactly as ranked by the seed-stage retention policy.",
-                                    )
-                                    .changed();
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.report_mode,
-                                        RnaReadReportMode::SeedPassedOnly,
-                                        "seed_passed_only",
-                                    )
-                                    .on_hover_text(
-                                        "Persist a smaller retained report that still keeps rows useful for later review: composite seed-pass hits plus retained rows at or above raw min_hit.",
-                                    )
-                                    .changed();
-                            });
-                            ui.label("Checkpoint path").on_hover_text(
-                                "Optional JSON checkpoint file for deterministic pause/resume.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.checkpoint_path,
-                                    )
-                                    .desired_width(260.0),
-                                )
-                                .on_hover_text(
-                                    "If set, periodic checkpoint snapshots are written here.",
-                                )
-                                .changed();
-                            ui.label("every reads").on_hover_text(
-                                "Checkpoint write cadence in processed reads (must be > 0).",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.checkpoint_every_reads,
-                                    )
-                                    .desired_width(68.0),
-                                )
-                                .on_hover_text(
-                                    "Example: 10000 writes a checkpoint every 10k processed reads.",
-                                )
-                                .changed();
-                            persist_ui_state |= ui
-                                .checkbox(
-                                    &mut self.rna_reads_ui.resume_from_checkpoint,
-                                    "Resume",
-                                )
-                                .on_hover_text(
-                                    "Resume from checkpoint_path. Requires checkpoint_path to be set.",
-                                )
-                                .changed();
-                        });
-                        ui.small(
-                            egui::RichText::new(
-                                "Checkpoint+resume settings map directly to InterpretRnaReads runtime options and are shared with CLI/JS/Lua.",
-                            )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                        );
-                    }
-                    let (gene_scope_summary, gene_scope_color) =
-                        Self::rna_read_gene_scope_summary(
-                            view,
-                            self.rna_reads_ui.scope,
-                            self.rna_reads_ui.origin_mode,
-                            &self.rna_reads_ui.target_gene_ids,
-                        );
-                    ui.small(
-                        egui::RichText::new(gene_scope_summary).color(gene_scope_color),
-                    );
-                    ui.horizontal_wrapped(|ui| {
-                        persist_ui_state |= ui
-                            .checkbox(
-                                &mut self.rna_reads_ui.cdna_poly_t_flip_enabled,
-                                "Input is cDNA (normalize T-rich 5' head)",
-                            )
-                            .on_hover_text(
-                                "If enabled, reads with a strong T-rich 5' head are reverse-complement normalized before scoring so cDNA reads are compared in transcript orientation. Disable this for direct RNA or when input orientation is already known to be correct.",
-                            )
-                            .changed();
-                        if ui
-                            .button("Apply TP73 specificity preset")
-                            .on_hover_text(
-                                "Apply stricter TP73-focused defaults: target-group/target-strand scope plus tighter chain, gap, and transition thresholds for focused pilot filtering.",
-                            )
-                            .clicked()
-                        {
-                            self.apply_rna_reads_tp73_specificity_preset();
-                            persist_ui_state = true;
-                        }
-                        ui.small(
-                            egui::RichText::new(
-                                "Unchecked = direct RNA mode (no automatic reverse-complement normalization).",
-                            )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                        );
-                    });
-                    let (scope_title, scope_details, scope_strand_note) =
-                        Self::splicing_scope_description(self.rna_reads_ui.scope);
-                    ui.small(
-                        egui::RichText::new(format!("Scope detail: {scope_title}"))
-                            .color(egui::Color32::from_rgb(71, 85, 105)),
-                    );
-                    ui.small(
-                        egui::RichText::new(scope_details)
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                    );
-                    ui.small(
-                        egui::RichText::new(scope_strand_note)
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                    );
-                    self.render_rna_read_scope_eligibility_sketch(
-                        ui,
-                        view,
-                        self.rna_reads_ui.scope,
-                        self.rna_reads_ui.origin_mode,
-                    );
-                    ui.small(
-                        egui::RichText::new(
-                            "Seed-index note: annotated exon bodies and exon-exon junction transitions are indexed for transcripts admitted by the selected scope.",
-                        )
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                    );
-                    ui.label(
-                        egui::RichText::new(
-                            format!(
-                                "Profile: nanopore_cdna_v1 | Input: fasta | Origin mode: {} | Target genes: {} | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | use 'Run alignment phase' for retained-hit mapping",
-                                self.rna_reads_ui.origin_mode.as_str(),
-                                Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids).len(),
-                                if self.rna_reads_ui.cdna_poly_t_flip_enabled {
-                                    "cDNA (T-rich 5' head normalization enabled; minor interruptions tolerated)"
-                                } else {
-                                    "direct RNA (no poly-T flip)"
-                                }
-                            ),
-                        )
-                        .size(9.0)
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                    );
-                    ui.horizontal_wrapped(|ui| {
-                        ui.small(
-                            egui::RichText::new(self.rna_read_hash_parameter_summary())
-                                .color(egui::Color32::from_rgb(71, 85, 105)),
-                        );
-                        ui.separator();
-                        ui.small(
-                            egui::RichText::new(self.rna_read_dotplot_parameter_summary())
-                                .color(egui::Color32::from_rgb(71, 85, 105)),
-                        );
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        if ui
-                            .small_button("Dense 9-mer similarity preset")
-                            .on_hover_text(
-                                "Set RNA-read hashing to exact dense 9-mers (k=9/stride=1) and RNA-read dotplots to exact dense 9-mers too (word=9/step=1/max mismatches=0).",
-                            )
-                            .clicked()
-                        {
-                            self.apply_rna_read_dense_similarity_preset();
-                            persist_ui_state = true;
-                        }
-                        if ui
-                            .small_button("Reset dotplot defaults")
-                            .on_hover_text(
-                                "Restore the shared dotplot defaults used for new dotplot workspaces.",
-                            )
-                            .clicked()
-                        {
-                            self.reset_rna_read_dotplot_parameters_to_defaults();
-                            persist_ui_state = true;
-                        }
-                        if !self.rna_reads_ui.show_advanced
-                            && ui
-                                .small_button("Show tuning knobs")
-                                .on_hover_text(
-                                    "Reveal the editable hashing and RNA-read dotplot parameters below.",
-                                )
-                                .clicked()
-                        {
-                            self.rna_reads_ui.show_advanced = true;
-                            persist_ui_state = true;
-                        }
-                        if ui
-                            .small_button("Open Dotplot workspace")
-                            .on_hover_text(
-                                "Open the full dotplot workspace. RNA-read dotplot exports reuse the same word/step/mismatch/tile settings shown here.",
-                            )
-                            .clicked()
-                        {
-                            self.open_dotplot_window();
-                        }
-                    });
-                    if self.rna_reads_ui.show_advanced {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("k-mer").on_hover_text(
-                                "Seed length used for phase-1 hash matching.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.kmer_len)
-                                        .desired_width(46.0),
-                                )
-                                .on_hover_text("Seed hash length in bases.")
-                                .changed();
-                            ui.label("hash stride").on_hover_text(
-                                "Seed-start spacing in bases along each read. 1 hashes every possible start; higher values make the initial hash screen sparser and faster.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.seed_stride_bp,
-                                    )
-                                    .desired_width(52.0),
-                                )
-                                .on_hover_text(
-                                    "Phase-1 hash-density knob. Default 1 = one seed start per base.",
-                                )
-                                .changed();
-                            ui.label("min hit").on_hover_text(
-                                "Minimum raw matched/tested seed fraction required to pass.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_seed_hit_fraction,
-                                    )
-                                    .desired_width(56.0),
-                                )
-                                .on_hover_text(
-                                    "Raw seed-hit threshold in [0,1], for example 0.30.",
-                                )
-                                .changed();
-                            ui.label("min weighted").on_hover_text(
-                                "Minimum occurrence-weighted seed-hit fraction required to pass.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_weighted_seed_hit_fraction,
-                                    )
-                                    .desired_width(56.0),
-                                )
-                                .on_hover_text(
-                                    "Weighted threshold in [0,1]; downweights highly repeated seed bits.",
-                                )
-                                .changed();
-                            ui.label("min unique").on_hover_text(
-                                "Minimum number of distinct matched seed hashes.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_unique_matched_kmers,
-                                    )
-                                    .desired_width(56.0),
-                                )
-                                .on_hover_text(
-                                    "Prevents low-complexity reads from passing on repetitive seeds alone.",
-                                )
-                                .changed();
-                            ui.label("max median gap").on_hover_text(
-                                "Maximum allowed median distance between matched seed positions in the inferred transcript chain.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.max_median_transcript_gap,
-                                    )
-                                    .desired_width(64.0),
-                                )
-                                .on_hover_text(
-                                    "Lower values require denser, more contiguous seed placement.",
-                                )
-                                .changed();
-                            ui.label("min chain").on_hover_text(
-                                "Minimum coherent-chain support fraction for matched seed observations.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_chain_consistency_fraction,
-                                    )
-                                    .desired_width(62.0),
-                                )
-                                .on_hover_text(
-                                    "Fraction in [0,1]; higher values reject dispersed local matches.",
-                                )
-                                .changed();
-                            ui.label("min transitions").on_hover_text(
-                                "Minimum number of confirmed exon-exon transitions in inferred exon path.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_confirmed_exon_transitions,
-                                    )
-                                    .desired_width(52.0),
-                                )
-                                .on_hover_text(
-                                    "Require at least this many confirmed junction transitions for pass.",
-                                )
-                                .changed();
-                            ui.label("min transition frac").on_hover_text(
-                                "Minimum confirmed/expected transition fraction in inferred exon path.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.min_transition_support_fraction,
-                                    )
-                                    .desired_width(62.0),
-                                )
-                                .on_hover_text(
-                                    "Fraction in [0,1] controlling transition-consistency strictness.",
-                                )
-                                .changed();
-                            if self.rna_reads_ui.cdna_poly_t_flip_enabled {
-                                ui.label("poly-T head min T-bp").on_hover_text(
-                                    "Minimum T support used by the tolerant 5' poly-T-head detector for cDNA normalization.",
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        ui.label(
+            egui::RichText::new(
+                "Phase-1 path: FASTA input (.fa/.fasta, optional .gz); .sra requires external conversion.",
+            )
+            .size(9.0)
+            .color(egui::Color32::from_rgb(100, 116, 139)),
+        )
+        .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+        let controls_enabled = self.rna_read_task.is_none();
+        ui.add_enabled_ui(controls_enabled, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Input FASTA").on_hover_text(
+                    "Path to phase-1 input reads in FASTA format (.fa/.fasta, optional .gz). Reads are streamed sequentially from this file; .sra must be converted externally first.",
+                );
+                if ui
+                    .text_edit_singleline(&mut self.rna_reads_ui.input_path)
+                    .on_hover_text(
+                        "InterpretRnaReads streams reads from this file during phase 1. The retained report stores scored rows, not the original reads file itself, so keep the path if you plan to rerun with different thresholds.",
+                    )
+                    .changed()
+                {
+                    persist_ui_state = true;
+                }
+                if ui
+                    .button("Browse...")
+                    .on_hover_text(
+                        "Open a file chooser for FASTA/FASTA.gz input. If Report ID is empty, it is auto-derived from the filename.",
+                    )
+                    .clicked()
+                {
+                    let report_id_was_empty = self.rna_reads_ui.report_id.trim().is_empty();
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("FASTA", &["fa", "fasta", "gz"])
+                        .pick_file()
+                    {
+                        self.rna_reads_ui.input_path = path.display().to_string();
+                        if report_id_was_empty {
+                            self.rna_reads_ui.report_id =
+                                Self::default_cdna_report_id_from_input_path(
+                                    &self.rna_reads_ui.input_path,
                                 );
-                                persist_ui_state |= ui
-                                    .add(
-                                        egui::TextEdit::singleline(
-                                            &mut self.rna_reads_ui.poly_t_prefix_min_bp,
-                                        )
-                                        .desired_width(56.0),
-                                    )
-                                    .on_hover_text(
-                                        "Higher values require stronger T-rich heads before reverse-complement normalization.",
-                                    )
-                                    .changed();
-                            }
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("dotplot word").on_hover_text(
-                                "Word size used when exporting RNA-read sequence dotplots from the read-effects/detail panel.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.dotplot_ui.word_size)
-                                        .desired_width(46.0),
-                                )
-                                .on_hover_text(
-                                    "Smaller values are more sensitive; larger values are stricter.",
-                                )
-                                .changed();
-                            ui.label("dotplot step").on_hover_text(
-                                "Sampling stride used by RNA-read dotplot export. Smaller values draw denser dotplots.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.dotplot_ui.step_bp)
-                                        .desired_width(46.0),
-                                )
-                                .on_hover_text(
-                                    "Default 1 = every possible start; larger values make the dotplot sparser and faster.",
-                                )
-                                .changed();
-                            ui.label("dotplot mismatches (0=exact)").on_hover_text(
-                                "Allowed mismatches per exported dotplot word. Keep this at 0 for exact words only; raise it only when you deliberately want a more tolerant, slower search.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.dotplot_ui.max_mismatches,
-                                    )
-                                    .desired_width(52.0),
-                                )
-                                .on_hover_text(
-                                    "0 = exact words only. Increasing this allows inexact word matches and usually slows the dotplot search.",
-                                )
-                                .changed();
-                            ui.label("dotplot tile").on_hover_text(
-                                "Optional tiling chunk size for exported RNA-read dotplots. Leave empty to avoid tiling.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.dotplot_ui.tile_bp)
-                                        .desired_width(56.0),
-                                )
-                                .on_hover_text(
-                                    "Usually left empty for RNA-read dotplots unless the compared spans become very large.",
-                                )
-                                .changed();
-                        });
-                        ui.small(
-                            egui::RichText::new(
-                                "These dotplot knobs are the exact settings used by `Export dotplot...` and `Export dotplots for selected reads...` in the read-effects panel.",
-                            )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
-                        );
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("align band").on_hover_text(
-                                "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.align_band_width_bp,
-                                    )
-                                    .desired_width(54.0),
-                                )
-                                .on_hover_text(
-                                    "Banded aligner width used when aligning retained reads in phase 2.",
-                                )
-                                .changed();
-                            ui.label("min identity").on_hover_text(
-                                "Minimum identity fraction for phase-2 retained-read alignment.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.align_min_identity_fraction,
-                                    )
-                                    .desired_width(56.0),
-                                )
-                                .on_hover_text(
-                                    "Alignments below this identity are discarded.",
-                                )
-                                .changed();
-                            ui.label("max secondary").on_hover_text(
-                                "Maximum number of secondary mappings kept per read in phase 2.",
-                            );
-                            persist_ui_state |= ui
-                                .add(
-                                    egui::TextEdit::singleline(
-                                        &mut self.rna_reads_ui.align_max_secondary_mappings,
-                                    )
-                                    .desired_width(42.0),
-                                )
-                                .on_hover_text(
-                                    "Set to 0 to keep only the best mapping.",
-                                )
-                                .changed();
-                            ui.label("align selection").on_hover_text(
-                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `seed_passed` setting is the narrower/faster rerun mode; `all retained` is broader; `already_aligned` is mainly for rerunning phase 2 on rows that already received a mapping in an earlier pass.",
-                            );
-                            egui::ComboBox::from_id_salt(format!(
-                                "rna_read_align_selection_{}_{}",
-                                view.seq_id, view.target_feature_id
-                            ))
-                            .selected_text(Self::rna_read_align_selection_ui_label(
-                                self.rna_reads_ui.align_phase_selection,
-                            ))
-                            .show_ui(ui, |ui| {
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.align_phase_selection,
-                                        RnaReadHitSelection::SeedPassed,
-                                        "seed_passed",
-                                    )
-                                    .on_hover_text(
-                                        "Default: align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
-                                    )
-                                    .changed();
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.align_phase_selection,
-                                        RnaReadHitSelection::All,
-                                        "all retained",
-                                    )
-                                    .on_hover_text(
-                                        "Align every retained row in the saved report, including rescued high-score rows that failed the composite seed gate.",
-                                    )
-                                    .changed();
-                                persist_ui_state |= ui
-                                    .selectable_value(
-                                        &mut self.rna_reads_ui.align_phase_selection,
-                                        RnaReadHitSelection::Aligned,
-                                        "already_aligned",
-                                    )
-                                    .on_hover_text(
-                                        "Re-align only rows that already have a stored phase-2 mapping from an earlier alignment pass. This is mostly useful when you want to rerun phase 2 with different band/identity settings without broadening the working set.",
-                                    )
-                                    .changed();
-                            });
-                        });
-                        if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
-                            && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
-                        {
-                            ui.small(
-                                egui::RichText::new(
-                                    Self::format_rna_read_alignment_selection_summary(
-                                        report.as_ref(),
-                                        self.rna_reads_ui.align_phase_selection,
-                                    ),
-                                )
-                                .color(egui::Color32::from_rgb(100, 116, 139)),
-                            );
                         }
-                        ui.small(
-                            egui::RichText::new(
-                                "Phase-2 algorithm: reference-guided pairwise alignment against each admitted transcript template. We try banded semiglobal and local alignment first, then fall back to deterministic dense semiglobal/local alignment if the banded pass yields no hit; the best mapping is ranked by score, then identity and query coverage.",
+                        persist_ui_state = true;
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Report ID").on_hover_text(
+                    "Identifier used to store and retrieve the retained top-hit report produced by phase 1. The same ID is reused by phase-2 alignment, inspection, and TSV/SVG export actions.",
+                );
+                if ui
+                    .text_edit_singleline(&mut self.rna_reads_ui.report_id)
+                    .on_hover_text(
+                        "Leave empty to auto-derive from the input filename. This becomes the stable handle for report lookup across GUI, CLI, JS, and Lua.",
+                    )
+                    .changed()
+                {
+                    persist_ui_state = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Region / gene scope").on_hover_text(
+                    "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes keep the run focused on the current target gene or strand context.",
+                );
+                egui::ComboBox::from_id_salt(format!(
+                    "rna_read_scope_{}_{}",
+                    view.seq_id, view.target_feature_id
+                ))
+                .selected_text(Self::rna_read_scope_selection_label(
+                    view,
+                    self.rna_reads_ui.scope,
+                ))
+                .show_ui(ui, |ui| {
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_reads_ui.scope,
+                            SplicingScopePreset::AllOverlappingBothStrands,
+                            "All overlapping (both strands)",
+                        )
+                        .on_hover_text(
+                            "Broadest mode: include all overlapping transcripts on both strands.",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_reads_ui.scope,
+                            SplicingScopePreset::TargetGroupAnyStrand,
+                            "Target gene/group (any strand)",
+                        )
+                        .on_hover_text(
+                            "Restrict to the current target gene/group, but allow both strands inside that group.",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_reads_ui.scope,
+                            SplicingScopePreset::AllOverlappingTargetStrand,
+                            "All overlapping (target strand)",
+                        )
+                        .on_hover_text(
+                            "Include all overlapping transcripts only on the target strand.",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_reads_ui.scope,
+                            SplicingScopePreset::TargetGroupTargetStrand,
+                            "Target gene/group (target strand)",
+                        )
+                        .on_hover_text(
+                            "Most specific mode: the current target gene/group on the target strand only.",
+                        )
+                        .changed();
+                });
+                persist_ui_state |= ui
+                    .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
+                    .on_hover_text(
+                        "Show deterministic seed-gate, origin-expansion, checkpoint/resume, and phase-2 alignment controls shared with InterpretRnaReads/AlignRnaReadReport across GUI, CLI, JS, and Lua.",
+                    )
+                    .changed();
+            });
+            if self.rna_reads_ui.show_advanced {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Gene expansion mode").on_hover_text(
+                        "Controls how transcript templates are gathered before hashing. This is still one run, not multiple invocations: `single_gene` uses only the current target gene/group; `multi_gene_sparse` adds transcript templates from the explicit Target genes list. This remains local annotation-driven, not a genome-wide search.",
+                    );
+                    egui::ComboBox::from_id_salt(format!(
+                        "rna_read_origin_mode_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .selected_text(Self::rna_read_origin_mode_selection_label(
+                        view,
+                        self.rna_reads_ui.origin_mode,
+                    ))
+                    .show_ui(ui, |ui| {
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.origin_mode,
+                                RnaReadOriginMode::SingleGene,
+                                "single_gene (baseline)",
                             )
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                            .on_hover_text(
+                                "Current deterministic baseline: use current seed feature/scope only.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.origin_mode,
+                                RnaReadOriginMode::MultiGeneSparse,
+                                "multi_gene_sparse",
+                            )
+                            .on_hover_text(
+                                "Expand transcript templates from target_gene_ids (local annotation, deterministic). ROI seed-capture remains a planned follow-up.",
+                            )
+                            .changed();
+                    });
+                    ui.label("Target genes").on_hover_text(
+                        "Optional gene IDs for multi-gene sparse mode. Comma/space/semicolon separated.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rna_reads_ui.target_gene_ids)
+                                .desired_width(280.0)
+                                .hint_text(format!("e.g. {}, TP53", view.group_label)),
+                        )
+                        .on_hover_text(
+                            "Example: TP73, TP53. Applied when origin mode is multi_gene_sparse and persisted in the report payload.",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .checkbox(
+                            &mut self.rna_reads_ui.roi_seed_capture_enabled,
+                            "ROI seed capture (planned)",
+                        )
+                        .on_hover_text(
+                            "Planned annotation-independent ROI seed-capture layer. Persisted now; engine emits a deterministic warning until implemented.",
+                        )
+                        .changed();
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Sparse-origin settings are persisted in report metadata. multi_gene_sparse actively expands local transcript templates; ROI seed capture remains a planned follow-up.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Report mode").on_hover_text(
+                        "Controls how much of the retained top-hit set is persisted under Report ID. This affects later inspection/export size, not the live seed scoring decisions themselves.",
+                    );
+                    egui::ComboBox::from_id_salt(format!(
+                        "rna_read_report_mode_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .selected_text(self.rna_reads_ui.report_mode.as_str())
+                    .show_ui(ui, |ui| {
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.report_mode,
+                                RnaReadReportMode::Full,
+                                "full",
+                            )
+                            .on_hover_text(
+                                "Persist retained hits exactly as ranked by the seed-stage retention policy.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.report_mode,
+                                RnaReadReportMode::SeedPassedOnly,
+                                "seed_passed_only",
+                            )
+                            .on_hover_text(
+                                "Persist a smaller retained report that still keeps rows useful for later review: composite seed-pass hits plus retained rows at or above raw min_hit.",
+                            )
+                            .changed();
+                    });
+                    ui.label("Checkpoint path").on_hover_text(
+                        "Optional JSON checkpoint file for deterministic pause/resume.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rna_reads_ui.checkpoint_path)
+                                .desired_width(260.0),
+                        )
+                        .on_hover_text("If set, periodic checkpoint snapshots are written here.")
+                        .changed();
+                    ui.label("every reads").on_hover_text(
+                        "Checkpoint write cadence in processed reads (must be > 0).",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.checkpoint_every_reads,
+                            )
+                            .desired_width(68.0),
+                        )
+                        .on_hover_text(
+                            "Example: 10000 writes a checkpoint every 10k processed reads.",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .checkbox(&mut self.rna_reads_ui.resume_from_checkpoint, "Resume")
+                        .on_hover_text(
+                            "Resume from checkpoint_path. Requires checkpoint_path to be set.",
+                        )
+                        .changed();
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Checkpoint+resume settings map directly to InterpretRnaReads runtime options and are shared with CLI/JS/Lua.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+            let (gene_scope_summary, gene_scope_color) = Self::rna_read_gene_scope_summary(
+                view,
+                self.rna_reads_ui.scope,
+                self.rna_reads_ui.origin_mode,
+                &self.rna_reads_ui.target_gene_ids,
+            );
+            ui.small(egui::RichText::new(gene_scope_summary).color(gene_scope_color));
+            ui.horizontal_wrapped(|ui| {
+                persist_ui_state |= ui
+                    .checkbox(
+                        &mut self.rna_reads_ui.cdna_poly_t_flip_enabled,
+                        "Input is cDNA (normalize T-rich 5' head)",
+                    )
+                    .on_hover_text(
+                        "If enabled, reads with a strong T-rich 5' head are reverse-complement normalized before scoring so cDNA reads are compared in transcript orientation. Disable this for direct RNA or when input orientation is already known to be correct.",
+                    )
+                    .changed();
+                if ui
+                    .button("Apply TP73 specificity preset")
+                    .on_hover_text(
+                        "Apply stricter TP73-focused defaults: target-group/target-strand scope plus tighter chain, gap, and transition thresholds for focused pilot filtering.",
+                    )
+                    .clicked()
+                {
+                    self.apply_rna_reads_tp73_specificity_preset();
+                    persist_ui_state = true;
+                }
+                ui.small(
+                    egui::RichText::new(
+                        "Unchecked = direct RNA mode (no automatic reverse-complement normalization).",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
+            let (scope_title, scope_details, scope_strand_note) =
+                Self::splicing_scope_description(self.rna_reads_ui.scope);
+            ui.small(
+                egui::RichText::new(format!("Scope detail: {scope_title}"))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(scope_details)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            ui.small(
+                egui::RichText::new(scope_strand_note)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            self.render_rna_read_scope_eligibility_sketch(
+                ui,
+                view,
+                self.rna_reads_ui.scope,
+                self.rna_reads_ui.origin_mode,
+            );
+            ui.small(
+                egui::RichText::new(
+                    "Seed-index note: annotated exon bodies and exon-exon junction transitions are indexed for transcripts admitted by the selected scope.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            ui.label(
+                egui::RichText::new(format!(
+                    "Profile: {} | Input: fasta | Origin mode: {} | Target genes: {} | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | use 'Run alignment phase' for retained-hit mapping",
+                    self.rna_reads_ui.profile.as_str(),
+                    self.rna_reads_ui.origin_mode.as_str(),
+                    Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids).len(),
+                    if self.rna_reads_ui.cdna_poly_t_flip_enabled {
+                        "cDNA (T-rich 5' head normalization enabled; minor interruptions tolerated)"
+                    } else {
+                        "direct RNA (no poly-T flip)"
+                    }
+                ))
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.small(
+                    egui::RichText::new(self.rna_read_hash_parameter_summary())
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                ui.separator();
+                ui.small(
+                    egui::RichText::new(self.rna_read_dotplot_parameter_summary())
+                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .small_button("Dense 9-mer similarity preset")
+                    .on_hover_text(
+                        "Set RNA-read hashing to exact dense 9-mers (k=9/stride=1) and RNA-read dotplots to exact dense 9-mers too (word=9/step=1/max mismatches=0).",
+                    )
+                    .clicked()
+                {
+                    self.apply_rna_read_dense_similarity_preset();
+                    persist_ui_state = true;
+                }
+                if ui
+                    .small_button("Reset dotplot defaults")
+                    .on_hover_text(
+                        "Restore the shared dotplot defaults used for new dotplot workspaces.",
+                    )
+                    .clicked()
+                {
+                    self.reset_rna_read_dotplot_parameters_to_defaults();
+                    persist_ui_state = true;
+                }
+                if !self.rna_reads_ui.show_advanced
+                    && ui
+                        .small_button("Show tuning knobs")
+                        .on_hover_text(
+                            "Reveal the editable hashing and RNA-read dotplot parameters below.",
+                        )
+                        .clicked()
+                {
+                    self.rna_reads_ui.show_advanced = true;
+                    persist_ui_state = true;
+                }
+                if ui
+                    .small_button("Open Dotplot workspace")
+                    .on_hover_text(
+                        "Open the full dotplot workspace. RNA-read dotplot exports reuse the same word/step/mismatch/tile settings shown here.",
+                    )
+                    .clicked()
+                {
+                    self.open_dotplot_window();
+                }
+            });
+            if self.rna_reads_ui.show_advanced {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("k-mer")
+                        .on_hover_text("Seed length used for phase-1 hash matching.");
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rna_reads_ui.kmer_len)
+                                .desired_width(46.0),
+                        )
+                        .on_hover_text("Seed hash length in bases.")
+                        .changed();
+                    ui.label("hash stride").on_hover_text(
+                        "Seed-start spacing in bases along each read. 1 hashes every possible start; higher values make the initial hash screen sparser and faster.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rna_reads_ui.seed_stride_bp)
+                                .desired_width(52.0),
+                        )
+                        .on_hover_text(
+                            "Phase-1 hash-density knob. Default 1 = one seed start per base.",
+                        )
+                        .changed();
+                    ui.label("min hit").on_hover_text(
+                        "Minimum raw matched/tested seed fraction required to pass.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_seed_hit_fraction,
+                            )
+                            .desired_width(56.0),
+                        )
+                        .on_hover_text("Raw seed-hit threshold in [0,1], for example 0.30.")
+                        .changed();
+                    ui.label("min weighted").on_hover_text(
+                        "Minimum occurrence-weighted seed-hit fraction required to pass.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_weighted_seed_hit_fraction,
+                            )
+                            .desired_width(56.0),
+                        )
+                        .on_hover_text(
+                            "Weighted threshold in [0,1]; downweights highly repeated seed bits.",
+                        )
+                        .changed();
+                    ui.label("min unique")
+                        .on_hover_text("Minimum number of distinct matched seed hashes.");
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_unique_matched_kmers,
+                            )
+                            .desired_width(56.0),
+                        )
+                        .on_hover_text(
+                            "Prevents low-complexity reads from passing on repetitive seeds alone.",
+                        )
+                        .changed();
+                    ui.label("max median gap").on_hover_text(
+                        "Maximum allowed median distance between matched seed positions in the inferred transcript chain.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.max_median_transcript_gap,
+                            )
+                            .desired_width(64.0),
+                        )
+                        .on_hover_text(
+                            "Lower values require denser, more contiguous seed placement.",
+                        )
+                        .changed();
+                    ui.label("min chain").on_hover_text(
+                        "Minimum coherent-chain support fraction for matched seed observations.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_chain_consistency_fraction,
+                            )
+                            .desired_width(62.0),
+                        )
+                        .on_hover_text(
+                            "Fraction in [0,1]; higher values reject dispersed local matches.",
+                        )
+                        .changed();
+                    ui.label("min transitions").on_hover_text(
+                        "Minimum number of confirmed exon-exon transitions in inferred exon path.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_confirmed_exon_transitions,
+                            )
+                            .desired_width(52.0),
+                        )
+                        .on_hover_text(
+                            "Require at least this many confirmed junction transitions for pass.",
+                        )
+                        .changed();
+                    ui.label("min transition frac").on_hover_text(
+                        "Minimum confirmed/expected transition fraction in inferred exon path.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.min_transition_support_fraction,
+                            )
+                            .desired_width(62.0),
+                        )
+                        .on_hover_text(
+                            "Fraction in [0,1] controlling transition-consistency strictness.",
+                        )
+                        .changed();
+                    if self.rna_reads_ui.cdna_poly_t_flip_enabled {
+                        ui.label("poly-T head min T-bp").on_hover_text(
+                            "Minimum T support used by the tolerant 5' poly-T-head detector for cDNA normalization.",
                         );
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.rna_reads_ui.poly_t_prefix_min_bp,
+                                )
+                                .desired_width(56.0),
+                            )
+                            .on_hover_text(
+                                "Higher values require stronger T-rich heads before reverse-complement normalization.",
+                            )
+                            .changed();
                     }
                 });
-                if !controls_enabled {
-                    ui.small(
-                        egui::RichText::new("Input/advanced controls are locked while a run is active.")
-                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("dotplot word").on_hover_text(
+                        "Word size used when exporting RNA-read sequence dotplots from the read-effects/detail panel.",
                     );
-                }
-                let mut highlight_selection_update: Option<Option<usize>> = None;
-                self.sync_rna_read_evidence_selection_to_mapping_report();
-                let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
-                let align_selection_label =
-                    Self::rna_read_align_selection_ui_label(self.rna_reads_ui.align_phase_selection)
-                        .to_string();
-                let active_alignment_selection_summary = if self
-                    .rna_read_task
-                    .as_ref()
-                    .is_some_and(|task| task.operation_label == "Nanopore alignment phase")
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.dotplot_ui.word_size)
+                                .desired_width(46.0),
+                        )
+                        .on_hover_text(
+                            "Smaller values are more sensitive; larger values are stricter.",
+                        )
+                        .changed();
+                    ui.label("dotplot step").on_hover_text(
+                        "Sampling stride used by RNA-read dotplot export. Smaller values draw denser dotplots.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.dotplot_ui.step_bp)
+                                .desired_width(46.0),
+                        )
+                        .on_hover_text(
+                            "Default 1 = every possible start; larger values make the dotplot sparser and faster.",
+                        )
+                        .changed();
+                    ui.label("dotplot mismatches (0=exact)").on_hover_text(
+                        "Allowed mismatches per exported dotplot word. Keep this at 0 for exact words only; raise it only when you deliberately want a more tolerant, slower search.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.dotplot_ui.max_mismatches)
+                                .desired_width(52.0),
+                        )
+                        .on_hover_text(
+                            "0 = exact words only. Increasing this allows inexact word matches and usually slows the dotplot search.",
+                        )
+                        .changed();
+                    ui.label("dotplot tile").on_hover_text(
+                        "Optional tiling chunk size for exported RNA-read dotplots. Leave empty to avoid tiling.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.dotplot_ui.tile_bp)
+                                .desired_width(56.0),
+                        )
+                        .on_hover_text(
+                            "Usually left empty for RNA-read dotplots unless the compared spans become very large.",
+                        )
+                        .changed();
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "These dotplot knobs are the exact settings used by `Export dotplot...` and `Export dotplots for selected reads...` in the read-effects panel.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("align band").on_hover_text(
+                        "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_band_width_bp,
+                            )
+                            .desired_width(54.0),
+                        )
+                        .on_hover_text(
+                            "Banded aligner width used when aligning retained reads in phase 2.",
+                        )
+                        .changed();
+                    ui.label("min identity").on_hover_text(
+                        "Minimum identity fraction for phase-2 retained-read alignment.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_min_identity_fraction,
+                            )
+                            .desired_width(56.0),
+                        )
+                        .on_hover_text("Alignments below this identity are discarded.")
+                        .changed();
+                    ui.label("max secondary").on_hover_text(
+                        "Maximum number of secondary mappings kept per read in phase 2.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_max_secondary_mappings,
+                            )
+                            .desired_width(42.0),
+                        )
+                        .on_hover_text("Set to 0 to keep only the best mapping.")
+                        .changed();
+                    ui.label("align selection").on_hover_text(
+                        "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `all` setting gives rescued high-score rows a pairwise similarity score in round 2; `seed_passed` is the narrower/faster rerun mode.",
+                    );
+                    egui::ComboBox::from_id_salt(format!(
+                        "rna_read_align_selection_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .selected_text(self.rna_reads_ui.align_phase_selection.as_str())
+                    .show_ui(ui, |ui| {
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::SeedPassed,
+                                "seed_passed",
+                            )
+                            .on_hover_text(
+                                "Align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::All,
+                                "all",
+                            )
+                            .on_hover_text(
+                                "Default and recommended: align all retained reads, including rescued high-score rows that failed the composite seed gate.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::Aligned,
+                                "aligned",
+                            )
+                            .on_hover_text("Re-align only rows that already have a mapping.")
+                            .changed();
+                    });
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "These dotplot knobs are the exact settings used by `Export dotplot...` and `Export dotplots for selected reads...` in the read-effects panel.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("align band").on_hover_text(
+                        "Phase-2 alignment band width used by `Run Alignment Phase` (and optional shell override).",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_band_width_bp,
+                            )
+                            .desired_width(54.0),
+                        )
+                        .on_hover_text(
+                            "Banded aligner width used when aligning retained reads in phase 2.",
+                        )
+                        .changed();
+                    ui.label("min identity").on_hover_text(
+                        "Minimum identity fraction for phase-2 retained-read alignment.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_min_identity_fraction,
+                            )
+                            .desired_width(56.0),
+                        )
+                        .on_hover_text("Alignments below this identity are discarded.")
+                        .changed();
+                    ui.label("max secondary").on_hover_text(
+                        "Maximum number of secondary mappings kept per read in phase 2.",
+                    );
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_reads_ui.align_max_secondary_mappings,
+                            )
+                            .desired_width(42.0),
+                        )
+                        .on_hover_text("Set to 0 to keep only the best mapping.")
+                        .changed();
+                    ui.label("align selection").on_hover_text(
+                        "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `seed_passed` setting is the narrower/faster rerun mode; `all retained` is broader; `already_aligned` is mainly for rerunning phase 2 on rows that already received a mapping in an earlier pass.",
+                    );
+                    egui::ComboBox::from_id_salt(format!(
+                        "rna_read_align_selection_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .selected_text(Self::rna_read_align_selection_ui_label(
+                        self.rna_reads_ui.align_phase_selection,
+                    ))
+                    .show_ui(ui, |ui| {
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::SeedPassed,
+                                "seed_passed",
+                            )
+                            .on_hover_text(
+                                "Default: align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::All,
+                                "all retained",
+                            )
+                            .on_hover_text(
+                                "Align every retained row in the saved report, including rescued high-score rows that failed the composite seed gate.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.align_phase_selection,
+                                RnaReadHitSelection::Aligned,
+                                "already_aligned",
+                            )
+                            .on_hover_text(
+                                "Re-align only rows that already have a stored phase-2 mapping from an earlier alignment pass. This is mostly useful when you want to rerun phase 2 with different band/identity settings without broadening the working set.",
+                            )
+                            .changed();
+                    });
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Phase-2 algorithm: reference-guided pairwise alignment against each admitted transcript template. We try banded semiglobal and local alignment first, then fall back to deterministic dense semiglobal/local alignment if the banded pass yields no hit; the best mapping is ranked by score, then identity and query coverage.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
+                    && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
                 {
-                    self.current_rna_read_mapping_workspace_report_id()
-                        .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
-                        .map(|report| {
+                    ui.small(
+                        egui::RichText::new(
                             Self::format_rna_read_alignment_selection_summary(
                                 report.as_ref(),
                                 self.rna_reads_ui.align_phase_selection,
-                            )
-                        })
-                } else {
-                    None
-                };
-                if let Some(task) = &self.rna_read_task {
-                    let compression = Self::rna_reads_input_compression_label(&task.input_path);
-                    let task_label = task.operation_label.as_str();
-                    ui.horizontal(|ui| {
+                            ),
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            }
+        });
+        if !controls_enabled {
+            ui.small(
+                egui::RichText::new("Input/advanced controls are locked while a run is active.")
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        }
+        let mut highlight_selection_update: Option<Option<usize>> = None;
+        self.sync_rna_read_evidence_selection_to_mapping_report();
+        let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
+        let align_selection_label =
+            Self::rna_read_align_selection_ui_label(self.rna_reads_ui.align_phase_selection)
+                .to_string();
+        let active_alignment_selection_summary = if self
+            .rna_read_task
+            .as_ref()
+            .is_some_and(|task| task.operation_label == "Nanopore alignment phase")
+        {
+            self.current_rna_read_mapping_workspace_report_id()
+                .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+                .map(|report| {
+                    Self::format_rna_read_alignment_selection_summary(
+                        report.as_ref(),
+                        self.rna_reads_ui.align_phase_selection,
+                    )
+                })
+        } else {
+            None
+        };
+        if let Some(task) = &self.rna_read_task {
+            let compression = Self::rna_reads_input_compression_label(&task.input_path);
+            let task_label = task.operation_label.as_str();
+            ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
                         if let Some(progress) = progress_snapshot.as_ref() {
                             let elapsed_s = task.started.elapsed().as_secs_f64().max(0.001);
@@ -15016,37 +15101,33 @@ impl MainAreaDna {
                             ));
                         }
                     });
-                    ui.horizontal(|ui| {
-                        let cancel_requested =
-                            task.cancel_requested.load(AtomicOrdering::Relaxed);
-                        if cancel_requested {
-                            ui.small(
-                                egui::RichText::new("Cancel requested... waiting for worker to stop.")
-                                    .color(egui::Color32::from_rgb(220, 38, 38)),
-                            );
-                        } else if ui
-                            .button(format!("Cancel {}", task.operation_label))
-                            .clicked()
-                        {
-                            task.cancel_requested
-                                .store(true, AtomicOrdering::Relaxed);
-                            self.op_status =
-                                format!("Cancel requested for {}", task.operation_label);
-                        }
-                    });
-                    if let Some(progress) = progress_snapshot.as_ref() {
-                        let percent = if progress.reads_total == 0 {
-                            0.0
-                        } else {
-                            (progress.reads_processed as f32 / progress.reads_total as f32)
-                                .clamp(0.0, 1.0)
-                        };
-                        if progress.reads_total == 0 {
-                            if progress.input_bytes_total > 0 {
-                                let byte_fraction = (progress.input_bytes_processed as f32
-                                    / progress.input_bytes_total as f32)
-                                    .clamp(0.0, 1.0);
-                                ui.add(
+            ui.horizontal(|ui| {
+                let cancel_requested = task.cancel_requested.load(AtomicOrdering::Relaxed);
+                if cancel_requested {
+                    ui.small(
+                        egui::RichText::new("Cancel requested... waiting for worker to stop.")
+                            .color(egui::Color32::from_rgb(220, 38, 38)),
+                    );
+                } else if ui
+                    .button(format!("Cancel {}", task.operation_label))
+                    .clicked()
+                {
+                    task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                    self.op_status = format!("Cancel requested for {}", task.operation_label);
+                }
+            });
+            if let Some(progress) = progress_snapshot.as_ref() {
+                let percent = if progress.reads_total == 0 {
+                    0.0
+                } else {
+                    (progress.reads_processed as f32 / progress.reads_total as f32).clamp(0.0, 1.0)
+                };
+                if progress.reads_total == 0 {
+                    if progress.input_bytes_total > 0 {
+                        let byte_fraction = (progress.input_bytes_processed as f32
+                            / progress.input_bytes_total as f32)
+                            .clamp(0.0, 1.0);
+                        ui.add(
                                     egui::ProgressBar::new(byte_fraction)
                                         .show_percentage()
                                         .text(format!(
@@ -15057,18 +15138,18 @@ impl MainAreaDna {
                                             progress.update_every_reads,
                                         )),
                                 );
-                            } else {
-                                ui.add(
+                    } else {
+                        ui.add(
                                     egui::ProgressBar::new(0.0).animate(true).text(format!(
                                         "Streaming input FASTA ({compression}) records-read={} (update stride: {})",
                                         progress.reads_processed,
                                         progress.update_every_reads,
                                     )),
                                 );
-                            }
-                        } else {
-                            if task.operation_label == "Nanopore alignment phase" {
-                                ui.add(
+                    }
+                } else {
+                    if task.operation_label == "Nanopore alignment phase" {
+                        ui.add(
                                     egui::ProgressBar::new(percent)
                                         .show_percentage()
                                         .text(format!(
@@ -15079,73 +15160,69 @@ impl MainAreaDna {
                                             progress.update_every_reads,
                                         )),
                                 );
-                            } else {
-                                ui.add(
-                                    egui::ProgressBar::new(percent)
-                                        .show_percentage()
-                                        .text(format!(
-                                            "Reads processed: {}/{} (update stride: {})",
-                                            progress.reads_processed,
-                                            progress.reads_total,
-                                            progress.update_every_reads,
-                                        )),
-                                );
-                            }
-                        }
-                        if task.operation_label == "Nanopore alignment phase"
-                            && let Some(summary) = active_alignment_selection_summary.as_ref()
-                        {
-                            ui.small(
-                                egui::RichText::new(summary)
-                                    .color(egui::Color32::from_rgb(100, 116, 139)),
-                            );
-                        }
-                        let matched_ratio = if progress.tested_kmers == 0 {
-                            0.0
-                        } else {
-                            progress.matched_kmers as f64 / progress.tested_kmers as f64
-                        };
-                        ui.small(format!(
-                            "Cumulative seed confirmations: {}/{} ({:.3})",
-                            progress.matched_kmers, progress.tested_kmers, matched_ratio
-                        ));
-                        ui.small(format!(
-                            "THROUGHPUT: reads={} bases={} | mean len={:.1} bp median={} bp p95={} bp",
-                            progress.reads_processed,
-                            progress.read_bases_processed,
-                            progress.mean_read_length_bp,
-                            progress.median_read_length_bp,
-                            progress.p95_read_length_bp
-                        ));
-                        if !progress.origin_class_counts.is_empty() {
-                            let class_parts = progress
-                                .origin_class_counts
-                                .iter()
-                                .map(|(class, count)| format!("{class}={count}"))
-                                .collect::<Vec<_>>();
-                            ui.small(format!(
-                                "Origin classes: {}",
-                                class_parts.join(" | ")
-                            ));
-                        }
-                        let elapsed_ms = task.started.elapsed().as_secs_f64() * 1000.0;
-                        let seed_ms = progress.seed_compute_ms.max(0.0);
-                        let align_ms = progress.align_compute_ms.max(0.0);
-                        let io_ms = progress.io_read_ms.max(0.0);
-                        let parse_ms = progress.fasta_parse_ms.max(0.0);
-                        let normalize_ms = progress.normalize_compute_ms.max(0.0);
-                        let inference_ms = progress.inference_compute_ms.max(0.0);
-                        let emit_ms = progress.progress_emit_ms.max(0.0);
-                        let overhead_ms = (elapsed_ms
-                            - seed_ms
-                            - align_ms
-                            - io_ms
-                            - parse_ms
-                            - normalize_ms
-                            - inference_ms
-                            - emit_ms)
-                            .max(0.0);
-                        ui.small(format!(
+                    } else {
+                        ui.add(
+                            egui::ProgressBar::new(percent)
+                                .show_percentage()
+                                .text(format!(
+                                    "Reads processed: {}/{} (update stride: {})",
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    progress.update_every_reads,
+                                )),
+                        );
+                    }
+                }
+                if task.operation_label == "Nanopore alignment phase"
+                    && let Some(summary) = active_alignment_selection_summary.as_ref()
+                {
+                    ui.small(
+                        egui::RichText::new(summary).color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                let matched_ratio = if progress.tested_kmers == 0 {
+                    0.0
+                } else {
+                    progress.matched_kmers as f64 / progress.tested_kmers as f64
+                };
+                ui.small(format!(
+                    "Cumulative seed confirmations: {}/{} ({:.3})",
+                    progress.matched_kmers, progress.tested_kmers, matched_ratio
+                ));
+                ui.small(format!(
+                    "THROUGHPUT: reads={} bases={} | mean len={:.1} bp median={} bp p95={} bp",
+                    progress.reads_processed,
+                    progress.read_bases_processed,
+                    progress.mean_read_length_bp,
+                    progress.median_read_length_bp,
+                    progress.p95_read_length_bp
+                ));
+                if !progress.origin_class_counts.is_empty() {
+                    let class_parts = progress
+                        .origin_class_counts
+                        .iter()
+                        .map(|(class, count)| format!("{class}={count}"))
+                        .collect::<Vec<_>>();
+                    ui.small(format!("Origin classes: {}", class_parts.join(" | ")));
+                }
+                let elapsed_ms = task.started.elapsed().as_secs_f64() * 1000.0;
+                let seed_ms = progress.seed_compute_ms.max(0.0);
+                let align_ms = progress.align_compute_ms.max(0.0);
+                let io_ms = progress.io_read_ms.max(0.0);
+                let parse_ms = progress.fasta_parse_ms.max(0.0);
+                let normalize_ms = progress.normalize_compute_ms.max(0.0);
+                let inference_ms = progress.inference_compute_ms.max(0.0);
+                let emit_ms = progress.progress_emit_ms.max(0.0);
+                let overhead_ms = (elapsed_ms
+                    - seed_ms
+                    - align_ms
+                    - io_ms
+                    - parse_ms
+                    - normalize_ms
+                    - inference_ms
+                    - emit_ms)
+                    .max(0.0);
+                ui.small(format!(
                             "COMPUTE: seed={:.2}s align={:.2}s io={:.2}s parse={:.2}s norm={:.2}s infer={:.2}s emit={:.2}s other={:.2}s",
                             seed_ms / 1000.0,
                             align_ms / 1000.0,
@@ -15156,27 +15233,24 @@ impl MainAreaDna {
                             emit_ms / 1000.0,
                             overhead_ms / 1000.0
                         ));
-                        ui.small(self.rna_alignment_debug_line(progress));
-                        ui.horizontal(|ui| {
-                            ui.small("Overlay guides:");
-                            ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
-                            ui.checkbox(&mut self.rna_seed_overlay_show_introns, "Introns");
-                            ui.checkbox(
-                                &mut self.rna_seed_overlay_exonic_coords,
-                                "Exonic coords",
-                            );
-                        });
-                        self.render_rna_read_seed_histogram(
-                            ui,
-                            progress,
-                            &self.rna_seed_catalog_preview,
-                            &self.rna_seed_template_audit_preview,
-                            view,
-                            self.rna_seed_overlay_show_exons,
-                            self.rna_seed_overlay_show_introns,
-                            self.rna_seed_overlay_exonic_coords,
-                        );
-                        ui.horizontal(|ui| {
+                ui.small(self.rna_alignment_debug_line(progress));
+                ui.horizontal(|ui| {
+                    ui.small("Overlay guides:");
+                    ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
+                    ui.checkbox(&mut self.rna_seed_overlay_show_introns, "Introns");
+                    ui.checkbox(&mut self.rna_seed_overlay_exonic_coords, "Exonic coords");
+                });
+                self.render_rna_read_seed_histogram(
+                    ui,
+                    progress,
+                    &self.rna_seed_catalog_preview,
+                    &self.rna_seed_template_audit_preview,
+                    view,
+                    self.rna_seed_overlay_show_exons,
+                    self.rna_seed_overlay_show_introns,
+                    self.rna_seed_overlay_exonic_coords,
+                );
+                ui.horizontal(|ui| {
                             ui.small("Score density scale:");
                             persist_ui_state |= ui
                                 .selectable_value(
@@ -15231,20 +15305,19 @@ impl MainAreaDna {
                                 )
                                 .changed();
                         });
-                        self.render_rna_read_score_density_plot(
-                            ui,
-                            progress,
-                            self.rna_read_evidence_ui.score_density_use_log_scale,
-                        );
-                        self.render_rna_read_statistics_tabs(ui, view, progress, true);
-                        highlight_selection_update =
-                            self.render_rna_read_top_hits_preview(ui, view, progress, true);
-                    }
-                } else if let Some(progress) = progress_snapshot.as_ref() {
-                    let reads_denominator = progress.reads_total.max(progress.reads_processed).max(1);
-                    let seed_pass_pct =
-                        (progress.seed_passed as f64 / reads_denominator as f64) * 100.0;
-                    ui.small(format!(
+                self.render_rna_read_score_density_plot(
+                    ui,
+                    progress,
+                    self.rna_read_evidence_ui.score_density_use_log_scale,
+                );
+                self.render_rna_read_statistics_tabs(ui, view, progress, true);
+                highlight_selection_update =
+                    self.render_rna_read_top_hits_preview(ui, view, progress, true);
+            }
+        } else if let Some(progress) = progress_snapshot.as_ref() {
+            let reads_denominator = progress.reads_total.max(progress.reads_processed).max(1);
+            let seed_pass_pct = (progress.seed_passed as f64 / reads_denominator as f64) * 100.0;
+            ui.small(format!(
                         "Last run: reads {}/{} | seed-passed={} ({:.2}%) | aligned={} | matched/tested={}/{}",
                         progress.reads_processed,
                         progress.reads_total,
@@ -15254,14 +15327,14 @@ impl MainAreaDna {
                         progress.matched_kmers,
                         progress.tested_kmers
                     ));
-                    ui.small(format!(
-                        "THROUGHPUT (cumulative): bases={} | mean len={:.1} bp median={} bp p95={} bp",
-                        progress.read_bases_processed,
-                        progress.mean_read_length_bp,
-                        progress.median_read_length_bp,
-                        progress.p95_read_length_bp
-                    ));
-                    ui.small(format!(
+            ui.small(format!(
+                "THROUGHPUT (cumulative): bases={} | mean len={:.1} bp median={} bp p95={} bp",
+                progress.read_bases_processed,
+                progress.mean_read_length_bp,
+                progress.median_read_length_bp,
+                progress.p95_read_length_bp
+            ));
+            ui.small(format!(
                         "COMPUTE (cumulative): seed={:.2}s align={:.2}s io={:.2}s parse={:.2}s norm={:.2}s infer={:.2}s emit={:.2}s",
                         progress.seed_compute_ms.max(0.0) / 1000.0,
                         progress.align_compute_ms.max(0.0) / 1000.0,
@@ -15271,27 +15344,24 @@ impl MainAreaDna {
                         progress.inference_compute_ms.max(0.0) / 1000.0,
                         progress.progress_emit_ms.max(0.0) / 1000.0,
                     ));
-                    ui.small(self.rna_alignment_debug_line(progress));
-                    ui.horizontal(|ui| {
-                        ui.small("Overlay guides:");
-                        ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
-                        ui.checkbox(&mut self.rna_seed_overlay_show_introns, "Introns");
-                        ui.checkbox(
-                            &mut self.rna_seed_overlay_exonic_coords,
-                            "Exonic coords",
-                        );
-                    });
-                    self.render_rna_read_seed_histogram(
-                        ui,
-                        progress,
-                        &self.rna_seed_catalog_preview,
-                        &self.rna_seed_template_audit_preview,
-                        view,
-                        self.rna_seed_overlay_show_exons,
-                        self.rna_seed_overlay_show_introns,
-                        self.rna_seed_overlay_exonic_coords,
-                    );
-                    ui.horizontal(|ui| {
+            ui.small(self.rna_alignment_debug_line(progress));
+            ui.horizontal(|ui| {
+                ui.small("Overlay guides:");
+                ui.checkbox(&mut self.rna_seed_overlay_show_exons, "Exons");
+                ui.checkbox(&mut self.rna_seed_overlay_show_introns, "Introns");
+                ui.checkbox(&mut self.rna_seed_overlay_exonic_coords, "Exonic coords");
+            });
+            self.render_rna_read_seed_histogram(
+                ui,
+                progress,
+                &self.rna_seed_catalog_preview,
+                &self.rna_seed_template_audit_preview,
+                view,
+                self.rna_seed_overlay_show_exons,
+                self.rna_seed_overlay_show_introns,
+                self.rna_seed_overlay_exonic_coords,
+            );
+            ui.horizontal(|ui| {
                         ui.small("Score density scale:");
                         persist_ui_state |= ui
                             .selectable_value(
@@ -15346,30 +15416,29 @@ impl MainAreaDna {
                             )
                             .changed();
                     });
-                    self.render_rna_read_score_density_plot(
-                        ui,
-                        progress,
-                        self.rna_read_evidence_ui.score_density_use_log_scale,
-                    );
-                    self.render_rna_read_statistics_tabs(ui, view, progress, true);
-                    highlight_selection_update =
-                        self.render_rna_read_top_hits_preview(ui, view, progress, true);
-                }
-                if let Some(next_selection) = highlight_selection_update {
-                    self.rna_seed_highlight_record_index = next_selection;
-                }
-                if self.rna_read_task.is_none() {
-                    if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
-                        && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
-                    {
-                        let report = report.as_ref();
-                        let report_seed_pass_pct = if report.read_count_total == 0 {
-                            0.0
-                        } else {
-                            (report.read_count_seed_passed as f64 / report.read_count_total as f64)
-                                * 100.0
-                        };
-                        ui.small(format!(
+            self.render_rna_read_score_density_plot(
+                ui,
+                progress,
+                self.rna_read_evidence_ui.score_density_use_log_scale,
+            );
+            self.render_rna_read_statistics_tabs(ui, view, progress, true);
+            highlight_selection_update =
+                self.render_rna_read_top_hits_preview(ui, view, progress, true);
+        }
+        if let Some(next_selection) = highlight_selection_update {
+            self.rna_seed_highlight_record_index = next_selection;
+        }
+        if self.rna_read_task.is_none() {
+            if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
+                && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
+            {
+                let report = report.as_ref();
+                let report_seed_pass_pct = if report.read_count_total == 0 {
+                    0.0
+                } else {
+                    (report.read_count_seed_passed as f64 / report.read_count_total as f64) * 100.0
+                };
+                ui.small(format!(
                             "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={} | msa-eligible(retained)={}",
                             report.report_id,
                             report.origin_mode.as_str(),
@@ -15382,22 +15451,22 @@ impl MainAreaDna {
                             report.read_count_aligned,
                             report.retained_count_msa_eligible
                         ));
-                        if !report.target_gene_ids.is_empty() {
-                            let preview = report
-                                .target_gene_ids
-                                .iter()
-                                .take(8)
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let suffix = if report.target_gene_ids.len() > 8 {
-                                format!(" (+{} more)", report.target_gene_ids.len() - 8)
-                            } else {
-                                String::new()
-                            };
-                            ui.small(format!("Target genes (report): {}{}", preview, suffix));
-                        }
-                        egui::CollapsingHeader::new("Saved report details")
+                if !report.target_gene_ids.is_empty() {
+                    let preview = report
+                        .target_gene_ids
+                        .iter()
+                        .take(8)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let suffix = if report.target_gene_ids.len() > 8 {
+                        format!(" (+{} more)", report.target_gene_ids.len() - 8)
+                    } else {
+                        String::new()
+                    };
+                    ui.small(format!("Target genes (report): {}{}", preview, suffix));
+                }
+                egui::CollapsingHeader::new("Saved report details")
                             .default_open(false)
                             .show(ui, |ui| {
                                 if !report.warnings.is_empty() {
@@ -15453,12 +15522,12 @@ impl MainAreaDna {
                                         });
                                 });
                             });
-                    }
-                }
-                if ui
+            }
+        }
+        if ui
                     .add_enabled(
                         self.rna_read_task.is_none(),
-                        egui::Button::new("Run Nanopore cDNA interpretation"),
+                        egui::Button::new(Self::rna_read_mapping_run_button_label()),
                     )
                     .on_hover_text(
                         "Start asynchronous phase-1 interpretation with the current settings. Reads are optionally cDNA-normalized, scored against the admitted transcript/junction seed index, and written into the current Report ID for later inspection, alignment, and export.",
@@ -15467,7 +15536,7 @@ impl MainAreaDna {
                 {
                     self.run_splicing_rna_read_interpretation(view);
                 }
-                if ui
+        if ui
                     .add_enabled(
                         self.rna_read_task.is_none(),
                         egui::Button::new("Run alignment phase (retained report)"),
@@ -15479,7 +15548,7 @@ impl MainAreaDna {
                 {
                     self.run_splicing_rna_read_alignment_phase();
                 }
-                ui.horizontal_wrapped(|ui| {
+        ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
                             self.rna_read_task.is_none(),
@@ -15505,7 +15574,7 @@ impl MainAreaDna {
                         self.copy_splicing_rna_read_interpretation_workflow_json(view, ui.ctx());
                     }
                 });
-                if ui
+        if ui
                     .add_enabled(
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Seed Hash Catalog (TSV)..."),
@@ -15517,43 +15586,43 @@ impl MainAreaDna {
                 {
                     self.export_splicing_seed_hash_catalog(view);
                 }
-                if ui
-                    .add_enabled(
-                        self.rna_read_task.is_none(),
-                        egui::Button::new("Export Retained Top Reads (FASTA)..."),
-                    )
-                    .on_hover_text(
-                        "Export retained top-ranked reads with seed diagnostics in FASTA headers.",
-                    )
-                    .clicked()
-                {
-                    self.export_retained_rna_hits_fasta();
-                }
-                if ui
-                    .add_enabled(
-                        self.rna_read_task.is_none(),
-                        egui::Button::new("Export Exon Paths (TSV)..."),
-                    )
-                    .on_hover_text(
-                        "Export per-read inferred exon paths and seed metrics for downstream review.",
-                    )
-                    .clicked()
-                {
-                    self.export_rna_read_exon_paths_tsv();
-                }
-                if ui
-                    .add_enabled(
-                        self.rna_read_task.is_none(),
-                        egui::Button::new("Export Exon Abundance (TSV)..."),
-                    )
-                    .on_hover_text(
-                        "Export exon/transition support abundance aggregated across retained reads.",
-                    )
-                    .clicked()
-                {
-                    self.export_rna_read_exon_abundance_tsv();
-                }
-                if ui
+        if ui
+            .add_enabled(
+                self.rna_read_task.is_none(),
+                egui::Button::new("Export Retained Top Reads (FASTA)..."),
+            )
+            .on_hover_text(
+                "Export retained top-ranked reads with seed diagnostics in FASTA headers.",
+            )
+            .clicked()
+        {
+            self.export_retained_rna_hits_fasta();
+        }
+        if ui
+            .add_enabled(
+                self.rna_read_task.is_none(),
+                egui::Button::new("Export Exon Paths (TSV)..."),
+            )
+            .on_hover_text(
+                "Export per-read inferred exon paths and seed metrics for downstream review.",
+            )
+            .clicked()
+        {
+            self.export_rna_read_exon_paths_tsv();
+        }
+        if ui
+            .add_enabled(
+                self.rna_read_task.is_none(),
+                egui::Button::new("Export Exon Abundance (TSV)..."),
+            )
+            .on_hover_text(
+                "Export exon/transition support abundance aggregated across retained reads.",
+            )
+            .clicked()
+        {
+            self.export_rna_read_exon_abundance_tsv();
+        }
+        if ui
                     .add_enabled(
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Score Density (SVG)..."),
@@ -15565,7 +15634,7 @@ impl MainAreaDna {
                 {
                     self.export_rna_read_score_density_svg();
                 }
-                if ui
+        if ui
                     .button("Export RNA sample sheet (all reports for current sequence)...")
                     .on_hover_text(
                         "Export one TSV row per RNA-read report with summary metrics for cohort annotation.",
@@ -15586,10 +15655,6 @@ impl MainAreaDna {
                         });
                     }
                 }
-            });
-        nanopore_header
-            .header_response
-            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
         if persist_ui_state {
             self.save_engine_ops_state();
         }
@@ -28780,8 +28845,16 @@ impl MainAreaDna {
         "This window explains one splicing group from three angles:\n- annotation-derived transcript and exon structure\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
     }
 
+    fn rna_read_mapping_parameter_section_title() -> &'static str {
+        "RNA-read mapping parameters"
+    }
+
+    fn rna_read_mapping_run_button_label() -> &'static str {
+        "Run RNA-read interpretation"
+    }
+
     fn splicing_nanopore_cdna_panel_help_text() -> &'static str {
-        "Nanopore cDNA mapping here is a two-phase, ROI-first workflow.\n\nPhase 1 (`InterpretRnaReads`): stream FASTA input, optionally reverse-complement cDNA-like reads with a T-rich 5' head, hash full-read k-mers, and score each read against transcript templates admitted by Scope and Origin mode. Indexed evidence includes exon-body seeds and exon-exon junction transition seeds.\n\nThe retained top-hit report is stored under Report ID and can already be inspected or exported before alignment.\n\nPhase 2 (`AlignRnaReadReport`): reopen that saved report, align the selected retained rows with reference-guided pairwise alignment, and refresh mapping, exon-transition, and isoform-support summaries.\n\nThis panel compares reads against locally admitted transcript models for the current locus; it is not a whole-genome mapper."
+        "RNA-read mapping here is a two-phase, ROI-first workflow.\n\nThe current built-in long-read profile is `nanopore_cdna_v1`, but the main controls in this workspace are shared across mapping profiles.\n\nPhase 1 (`InterpretRnaReads`): stream FASTA input, optionally reverse-complement cDNA-like reads with a T-rich 5' head, hash full-read k-mers, and score each read against transcript templates admitted by Scope and Origin mode. Indexed evidence includes exon-body seeds and exon-exon junction transition seeds.\n\nThe retained top-hit report is stored under Report ID and can already be inspected or exported before alignment.\n\nPhase 2 (`AlignRnaReadReport`): reopen that saved report, align the selected retained rows with reference-guided pairwise alignment, and refresh mapping, exon-transition, and isoform-support summaries.\n\nThis panel compares reads against locally admitted transcript models for the current locus; it is not a whole-genome mapper."
     }
 
     fn append_filter_term(filter_text: &mut String, term: &str) {

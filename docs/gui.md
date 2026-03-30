@@ -440,6 +440,8 @@ Feature tree grouping:
     scope/default report)
   - owns phase-1 FASTA input, report id, scope/origin controls, checkpoint/
     resume, phase-2 alignment controls, workflow staging, and report exports
+  - the dedicated workspace now shows its main mapping parameters immediately;
+    only optional tuning stays behind `Show advanced`
   - when a saved `Report ID` already exists, reopening the mapping workspace
     hydrates score density, support tables, and read inspection from that
     saved report even if no live task is running
@@ -463,7 +465,7 @@ Feature tree grouping:
       and which gene set the current run configuration will use
   - `Show in Splicing Expert` returns to the viewer with the current mapping
     report selected
-  - the workspace `Panel guide [?]` exposes the detailed two-phase workflow:
+  - the workspace `Mapping guide [?]` exposes the detailed two-phase workflow:
     - phase 1 `InterpretRnaReads` streams FASTA input, optionally normalizes
       cDNA-like reads with a T-rich 5' head, and scores reads against locally
       admitted transcript/junction seed templates
@@ -598,6 +600,8 @@ Feature tree grouping:
       and states the algorithm in plain language: banded semiglobal/local
       pairwise alignment against transcript templates with deterministic dense
       fallback if the banded pass yields no hit
+  - `Run RNA-read interpretation` executes phase-1 `InterpretRnaReads`
+    with the currently visible mapping parameters
   - `Run alignment phase (retained report)` executes
     `AlignRnaReadReport` asynchronously for the current `Report ID`
     - tooltip explicitly notes that phase 2 reuses the saved report and does
@@ -669,8 +673,9 @@ Feature tree grouping:
     - inferred exon support reconstructed from assigned transcript paths
     - confirmed junction support from seed-supported transitions
     - isoform ranking from thresholded cDNA assignments
-  - the Nanopore cDNA panel now shows the currently active RNA-read parameter
-    summaries even before export, including explicit overlap/order density:
+  - the RNA-read mapping panel now shows the currently active RNA-read
+    parameter summaries even before export, including explicit overlap/order
+    density:
     - hashing summary (`k-mer`, `hash stride`)
     - RNA-read dotplot summary (`word`, `step`, `mismatches`, `tile`)
   - RNA-read tuning is available directly in the same panel:
