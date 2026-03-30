@@ -586,14 +586,18 @@ Feature tree grouping:
       `all` means all retained report rows, not only the rows above raw
       `min hit`; it also shows how many retained rows currently pass the
       composite seed gate
-    - `all` is now the default/recommended round-2 setting because it also
-      aligns rescued retained rows that were kept for high phase-1 score /
-      high-score-bin reasons even if they did not pass the full composite seed
-      gate
-    - `seed_passed` remains available as the narrower/faster rerun mode; if it
+    - `seed_passed` is now the default round-2 setting; if it
       matches no retained rows, phase 2 falls back to retained rows at or above
       the raw `min hit` threshold so the run does not silently produce zero
       similarity scores
+    - `all retained` remains available when you deliberately want the broader
+      rescued-retained working set
+    - `already_aligned` means rerun phase 2 only on rows that already received
+      a stored mapping in an earlier pass
+    - the panel now also shows an ETA during phase-2 retained-row processing
+      and states the algorithm in plain language: banded semiglobal/local
+      pairwise alignment against transcript templates with deterministic dense
+      fallback if the banded pass yields no hit
   - `Run alignment phase (retained report)` executes
     `AlignRnaReadReport` asynchronously for the current `Report ID`
     - tooltip explicitly notes that phase 2 reuses the saved report and does

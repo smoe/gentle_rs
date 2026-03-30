@@ -86,7 +86,7 @@ impl Default for RnaReadInterpretOpsUiState {
             align_band_width_bp: "24".to_string(),
             align_min_identity_fraction: "0.60".to_string(),
             align_max_secondary_mappings: "0".to_string(),
-            align_phase_selection: RnaReadHitSelection::All,
+            align_phase_selection: RnaReadHitSelection::SeedPassed,
             show_advanced: false,
         }
     }
@@ -1386,7 +1386,7 @@ impl MainAreaDna {
                 }
             }
             RnaReadHitSelection::Aligned => format!(
-                "Phase-2 selection='aligned' aligns only retained rows that already have a stored phase-2 mapping ({aligned_retained})."
+                "Phase-2 selection='already_aligned' aligns only retained rows that already have a stored phase-2 mapping from an earlier pass ({aligned_retained})."
             ),
         }
     }

@@ -5486,14 +5486,30 @@ mod tests {
     }
 
     #[test]
-    fn default_rna_align_selection_prefers_all_retained_rows() {
+    fn default_rna_align_selection_prefers_seed_passed_rows() {
         assert_eq!(
             super::default_rna_align_selection(),
-            RnaReadHitSelection::All
+            RnaReadHitSelection::SeedPassed
         );
         assert_eq!(
             super::RnaReadInterpretOpsUiState::default().align_phase_selection,
-            RnaReadHitSelection::All
+            RnaReadHitSelection::SeedPassed
+        );
+    }
+
+    #[test]
+    fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(25, 100, 10.0).as_deref(),
+            Some("ETA: 30s")
+        );
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(0, 100, 10.0),
+            None
+        );
+        assert_eq!(
+            super::MainAreaDna::format_rna_read_progress_eta(100, 100, 10.0),
+            Some("ETA: 0s".to_string())
         );
     }
 }
@@ -5519,7 +5535,7 @@ fn default_rna_checkpoint_every_reads_text() -> String {
 }
 
 fn default_rna_align_selection() -> RnaReadHitSelection {
-    RnaReadHitSelection::All
+    RnaReadHitSelection::SeedPassed
 }
 
 fn default_primer_backend_auto() -> PrimerDesignBackend {
@@ -14690,13 +14706,15 @@ impl MainAreaDna {
                                 )
                                 .changed();
                             ui.label("align selection").on_hover_text(
-                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `all` setting gives rescued high-score rows a pairwise similarity score in round 2; `seed_passed` is the narrower/faster rerun mode.",
+                                "Which retained-hit subset from the saved report is re-aligned in phase 2. The default `seed_passed` setting is the narrower/faster rerun mode; `all retained` is broader; `already_aligned` is mainly for rerunning phase 2 on rows that already received a mapping in an earlier pass.",
                             );
                             egui::ComboBox::from_id_salt(format!(
                                 "rna_read_align_selection_{}_{}",
                                 view.seq_id, view.target_feature_id
                             ))
-                            .selected_text(self.rna_reads_ui.align_phase_selection.as_str())
+                            .selected_text(Self::rna_read_align_selection_ui_label(
+                                self.rna_reads_ui.align_phase_selection,
+                            ))
                             .show_ui(ui, |ui| {
                                 persist_ui_state |= ui
                                     .selectable_value(
@@ -14705,27 +14723,27 @@ impl MainAreaDna {
                                         "seed_passed",
                                     )
                                     .on_hover_text(
-                                        "Align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
+                                        "Default: align only retained reads that currently pass the composite seed gate. If none do, phase 2 falls back to retained rows at or above raw min_hit.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
                                     .selectable_value(
                                         &mut self.rna_reads_ui.align_phase_selection,
                                         RnaReadHitSelection::All,
-                                        "all",
+                                        "all retained",
                                     )
                                     .on_hover_text(
-                                        "Default and recommended: align all retained reads, including rescued high-score rows that failed the composite seed gate.",
+                                        "Align every retained row in the saved report, including rescued high-score rows that failed the composite seed gate.",
                                     )
                                     .changed();
                                 persist_ui_state |= ui
                                     .selectable_value(
                                         &mut self.rna_reads_ui.align_phase_selection,
                                         RnaReadHitSelection::Aligned,
-                                        "aligned",
+                                        "already_aligned",
                                     )
                                     .on_hover_text(
-                                        "Re-align only rows that already have a mapping.",
+                                        "Re-align only rows that already have a stored phase-2 mapping from an earlier alignment pass. This is mostly useful when you want to rerun phase 2 with different band/identity settings without broadening the working set.",
                                     )
                                     .changed();
                             });
@@ -14743,6 +14761,12 @@ impl MainAreaDna {
                                 .color(egui::Color32::from_rgb(100, 116, 139)),
                             );
                         }
+                        ui.small(
+                            egui::RichText::new(
+                                "Phase-2 algorithm: reference-guided pairwise alignment against each admitted transcript template. We try banded semiglobal and local alignment first, then fall back to deterministic dense semiglobal/local alignment if the banded pass yields no hit; the best mapping is ranked by score, then identity and query coverage.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
                     }
                 });
                 if !controls_enabled {
@@ -14754,7 +14778,9 @@ impl MainAreaDna {
                 let mut highlight_selection_update: Option<Option<usize>> = None;
                 self.sync_rna_read_evidence_selection_to_mapping_report();
                 let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
-                let align_selection_label = self.rna_reads_ui.align_phase_selection.as_str().to_string();
+                let align_selection_label =
+                    Self::rna_read_align_selection_ui_label(self.rna_reads_ui.align_phase_selection)
+                        .to_string();
                 let active_alignment_selection_summary = if self
                     .rna_read_task
                     .as_ref()
@@ -14792,6 +14818,13 @@ impl MainAreaDna {
                                 (progress.reads_processed as f64 / progress.reads_total as f64)
                                     * 100.0
                             };
+                            let row_eta_suffix =
+                                Self::format_rna_read_progress_eta(
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    elapsed_s,
+                                )
+                                .unwrap_or_else(|| "ETA: n/a".to_string());
                             if progress.reads_total == 0 {
                                 let byte_progress = if progress.input_bytes_total == 0 {
                                     "unknown".to_string()
@@ -14837,7 +14870,7 @@ impl MainAreaDna {
                                     String::new()
                                 };
                                 ui.label(format!(
-                                    "{task_label} running: reads {}/{} ({:.1}%){}{}, input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
+                                    "{task_label} running: reads {}/{} ({:.1}%){}{}, input={compression}, {}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
                                     progress.reads_processed,
                                     progress.reads_total,
                                     percent,
@@ -14847,6 +14880,7 @@ impl MainAreaDna {
                                         ""
                                     },
                                     selection_suffix,
+                                    row_eta_suffix,
                                     reads_per_sec,
                                     Self::format_bp_rate_compact(bp_per_sec),
                                     progress.mean_read_length_bp,
@@ -16013,6 +16047,34 @@ impl MainAreaDna {
             format!("{minutes}m {secs:02}s")
         } else {
             format!("{secs}s")
+        }
+    }
+
+    fn format_rna_read_progress_eta(
+        reads_processed: usize,
+        reads_total: usize,
+        elapsed_s: f64,
+    ) -> Option<String> {
+        if reads_total == 0 || reads_processed == 0 {
+            return None;
+        }
+        let elapsed_s = elapsed_s.max(0.001);
+        let fraction_done = (reads_processed as f64 / reads_total as f64).clamp(0.0, 1.0);
+        if fraction_done <= 0.0 {
+            return None;
+        }
+        let estimated_total_s = elapsed_s / fraction_done;
+        Some(format!(
+            "ETA: {}",
+            Self::format_duration_compact((estimated_total_s - elapsed_s).max(0.0))
+        ))
+    }
+
+    fn rna_read_align_selection_ui_label(selection: RnaReadHitSelection) -> &'static str {
+        match selection {
+            RnaReadHitSelection::SeedPassed => "seed_passed",
+            RnaReadHitSelection::All => "all retained",
+            RnaReadHitSelection::Aligned => "already_aligned",
         }
     }
 

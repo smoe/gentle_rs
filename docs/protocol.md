@@ -2394,10 +2394,14 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       retained subset (`all|seed_passed|aligned`)
     - phase-2 progress events now emit once per selected retained row
       (`update_every_reads=1`) so adapters can show visible row-by-row advance
+    - GUI/shared-shell default selection is `seed_passed`
     - optional `selected_record_indices[]` (0-based stored `record_index`)
       overrides the selection preset and aligns only the explicit subset
-    - default adapter behavior now prefers `selection=all` so rescued retained
-      rows receive round-2 similarity/coverage scores
+    - `selection=all` remains available when you deliberately want the broader
+      rescued-retained working set to receive round-2 similarity/coverage
+      scores
+    - `selection=aligned` means rerun phase 2 only on retained rows that
+      already have a stored mapping from an earlier phase-2 pass
     - if `selection=seed_passed` matches no retained hits and no explicit
       record indices were supplied, the engine falls back to retained rows at
       or above raw `min hit`, and if that is still empty, to the highest
