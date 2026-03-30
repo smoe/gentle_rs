@@ -14436,6 +14436,9 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 weighted_seed_hit_fraction: 0.82,
                 weighted_matched_kmers: 7.4,
                 seed_chain_transcript_id: "tx_hi_id".to_string(),
+                seed_chain_support_fraction: 1.0,
+                seed_median_transcript_gap: 0.0,
+                seed_transcript_gap_count: 1,
                 exon_path_transcript_id: "tx_hi_id".to_string(),
                 exon_path: "1:2".to_string(),
                 exon_transitions_confirmed: 1,
@@ -14615,6 +14618,12 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
             == target_score_bin_index
     }));
 
+    let replay_target_score_bin_index = inspection
+        .rows
+        .iter()
+        .find(|row| row.header_id == "aligned_hi_id")
+        .map(|row| ((row.seed_hit_fraction.clamp(0.0, 1.0) * 40.0).floor() as usize).min(39))
+        .expect("replay-filtered row");
     let replay_filter = RnaReadSeedFilterConfig {
         min_seed_hit_fraction: 0.75,
         min_weighted_seed_hit_fraction: 0.70,
@@ -14637,14 +14646,14 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 selected_record_indices: vec![],
                 score_density_variant: RnaReadScoreDensityVariant::RetainedReplayCurrentControls,
                 score_density_seed_filter_override: Some(replay_filter),
-                score_bin_index: Some(target_score_bin_index),
+                score_bin_index: Some(replay_target_score_bin_index),
                 score_bin_count: 40,
             }),
         )
         .expect("inspect replay-filtered alignment rows");
     assert_eq!(replay_filtered.subset_match_count, 1);
     assert_eq!(replay_filtered.rows.len(), 1);
-    assert_eq!(replay_filtered.rows[0].header_id, "aligned_hi_cov");
+    assert_eq!(replay_filtered.rows[0].header_id, "aligned_hi_id");
 
     let td = tempdir().expect("tempdir");
     let tsv_path = td.path().join("alignment_rows.tsv");
@@ -15712,7 +15721,7 @@ fn test_materialize_rna_read_hit_sequences_creates_selected_sequences() {
 }
 
 #[test]
-fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
+fn test_interpret_rna_reads_retention_rescue_can_exceed_baseline_top_5000_in_memory() {
     let mut state = ProjectState::default();
     state
         .sequences
@@ -15784,7 +15793,8 @@ fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
         .get_rna_read_report("rna_reads_top5000")
         .expect("report");
     assert_eq!(report.read_count_total, 5105);
-    assert_eq!(report.hits.len(), 5000);
+    assert!(report.hits.len() > 5000);
+    assert_eq!(report.hits.len(), report.read_count_total);
     assert!(report.read_count_seed_passed <= report.read_count_total);
     assert_eq!(report.read_count_aligned, 0);
     assert!(
@@ -15793,15 +15803,12 @@ fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
             .iter()
             .any(|warning| { warning.contains("phase-1 profile runs seed filtering only") })
     );
-    assert!(
-        report
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("retained_top_hits=5000"))
-    );
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains("retention rescue kept") && warning.contains("baseline top-5000")
+    }));
     assert_eq!(
         report.hits.iter().map(|hit| hit.record_index).max(),
-        Some(4999)
+        Some(report.read_count_total - 1)
     );
 }
 

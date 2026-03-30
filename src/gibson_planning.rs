@@ -2890,11 +2890,16 @@ impl GibsonPrimingFailure {
                 best_candidate_tm_celsius,
                 best_candidate_length_bp,
                 longest_evaluated_length_bp,
-                ..
+                available_terminus_length_bp,
             } => {
-                let availability_note = if longest_evaluated_length_bp
-                    < targets.priming_segment_max_length_bp
+                let availability_note = if available_terminus_length_bp
+                    <= targets.priming_segment_max_length_bp.saturating_add(5)
                 {
+                    format!(
+                        "Only {} bp of gene-specific sequence are available at that insert terminus overall, so there is very little sequence beyond the current {length_window} review window.",
+                        available_terminus_length_bp
+                    )
+                } else if longest_evaluated_length_bp < targets.priming_segment_max_length_bp {
                     format!(
                         "Only {} bp of gene-specific sequence are available at that insert terminus within the requested {length_window}.",
                         longest_evaluated_length_bp
@@ -5554,19 +5559,32 @@ mod tests {
         let joined = preview.errors.join("\n");
         assert!(joined.contains("best available 3' gene-specific priming segment"));
         assert!(joined.contains("Only 23 bp of gene-specific sequence are available"));
-        assert!(joined.contains("41.6 °C"));
+        assert!(joined.contains("at 20 bp"));
+        assert!(joined.contains("below the requested minimum 80.0 °C"));
         let notes = preview.notes.join("\n");
         assert!(notes.contains("Overlap review: resolved 2/2 junction overlaps"));
         assert!(notes.contains(
             "The current blockers are in the 3' gene-specific priming window, not in the 5' Gibson overlaps."
         ));
         assert!(notes.contains("Design hint: the overlap side already resolves cleanly."));
-        assert_eq!(preview.suggested_design_adjustments.len(), 1);
-        assert_eq!(
-            preview.suggested_design_adjustments[0].target,
-            GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius
+        assert_eq!(preview.suggested_design_adjustments.len(), 2);
+        let adjustment_targets = preview
+            .suggested_design_adjustments
+            .iter()
+            .map(|row| row.target)
+            .collect::<Vec<_>>();
+        assert!(
+            adjustment_targets.contains(&GibsonDesignAdjustmentTarget::PrimingSegmentMaxLengthBp)
         );
-        assert!(preview.suggested_design_adjustments[0].suggested_value < 58.0);
+        assert!(
+            adjustment_targets.contains(&GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius)
+        );
+        let tm_adjustment = preview
+            .suggested_design_adjustments
+            .iter()
+            .find(|row| row.target == GibsonDesignAdjustmentTarget::PrimingSegmentTmMinCelsius)
+            .expect("tm adjustment");
+        assert!(tm_adjustment.suggested_value < 58.0);
     }
 
     #[test]
