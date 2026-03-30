@@ -107,6 +107,10 @@ pub struct GenomeCatalogEntry {
     pub ensembl_template: Option<EnsemblCatalogTemplate>,
 }
 
+/// Ensembl-specific template metadata used to derive refreshable remote URLs.
+///
+/// Entries with this metadata can participate in the preview/apply Ensembl
+/// catalog update flow without inventing per-entry URL rules at runtime.
 #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct EnsemblCatalogTemplate {
     pub provider: String,
@@ -148,6 +152,7 @@ struct GenomeInstallManifest {
     installed_at_unix_ms: u128,
 }
 
+/// Summary of one prepare/reuse/reindex genome-install run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareGenomeReport {
     pub genome_id: String,
@@ -178,6 +183,7 @@ pub struct PrepareGenomeReport {
     pub annotation_parse_report: Option<AnnotationParseReport>,
 }
 
+/// One planned or applied Ensembl-catalog rewrite.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnsemblCatalogUpdatePlanItem {
     pub template_key: String,
@@ -193,6 +199,7 @@ pub struct EnsemblCatalogUpdatePlanItem {
     pub new_annotations_remote: String,
 }
 
+/// Non-mutating preview of Ensembl-catalog updates.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnsemblCatalogUpdatePreview {
     pub catalog_path: String,
@@ -209,6 +216,7 @@ pub struct EnsemblCatalogUpdatePreview {
     pub warnings: Vec<String>,
 }
 
+/// Result of writing an updated Ensembl-backed catalog JSON file.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnsemblCatalogUpdateReport {
     pub catalog_path: String,
@@ -226,6 +234,7 @@ pub struct EnsemblCatalogUpdateReport {
     pub warnings: Vec<String>,
 }
 
+/// Result of deleting one prepared install directory from a cache root.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedGenomeRemovalReport {
     pub genome_id: String,
@@ -292,10 +301,12 @@ pub struct PreparedCacheInspectionEntry {
 }
 
 impl PreparedCacheInspectionEntry {
+    /// Return whether this entry contains at least one artifact in `group`.
     pub fn has_group(&self, group: PreparedCacheArtifactGroup) -> bool {
         self.artifact_stats.iter().any(|stat| stat.group == group)
     }
 
+    /// Return the total bytes attributed to one artifact group.
     pub fn group_bytes(&self, group: PreparedCacheArtifactGroup) -> u64 {
         self.artifact_stats
             .iter()
@@ -304,6 +315,7 @@ impl PreparedCacheInspectionEntry {
             .unwrap_or(0)
     }
 
+    /// Return the total file count attributed to one artifact group.
     pub fn group_file_count(&self, group: PreparedCacheArtifactGroup) -> usize {
         self.artifact_stats
             .iter()
@@ -403,6 +415,7 @@ pub struct PreparedCacheCleanupReport {
     pub removed_file_count: usize,
 }
 
+/// Result of removing one entry from a JSON-backed genome catalog.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeCatalogEntryRemovalReport {
     pub genome_id: String,
@@ -411,6 +424,7 @@ pub struct GenomeCatalogEntryRemovalReport {
     pub removed: bool,
 }
 
+/// Result of probing one external executable needed for BLAST workflows.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ExternalBinaryPreflightProbe {
@@ -426,6 +440,7 @@ pub struct ExternalBinaryPreflightProbe {
     pub error: Option<String>,
 }
 
+/// Combined preflight snapshot for `blastn` and `makeblastdb`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct BlastExternalBinaryPreflightReport {
@@ -434,6 +449,10 @@ pub struct BlastExternalBinaryPreflightReport {
     pub makeblastdb: ExternalBinaryPreflightProbe,
 }
 
+/// Probe the currently configured BLAST-related executables.
+///
+/// This is a non-mutating setup diagnostic intended for GUI/CLI preflight
+/// checks before a real BLAST workflow is attempted.
 pub fn blast_external_binary_preflight_report() -> BlastExternalBinaryPreflightReport {
     blast_external_binary_preflight_report_with_executables(
         resolve_tool_executable(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN),
@@ -457,6 +476,12 @@ fn blast_external_binary_preflight_report_with_executables(
     }
 }
 
+/// Inspection view over one prepared genome install on disk.
+/// Inspection view over one prepared genome install on disk.
+///
+/// This complements `PrepareGenomeReport` by reporting current manifest/file
+/// readiness and cached contig summary information for an already materialized
+/// install.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedGenomeInspection {
     pub genome_id: String,
@@ -590,6 +615,7 @@ pub struct PreparedGenomeCompatibilityInspection {
     pub compatible_prepared_options: Vec<String>,
 }
 
+/// One parsed BLAST tabular hit against a prepared genome database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlastHit {
     pub subject_id: String,
@@ -606,6 +632,7 @@ pub struct BlastHit {
     pub query_coverage_percent: Option<f64>,
 }
 
+/// Complete BLAST run report, including invocation context and warnings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeBlastReport {
     pub genome_id: String,
@@ -626,6 +653,7 @@ pub struct GenomeBlastReport {
     pub effective_options_json: Option<serde_json::Value>,
 }
 
+/// Cooperative progress event emitted during prepare/reindex/reinstall runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareGenomeProgress {
     pub genome_id: String,
@@ -640,6 +668,7 @@ pub struct PrepareGenomeProgress {
     pub step_label: Option<String>,
 }
 
+/// One representative malformed/skipped annotation line.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AnnotationParseIssue {
     pub line: usize,
@@ -647,6 +676,7 @@ pub struct AnnotationParseIssue {
     pub context: String,
 }
 
+/// Bounded summary of annotation parsing quality for one source file.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AnnotationParseReport {
     pub path: String,
@@ -660,6 +690,7 @@ pub struct AnnotationParseReport {
     pub truncated_issue_count: usize,
 }
 
+/// Normalized gene-like record used by prepared annotation indexes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeGeneRecord {
     pub chromosome: String,
@@ -671,6 +702,7 @@ pub struct GenomeGeneRecord {
     pub biotype: Option<String>,
 }
 
+/// Normalized transcript/exon record derived from prepared annotations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeTranscriptRecord {
     pub chromosome: String,
@@ -704,6 +736,10 @@ pub struct GenomeChromosomeRecord {
     pub length_bp: usize,
 }
 
+/// Resolved sequence/annotation source plan for one catalog entry.
+///
+/// This is useful for preflight UIs and shell commands that want to explain
+/// where files will come from before preparation starts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeSourcePlan {
     pub sequence_source: String,
@@ -747,6 +783,10 @@ struct BlastIndexOutcome {
     warnings: Vec<String>,
 }
 
+/// In-memory view of one validated genome catalog.
+///
+/// The catalog owns entry lookup, source planning, preparation/indexing, and
+/// prepared-install inspection helpers so adapters can stay declarative.
 #[derive(Debug, Clone, Default)]
 pub struct GenomeCatalog {
     entries: HashMap<String, GenomeCatalogEntry>,
@@ -776,28 +816,37 @@ impl GenomeCatalog {
         })
     }
 
+    /// List catalog genome ids in deterministic sorted order.
     pub fn list_genomes(&self) -> Vec<String> {
         let mut names: Vec<String> = self.entries.keys().cloned().collect();
         names.sort_unstable();
         names
     }
 
+    /// Path to the backing JSON catalog file, when this catalog was loaded
+    /// from one.
     pub fn catalog_path(&self) -> Option<&Path> {
         self.catalog_path.as_deref()
     }
 
+    /// Return whether the backing catalog file appears writable in place.
     pub fn catalog_file_is_writable(&self) -> bool {
         self.catalog_path()
             .map(catalog_path_is_writable)
             .unwrap_or(false)
     }
 
+    /// Return whether any entry can participate in the Ensembl refresh flow.
     pub fn has_ensembl_updatable_entries(&self) -> bool {
         self.entries
             .values()
             .any(|entry| ensembl_template_metadata(entry).is_some())
     }
 
+    /// Remove one prepared install directory from the resolved cache root.
+    ///
+    /// This mutates only on-disk prepared artifacts; it does not edit the
+    /// genome catalog entry itself.
     pub fn remove_prepared_genome_install(
         &self,
         genome_id: &str,
@@ -829,10 +878,15 @@ impl GenomeCatalog {
         })
     }
 
+    /// Preview possible Ensembl-catalog refreshes without writing anything.
     pub fn preview_ensembl_catalog_updates(&self) -> Result<EnsemblCatalogUpdatePreview, String> {
         self.preview_ensembl_catalog_updates_with_fetcher(&fetch_http_text_with_retry)
     }
 
+    /// Apply Ensembl catalog refreshes and write an updated JSON catalog.
+    ///
+    /// When `output_catalog_path` is `None`, the original backing file is
+    /// updated in place.
     pub fn apply_ensembl_catalog_updates(
         &self,
         output_catalog_path: Option<&str>,
@@ -843,6 +897,7 @@ impl GenomeCatalog {
         )
     }
 
+    /// Remove one genome entry from the backing JSON catalog.
     pub fn remove_catalog_entry(
         &self,
         genome_id: &str,
@@ -1146,6 +1201,9 @@ impl GenomeCatalog {
     }
 
     /// Return whether a prepared install appears complete for this genome id.
+    ///
+    /// This is a lightweight readiness check: the manifest must exist, required
+    /// files must validate, and the gene index must be present.
     pub fn is_prepared(
         &self,
         genome_id: &str,
@@ -1291,6 +1349,9 @@ impl GenomeCatalog {
     }
 
     /// Prepare sequence+annotation+indexes once using catalog/default cache.
+    ///
+    /// Existing prepared artifacts may be reused when the manifest and sources
+    /// are still compatible.
     pub fn prepare_genome_once(&self, genome_id: &str) -> Result<PrepareGenomeReport, String> {
         self.prepare_genome_once_with_cache(genome_id, None)
     }
@@ -1328,6 +1389,9 @@ impl GenomeCatalog {
     }
 
     /// Resolve the conceptual plan for a prepare-or-reuse run.
+    ///
+    /// This is intended for preflight UIs that want to show which major steps
+    /// will happen before execution begins.
     pub fn prepare_genome_plan(
         &self,
         genome_id: &str,
@@ -2441,6 +2505,9 @@ FASTA index='{}'.{}{}",
     }
 
     /// List prepared chromosome/contig lengths, sorted by descending size.
+    ///
+    /// Values are read from the prepared FASTA index rather than by rescanning
+    /// the sequence file linearly.
     pub fn list_chromosome_lengths(
         &self,
         genome_id: &str,
@@ -2588,6 +2655,9 @@ FASTA index='{}'.{}{}",
     }
 
     /// Run BLASTN of query sequence against the prepared genome index.
+    ///
+    /// The returned report preserves command/stderr/warning context so callers
+    /// can debug missing binaries, stale indexes, or unexpected tool output.
     pub fn blast_sequence(
         &self,
         genome_id: &str,
@@ -2598,6 +2668,7 @@ FASTA index='{}'.{}{}",
         self.blast_sequence_with_cache(genome_id, query_sequence, max_hits, task, None)
     }
 
+    /// Run BLASTN with an explicit cache-root override.
     pub fn blast_sequence_with_cache(
         &self,
         genome_id: &str,
@@ -2617,6 +2688,8 @@ FASTA index='{}'.{}{}",
         )
     }
 
+    /// Run BLASTN with an explicit cache-root override and cooperative
+    /// cancellation callback.
     pub fn blast_sequence_with_cache_and_cancel(
         &self,
         genome_id: &str,
@@ -2861,6 +2934,9 @@ FASTA index='{}'.{}{}",
     }
 
     /// Inspect prepared compatibility options for a requested genome id.
+    ///
+    /// This reports whether the exact genome is prepared and, if not, which
+    /// assembly-family-compatible prepared installs could be used instead.
     pub fn inspect_prepared_genome_compatibility(
         &self,
         genome_id: &str,
@@ -2913,6 +2989,9 @@ FASTA index='{}'.{}{}",
     }
 
     /// Resolve prepared genome id with explicit compatibility policy.
+    ///
+    /// Call this when the user/tool wants deterministic control over whether
+    /// assembly-family fallback is allowed, automatic, or must stay explicit.
     pub fn resolve_prepared_genome_id_with_policy(
         &self,
         genome_id: &str,
@@ -3272,6 +3351,11 @@ impl PreparedCacheDiscoveredEntry {
     }
 }
 
+/// Inspect one or more prepared-cache roots without deleting anything.
+///
+/// The result groups entries into manifest-backed prepared installs vs
+/// orphaned remnants and summarizes artifact buckets for review UIs and CLI
+/// cleanup previews.
 pub fn inspect_prepared_cache_roots(
     cache_roots: &[String],
 ) -> Result<PreparedCacheInspectionReport, String> {
@@ -3311,6 +3395,11 @@ pub fn inspect_prepared_cache_roots(
     })
 }
 
+/// Delete prepared-cache artifacts according to a deterministic cleanup mode.
+///
+/// Partial cleanup modes only operate on manifest-backed prepared installs;
+/// full-delete modes may additionally remove orphaned remnants when the
+/// request opts into that behavior.
 pub fn clear_prepared_cache_roots(
     request: &PreparedCacheCleanupRequest,
 ) -> Result<PreparedCacheCleanupReport, String> {
@@ -3833,6 +3922,8 @@ pub(crate) fn paths_refer_to_same_location(left: &Path, right: &Path) -> bool {
     }
 }
 
+/// Return whether an error string originated from cooperative prepare
+/// cancellation.
 pub fn is_prepare_cancelled_error(message: &str) -> bool {
     message.contains(PREPARE_CANCELLED_BY_CALLER)
 }
@@ -3841,6 +3932,8 @@ fn prepare_cancelled_error(context: &str) -> String {
     format!("{PREPARE_CANCELLED_BY_CALLER}: {context}")
 }
 
+/// Return whether an error string originated from cooperative BLAST
+/// cancellation.
 pub fn is_blast_cancelled_error(message: &str) -> bool {
     message.contains(BLAST_CANCELLED_BY_CALLER)
 }
@@ -3849,6 +3942,7 @@ fn blast_cancelled_error(context: &str) -> String {
     format!("{BLAST_CANCELLED_BY_CALLER}: {context}")
 }
 
+/// Map legacy/free-form progress phase strings onto stable step identifiers.
 pub fn prepare_genome_step_id_for_phase(phase: &str) -> Option<PrepareGenomeStepId> {
     match phase {
         "download_sequence" | "reuse_sequence" => Some(PrepareGenomeStepId::Sequence),

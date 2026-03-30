@@ -27,6 +27,12 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/ops/operation_handlers.rs` (core operation-dispatch handler extracted from `apply_internal`)
   - `src/engine/analysis/rna_reads.rs` (RNA-read report parsing, scoring, and export helper routines)
   - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
+- The source-documentation pilot pass has now deepened `src/genomes.rs`
+  beyond a module summary:
+  - key public reports/records and catalog methods now describe their role,
+    side effects, and failure/cancellation semantics
+  - the remaining next-step targets stay `src/engine.rs` and
+    `src/engine_shell.rs`
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
 - GUI module decomposition is now underway:
