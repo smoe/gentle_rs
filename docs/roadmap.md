@@ -1614,6 +1614,11 @@ Status:
     alignment-aware retention rank (alignment identity/coverage/score first,
     seed metrics as tie-breakers) so downstream candidate ranking reflects
     mapping quality.
+  - Phase-2 retained-read alignment now explicitly evaluates both read
+    orientations against each transcript template and persists whether the
+    winning mapping used the stored query or its reverse complement, so
+    complementary-strand reads no longer look like "wrong-way" alignments in
+    downstream inspection.
   - Added non-mutating alignment inspection route:
     `rna-reads inspect-alignments REPORT_ID [--selection ...] [--limit N]
     [--effect-filter ...] [--sort ...] [--search TEXT]
@@ -1628,6 +1633,10 @@ Status:
     The GUI `Read effects` table now fetches filtered rows through the same
     engine-owned subset contract used by `rna-reads inspect-alignments`, so
     GUI and shell inspection semantics stay aligned.
+    The selected-row detail pane now reconstructs the exact `rust-bio`
+    pairwise alignment for the saved phase-2 hit and shows a consistent
+    `|`/`.`/gap legend plus explicit query orientation (`as stored` vs
+    reverse-complemented).
     Saved-report report lists, synthesized progress payloads, and aligned-row
     inspection subsets are now memoized in the GUI window controller so the
     foreground RNA-read mapping/splicing windows do not repeatedly deserialize

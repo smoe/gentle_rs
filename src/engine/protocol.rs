@@ -290,6 +290,8 @@ pub struct RnaReadMappingHit {
     pub strand: String,
     pub query_start_0based: usize,
     pub query_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub query_reverse_complemented: bool,
     pub target_start_1based: usize,
     pub target_end_1based: usize,
     #[serde(default)]
@@ -301,6 +303,50 @@ pub struct RnaReadMappingHit {
     pub score: isize,
     pub identity_fraction: f64,
     pub query_coverage_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplay {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub alignment_mode: RnaReadAlignmentMode,
+    #[serde(default)]
+    pub query_reverse_complemented: bool,
+    #[serde(default)]
+    pub query_start_0based: usize,
+    #[serde(default)]
+    pub query_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub target_start_1based: usize,
+    #[serde(default)]
+    pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_start_offset_0based: usize,
+    #[serde(default)]
+    pub target_end_offset_0based_exclusive: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub matches: usize,
+    #[serde(default)]
+    pub mismatches: usize,
+    #[serde(default)]
+    pub insertions: usize,
+    #[serde(default)]
+    pub deletions: usize,
+    #[serde(default)]
+    pub aligned_columns: usize,
+    #[serde(default)]
+    pub aligned_query: String,
+    #[serde(default)]
+    pub aligned_midline: String,
+    #[serde(default)]
+    pub aligned_target: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

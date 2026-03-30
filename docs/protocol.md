@@ -2412,6 +2412,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `align_band_bp` as band width (`w`) and transcript-seed `kmer_len` as
       seed length (`k`), plus deterministic dense fallback when the banded
       solver yields no mapping
+    - phase-2 pairwise alignment evaluates both query orientations for every
+      retained row (stored query plus reverse complement) and keeps the
+      best-scoring deterministic candidate, preferring semiglobal over local
+      and non-reversed over reversed only as later tie-breakers
     - selected retained rows are pairwise aligned regardless of whether their
       recomputed composite seed-pass flag remains true; the seed-pass result is
       still recomputed and stored independently for later inspection
@@ -2511,6 +2515,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `origin_candidates[]` (selected/plus/minus/seed-chain candidate hints)
     - `best_mapping.alignment_mode` (`semiglobal` preferred, with deterministic
       local fallback when quality is better)
+    - `best_mapping.query_reverse_complemented` (whether phase-2 had to
+      reverse-complement the stored read to fit the chosen transcript-template
+      mapping)
   - alignment inspection payload schema:
     - `gentle.rna_read_alignment_inspection.v1`
     - produced by non-mutating shared-shell inspection command

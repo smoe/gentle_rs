@@ -747,6 +747,13 @@ Feature tree grouping:
       - selecting a row opens a detail pane with:
         - phase-1 interpretation fields
         - phase-2 mapping metrics
+        - explicit phase-2 query orientation (`as stored` vs
+          `reverse-complemented to fit the transcript template`)
+        - exact `rust-bio` pairwise alignment strings for the selected
+          read/transcript-template pair:
+          - `|` = exact match
+          - `.` = mismatch
+          - blank column = insertion/deletion
         - mapped exon/junction contribution spans
         - on-demand pairwise alignment detail against the exact transcript
           template used by phase 2

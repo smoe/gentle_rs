@@ -28,8 +28,8 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
@@ -16719,17 +16719,39 @@ impl MainAreaDna {
     }
 
     fn rna_read_dotplot_mode_from_hit(hit: &RnaReadInterpretationHit) -> DotplotMode {
-        let strand = hit
+        let reverse_complement_against_genome = hit
             .best_mapping
             .as_ref()
-            .map(|mapping| mapping.strand.as_str())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or(hit.strand_diagnostics.selected_strand.as_str());
-        if strand.trim() == "-" {
+            .map(|mapping| {
+                let transcript_reverse = mapping.strand.trim() == "-";
+                transcript_reverse ^ mapping.query_reverse_complemented
+            })
+            .unwrap_or_else(|| hit.strand_diagnostics.selected_strand.trim() == "-");
+        if reverse_complement_against_genome {
             DotplotMode::PairReverseComplement
         } else {
             DotplotMode::PairForward
         }
+    }
+
+    fn current_rna_read_alignment_display(
+        &mut self,
+        record_index: usize,
+    ) -> Result<RnaReadAlignmentDisplay, String> {
+        let Some(report) = self.current_saved_rna_read_report() else {
+            return Err(
+                "Load/save a Report ID before inspecting phase-2 pairwise alignment".to_string(),
+            );
+        };
+        let Some(engine) = self.engine.as_ref() else {
+            return Err("No engine attached while building RNA-read alignment detail".to_string());
+        };
+        let guard = engine.read().map_err(|_| {
+            "Engine lock poisoned while building RNA-read alignment detail".to_string()
+        })?;
+        guard
+            .build_rna_read_alignment_display(&report.report_id, record_index)
+            .map_err(|err| err.message)
     }
 
     fn dotplot_parameter_tag(
@@ -19947,13 +19969,23 @@ impl MainAreaDna {
                 Self::compact_rna_read_transcript_label(&row.transcript_id, &row.transcript_label)
             ));
             ui.small(format!(
-                "Mode={} strand={} target={}..{} id={:.1}% cov={:.1}% score={} secondary={}",
+                "Mode={} strand={} query={} target={}..{} id={:.1}% cov={:.1}% score={} secondary={}",
                 row.alignment_mode.as_str(),
                 if row.strand.trim().is_empty() {
                     "na".to_string()
                 } else {
                     row.strand.clone()
                 },
+                hit.best_mapping
+                    .as_ref()
+                    .map(|mapping| {
+                        if mapping.query_reverse_complemented {
+                            "reverse-complemented"
+                        } else {
+                            "as stored"
+                        }
+                    })
+                    .unwrap_or("as stored"),
                 row.target_start_1based,
                 row.target_end_1based,
                 row.identity_fraction * 100.0,
@@ -19961,6 +19993,84 @@ impl MainAreaDna {
                 row.score,
                 row.secondary_mapping_count
             ));
+            ui.small(format!(
+                "Phase-1 normalization={} | Phase-2 query orientation={}",
+                if row.reverse_complement_applied {
+                    "reverse-complemented before scoring"
+                } else {
+                    "kept in input orientation"
+                },
+                hit.best_mapping
+                    .as_ref()
+                    .map(|mapping| {
+                        if mapping.query_reverse_complemented {
+                            "reverse-complemented to fit the transcript template"
+                        } else {
+                            "stored query already fits the transcript template"
+                        }
+                    })
+                    .unwrap_or("unknown"),
+            ));
+            egui::CollapsingHeader::new("Phase-2 pairwise alignment")
+                .default_open(true)
+                .show(ui, |ui| match self.current_rna_read_alignment_display(row.record_index) {
+                    Ok(display) => {
+                        ui.small(format!(
+                            "Exact rust-bio pairwise alignment: mode={} | query={} | aligned columns={} | matches={} mismatches={} insertions={} deletions={}",
+                            display.alignment_mode.as_str(),
+                            if display.query_reverse_complemented {
+                                "reverse-complemented"
+                            } else {
+                                "as stored"
+                            },
+                            display.aligned_columns,
+                            display.matches,
+                            display.mismatches,
+                            display.insertions,
+                            display.deletions,
+                        ));
+                        ui.small(format!(
+                            "Query span {}..{} of {} bp | template offsets {}..{} | genomic {}..{}",
+                            display.query_start_0based,
+                            display.query_end_0based_exclusive,
+                            hit.read_length_bp,
+                            display.target_start_offset_0based,
+                            display.target_end_offset_0based_exclusive,
+                            display.target_start_1based,
+                            display.target_end_1based,
+                        ));
+                        ui.small(
+                            "Legend: `|` exact match, `.` mismatch, blank = insertion/deletion.",
+                        );
+                        egui::ScrollArea::both()
+                            .id_salt(format!(
+                                "rna_alignment_effect_pairwise_{}",
+                                row.record_index
+                            ))
+                            .max_height(200.0)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for (query_chunk, midline_chunk, target_chunk) in
+                                    Self::rna_read_alignment_display_chunks(&display, 96)
+                                {
+                                    let query_label = if display.query_reverse_complemented {
+                                        "Q(rc)"
+                                    } else {
+                                        "Q"
+                                    };
+                                    ui.monospace(format!("{query_label:<5} {query_chunk}"));
+                                    ui.monospace(format!("{:<5} {}", "", midline_chunk));
+                                    ui.monospace(format!("{:<5} {}", "T", target_chunk));
+                                    ui.add_space(4.0);
+                                }
+                            });
+                    }
+                    Err(err) => {
+                        ui.small(
+                            egui::RichText::new(err).color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                    }
+                });
             ui.separator();
             ui.label(egui::RichText::new("Mapped support contribution").strong());
             ui.small(format!(
@@ -20069,6 +20179,44 @@ impl MainAreaDna {
             ui.add_space(4.0);
             offset = end;
         }
+    }
+
+    fn rna_read_alignment_display_chunks(
+        display: &RnaReadAlignmentDisplay,
+        chunk_width: usize,
+    ) -> Vec<(String, String, String)> {
+        let width = chunk_width.max(1);
+        let query_chunks = display
+            .aligned_query
+            .as_bytes()
+            .chunks(width)
+            .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+            .collect::<Vec<_>>();
+        let midline_chunks = display
+            .aligned_midline
+            .as_bytes()
+            .chunks(width)
+            .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+            .collect::<Vec<_>>();
+        let target_chunks = display
+            .aligned_target
+            .as_bytes()
+            .chunks(width)
+            .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+            .collect::<Vec<_>>();
+        let chunk_count = query_chunks
+            .len()
+            .max(midline_chunks.len())
+            .max(target_chunks.len());
+        let mut rows = Vec::<(String, String, String)>::with_capacity(chunk_count);
+        for idx in 0..chunk_count {
+            rows.push((
+                query_chunks.get(idx).cloned().unwrap_or_default(),
+                midline_chunks.get(idx).cloned().unwrap_or_default(),
+                target_chunks.get(idx).cloned().unwrap_or_default(),
+            ));
+        }
+        rows
     }
 
     fn collect_thresholded_cdna_exon_support_rows(

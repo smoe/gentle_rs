@@ -11866,6 +11866,7 @@ fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
         strand: "+".to_string(),
         query_start_0based: 0,
         query_end_0based_exclusive: 120,
+        query_reverse_complemented: false,
         target_start_1based: 101,
         target_end_1based: 220,
         target_start_offset_0based: 0,
@@ -11884,6 +11885,7 @@ fn test_rna_read_top_hit_preview_propagates_alignment_summary() {
         strand: "+".to_string(),
         query_start_0based: 4,
         query_end_0based_exclusive: 104,
+        query_reverse_complemented: false,
         target_start_1based: 140,
         target_end_1based: 239,
         target_start_offset_0based: 40,
@@ -12589,6 +12591,54 @@ fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     assert_eq!(direct_report.hits.len(), 1);
     assert!(!direct_report.hits[0].reverse_complement_applied);
     assert_eq!(direct_report.hits[0].sequence, "TTTACGTACGT");
+}
+
+#[test]
+fn test_align_read_to_template_supports_reverse_complement_query_orientation() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let engine = GentleEngine::from_state(state);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let feature_id = dna
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let splicing = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("splicing view");
+    let lane = splicing.transcripts.first().expect("first transcript lane");
+    let template = GentleEngine::make_transcript_template(dna, lane, 3);
+    let read = GentleEngine::reverse_complement_bytes(&template.sequence);
+
+    let mapping = GentleEngine::align_read_to_template(
+        &read,
+        &template,
+        &RnaReadAlignConfig {
+            min_identity_fraction: 0.60,
+            ..RnaReadAlignConfig::default()
+        },
+        3,
+    )
+    .expect("reverse-complement alignment");
+
+    assert!(mapping.query_reverse_complemented);
+    assert_eq!(mapping.query_start_0based, 0);
+    assert_eq!(mapping.query_end_0based_exclusive, read.len());
+    assert_eq!(mapping.transcript_feature_id, lane.transcript_feature_id);
+    assert_eq!(mapping.alignment_mode, RnaReadAlignmentMode::Semiglobal);
+    assert!((mapping.identity_fraction - 1.0).abs() < f64::EPSILON);
+    assert!((mapping.query_coverage_fraction - 1.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -14891,6 +14941,83 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
         RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
     );
     assert!(no_phase1.phase1_primary_transcript_id.is_empty());
+}
+
+#[test]
+fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_midline() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let feature_id = dna
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let splicing = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("splicing view");
+    let lane = splicing.transcripts.first().expect("first transcript lane");
+    let template = GentleEngine::make_transcript_template(dna, lane, 3);
+    let read = GentleEngine::reverse_complement_bytes(&template.sequence);
+    let mapping = GentleEngine::align_read_to_template(
+        &read,
+        &template,
+        &RnaReadAlignConfig {
+            min_identity_fraction: 0.60,
+            ..RnaReadAlignConfig::default()
+        },
+        3,
+    )
+    .expect("reverse-complement alignment");
+
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_alignment_display".to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "rc_read".to_string(),
+                sequence: String::from_utf8(read.clone()).expect("ASCII DNA"),
+                read_length_bp: read.len(),
+                passed_seed_filter: true,
+                best_mapping: Some(mapping),
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert RNA-read report");
+
+    let display = engine
+        .build_rna_read_alignment_display("rna_alignment_display", 0)
+        .expect("alignment display");
+
+    assert!(display.query_reverse_complemented);
+    assert_eq!(display.alignment_mode, RnaReadAlignmentMode::Semiglobal);
+    assert_eq!(display.matches, template.sequence.len());
+    assert_eq!(display.mismatches, 0);
+    assert_eq!(display.insertions, 0);
+    assert_eq!(display.deletions, 0);
+    assert_eq!(display.aligned_query.len(), display.aligned_midline.len());
+    assert_eq!(display.aligned_query.len(), display.aligned_target.len());
+    assert!(
+        display.aligned_midline.chars().all(|ch| ch == '|'),
+        "midline should show exact matches only: {}",
+        display.aligned_midline
+    );
 }
 
 #[test]
