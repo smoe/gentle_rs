@@ -2437,7 +2437,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         effect labels, and `#record_index` labels`
       - `selected_record_indices[]` provides the explicit subset for
         `selected_only`
-      - `score_density_variant = all_scored|composite_seed_gate`
+      - `score_density_variant = all_scored|composite_seed_gate|retained_replay_current_controls`
+      - optional `score_density_seed_filter_override` carries the current
+        seed-gate controls when an adapter requests retained-only replay under
+        current controls
       - `score_bin_index` + `score_bin_count` provide a formal
         score-density-bin subset for reproducible histogram-driven inspection
         within that chosen histogram population
@@ -2589,10 +2592,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - Score-density SVG export:
   - `rna-reads export-score-density-svg` writes the same report summary used by
     the GUI plus seed-screen provenance in the SVG header:
-    - `variant = all_scored|composite_seed_gate`
+    - `variant = all_scored|composite_seed_gate|retained_replay_current_controls`
     - `profile`, `report_mode`, `scope`, `origin_mode`
     - seed-filter summary with `k`, `seed_stride_bp`, thresholds, and
       overlap/order-density wording
+    - optional `replay_seed_filter` summary when the export uses retained-only
+      replay under current controls
     - whether bins were stored in the report or derived from retained hits
 - Alignment-dotplot export:
   - operation:

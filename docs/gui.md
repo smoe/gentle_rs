@@ -649,10 +649,15 @@ Feature tree grouping:
       - `All scored`: every scored phase-1 read
       - `Composite gate`: only reads that passed the full composite seed gate
         under the recorded run thresholds
+      - `Retained replay`: instant replay of the full composite gate over the
+        retained saved-report rows using the current controls
     - the explanatory note changes with that population mode:
       - `All scored` keeps the raw `min_hit` red-line interpretation
       - `Composite gate` makes clear that the bars already respect the full
         gate, while the red line still marks the raw `min_hit` component
+      - `Retained replay` makes clear that the replay is exact for retained
+        rows only and does not revisit reads that were never retained by the
+        original run
   - support statistics now live behind source tabs:
     - `Reported transcript`
     - `Thresholded cDNA`
@@ -696,6 +701,10 @@ Feature tree grouping:
         - in `Composite gate` mode, clicking a bar only selects retained
           saved-report rows in that bin that actually passed the full
           composite seed gate
+        - in `Retained replay` mode, clicking a bar only selects retained
+          saved-report rows in that bin that pass the current seed controls;
+          this is intentionally a retained-only preview rather than a hidden
+          rerun over all scored reads
       - filter controls let you focus on:
         - all aligned rows
         - `confirmed` rows only

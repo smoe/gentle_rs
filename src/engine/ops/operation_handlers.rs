@@ -7351,9 +7351,15 @@ impl GentleEngine {
                 path,
                 scale,
                 variant,
+                seed_filter_override,
             } => {
-                let export =
-                    self.export_rna_read_score_density_svg(&report_id, &path, scale, variant)?;
+                let export = self.export_rna_read_score_density_svg(
+                    &report_id,
+                    &path,
+                    scale,
+                    variant,
+                    seed_filter_override.as_ref(),
+                )?;
                 result.messages.push(format!(
                     "Exported RNA-read score-density SVG '{}' to '{}' (scale={}, variant={}, bins={}, max_bin_count={})",
                     export.report_id,

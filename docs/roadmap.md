@@ -1643,6 +1643,9 @@ Status:
     full composite seed gate, so users can switch between `all scored` and the
     stricter `composite gate` population without changing the reproducible
     subset/export semantics.
+    A third `retained replay` population now replays the current seed controls
+    over retained saved-report rows only, giving fast “what would pass now?”
+    feedback without pretending to rerun every scored read.
     The top-read preview now also shows rank-first tabular rows with explicit
     `Id%` / `Cov%` columns and, after a run completes, can switch from the
     capped live preview to the exact saved-report rows in the chosen score bin.

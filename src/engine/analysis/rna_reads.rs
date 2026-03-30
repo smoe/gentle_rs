@@ -511,6 +511,11 @@ impl GentleEngine {
         subset_spec: Option<RnaReadAlignmentInspectionSubsetSpec>,
     ) -> RnaReadAlignmentInspectionSubsetSpec {
         let mut subset_spec = subset_spec.unwrap_or_default();
+        if subset_spec.score_density_variant
+            != RnaReadScoreDensityVariant::RetainedReplayCurrentControls
+        {
+            subset_spec.score_density_seed_filter_override = None;
+        }
         subset_spec.search = subset_spec.search.trim().to_string();
         subset_spec.selected_record_indices.sort_unstable();
         subset_spec.selected_record_indices.dedup();
@@ -522,6 +527,29 @@ impl GentleEngine {
             subset_spec.score_bin_count = 0;
         }
         subset_spec
+    }
+
+    fn rna_read_interpretation_hit_matches_score_bin(
+        hit: &RnaReadInterpretationHit,
+        score_density_variant: RnaReadScoreDensityVariant,
+        score_density_seed_filter_override: Option<&RnaReadSeedFilterConfig>,
+        score_bin_index: Option<usize>,
+        score_bin_count: usize,
+    ) -> bool {
+        let Some(score_bin_index) = score_bin_index else {
+            return true;
+        };
+        if !Self::rna_read_hit_matches_score_density_variant(
+            hit,
+            score_density_variant,
+            score_density_seed_filter_override,
+        ) {
+            return false;
+        }
+        let score_bin_count = score_bin_count.max(1);
+        let clamped = hit.seed_hit_fraction.clamp(0.0, 1.0);
+        let scaled = (clamped * score_bin_count as f64).floor() as usize;
+        scaled.min(score_bin_count.saturating_sub(1)) == score_bin_index
     }
 
     fn rna_read_alignment_effect_search_label(effect: RnaReadAlignmentEffect) -> &'static str {
@@ -587,26 +615,6 @@ impl GentleEngine {
         ]
         .iter()
         .any(|field| field.to_ascii_lowercase().contains(&needle))
-    }
-
-    fn rna_read_alignment_inspection_matches_score_bin(
-        row: &RnaReadAlignmentInspectionRow,
-        score_density_variant: RnaReadScoreDensityVariant,
-        score_bin_index: Option<usize>,
-        score_bin_count: usize,
-    ) -> bool {
-        let Some(score_bin_index) = score_bin_index else {
-            return true;
-        };
-        if score_density_variant == RnaReadScoreDensityVariant::CompositeSeedGate
-            && !row.passed_seed_filter
-        {
-            return false;
-        }
-        let score_bin_count = score_bin_count.max(1);
-        let clamped = row.seed_hit_fraction.clamp(0.0, 1.0);
-        let scaled = (clamped * score_bin_count as f64).floor() as usize;
-        scaled.min(score_bin_count.saturating_sub(1)) == score_bin_index
     }
 
     fn compare_rna_read_alignment_inspection_rows(
@@ -693,6 +701,15 @@ impl GentleEngine {
             .hits
             .iter()
             .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+            .filter(|hit| {
+                Self::rna_read_interpretation_hit_matches_score_bin(
+                    hit,
+                    subset_spec.score_density_variant,
+                    subset_spec.score_density_seed_filter_override.as_ref(),
+                    subset_spec.score_bin_index,
+                    subset_spec.score_bin_count,
+                )
+            })
             .filter_map(|hit| {
                 let mapping = hit.best_mapping.as_ref()?;
                 let rank = Self::rna_read_retention_rank(hit);
@@ -755,12 +772,6 @@ impl GentleEngine {
                 subset_spec.effect_filter,
                 &subset_spec.selected_record_indices,
             ) && Self::rna_read_alignment_inspection_matches_search(row, &subset_spec.search)
-                && Self::rna_read_alignment_inspection_matches_score_bin(
-                    row,
-                    subset_spec.score_density_variant,
-                    subset_spec.score_bin_index,
-                    subset_spec.score_bin_count,
-                )
         });
         rows.sort_by(|left, right| {
             Self::compare_rna_read_alignment_inspection_rows(left, right, subset_spec.sort_key)
@@ -1609,9 +1620,60 @@ impl GentleEngine {
         (bins, true)
     }
 
-    pub(super) fn score_density_bins_for_report(
+    pub(crate) fn replay_rna_read_hit_passes_seed_filter(
+        hit: &RnaReadInterpretationHit,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> bool {
+        Self::seed_filter_passes(
+            hit.seed_hit_fraction,
+            hit.weighted_seed_hit_fraction,
+            hit.tested_kmers,
+            hit.matched_kmers,
+            hit.seed_chain_support_fraction,
+            hit.seed_median_transcript_gap,
+            hit.seed_transcript_gap_count,
+            hit.exon_transitions_confirmed,
+            hit.exon_transitions_total,
+            seed_filter,
+        )
+    }
+
+    pub(crate) fn rna_read_hit_matches_score_density_variant(
+        hit: &RnaReadInterpretationHit,
+        variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
+    ) -> bool {
+        match variant {
+            RnaReadScoreDensityVariant::AllScored => true,
+            RnaReadScoreDensityVariant::CompositeSeedGate => hit.passed_seed_filter,
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => seed_filter_override
+                .is_some_and(|seed_filter| {
+                    Self::replay_rna_read_hit_passes_seed_filter(hit, seed_filter)
+                }),
+        }
+    }
+
+    pub(crate) fn derive_replayed_score_density_bins_from_report(
+        report: &RnaReadInterpretationReport,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Vec<u64> {
+        let mut bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
+        for hit in &report.hits {
+            if !Self::replay_rna_read_hit_passes_seed_filter(hit, seed_filter) {
+                continue;
+            }
+            let idx = Self::score_density_bin_index(hit.seed_hit_fraction);
+            if let Some(bucket) = bins.get_mut(idx) {
+                *bucket = bucket.saturating_add(1);
+            }
+        }
+        bins
+    }
+
+    pub(crate) fn score_density_bins_for_report_with_override(
         report: &RnaReadInterpretationReport,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> (Vec<u64>, bool) {
         match variant {
             RnaReadScoreDensityVariant::AllScored => {
@@ -1620,6 +1682,14 @@ impl GentleEngine {
             RnaReadScoreDensityVariant::CompositeSeedGate => {
                 Self::derive_seed_pass_score_density_bins_from_report(report)
             }
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => (
+                seed_filter_override
+                    .map(|seed_filter| {
+                        Self::derive_replayed_score_density_bins_from_report(report, seed_filter)
+                    })
+                    .unwrap_or_default(),
+                true,
+            ),
         }
     }
 
@@ -1656,6 +1726,7 @@ impl GentleEngine {
         bins: &[u64],
         scale: RnaReadScoreDensityScale,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> String {
         let width = 960.0f64;
         let height = 300.0f64;
@@ -1687,6 +1758,9 @@ impl GentleEngine {
         let variant_text = match variant {
             RnaReadScoreDensityVariant::AllScored => "all scored reads",
             RnaReadScoreDensityVariant::CompositeSeedGate => "composite seed-gate reads",
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => {
+                "retained replay under current controls"
+            }
         };
         let title = format!("RNA-read seed-hit score density ({scale_text}; {variant_text})");
         let subtitle = format!(
@@ -1697,13 +1771,19 @@ impl GentleEngine {
             report.read_count_aligned
         );
         let provenance = format!(
-            "profile={} mode={} scope={} origin={} variant={} | {}",
+            "profile={} mode={} scope={} origin={} variant={} | {}{}",
             report.profile.as_str(),
             report.report_mode.as_str(),
             report.scope.as_str(),
             report.origin_mode.as_str(),
             variant.as_str(),
             Self::rna_read_seed_filter_summary(&report.seed_filter),
+            seed_filter_override
+                .map(|seed_filter| format!(
+                    " | replay_seed_filter={}",
+                    Self::rna_read_seed_filter_summary(seed_filter)
+                ))
+                .unwrap_or_default(),
         );
         let bins_source = match variant {
             RnaReadScoreDensityVariant::AllScored => {
@@ -1719,6 +1799,9 @@ impl GentleEngine {
                 } else {
                     "composite-gate score-density bins stored in report"
                 }
+            }
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => {
+                "retained-replay score-density bins derived from retained hits under current controls"
             }
         };
 
@@ -1845,6 +1928,7 @@ impl GentleEngine {
         path: &str,
         scale: RnaReadScoreDensityScale,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> Result<RnaReadScoreDensitySvgExport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
         let path = path.trim();
@@ -1855,8 +1939,18 @@ impl GentleEngine {
             });
         }
         let (bins, derived_from_report_hits_only) =
-            Self::score_density_bins_for_report(&report, variant);
-        let svg = Self::render_rna_read_score_density_svg_text(&report, &bins, scale, variant);
+            Self::score_density_bins_for_report_with_override(
+                &report,
+                variant,
+                seed_filter_override,
+            );
+        let svg = Self::render_rna_read_score_density_svg_text(
+            &report,
+            &bins,
+            scale,
+            variant,
+            seed_filter_override,
+        );
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read score-density SVG to '{path}': {e}"),

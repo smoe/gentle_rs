@@ -4365,6 +4365,8 @@ pub enum Operation {
         scale: RnaReadScoreDensityScale,
         #[serde(default)]
         variant: RnaReadScoreDensityVariant,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seed_filter_override: Option<RnaReadSeedFilterConfig>,
     },
     ExportRnaReadAlignmentsTsv {
         report_id: String,

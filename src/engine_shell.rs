@@ -15959,6 +15959,7 @@ pub fn execute_shell_command_with_options(
                         search: search.clone(),
                         selected_record_indices: selected_record_indices.clone(),
                         score_density_variant: *score_density_variant,
+                        score_density_seed_filter_override: None,
                         score_bin_index: *score_bin_index,
                         score_bin_count: *score_bin_count,
                     }),
@@ -16104,7 +16105,7 @@ pub fn execute_shell_command_with_options(
             variant,
         } => {
             let export = engine
-                .export_rna_read_score_density_svg(report_id, path, *scale, *variant)
+                .export_rna_read_score_density_svg(report_id, path, *scale, *variant, None)
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,

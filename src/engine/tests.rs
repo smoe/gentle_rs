@@ -14490,6 +14490,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 search: "aligned_hi_cov".to_string(),
                 selected_record_indices: vec![1, 1],
                 score_density_variant: RnaReadScoreDensityVariant::AllScored,
+                score_density_seed_filter_override: None,
                 score_bin_index: None,
                 score_bin_count: 0,
             }),
@@ -14523,6 +14524,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 search: String::new(),
                 selected_record_indices: vec![],
                 score_density_variant: RnaReadScoreDensityVariant::AllScored,
+                score_density_seed_filter_override: None,
                 score_bin_index: None,
                 score_bin_count: 0,
             }),
@@ -14547,6 +14549,7 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
                 search: String::new(),
                 selected_record_indices: vec![],
                 score_density_variant: RnaReadScoreDensityVariant::AllScored,
+                score_density_seed_filter_override: None,
                 score_bin_index: Some(target_score_bin_index),
                 score_bin_count: 40,
             }),
@@ -14561,6 +14564,37 @@ fn test_inspect_and_export_rna_read_alignment_dotplot_follow_alignment_rank() {
         ((row.seed_hit_fraction.clamp(0.0, 1.0) * 40.0).floor() as usize).min(39)
             == target_score_bin_index
     }));
+
+    let replay_filter = RnaReadSeedFilterConfig {
+        min_seed_hit_fraction: 0.75,
+        min_weighted_seed_hit_fraction: 0.70,
+        min_unique_matched_kmers: 8,
+        min_chain_consistency_fraction: 0.90,
+        max_median_transcript_gap: 4.0,
+        min_confirmed_exon_transitions: 1,
+        min_transition_support_fraction: 0.50,
+        ..RnaReadSeedFilterConfig::default()
+    };
+    let replay_filtered = engine
+        .inspect_rna_read_alignments_with_subset(
+            "rna_reads_alignment_rank",
+            RnaReadHitSelection::All,
+            10,
+            Some(RnaReadAlignmentInspectionSubsetSpec {
+                effect_filter: RnaReadAlignmentInspectionEffectFilter::AllAligned,
+                sort_key: RnaReadAlignmentInspectionSortKey::Rank,
+                search: String::new(),
+                selected_record_indices: vec![],
+                score_density_variant: RnaReadScoreDensityVariant::RetainedReplayCurrentControls,
+                score_density_seed_filter_override: Some(replay_filter),
+                score_bin_index: Some(target_score_bin_index),
+                score_bin_count: 40,
+            }),
+        )
+        .expect("inspect replay-filtered alignment rows");
+    assert_eq!(replay_filtered.subset_match_count, 1);
+    assert_eq!(replay_filtered.rows.len(), 1);
+    assert_eq!(replay_filtered.rows[0].header_id, "aligned_hi_cov");
 
     let td = tempdir().expect("tempdir");
     let tsv_path = td.path().join("alignment_rows.tsv");
@@ -15319,6 +15353,7 @@ fn test_export_rna_read_score_density_svg() {
             log_svg.to_str().expect("log svg path"),
             RnaReadScoreDensityScale::Log,
             RnaReadScoreDensityVariant::AllScored,
+            None,
         )
         .expect("export score-density log svg");
     assert_eq!(log_export.scale, RnaReadScoreDensityScale::Log);
@@ -15346,6 +15381,7 @@ fn test_export_rna_read_score_density_svg() {
             linear_svg.to_str().expect("linear svg path"),
             RnaReadScoreDensityScale::Linear,
             RnaReadScoreDensityVariant::AllScored,
+            None,
         )
         .expect("export score-density linear svg");
     assert_eq!(linear_export.scale, RnaReadScoreDensityScale::Linear);
@@ -15376,6 +15412,7 @@ fn test_export_rna_read_score_density_svg_includes_compact_bar_labels() {
             svg_path.to_str().expect("svg path"),
             RnaReadScoreDensityScale::Log,
             RnaReadScoreDensityVariant::AllScored,
+            None,
         )
         .expect("export score-density svg with labels");
     let svg_text = fs::read_to_string(&svg_path).expect("read svg");
@@ -15405,6 +15442,7 @@ fn test_export_rna_read_score_density_svg_composite_variant_uses_seed_pass_bins(
             svg_path.to_str().expect("svg path"),
             RnaReadScoreDensityScale::Linear,
             RnaReadScoreDensityVariant::CompositeSeedGate,
+            None,
         )
         .expect("export composite score-density svg");
     assert_eq!(
@@ -15415,6 +15453,79 @@ fn test_export_rna_read_score_density_svg_composite_variant_uses_seed_pass_bins(
     let svg_text = fs::read_to_string(&svg_path).expect("read svg");
     assert!(svg_text.contains("composite seed-gate reads"));
     assert!(svg_text.contains("variant=composite_seed_gate"));
+}
+
+#[test]
+fn test_export_rna_read_score_density_svg_retained_replay_variant_uses_override() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_density_replay".to_string(),
+            seq_id: "seq_density".to_string(),
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    seed_hit_fraction: 0.84,
+                    weighted_seed_hit_fraction: 0.84,
+                    tested_kmers: 12,
+                    matched_kmers: 12,
+                    seed_chain_support_fraction: 1.0,
+                    seed_median_transcript_gap: 1.0,
+                    seed_transcript_gap_count: 1,
+                    exon_transitions_confirmed: 1,
+                    exon_transitions_total: 1,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    seed_hit_fraction: 0.87,
+                    weighted_seed_hit_fraction: 0.87,
+                    tested_kmers: 12,
+                    matched_kmers: 12,
+                    seed_chain_support_fraction: 0.05,
+                    seed_median_transcript_gap: 1.0,
+                    seed_transcript_gap_count: 1,
+                    exon_transitions_confirmed: 1,
+                    exon_transitions_total: 1,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert replay density report");
+
+    let replay_filter = RnaReadSeedFilterConfig {
+        min_seed_hit_fraction: 0.80,
+        min_weighted_seed_hit_fraction: 0.80,
+        min_unique_matched_kmers: 10,
+        min_chain_consistency_fraction: 0.50,
+        max_median_transcript_gap: 4.0,
+        min_confirmed_exon_transitions: 1,
+        min_transition_support_fraction: 0.50,
+        ..RnaReadSeedFilterConfig::default()
+    };
+
+    let td = tempdir().expect("tempdir");
+    let svg_path = td.path().join("score_density_replay.svg");
+    let export = engine
+        .export_rna_read_score_density_svg(
+            "rna_reads_density_replay",
+            svg_path.to_str().expect("svg path"),
+            RnaReadScoreDensityScale::Linear,
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls,
+            Some(&replay_filter),
+        )
+        .expect("export retained replay score-density svg");
+    assert_eq!(
+        export.variant,
+        RnaReadScoreDensityVariant::RetainedReplayCurrentControls
+    );
+    assert_eq!(export.total_scored_reads, 1);
+    let svg_text = fs::read_to_string(&svg_path).expect("read svg");
+    assert!(svg_text.contains("retained replay under current controls"));
+    assert!(svg_text.contains("variant=retained_replay_current_controls"));
+    assert!(svg_text.contains("replay_seed_filter=seed_filter: k=10 stride=1"));
 }
 
 #[test]

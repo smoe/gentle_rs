@@ -188,6 +188,7 @@ pub enum RnaReadScoreDensityVariant {
     #[default]
     AllScored,
     CompositeSeedGate,
+    RetainedReplayCurrentControls,
 }
 
 impl RnaReadScoreDensityVariant {
@@ -195,6 +196,7 @@ impl RnaReadScoreDensityVariant {
         match self {
             Self::AllScored => "all_scored",
             Self::CompositeSeedGate => "composite_seed_gate",
+            Self::RetainedReplayCurrentControls => "retained_replay_current_controls",
         }
     }
 }
@@ -650,6 +652,8 @@ pub struct RnaReadAlignmentInspectionSubsetSpec {
     pub selected_record_indices: Vec<usize>,
     #[serde(default)]
     pub score_density_variant: RnaReadScoreDensityVariant,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_density_seed_filter_override: Option<RnaReadSeedFilterConfig>,
     pub score_bin_index: Option<usize>,
     pub score_bin_count: usize,
 }

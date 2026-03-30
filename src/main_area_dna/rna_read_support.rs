@@ -950,15 +950,34 @@ impl MainAreaDna {
             .current_saved_rna_read_report()
             .map(|report| report.score_density_bins.len().max(40))
             .unwrap_or(40);
+        let score_density_seed_filter_override = self
+            .current_rna_read_score_density_seed_filter_override(
+                self.rna_read_evidence_ui.score_density_variant,
+            )
+            .ok()
+            .flatten();
         Self::rna_read_alignment_effect_subset_struct(
             self.rna_read_alignment_effect_filter,
             &self.rna_read_alignment_effect_search,
             self.rna_read_alignment_effect_sort_key,
             &self.rna_seed_selected_record_indices,
             self.rna_read_evidence_ui.score_density_variant,
+            score_density_seed_filter_override,
             self.rna_read_alignment_effect_score_bin_index,
             score_bin_count,
         )
+    }
+
+    pub(super) fn current_rna_read_score_density_seed_filter_override(
+        &self,
+        variant: RnaReadScoreDensityVariant,
+    ) -> Result<Option<RnaReadSeedFilterConfig>, String> {
+        match variant {
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => {
+                self.parse_rna_seed_filter_from_ui().map(Some)
+            }
+            _ => Ok(None),
+        }
     }
 
     pub(super) fn rna_read_alignment_effect_subset_struct(
@@ -967,6 +986,7 @@ impl MainAreaDna {
         sort_key: RnaReadAlignmentEffectSortKey,
         selected_record_indices: &BTreeSet<usize>,
         score_density_variant: RnaReadScoreDensityVariant,
+        score_density_seed_filter_override: Option<RnaReadSeedFilterConfig>,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
     ) -> RnaReadAlignmentInspectionSubsetSpec {
@@ -976,6 +996,7 @@ impl MainAreaDna {
             search: search.trim().to_string(),
             selected_record_indices: selected_record_indices.iter().copied().collect(),
             score_density_variant,
+            score_density_seed_filter_override,
             score_bin_index,
             score_bin_count: score_bin_count.max(1),
         }
@@ -1148,6 +1169,7 @@ impl MainAreaDna {
         match variant {
             RnaReadScoreDensityVariant::AllScored => "all scored",
             RnaReadScoreDensityVariant::CompositeSeedGate => "composite gate",
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => "retained replay",
         }
     }
 
@@ -1160,6 +1182,9 @@ impl MainAreaDna {
             }
             RnaReadScoreDensityVariant::CompositeSeedGate => {
                 "Histogram over reads that passed the full composite seed gate during phase 1."
+            }
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => {
+                "Instant replay over retained saved-report rows using the current seed controls. Reads never retained by the original run are not revisited."
             }
         }
     }
@@ -1206,13 +1231,16 @@ impl MainAreaDna {
         )
     }
 
-    pub(super) fn rna_read_score_density_bins_for_progress<'a>(
-        progress: &'a RnaReadInterpretProgress,
+    pub(super) fn rna_read_score_density_bins_for_progress(
+        progress: &RnaReadInterpretProgress,
         variant: RnaReadScoreDensityVariant,
-    ) -> &'a [u64] {
+    ) -> Vec<u64> {
         match variant {
-            RnaReadScoreDensityVariant::AllScored => &progress.score_density_bins,
-            RnaReadScoreDensityVariant::CompositeSeedGate => &progress.seed_pass_score_density_bins,
+            RnaReadScoreDensityVariant::AllScored => progress.score_density_bins.clone(),
+            RnaReadScoreDensityVariant::CompositeSeedGate => {
+                progress.seed_pass_score_density_bins.clone()
+            }
+            RnaReadScoreDensityVariant::RetainedReplayCurrentControls => vec![],
         }
     }
 
@@ -1375,6 +1403,7 @@ impl MainAreaDna {
     pub(super) fn select_rna_read_report_rightmost_score_bin_record_indices(
         report: &RnaReadInterpretationReport,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> Vec<usize> {
         if report.hits.is_empty() {
             return vec![];
@@ -1382,7 +1411,11 @@ impl MainAreaDna {
         let bin_count = report.score_density_bins.len().max(40);
         let mut rightmost_idx = None;
         for hit in &report.hits {
-            if variant == RnaReadScoreDensityVariant::CompositeSeedGate && !hit.passed_seed_filter {
+            if !GentleEngine::rna_read_hit_matches_score_density_variant(
+                hit,
+                variant,
+                seed_filter_override,
+            ) {
                 continue;
             }
             let idx = Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count);
@@ -1395,9 +1428,12 @@ impl MainAreaDna {
             .hits
             .iter()
             .filter(|hit| {
-                (variant != RnaReadScoreDensityVariant::CompositeSeedGate || hit.passed_seed_filter)
-                    && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
-                        == target_idx
+                GentleEngine::rna_read_hit_matches_score_density_variant(
+                    hit,
+                    variant,
+                    seed_filter_override,
+                ) && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                    == target_idx
             })
             .map(|hit| hit.record_index)
             .collect::<Vec<_>>()
@@ -1408,6 +1444,7 @@ impl MainAreaDna {
         target_idx: usize,
         bin_count: usize,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> Vec<usize> {
         if report.hits.is_empty() {
             return vec![];
@@ -1418,9 +1455,12 @@ impl MainAreaDna {
             .hits
             .iter()
             .filter(|hit| {
-                (variant != RnaReadScoreDensityVariant::CompositeSeedGate || hit.passed_seed_filter)
-                    && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
-                        == target_idx
+                GentleEngine::rna_read_hit_matches_score_density_variant(
+                    hit,
+                    variant,
+                    seed_filter_override,
+                ) && Self::rna_read_score_density_bin_index(hit.seed_hit_fraction, bin_count)
+                    == target_idx
             })
             .map(|hit| hit.record_index)
             .collect::<Vec<_>>()
@@ -1431,9 +1471,14 @@ impl MainAreaDna {
         target_idx: usize,
         bin_count: usize,
         variant: RnaReadScoreDensityVariant,
+        seed_filter_override: Option<&RnaReadSeedFilterConfig>,
     ) -> Vec<RnaReadTopHitPreview> {
         let selected_record_indices = Self::select_rna_read_report_score_bin_record_indices(
-            report, target_idx, bin_count, variant,
+            report,
+            target_idx,
+            bin_count,
+            variant,
+            seed_filter_override,
         )
         .into_iter()
         .collect::<BTreeSet<_>>();
