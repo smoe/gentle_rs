@@ -428,7 +428,7 @@ Feature tree grouping:
     `No RNA-read report for this splicing group yet` plus
     `Open RNA-read Mapping Workspace...`
   - saved reports drive score density, thresholded cDNA support, mapped cDNA
-    support, read-effects inspection, and inline dotplot/report-driven review
+    support, read-effects inspection, and report-driven review
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:
   - direct launcher now also exists in the DNA sequence window toolbar as
@@ -721,13 +721,20 @@ Feature tree grouping:
         - phase-1 interpretation fields
         - phase-2 mapping metrics
         - mapped exon/junction contribution spans
-        - inline pairwise read-vs-ROI dotplot preview using the current
-          RNA-read dotplot parameters
+        - on-demand pairwise alignment detail against the exact transcript
+          template used by phase 2
+          - shows backend (`banded` vs `dense_fallback`), mode, CIGAR,
+            aligned spans, and the aligned query/relation/target text
+          - makes partial local/semiglobal confirmations inspectable without
+            forcing a new export
         - direct actions:
           - `Copy highlighted FASTA`
           - `Materialize highlighted`
+          - `Show alignment`
           - `Open interactive dotplot`
           - `Export dotplot...`
+        - the inline dotplot preview was removed; use `Open interactive dotplot`
+          for on-demand visual comparison in the full shared workspace
         - `Open interactive dotplot` opens the shared dotplot workspace on the
           selected read-vs-ROI comparison and keeps it live:
           - adjusting `word`, `step`, `mismatches`, or `tile` in the workspace

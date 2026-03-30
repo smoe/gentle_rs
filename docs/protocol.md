@@ -2448,6 +2448,21 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         response for deterministic replay
     - row `rank` remains the original alignment-aware retention rank even when
       subset sorting reorders the returned rows
+  - on-demand pairwise-alignment detail behavior:
+    - the engine can reconstruct the exact phase-2 read-vs-transcript-template
+      alignment for one retained row from the saved report plus admitted
+      transcript-template set
+    - detail payload schema:
+      - `gentle.rna_read_alignment_detail.v1`
+    - payload includes:
+      - selected retained row id (`record_index`, `header_id`)
+      - transcript/template target identity
+      - phase-2 `alignment_mode`
+      - alignment backend (`banded` or `dense_fallback`)
+      - aligned query/template spans, score, identity, query coverage, and
+        CIGAR
+      - aligned `query / relation / target` text rows for manual inspection of
+        low-complexity or partial confirmations
   - exact-subset export behavior:
     - `ExportRnaReadHitsFasta`, `ExportRnaReadExonPathsTsv`,
       `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadAlignmentsTsv` accept
