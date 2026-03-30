@@ -254,6 +254,11 @@ order. Durable architecture constraints and decisions remain in
   `All in view`, with a project-persisted preferred-enzyme list (defaulting to
   the canonical pUC MCS cutters and now offering a Golden Gate Type IIS preset
   drawn from the active REBASE catalog.
+- Restriction-site rendering now preserves blunt vs staggered cut geometry in
+  linear/text expert views:
+  sticky cutters keep both strand cut positions instead of collapsing to one
+  blunt-like marker, and marker color now distinguishes blunt vs `5'` vs `3'`
+  overhang geometry.
 - New strict policy switch is available:
   `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
   verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).

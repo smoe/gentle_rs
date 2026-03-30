@@ -391,6 +391,36 @@ fn render_tfbs(view: &TfbsExpertView) -> String {
     doc.to_string()
 }
 
+fn restriction_end_geometry_display_label(end_geometry: &str, overlap_bp: Option<isize>) -> String {
+    match end_geometry {
+        "5prime_overhang" => format!(
+            "5' overhang ({} bp)",
+            overlap_bp.unwrap_or(0).unsigned_abs()
+        ),
+        "3prime_overhang" => format!(
+            "3' overhang ({} bp)",
+            overlap_bp.unwrap_or(0).unsigned_abs()
+        ),
+        _ => match overlap_bp {
+            Some(value) if value > 0 => format!("5' overhang ({} bp)", value as usize),
+            Some(value) if value < 0 => format!("3' overhang ({} bp)", value.unsigned_abs()),
+            _ => "blunt".to_string(),
+        },
+    }
+}
+
+fn restriction_end_geometry_color(end_geometry: &str, overlap_bp: Option<isize>) -> &'static str {
+    match end_geometry {
+        "5prime_overhang" => "#2563eb",
+        "3prime_overhang" => "#d97706",
+        _ => match overlap_bp {
+            Some(value) if value > 0 => "#2563eb",
+            Some(value) if value < 0 => "#d97706",
+            _ => "#475569",
+        },
+    }
+}
+
 fn render_restriction(view: &RestrictionSiteExpertView) -> String {
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, H))
@@ -422,10 +452,26 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
             .set("font-size", 18)
             .set("fill", "#111111"),
     );
+    let geometry_label =
+        restriction_end_geometry_display_label(&view.end_geometry, view.overlap_bp);
+    let cut_color = restriction_end_geometry_color(&view.end_geometry, view.overlap_bp);
+    let paired_cut_pos_1based = if view.paired_cut_pos_1based == 0 {
+        view.cut_pos_1based
+    } else {
+        view.paired_cut_pos_1based
+    };
+    let paired_cut_index_0based =
+        if view.paired_cut_pos_1based == 0 && view.paired_cut_index_0based == 0 {
+            view.cut_index_0based
+        } else {
+            view.paired_cut_index_0based
+        };
     doc = doc.add(
         Text::new(format!(
-            "cut_pos={} | cuts_for_enzyme={} | recognition_iupac={}",
+            "cuts={}|{} | geometry={} | cuts_for_enzyme={} | recognition_iupac={}",
             view.cut_pos_1based,
+            paired_cut_pos_1based,
+            geometry_label,
             view.number_of_cuts_for_enzyme,
             view.recognition_iupac
                 .clone()
@@ -578,23 +624,54 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
         );
     }
 
-    let cut_x = start_x + step * view.cut_index_0based as f32;
+    let top_cut_x = start_x + step * view.cut_index_0based as f32;
+    let bottom_cut_x = start_x + step * paired_cut_index_0based as f32;
+    if (top_cut_x - bottom_cut_x).abs() < f32::EPSILON {
+        doc = doc.add(
+            Line::new()
+                .set("x1", top_cut_x)
+                .set("y1", top_y - 42.0)
+                .set("x2", top_cut_x)
+                .set("y2", bottom_y + 32.0)
+                .set("stroke", cut_color)
+                .set("stroke-width", 2.5),
+        );
+    } else {
+        doc = doc.add(
+            Line::new()
+                .set("x1", top_cut_x)
+                .set("y1", top_y - 42.0)
+                .set("x2", top_cut_x)
+                .set("y2", top_y - 6.0)
+                .set("stroke", cut_color)
+                .set("stroke-width", 2.5),
+        );
+        doc = doc.add(
+            Line::new()
+                .set("x1", top_cut_x)
+                .set("y1", top_y - 6.0)
+                .set("x2", bottom_cut_x)
+                .set("y2", bottom_y + 6.0)
+                .set("stroke", cut_color)
+                .set("stroke-width", 2.5),
+        );
+        doc = doc.add(
+            Line::new()
+                .set("x1", bottom_cut_x)
+                .set("y1", bottom_y + 6.0)
+                .set("x2", bottom_cut_x)
+                .set("y2", bottom_y + 32.0)
+                .set("stroke", cut_color)
+                .set("stroke-width", 2.5),
+        );
+    }
     doc = doc.add(
-        Line::new()
-            .set("x1", cut_x)
-            .set("y1", top_y - 42.0)
-            .set("x2", cut_x)
-            .set("y2", bottom_y + 32.0)
-            .set("stroke", "#b91c1c")
-            .set("stroke-width", 2.5),
-    );
-    doc = doc.add(
-        Text::new("cut")
-            .set("x", cut_x + 4.0)
+        Text::new(geometry_label)
+            .set("x", top_cut_x.max(bottom_cut_x) + 4.0)
             .set("y", top_y - 46.0)
             .set("font-family", "monospace")
             .set("font-size", 12)
-            .set("fill", "#b91c1c"),
+            .set("fill", cut_color),
     );
 
     for (line_idx, line) in wrap_text(&view.instruction, 125).into_iter().enumerate() {

@@ -6848,8 +6848,8 @@ impl MainAreaDna {
             || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
     }
 
-    fn restriction_group_cut_pos_0based(
-        key: &crate::restriction_enzyme::RestrictionEnzymeKey,
+    fn normalize_restriction_group_cut_pos_0based(
+        pos: isize,
         sequence_length: usize,
         is_circular: bool,
     ) -> Option<usize> {
@@ -6857,9 +6857,9 @@ impl MainAreaDna {
             return None;
         }
         let pos = if is_circular {
-            key.pos().rem_euclid(sequence_length as isize)
+            pos.rem_euclid(sequence_length as isize)
         } else {
-            key.pos()
+            pos
         };
         let pos = usize::try_from(pos.max(0)).ok()?;
         (pos < sequence_length).then_some(pos)
@@ -6871,14 +6871,17 @@ impl MainAreaDna {
         is_circular: bool,
         viewport: Option<(usize, usize)>,
     ) -> bool {
-        let Some(pos) = Self::restriction_group_cut_pos_0based(key, sequence_length, is_circular)
-        else {
-            return false;
-        };
-        match viewport {
-            Some((start, end)) => pos >= start && pos < end,
-            None => true,
-        }
+        [key.pos(), key.mate_pos()].into_iter().any(|pos| {
+            let Some(pos) =
+                Self::normalize_restriction_group_cut_pos_0based(pos, sequence_length, is_circular)
+            else {
+                return false;
+            };
+            match viewport {
+                Some((start, end)) => pos >= start && pos < end,
+                None => true,
+            }
+        })
     }
 
     fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
@@ -12845,20 +12848,41 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &RestrictionSiteExpertView,
     ) {
+        let geometry_label =
+            Self::restriction_end_geometry_display_label(&view.end_geometry, view.overlap_bp);
+        let cut_color = Self::restriction_end_geometry_color(&view.end_geometry, view.overlap_bp);
+        let paired_cut_pos_1based = if view.paired_cut_pos_1based == 0 {
+            view.cut_pos_1based
+        } else {
+            view.paired_cut_pos_1based
+        };
+        let paired_cut_index_0based =
+            if view.paired_cut_pos_1based == 0 && view.paired_cut_index_0based == 0 {
+                view.cut_index_0based
+            } else {
+                view.paired_cut_index_0based
+            };
         let font_size = self.feature_details_font_size();
         ui.label(
             egui::RichText::new(format!(
-                "{} | cut={} | {}:{}..{}",
+                "{} | cuts={}|{} | {}:{}..{}",
                 view.selected_enzyme
                     .clone()
                     .unwrap_or_else(|| view.enzyme_names.join(",")),
                 view.cut_pos_1based,
+                paired_cut_pos_1based,
                 view.seq_id,
                 view.recognition_start_1based,
                 view.recognition_end_1based
             ))
             .monospace()
             .size(font_size),
+        );
+        ui.label(
+            egui::RichText::new(format!("geometry={geometry_label}"))
+                .monospace()
+                .size(font_size)
+                .color(cut_color),
         );
         if let Some(pattern) = &view.recognition_iupac {
             ui.label(
@@ -12964,22 +12988,89 @@ impl MainAreaDna {
                     egui::Color32::from_rgb(51, 65, 85),
                 );
             }
-            let cut_x = start_x + step * view.cut_index_0based as f32;
-            painter.line_segment(
-                [
-                    egui::pos2(cut_x, top_y - 28.0),
-                    egui::pos2(cut_x, bottom_y + 24.0),
-                ],
-                egui::Stroke::new(2.0, egui::Color32::from_rgb(185, 28, 28)),
-            );
+            let top_cut_x = start_x + step * view.cut_index_0based as f32;
+            let bottom_cut_x = start_x + step * paired_cut_index_0based as f32;
+            if (top_cut_x - bottom_cut_x).abs() < 0.5 {
+                painter.line_segment(
+                    [
+                        egui::pos2(top_cut_x, top_y - 28.0),
+                        egui::pos2(top_cut_x, bottom_y + 24.0),
+                    ],
+                    egui::Stroke::new(2.0, cut_color),
+                );
+            } else {
+                painter.line_segment(
+                    [
+                        egui::pos2(top_cut_x, top_y - 28.0),
+                        egui::pos2(top_cut_x, top_y - 4.0),
+                    ],
+                    egui::Stroke::new(2.0, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(top_cut_x, top_y - 4.0),
+                        egui::pos2(bottom_cut_x, bottom_y + 4.0),
+                    ],
+                    egui::Stroke::new(2.0, cut_color),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(bottom_cut_x, bottom_y + 4.0),
+                        egui::pos2(bottom_cut_x, bottom_y + 24.0),
+                    ],
+                    egui::Stroke::new(2.0, cut_color),
+                );
+            }
             painter.text(
-                egui::pos2(cut_x + 4.0, top_y - 30.0),
+                egui::pos2(top_cut_x.max(bottom_cut_x) + 4.0, top_y - 30.0),
                 egui::Align2::LEFT_BOTTOM,
-                "cut",
+                geometry_label,
                 egui::FontId::monospace(9.0),
-                egui::Color32::from_rgb(185, 28, 28),
+                cut_color,
             );
         });
+    }
+
+    fn restriction_end_geometry_display_label(
+        end_geometry: &str,
+        overlap_bp: Option<isize>,
+    ) -> String {
+        match end_geometry {
+            "5prime_overhang" => {
+                format!(
+                    "5' overhang ({} bp)",
+                    overlap_bp.unwrap_or(0).unsigned_abs()
+                )
+            }
+            "3prime_overhang" => {
+                format!(
+                    "3' overhang ({} bp)",
+                    overlap_bp.unwrap_or(0).unsigned_abs()
+                )
+            }
+            _ => match overlap_bp {
+                Some(value) if value > 0 => format!("5' overhang ({} bp)", value as usize),
+                Some(value) if value < 0 => {
+                    format!("3' overhang ({} bp)", value.unsigned_abs())
+                }
+                _ => "blunt".to_string(),
+            },
+        }
+    }
+
+    fn restriction_end_geometry_color(
+        end_geometry: &str,
+        overlap_bp: Option<isize>,
+    ) -> egui::Color32 {
+        match end_geometry {
+            "5prime_overhang" => egui::Color32::from_rgb(37, 99, 235),
+            "3prime_overhang" => egui::Color32::from_rgb(217, 119, 6),
+            _ => match overlap_bp {
+                Some(value) if value > 0 => egui::Color32::from_rgb(37, 99, 235),
+                Some(value) if value < 0 => egui::Color32::from_rgb(217, 119, 6),
+                _ => egui::Color32::from_rgb(71, 85, 105),
+            },
+        }
     }
 
     fn render_splicing_lane_canvas_ui(
@@ -29252,16 +29343,28 @@ impl MainAreaDna {
                 } else {
                     format!("Restriction site: {}", names.join(","))
                 };
+                let paired_cut_pos_1based = key.mate_pos().max(0) + 1;
+                let geometry_label = key.cut_geometry().display_label();
+                let cut_range_label = if key.pos() == key.mate_pos() {
+                    format!("cut at {} bp", key.pos().max(0) + 1)
+                } else {
+                    format!(
+                        "cuts at {}|{} bp",
+                        key.pos().max(0) + 1,
+                        paired_cut_pos_1based
+                    )
+                };
                 self.description_cache_title = enzyme_label;
                 self.description_cache_range = Some(format!(
-                    "{}..{} (cut at {} bp)",
+                    "{}..{} ({cut_range_label})",
                     key.from().max(0) + 1,
-                    key.to().max(0),
-                    key.pos().max(0) + 1
+                    key.to().max(0)
                 ));
                 self.description_cache_details = vec![
                     format!("cuts_for_enzyme: {}", key.number_of_cuts()),
-                    format!("cut_offset_0based: {}", key.cut_size()),
+                    format!("geometry: {geometry_label}"),
+                    format!("forward_cut_1based: {}", key.pos().max(0) + 1),
+                    format!("reverse_cut_1based: {paired_cut_pos_1based}"),
                     format!("site_from_1based: {}", key.from().max(0) + 1),
                     format!("site_to_1based: {}", key.to().max(0)),
                 ];

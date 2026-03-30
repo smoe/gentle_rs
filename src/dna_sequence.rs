@@ -755,12 +755,14 @@ impl DNAsequence {
             .iter()
             .filter(|site| site.forward_strand)
         {
-            let pos = re_site.offset + re_site.enzyme.cut;
+            let (pos, mate_pos) = re_site.enzyme.strand_cut_offsets();
+            let pos = re_site.offset + pos;
+            let mate_pos = re_site.offset + mate_pos;
             let cut_size = re_site.enzyme.cut;
             let number_of_cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
             let from = re_site.offset;
             let to = from + re_site.enzyme.sequence.len() as isize;
-            let key = RestrictionEnzymeKey::new(pos, cut_size, *number_of_cuts, from, to);
+            let key = RestrictionEnzymeKey::new(pos, mate_pos, cut_size, *number_of_cuts, from, to);
             self.restriction_enzyme_groups
                 .entry(key)
                 .or_default()
@@ -1217,6 +1219,32 @@ mod tests {
         assert_eq!(seqs[0].overhang.reverse_5, "TTAA".as_bytes());
         assert_eq!(seqs[1].overhang.forward_5, "aatt".as_bytes());
         assert_eq!(seqs[1].overhang.reverse_5, "CTAG".as_bytes());
+    }
+
+    #[test]
+    fn test_restriction_enzyme_groups_preserve_sticky_cut_geometry() {
+        let mut dna = DNAsequence::from_sequence("AAGAATTCTT").unwrap();
+        *dna.restriction_enzymes_mut() = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .filter(|enzyme| enzyme.name == "EcoRI")
+            .cloned()
+            .collect();
+        dna.update_computed_features();
+
+        let (key, names) = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .find(|(_, names)| names.iter().any(|name| name == "EcoRI"))
+            .expect("EcoRI group");
+
+        assert_eq!(key.pos(), 3);
+        assert_eq!(key.mate_pos(), 7);
+        assert_eq!(
+            key.cut_geometry(),
+            crate::restriction_enzyme::RestrictionEndGeometry::FivePrimeOverhang(4)
+        );
+        assert_eq!(names, &vec!["EcoRI".to_string()]);
     }
 
     #[test]

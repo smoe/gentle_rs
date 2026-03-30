@@ -116,10 +116,13 @@ impl RowRestrictionEnzymes {
                     .for_each(|(re, label)| {
                         let pos = (seq_offset + offset) as isize;
                         let y = y + re.number_of_cuts() as f32 - 1.0;
-                        let color = DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
+                        let label_color =
+                            DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
+                        let cut_color =
+                            DnaDisplay::restriction_enzyme_geometry_color(re.cut_geometry());
                         painter.line_segment(
                             [Pos2::new(x - self.char_width, y), Pos2::new(x, y)],
-                            Stroke::new(1.0, color.to_owned()),
+                            Stroke::new(1.0, label_color),
                         );
                         if pos == re.to() {
                             painter.text(
@@ -130,19 +133,19 @@ impl RowRestrictionEnzymes {
                                     size: 9.0,
                                     family: FontFamily::Proportional,
                                 },
-                                color.to_owned(),
+                                label_color,
                             );
                         }
                         if pos == re.pos() {
                             painter.line_segment(
                                 [Pos2::new(x, y - self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, color.to_owned()),
+                                Stroke::new(1.0, cut_color),
                             );
                         }
-                        if pos == re.pos() + re.cut_size() {
+                        if pos == re.mate_pos() {
                             painter.line_segment(
                                 [Pos2::new(x, y + self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, color.to_owned()),
+                                Stroke::new(1.0, cut_color),
                             );
                         }
                     });

@@ -2493,36 +2493,62 @@ impl RenderDnaLinear {
         let mut bottom_label_lanes: Vec<f32> = vec![];
 
         for (idx, (key, names)) in visible_groups.iter().enumerate() {
-            let pos = self.normalize_pos(key.pos());
-            let x = self.bp_to_x(pos, viewport);
+            let top_x = self.bp_to_x(self.normalize_pos(key.pos()), viewport);
+            let bottom_x = self.bp_to_x(self.normalize_pos(key.mate_pos()), viewport);
+            let center_x = (top_x + bottom_x) * 0.5;
             let y = self.baseline_y();
-            let mut color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
+            let group_color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
             let selected_here = self
                 .selected_enzyme
                 .as_ref()
                 .map(|selected| selected.key == *key)
                 .unwrap_or(false);
-            if selected_here {
-                color = Color32::BLACK;
-            }
+            let label_color = if selected_here {
+                Color32::BLACK
+            } else {
+                group_color
+            };
+            let cut_color = if selected_here {
+                Color32::BLACK
+            } else {
+                DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry())
+            };
             let stroke_width = if selected_here { 2.0 } else { 1.0 };
 
-            painter.line_segment(
-                [Pos2::new(x, y - 8.0), Pos2::new(x, y + 8.0)],
-                Stroke::new(stroke_width, color),
-            );
+            if (top_x - bottom_x).abs() < 0.5 {
+                painter.line_segment(
+                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y + 8.0)],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            } else {
+                painter.line_segment(
+                    [Pos2::new(top_x, y - 8.0), Pos2::new(top_x, y)],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [Pos2::new(top_x, y), Pos2::new(bottom_x, y)],
+                    Stroke::new(stroke_width, cut_color),
+                );
+                painter.line_segment(
+                    [Pos2::new(bottom_x, y), Pos2::new(bottom_x, y + 8.0)],
+                    Stroke::new(stroke_width, cut_color),
+                );
+            }
 
             if let Some(hovered) = &self.hover_enzyme {
                 if hovered.key == *key {
                     painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
                 }
             }
-            let tick_rect = Rect::from_center_size(Pos2::new(x, y), Vec2::new(6.0, 18.0));
+            let tick_rect = Rect::from_min_max(
+                Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),
+                Pos2::new(top_x.max(bottom_x) + 3.0, y + 9.0),
+            );
             let area = if detail.show_restriction_labels {
                 let label = names.join(",");
                 let label_width = Self::estimate_label_width(&label);
-                let label_left = x - label_width / 2.0;
-                let label_right = x + label_width / 2.0;
+                let label_left = center_x - label_width / 2.0;
+                let label_right = center_x + label_width / 2.0;
                 let place_top = idx % 2 == 0;
                 let label_lane = if place_top {
                     Self::allocate_lane(&mut top_label_lanes, label_left, label_right, 6.0)
@@ -2540,14 +2566,14 @@ impl RenderDnaLinear {
                     Align2::CENTER_TOP
                 };
                 let text_rect = painter.text(
-                    Pos2::new(x, label_y),
+                    Pos2::new(center_x, label_y),
                     align,
                     label,
                     FontId {
                         size: 9.0,
                         family: FontFamily::Monospace,
                     },
-                    color,
+                    label_color,
                 );
                 text_rect.expand(2.0).union(tick_rect)
             } else {

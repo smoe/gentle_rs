@@ -4324,8 +4324,12 @@ fn test_inspect_restriction_site_expert_view() {
         FeatureExpertView::RestrictionSite(re) => {
             assert_eq!(re.seq_id, "s");
             assert_eq!(re.cut_pos_1based, key.pos() as usize + 1);
+            assert_eq!(re.paired_cut_pos_1based, key.mate_pos() as usize + 1);
             assert_eq!(re.recognition_start_1based, key.from() as usize + 1);
             assert_eq!(re.recognition_end_1based, key.to() as usize);
+            assert_eq!(re.cut_index_0based, 1);
+            assert_eq!(re.paired_cut_index_0based, 5);
+            assert_eq!(re.end_geometry, "5prime_overhang");
             assert_eq!(re.selected_enzyme.as_deref(), Some("EcoRI"));
             assert_eq!(re.recognition_iupac.as_deref(), Some("GAATTC"));
             assert_eq!(re.enzyme_cut_offset_0based, Some(1));

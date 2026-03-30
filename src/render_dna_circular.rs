@@ -1270,6 +1270,9 @@ impl RenderDnaCircular {
             };
             let cuts = restriction_enzyme_key.number_of_cuts();
             let mut font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
+            let mut cut_color = DnaDisplay::restriction_enzyme_geometry_color(
+                restriction_enzyme_key.cut_geometry(),
+            );
             let selected_here = self
                 .selected_enzyme
                 .as_ref()
@@ -1277,6 +1280,7 @@ impl RenderDnaCircular {
                 .unwrap_or(false);
             if selected_here {
                 font_color = Color32::BLACK;
+                cut_color = Color32::BLACK;
             }
 
             let p1 = self.pos2xy(pos, self.radius);
@@ -1295,7 +1299,7 @@ impl RenderDnaCircular {
             }
             let mut p4 = self.pos2xy(pos, self.radius * 1.28);
             p4.y = p3.y;
-            painter.line_segment([p1, p2], GRAY_1.to_owned());
+            painter.line_segment([p1, p2], Stroke::new(1.2, cut_color));
             painter.line_segment([p2, p3], GRAY_1.to_owned());
 
             let align = if pos > self.sequence_length / 2 {

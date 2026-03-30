@@ -498,15 +498,21 @@ impl GentleEngine {
         }
         let site_sequence_complement = Self::complement_iupac_text(&site_sequence);
         let max_cut = site_sequence.chars().count();
-        let cut_index_0based = key.cut_size().max(0) as usize;
+        let cut_index_0based = key.pos().saturating_sub(key.from()).max(0) as usize;
         let cut_index_0based = cut_index_0based.min(max_cut);
+        let paired_cut_pos_1based = key.mate_pos().max(0) as usize + 1;
+        let paired_cut_index_0based = key.mate_pos().saturating_sub(key.from()).max(0) as usize;
+        let paired_cut_index_0based = paired_cut_index_0based.min(max_cut);
 
         Ok(RestrictionSiteExpertView {
             seq_id: seq_id.to_string(),
             cut_pos_1based,
+            paired_cut_pos_1based,
             recognition_start_1based: start_1based,
             recognition_end_1based: end_1based,
             cut_index_0based,
+            paired_cut_index_0based,
+            end_geometry: key.cut_geometry().kind_label().to_string(),
             number_of_cuts_for_enzyme: key.number_of_cuts(),
             selected_enzyme,
             enzyme_names,

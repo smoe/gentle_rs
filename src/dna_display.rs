@@ -4,7 +4,7 @@ use crate::{
     engine::{LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode},
     enzymes::default_preferred_restriction_enzyme_names,
     gc_contents::DEFAULT_SECTION_SIZE_BP,
-    restriction_enzyme::RestrictionEnzymeKey,
+    restriction_enzyme::{RestrictionEndGeometry, RestrictionEnzymeKey},
 };
 use std::collections::BTreeSet;
 
@@ -715,6 +715,14 @@ impl DnaDisplay {
             2 => Color32::DARK_BLUE,
             3 => Color32::DARK_GREEN,
             _ => Color32::BLACK,
+        }
+    }
+
+    pub fn restriction_enzyme_geometry_color(geometry: RestrictionEndGeometry) -> Color32 {
+        match geometry {
+            RestrictionEndGeometry::Blunt => Color32::from_rgb(71, 85, 105),
+            RestrictionEndGeometry::FivePrimeOverhang(_) => Color32::from_rgb(37, 99, 235),
+            RestrictionEndGeometry::ThreePrimeOverhang(_) => Color32::from_rgb(217, 119, 6),
         }
     }
 

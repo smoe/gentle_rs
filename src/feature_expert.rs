@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 pub const TFBS_EXPERT_INSTRUCTION: &str = "TFBS expert view: each column is one PSSM position. Bar height is information content (2 - entropy in bits) from column base frequencies. Colored segments show A/C/G/T relative frequencies; the black polyline marks the matched base across positions.";
 
-pub const RESTRICTION_EXPERT_INSTRUCTION: &str = "Restriction-site expert view: top strand is 5'->3', bottom strand is complementary 3'->5'. The vertical cut marker shows cleavage position for the selected enzyme/site.";
+pub const RESTRICTION_EXPERT_INSTRUCTION: &str = "Restriction-site expert view: top strand is 5'->3', bottom strand is complementary 3'->5'. Aligned cut markers indicate a blunt cut; offset top/bottom markers indicate staggered sticky-end cleavage for the selected enzyme/site.";
 
 pub const SPLICING_EXPERT_INSTRUCTION: &str = "Splicing expert view: one lane per transcript on a shared genomic axis. Exon geometry is coordinate-true (labels never resize exon/intron footprints). Donor/acceptor splice boundaries are marked, junction arcs summarize support across transcripts, and the transcript-vs-exon matrix shows isoform differences.";
 
@@ -462,9 +462,15 @@ pub struct TfbsExpertView {
 pub struct RestrictionSiteExpertView {
     pub seq_id: String,
     pub cut_pos_1based: usize,
+    #[serde(default)]
+    pub paired_cut_pos_1based: usize,
     pub recognition_start_1based: usize,
     pub recognition_end_1based: usize,
     pub cut_index_0based: usize,
+    #[serde(default)]
+    pub paired_cut_index_0based: usize,
+    #[serde(default)]
+    pub end_geometry: String,
     pub number_of_cuts_for_enzyme: usize,
     #[serde(default)]
     pub selected_enzyme: Option<String>,

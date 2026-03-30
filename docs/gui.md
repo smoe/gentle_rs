@@ -360,6 +360,12 @@ Feature tree grouping:
   (`recognition_iupac`, `enzyme_cut_offset_0based`, `overlap_bp`, optional
   `note`) plus a direct REBASE enzyme URL
   (`https://rebase.neb.com/rebase/enz/<Enzyme>.html`).
+- Restriction-site markers now preserve end geometry in the UI:
+  - blunt cuts use aligned markers in a neutral slate color
+  - `5'` overhang cuts use blue staggered markers
+  - `3'` overhang cuts use amber staggered markers
+  - when the linear DNA view is zoomed far enough to show sequence letters, the
+    top and bottom strand cuts are drawn at their actual offset positions
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
 - The splicing expert window opens slightly slimmer by default and its content
@@ -1216,6 +1222,10 @@ Controls:
    - Default is off.
 11. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
+   - Marker color now encodes cleavage geometry:
+     - blunt = slate
+     - `5'` overhang = blue
+     - `3'` overhang = amber
    - The adjacent restriction mode control switches between:
      - `Preferred only`
      - `Preferred + unique`
