@@ -1340,6 +1340,52 @@ impl MainAreaDna {
         rows
     }
 
+    pub(super) fn format_rna_read_alignment_selection_summary(
+        report: &RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+    ) -> String {
+        let retained_total = report.hits.len();
+        let seed_passed_retained = report
+            .hits
+            .iter()
+            .filter(|hit| hit.passed_seed_filter)
+            .count();
+        let raw_min_hit_retained = report
+            .hits
+            .iter()
+            .filter(|hit| {
+                hit.seed_hit_fraction + f64::EPSILON >= report.seed_filter.min_seed_hit_fraction
+            })
+            .count();
+        let aligned_retained = report
+            .hits
+            .iter()
+            .filter(|hit| hit.best_mapping.is_some())
+            .count();
+        match selection {
+            RnaReadHitSelection::All => format!(
+                "Phase-2 selection='all' aligns all retained report rows ({retained_total}). Of those, {seed_passed_retained} currently pass the composite seed gate and {raw_min_hit_retained} are at or above raw min_hit={:.2}.",
+                report.seed_filter.min_seed_hit_fraction
+            ),
+            RnaReadHitSelection::SeedPassed => {
+                if seed_passed_retained > 0 {
+                    format!(
+                        "Phase-2 selection='seed_passed' aligns the retained rows that currently pass the composite seed gate ({seed_passed_retained}). If that subset ever becomes empty, the engine falls back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and failing that, to the single best retained row.",
+                        report.seed_filter.min_seed_hit_fraction
+                    )
+                } else {
+                    format!(
+                        "Phase-2 selection='seed_passed' currently has no retained composite seed-pass rows. The engine will therefore fall back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and if that is still empty, to the single best retained row.",
+                        report.seed_filter.min_seed_hit_fraction
+                    )
+                }
+            }
+            RnaReadHitSelection::Aligned => format!(
+                "Phase-2 selection='aligned' aligns only retained rows that already have a stored phase-2 mapping ({aligned_retained})."
+            ),
+        }
+    }
+
     pub(super) fn sort_rna_read_top_hit_previews_by_phase1_score(
         rows: &mut [RnaReadTopHitPreview],
     ) {

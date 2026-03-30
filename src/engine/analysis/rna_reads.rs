@@ -3224,9 +3224,11 @@ impl GentleEngine {
     pub(super) fn should_emit_rna_read_progress(
         reads_processed: usize,
         elapsed_since_last_emit: Duration,
+        update_every_reads: usize,
     ) -> bool {
+        let update_every_reads = update_every_reads.max(1);
         reads_processed <= 3
-            || reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
+            || reads_processed % update_every_reads == 0
             || elapsed_since_last_emit >= RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL
     }
 
@@ -5139,7 +5141,7 @@ impl GentleEngine {
                 normalize_compute_ms: 0.0,
                 inference_compute_ms: 0.0,
                 progress_emit_ms: 0.0,
-                update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                update_every_reads: RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS,
                 done: false,
                 bins: bins.clone(),
                 score_density_bins: report.score_density_bins.clone(),
@@ -5352,8 +5354,11 @@ impl GentleEngine {
             hit.msa_eligible = msa_eligible;
             hit.msa_eligibility_reason = msa_reason;
             reads_processed = reads_processed.saturating_add(1);
-            if Self::should_emit_rna_read_progress(reads_processed, last_progress_emit_at.elapsed())
-            {
+            if Self::should_emit_rna_read_progress(
+                reads_processed,
+                last_progress_emit_at.elapsed(),
+                RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS,
+            ) {
                 let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
                     &read_length_counts,
                     reads_processed,
@@ -5398,7 +5403,7 @@ impl GentleEngine {
                         normalize_compute_ms: cumulative_normalize_compute_ms,
                         inference_compute_ms: cumulative_inference_compute_ms,
                         progress_emit_ms: cumulative_progress_emit_ms,
-                        update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                        update_every_reads: RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS,
                         done: false,
                         bins: bins.clone(),
                         score_density_bins: report.score_density_bins.clone(),
@@ -5524,7 +5529,7 @@ impl GentleEngine {
                 normalize_compute_ms: cumulative_normalize_compute_ms,
                 inference_compute_ms: cumulative_inference_compute_ms,
                 progress_emit_ms: cumulative_progress_emit_ms,
-                update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                update_every_reads: RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS,
                 done: true,
                 bins,
                 score_density_bins: report.score_density_bins.clone(),
@@ -6481,6 +6486,7 @@ impl GentleEngine {
                 let should_emit = Self::should_emit_rna_read_progress(
                     reads_processed,
                     last_progress_emit_at.elapsed(),
+                    RNA_READ_PROGRESS_UPDATE_EVERY_READS,
                 );
                 if should_emit {
                     isoform_support_rows =

@@ -12347,6 +12347,40 @@ fn test_align_rna_read_report_seed_passed_falls_back_to_raw_min_hit_rows() {
 }
 
 #[test]
+fn test_align_rna_read_report_progress_uses_stride_one() {
+    let (mut engine, report_id) = seed_failed_but_alignable_rna_read_report();
+    let mut progress_events = Vec::<RnaReadInterpretProgress>::new();
+
+    engine
+        .apply_with_progress(
+            Operation::AlignRnaReadReport {
+                report_id,
+                selection: RnaReadHitSelection::All,
+                align_config_override: Some(RnaReadAlignConfig {
+                    band_width_bp: 24,
+                    min_identity_fraction: 0.60,
+                    max_secondary_mappings: 0,
+                }),
+                selected_record_indices: vec![],
+            },
+            |progress| {
+                if let OperationProgress::RnaReadInterpret(p) = progress {
+                    progress_events.push(p);
+                }
+                true
+            },
+        )
+        .expect("align all retained rows with progress");
+
+    assert!(!progress_events.is_empty());
+    assert!(progress_events.iter().all(|p| p.update_every_reads == 1));
+    let last = progress_events.last().expect("final progress");
+    assert!(last.done);
+    assert_eq!(last.reads_total, 1);
+    assert_eq!(last.reads_processed, 1);
+}
+
+#[test]
 fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     let mut state = ProjectState::default();
     state
@@ -12903,19 +12937,23 @@ fn test_interpret_rna_reads_accepts_misc_rna_seed() {
 fn test_rna_read_progress_emit_policy_supports_read_and_timer_triggers() {
     assert!(GentleEngine::should_emit_rna_read_progress(
         1,
-        Duration::from_millis(50)
+        Duration::from_millis(50),
+        RNA_READ_PROGRESS_UPDATE_EVERY_READS,
     ));
     assert!(!GentleEngine::should_emit_rna_read_progress(
         RNA_READ_PROGRESS_UPDATE_EVERY_READS.saturating_sub(1),
-        Duration::from_secs(1)
+        Duration::from_secs(1),
+        RNA_READ_PROGRESS_UPDATE_EVERY_READS,
     ));
     assert!(GentleEngine::should_emit_rna_read_progress(
         RNA_READ_PROGRESS_UPDATE_EVERY_READS,
-        Duration::from_millis(10)
+        Duration::from_millis(10),
+        RNA_READ_PROGRESS_UPDATE_EVERY_READS,
     ));
     assert!(GentleEngine::should_emit_rna_read_progress(
         RNA_READ_PROGRESS_UPDATE_EVERY_READS.saturating_sub(1),
-        Duration::from_secs(2)
+        Duration::from_secs(2),
+        RNA_READ_PROGRESS_UPDATE_EVERY_READS,
     ));
 }
 

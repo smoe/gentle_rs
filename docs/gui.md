@@ -474,6 +474,8 @@ Feature tree grouping:
     - release builds: read-count updates approximately every `10000` reads
     - both build types additionally emit time-based updates approximately every
       `2s` while processing continues
+    - phase-2 retained-read alignment now reports progress every selected
+      retained row (`update stride: 1`) so long alignment passes visibly move
   - live RNA-read progress stays in the dedicated `RNA-read Mapping` workspace;
     it no longer rewrites the DNA sequence window status line while the
     sequence window is only acting as the launcher/context holder
@@ -565,6 +567,10 @@ Feature tree grouping:
     - `min identity`
     - `max secondary`
     - `align selection` (`seed_passed|all|aligned`)
+    - the panel now explains the current phase-2 working set explicitly:
+      `all` means all retained report rows, not only the rows above raw
+      `min hit`; it also shows how many retained rows currently pass the
+      composite seed gate
     - `all` is now the default/recommended round-2 setting because it also
       aligns rescued retained rows that were kept for high phase-1 score /
       high-score-bin reasons even if they did not pass the full composite seed

@@ -884,7 +884,7 @@ mod tests {
             RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
             RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
-            RnaReadOriginMode, RnaReadReportMode, SplicingScopePreset,
+            RnaReadOriginMode, RnaReadReportMode, RnaReadSeedFilterConfig, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -4406,6 +4406,52 @@ mod tests {
             MainAreaDna::select_rna_read_report_score_bin_record_indices(&report, 35, 40),
             vec![4, 7]
         );
+    }
+
+    #[test]
+    fn rna_read_alignment_selection_summary_explains_all_vs_seed_passed_counts() {
+        let report = RnaReadInterpretationReport {
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    seed_hit_fraction: 0.12,
+                    passed_seed_filter: false,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 4,
+                    seed_hit_fraction: 0.31,
+                    passed_seed_filter: false,
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 7,
+                    seed_hit_fraction: 0.88,
+                    passed_seed_filter: true,
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            seed_filter: RnaReadSeedFilterConfig {
+                min_seed_hit_fraction: 0.30,
+                ..RnaReadSeedFilterConfig::default()
+            },
+            ..RnaReadInterpretationReport::default()
+        };
+
+        let summary_all = MainAreaDna::format_rna_read_alignment_selection_summary(
+            &report,
+            RnaReadHitSelection::All,
+        );
+        assert!(summary_all.contains("aligns all retained report rows (3)"));
+        assert!(summary_all.contains("1 currently pass the composite seed gate"));
+        assert!(summary_all.contains("2 are at or above raw min_hit=0.30"));
+
+        let summary_seed_passed = MainAreaDna::format_rna_read_alignment_selection_summary(
+            &report,
+            RnaReadHitSelection::SeedPassed,
+        );
+        assert!(summary_seed_passed.contains("aligns the retained rows that currently pass"));
+        assert!(summary_seed_passed.contains("(1)"));
     }
 
     #[test]
@@ -14593,6 +14639,19 @@ impl MainAreaDna {
                                     .changed();
                             });
                         });
+                        if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
+                            && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
+                        {
+                            ui.small(
+                                egui::RichText::new(
+                                    Self::format_rna_read_alignment_selection_summary(
+                                        report.as_ref(),
+                                        self.rna_reads_ui.align_phase_selection,
+                                    ),
+                                )
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                            );
+                        }
                     }
                 });
                 if !controls_enabled {
@@ -14604,6 +14663,23 @@ impl MainAreaDna {
                 let mut highlight_selection_update: Option<Option<usize>> = None;
                 self.sync_rna_read_evidence_selection_to_mapping_report();
                 let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
+                let align_selection_label = self.rna_reads_ui.align_phase_selection.as_str().to_string();
+                let active_alignment_selection_summary = if self
+                    .rna_read_task
+                    .as_ref()
+                    .is_some_and(|task| task.operation_label == "Nanopore alignment phase")
+                {
+                    self.current_rna_read_mapping_workspace_report_id()
+                        .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+                        .map(|report| {
+                            Self::format_rna_read_alignment_selection_summary(
+                                report.as_ref(),
+                                self.rna_reads_ui.align_phase_selection,
+                            )
+                        })
+                } else {
+                    None
+                };
                 if let Some(task) = &self.rna_read_task {
                     let compression = Self::rna_reads_input_compression_label(&task.input_path);
                     let task_label = task.operation_label.as_str();
@@ -14659,11 +14735,27 @@ impl MainAreaDna {
                                     task.started.elapsed().as_secs_f32()
                                 ));
                             } else {
+                                let selection_suffix = if task.operation_label
+                                    == "Nanopore alignment phase"
+                                {
+                                    format!(
+                                        ", selection={}",
+                                        align_selection_label.as_str()
+                                    )
+                                } else {
+                                    String::new()
+                                };
                                 ui.label(format!(
-                                    "{task_label} running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
+                                    "{task_label} running: reads {}/{} ({:.1}%){}{}, input={compression}, {:.1} reads/s, {}, len mean/med/p95={:.1}/{}/{}, seed-passed={} ({:.2}%), aligned={}, elapsed {:.1}s",
                                     progress.reads_processed,
                                     progress.reads_total,
                                     percent,
+                                    if task.operation_label == "Nanopore alignment phase" {
+                                        " retained rows"
+                                    } else {
+                                        ""
+                                    },
+                                    selection_suffix,
                                     reads_per_sec,
                                     Self::format_bp_rate_compact(bp_per_sec),
                                     progress.mean_read_length_bp,
@@ -14734,13 +14826,37 @@ impl MainAreaDna {
                                 );
                             }
                         } else {
-                            ui.add(
-                                egui::ProgressBar::new(percent).show_percentage().text(format!(
-                                    "Reads processed: {}/{} (update stride: {})",
-                                    progress.reads_processed,
-                                    progress.reads_total,
-                                    progress.update_every_reads,
-                                )),
+                            if task.operation_label == "Nanopore alignment phase" {
+                                ui.add(
+                                    egui::ProgressBar::new(percent)
+                                        .show_percentage()
+                                        .text(format!(
+                                            "Retained rows processed: {}/{} (selection={} | update stride: {})",
+                                            progress.reads_processed,
+                                            progress.reads_total,
+                                            align_selection_label.as_str(),
+                                            progress.update_every_reads,
+                                        )),
+                                );
+                            } else {
+                                ui.add(
+                                    egui::ProgressBar::new(percent)
+                                        .show_percentage()
+                                        .text(format!(
+                                            "Reads processed: {}/{} (update stride: {})",
+                                            progress.reads_processed,
+                                            progress.reads_total,
+                                            progress.update_every_reads,
+                                        )),
+                                );
+                            }
+                        }
+                        if task.operation_label == "Nanopore alignment phase"
+                            && let Some(summary) = active_alignment_selection_summary.as_ref()
+                        {
+                            ui.small(
+                                egui::RichText::new(summary)
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
                             );
                         }
                         let matched_ratio = if progress.tested_kmers == 0 {

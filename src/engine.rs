@@ -186,6 +186,7 @@ const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_in
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 10_000;
+const RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS: usize = 1;
 const RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL: Duration = Duration::from_secs(2);
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;

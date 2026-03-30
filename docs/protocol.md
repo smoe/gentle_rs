@@ -2389,6 +2389,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - phase-2 alignment behavior:
     - `AlignRnaReadReport` loads a persisted report and reprocesses a selected
       retained subset (`all|seed_passed|aligned`)
+    - phase-2 progress events now emit once per selected retained row
+      (`update_every_reads=1`) so adapters can show visible row-by-row advance
     - optional `selected_record_indices[]` (0-based stored `record_index`)
       overrides the selection preset and aligns only the explicit subset
     - default adapter behavior now prefers `selection=all` so rescued retained
