@@ -3,7 +3,7 @@
   "id": "agent_interfaces",
   "title": "GENtle Agent Interfaces Tutorial",
   "catalog": {
-    "order": 5,
+    "order": 6,
     "path": "docs/agent_interfaces_tutorial.md",
     "type": "operational_reference",
     "status": "manual/reference",
