@@ -2421,6 +2421,11 @@ struct CandidateStoreDiskSetIndexEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Persisted named collection of candidate intervals plus their scored metrics.
+///
+/// Candidate-set operations in GUI/CLI/macros exchange this record rather than
+/// adapter-local tables. Start here when tracing candidate generation,
+/// filtering, or top-k/pareto workflows.
 pub struct CandidateSet {
     pub name: String,
     pub created_at_unix_ms: u128,
@@ -2430,6 +2435,10 @@ pub struct CandidateSet {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One concrete candidate interval extracted from a source sequence.
+///
+/// Coordinates are 0-based half-open on `seq_id`; `metrics` stores arbitrary
+/// numeric scores produced by candidate analysis operations.
 pub struct CandidateRecord {
     pub seq_id: String,
     pub start_0based: usize,
@@ -2439,6 +2448,7 @@ pub struct CandidateRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Lightweight listing row for one candidate set without materializing records.
 pub struct CandidateSetSummary {
     pub name: String,
     pub created_at_unix_ms: u128,
@@ -2448,6 +2458,7 @@ pub struct CandidateSetSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Coverage summary for one metric across all rows in a candidate set.
 pub struct CandidateMetricSummary {
     pub metric: String,
     pub present_in_candidates: usize,
@@ -2456,6 +2467,9 @@ pub struct CandidateMetricSummary {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// How feature-based candidate queries turn matching annotations into geometry.
+///
+/// Use this when finding intervals around features or feature boundaries.
 pub enum CandidateFeatureGeometryMode {
     #[default]
     FeatureSpan,
@@ -2475,6 +2489,7 @@ impl CandidateFeatureGeometryMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Which boundary of a matched feature is eligible when boundary mode is used.
 pub enum CandidateFeatureBoundaryMode {
     #[default]
     Any,
@@ -2498,6 +2513,7 @@ impl CandidateFeatureBoundaryMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Strand relation required between a candidate query and matched feature.
 pub enum CandidateFeatureStrandRelation {
     #[default]
     Any,
@@ -2517,6 +2533,7 @@ impl CandidateFeatureStrandRelation {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+/// Deterministic set algebra supported by candidate-set combination commands.
 pub enum CandidateSetOperator {
     Union,
     Intersect,
@@ -2551,6 +2568,7 @@ impl CandidateObjectiveDirection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// One objective dimension for Pareto-frontier ranking.
 pub struct CandidateObjectiveSpec {
     pub metric: String,
     #[serde(default)]
@@ -2558,6 +2576,7 @@ pub struct CandidateObjectiveSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Weighted scalar objective term used by `CandidatesScoreWeightedObjective`.
 pub struct CandidateWeightedObjectiveTerm {
     pub metric: String,
     pub weight: f64,
@@ -2567,6 +2586,7 @@ pub struct CandidateWeightedObjectiveTerm {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Stable tie-breaker used after objective scores compare equal.
 pub enum CandidateTieBreakPolicy {
     #[default]
     SeqStartEnd,
@@ -2678,6 +2698,10 @@ struct SequencingConfirmationReportStore {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Which stored planning profile layer a read/write command refers to.
+///
+/// The effective merge order is `global -> confirmed_agent_overlay ->
+/// project_override`.
 pub enum PlanningProfileScope {
     #[default]
     Global,
@@ -2699,6 +2723,7 @@ impl PlanningProfileScope {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Review state for an advisory planning suggestion.
 pub enum PlanningSuggestionStatus {
     #[default]
     Pending,
@@ -2718,6 +2743,7 @@ impl PlanningSuggestionStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Availability/cost note for one inventory item referenced by planning.
 pub struct PlanningInventoryItem {
     pub available: bool,
     pub unit_cost: Option<f64>,
@@ -2738,6 +2764,7 @@ impl Default for PlanningInventoryItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Availability/queue note for one machine or platform used in planning.
 pub struct PlanningMachineAvailability {
     pub available: bool,
     pub queue_business_days: f64,
@@ -2758,6 +2785,10 @@ impl Default for PlanningMachineAvailability {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// User- or agent-supplied planning profile describing local capabilities.
+///
+/// This is the main durable contract for inventory, procurement latency, and
+/// machine availability. Start here when tracing `planning profile ...`.
 pub struct PlanningProfile {
     pub schema: String,
     pub profile_id: Option<String>,
@@ -2786,6 +2817,7 @@ impl Default for PlanningProfile {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Optimization weights and hard guardrails used by planning estimates.
 pub struct PlanningObjective {
     pub schema: String,
     pub weight_time: f64,
@@ -2814,6 +2846,7 @@ impl Default for PlanningObjective {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Deterministic estimate payload produced by planning evaluation.
 pub struct PlanningEstimate {
     pub schema: String,
     pub estimated_time_hours: f64,
@@ -2842,6 +2875,7 @@ impl Default for PlanningEstimate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Advisory pull/push suggestion awaiting explicit user acceptance or rejection.
 pub struct PlanningSuggestion {
     pub schema: String,
     pub suggestion_id: String,
@@ -2882,6 +2916,7 @@ impl Default for PlanningSuggestion {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// High-level sync status for the planning suggestion channel.
 pub struct PlanningSyncStatus {
     pub schema: String,
     pub pending_suggestion_count: usize,
@@ -3256,6 +3291,10 @@ struct WorkflowMacroTemplateStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Stored workflow-macro template shared by shell, GUI helpers, and future MCP.
+///
+/// A workflow macro expands to one workflow script plus typed parameters and
+/// declared input/output ports for lineage/protocol reporting.
 pub struct WorkflowMacroTemplate {
     pub name: String,
     pub description: Option<String>,
@@ -3278,6 +3317,7 @@ fn default_cloning_macro_template_schema() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One typed parameter exposed by a workflow macro template.
 pub struct WorkflowMacroTemplateParam {
     pub name: String,
     pub default_value: Option<String>,
@@ -3286,6 +3326,7 @@ pub struct WorkflowMacroTemplateParam {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Declared input or output port on a workflow macro template.
 pub struct WorkflowMacroTemplatePort {
     pub port_id: String,
     pub kind: String,
@@ -3295,6 +3336,7 @@ pub struct WorkflowMacroTemplatePort {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Listing row for one workflow macro template.
 pub struct WorkflowMacroTemplateSummary {
     pub name: String,
     pub description: Option<String>,
@@ -3314,6 +3356,7 @@ struct CandidateMacroTemplateStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Stored candidate-macro template that expands to candidate-shell commands.
 pub struct CandidateMacroTemplate {
     pub name: String,
     pub description: Option<String>,
@@ -3326,6 +3369,7 @@ pub struct CandidateMacroTemplate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One typed parameter exposed by a candidate macro template.
 pub struct CandidateMacroTemplateParam {
     pub name: String,
     pub default_value: Option<String>,
@@ -3333,6 +3377,7 @@ pub struct CandidateMacroTemplateParam {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Listing row for one candidate macro template.
 pub struct CandidateMacroTemplateSummary {
     pub name: String,
     pub description: Option<String>,
@@ -3343,6 +3388,7 @@ pub struct CandidateMacroTemplateSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// BLAST hit reduced to the fields needed for feature import/overlay pipelines.
 pub struct BlastHitFeatureInput {
     pub subject_id: String,
     pub query_start_1based: usize,
@@ -3357,6 +3403,10 @@ pub struct BlastHitFeatureInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Provenance bundle describing exactly how a BLAST search was invoked.
+///
+/// This is the record to inspect when reproducing a search or explaining which
+/// executable/options/catalog paths produced a report.
 pub struct BlastInvocationProvenance {
     pub genome_id: String,
     pub query_label: String,
@@ -3377,6 +3427,7 @@ pub struct BlastInvocationProvenance {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
+/// Optional threshold overrides for genome BLAST post-filtering.
 pub struct BlastThresholdOptions {
     pub max_evalue: Option<f64>,
     pub min_identity_percent: Option<f64>,
@@ -3411,6 +3462,7 @@ impl BlastThresholdOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
+/// Request-time BLAST execution options before defaults/project overrides merge.
 pub struct BlastRunOptions {
     pub task: Option<String>,
     pub max_hits: Option<usize>,
@@ -3498,6 +3550,7 @@ impl GenomeGeneExtractMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Verdict assigned to one confirmation target, read, or whole report.
 pub enum SequencingConfirmationStatus {
     Confirmed,
     Contradicted,
@@ -3517,6 +3570,7 @@ impl SequencingConfirmationStatus {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Orientation chosen for the best alignment of one confirmation read.
 pub enum SequencingReadOrientation {
     #[default]
     Forward,
@@ -3534,6 +3588,7 @@ impl SequencingReadOrientation {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Biology-facing target classes supported by sequencing confirmation v1.
 pub enum SequencingConfirmationTargetKind {
     #[default]
     FullSpan,
@@ -3557,6 +3612,11 @@ impl SequencingConfirmationTargetKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+/// One requested construct-confirmation target on the expected sequence.
+///
+/// Coordinates are 0-based half-open on the expected construct. Junction
+/// targets also set `junction_left_end_0based` to mark the break between the
+/// two halves that must both be supported.
 pub struct SequencingConfirmationTargetSpec {
     pub target_id: String,
     pub label: String,
@@ -3583,6 +3643,7 @@ impl Default for SequencingConfirmationTargetSpec {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Alignment-level discrepancy class recorded for one confirmation read.
 pub enum SequencingConfirmationDiscrepancyKind {
     #[default]
     Mismatch,
@@ -3602,6 +3663,7 @@ impl SequencingConfirmationDiscrepancyKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One mismatch/indel segment extracted from the best read alignment.
 pub struct SequencingConfirmationDiscrepancy {
     pub kind: SequencingConfirmationDiscrepancyKind,
     pub query_start_0based: usize,
@@ -3614,6 +3676,7 @@ pub struct SequencingConfirmationDiscrepancy {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Construct-level verdict for one requested confirmation target.
 pub struct SequencingConfirmationTargetResult {
     pub target_id: String,
     pub label: String,
@@ -3632,6 +3695,7 @@ pub struct SequencingConfirmationTargetResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Best-alignment and discrepancy summary for one input sequencing read.
 pub struct SequencingConfirmationReadResult {
     pub read_seq_id: String,
     pub orientation: SequencingReadOrientation,
@@ -3645,6 +3709,11 @@ pub struct SequencingConfirmationReadResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Stored construct-confirmation report shared by shell, GUI, and exports.
+///
+/// Start here when following the sequencing-confirmation workflow end to end:
+/// it ties together requested targets, per-read alignments, and the overall
+/// confirmed/contradicted/insufficient-evidence verdict.
 pub struct SequencingConfirmationReport {
     pub schema: String,
     pub report_id: String,
@@ -3668,6 +3737,7 @@ pub struct SequencingConfirmationReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Lightweight listing row for one sequencing-confirmation report.
 pub struct SequencingConfirmationReportSummary {
     pub report_id: String,
     pub expected_seq_id: String,

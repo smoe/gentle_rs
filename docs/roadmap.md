@@ -31,8 +31,13 @@ order. Durable architecture constraints and decisions remain in
   beyond a module summary:
   - key public reports/records and catalog methods now describe their role,
     side effects, and failure/cancellation semantics
-  - the remaining next-step targets stay `src/engine.rs` and
-    `src/engine_shell.rs`
+  - `src/engine.rs` and `src/engine_shell.rs` now also document their
+    highest-traffic public contracts: candidate/planning/report records,
+    sequencing-confirmation payloads, BLAST provenance/options, UI-intent
+    shell enums, and the shared parse/execute entry points
+  - the next documentation targets now shift to the large GUI orchestration
+    files (`src/main_area_dna.rs` and `src/app.rs`) for file-map style
+    navigation comments
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
 - GUI module decomposition is now underway:

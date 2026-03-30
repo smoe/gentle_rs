@@ -432,6 +432,7 @@ pub enum UiIntentTarget {
     BlastHelperSequence,
 }
 
+/// Which prepared-genome cache tree a cleanup command should inspect or mutate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheCleanupScope {
     References,
@@ -1488,6 +1489,10 @@ const DEFAULT_CANDIDATE_SET_LIMIT: usize = 50_000;
 const DEFAULT_GUIDE_PAGE_SIZE: usize = 100;
 
 #[derive(Debug, Clone, Copy)]
+/// Parser-local set-algebra enum for `candidates set-op ...` shell commands.
+///
+/// This stays local to the shell layer because it only exists to parse command
+/// text before converting into engine operations.
 pub enum CandidateSetOperator {
     Union,
     Intersect,
@@ -9656,6 +9661,9 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
 }
 
 /// Parse tokenized shell input into one canonical `ShellCommand`.
+///
+/// Start here when debugging shell grammar or adapter parity: GUI Shell and
+/// `gentle_cli shell` both flow through this function before execution.
 pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.is_empty() {
         return Err("Missing shell command".to_string());
@@ -10819,7 +10827,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
-/// Split and parse one raw shell command line.
+/// Split and parse one raw shell command line using the shared tokenizer.
 pub fn parse_shell_line(line: &str) -> Result<ShellCommand, String> {
     let tokens = split_shell_words(line)?;
     parse_shell_tokens(&tokens)
