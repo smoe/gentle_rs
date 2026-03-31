@@ -79,6 +79,42 @@ impl FlexibilityModel {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Shared scope preset for splicing/exon-context views and RNA-read mapping.
+pub enum SplicingScopePreset {
+    #[default]
+    AllOverlappingBothStrands,
+    TargetGroupAnyStrand,
+    AllOverlappingTargetStrand,
+    TargetGroupTargetStrand,
+}
+
+impl SplicingScopePreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllOverlappingBothStrands => "all_overlapping_both_strands",
+            Self::TargetGroupAnyStrand => "target_group_any_strand",
+            Self::AllOverlappingTargetStrand => "all_overlapping_target_strand",
+            Self::TargetGroupTargetStrand => "target_group_target_strand",
+        }
+    }
+
+    pub fn restrict_to_target_group(self) -> bool {
+        matches!(
+            self,
+            Self::TargetGroupAnyStrand | Self::TargetGroupTargetStrand
+        )
+    }
+
+    pub fn restrict_to_target_strand(self) -> bool {
+        matches!(
+            self,
+            Self::AllOverlappingTargetStrand | Self::TargetGroupTargetStrand
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum RnaReadInputFormat {
     #[default]
     Fasta,
@@ -715,4 +751,809 @@ pub struct Capabilities {
     pub supported_operations: Vec<String>,
     pub supported_export_formats: Vec<String>,
     pub deterministic_operation_log: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_poly_t_prefix_min_bp() -> usize {
+    18
+}
+
+fn default_rna_seed_stride_bp() -> usize {
+    1
+}
+
+fn default_min_weighted_seed_hit_fraction() -> f64 {
+    0.05
+}
+
+fn default_min_unique_matched_kmers() -> usize {
+    12
+}
+
+fn default_max_median_transcript_gap() -> f64 {
+    4.0
+}
+
+fn default_min_chain_consistency_fraction() -> f64 {
+    0.40
+}
+
+fn default_min_confirmed_exon_transitions() -> usize {
+    1
+}
+
+fn default_min_transition_support_fraction() -> f64 {
+    0.05
+}
+
+fn default_rna_read_checkpoint_every_reads() -> usize {
+    10_000
+}
+
+/// Composite seed-gate thresholds reused by RNA-read interpretation reports,
+/// progress payloads, and adapter-side inspection tools.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RnaReadSeedFilterConfig {
+    pub kmer_len: usize,
+    #[serde(default = "default_rna_seed_stride_bp")]
+    pub seed_stride_bp: usize,
+    pub min_seed_hit_fraction: f64,
+    #[serde(default = "default_min_weighted_seed_hit_fraction")]
+    pub min_weighted_seed_hit_fraction: f64,
+    #[serde(default = "default_min_unique_matched_kmers")]
+    pub min_unique_matched_kmers: usize,
+    #[serde(default = "default_max_median_transcript_gap")]
+    pub max_median_transcript_gap: f64,
+    #[serde(default = "default_min_chain_consistency_fraction")]
+    pub min_chain_consistency_fraction: f64,
+    #[serde(default = "default_min_confirmed_exon_transitions")]
+    pub min_confirmed_exon_transitions: usize,
+    #[serde(default = "default_min_transition_support_fraction")]
+    pub min_transition_support_fraction: f64,
+    #[serde(default = "default_true")]
+    pub cdna_poly_t_flip_enabled: bool,
+    #[serde(default = "default_poly_t_prefix_min_bp")]
+    pub poly_t_prefix_min_bp: usize,
+}
+
+impl Default for RnaReadSeedFilterConfig {
+    fn default() -> Self {
+        Self {
+            kmer_len: 10,
+            seed_stride_bp: 1,
+            min_seed_hit_fraction: 0.30,
+            min_weighted_seed_hit_fraction: 0.05,
+            min_unique_matched_kmers: 12,
+            max_median_transcript_gap: 4.0,
+            min_chain_consistency_fraction: 0.40,
+            min_confirmed_exon_transitions: 1,
+            min_transition_support_fraction: 0.05,
+            cdna_poly_t_flip_enabled: true,
+            poly_t_prefix_min_bp: 18,
+        }
+    }
+}
+
+/// Pairwise phase-2 alignment parameters shared by RNA-read mapping reports
+/// and inspection/export adapters.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RnaReadAlignConfig {
+    pub band_width_bp: usize,
+    pub min_identity_fraction: f64,
+    pub max_secondary_mappings: usize,
+}
+
+impl Default for RnaReadAlignConfig {
+    fn default() -> Self {
+        Self {
+            band_width_bp: 24,
+            min_identity_fraction: 0.60,
+            max_secondary_mappings: 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappingHit {
+    #[serde(default)]
+    pub alignment_mode: RnaReadAlignmentMode,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub query_reverse_complemented: bool,
+    pub target_start_1based: usize,
+    pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_start_offset_0based: usize,
+    #[serde(default)]
+    pub target_end_offset_0based_exclusive: usize,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplay {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub alignment_mode: RnaReadAlignmentMode,
+    #[serde(default)]
+    pub query_reverse_complemented: bool,
+    #[serde(default)]
+    pub query_start_0based: usize,
+    #[serde(default)]
+    pub query_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub target_start_1based: usize,
+    #[serde(default)]
+    pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_start_offset_0based: usize,
+    #[serde(default)]
+    pub target_end_offset_0based_exclusive: usize,
+    #[serde(default)]
+    pub target_length_bp: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
+    #[serde(default)]
+    pub matches: usize,
+    #[serde(default)]
+    pub mismatches: usize,
+    #[serde(default)]
+    pub insertions: usize,
+    #[serde(default)]
+    pub deletions: usize,
+    #[serde(default)]
+    pub aligned_columns: usize,
+    #[serde(default)]
+    pub aligned_query: String,
+    #[serde(default)]
+    pub aligned_midline: String,
+    #[serde(default)]
+    pub aligned_target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadStrandAssignmentDiagnostics {
+    pub selected_strand: String,
+    pub selected_reason: String,
+    pub selected_transition_hits: usize,
+    pub selected_exon_hits: usize,
+    pub plus_best_transcript_id: String,
+    pub plus_best_transition_hits: usize,
+    pub plus_best_exon_hits: usize,
+    pub minus_best_transcript_id: String,
+    pub minus_best_transition_hits: usize,
+    pub minus_best_exon_hits: usize,
+    pub competing_opposite_strand: bool,
+    pub ambiguous_near_tie: bool,
+    pub chain_preferred_strand: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadOriginCandidateContribution {
+    pub candidate_role: String,
+    pub transcript_id: String,
+    pub strand: String,
+    pub transition_hits: usize,
+    pub exon_hits: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadInterpretationHit {
+    pub record_index: usize,
+    pub source_byte_offset: usize,
+    pub header_id: String,
+    pub sequence: String,
+    pub read_length_bp: usize,
+    pub tested_kmers: usize,
+    pub matched_kmers: usize,
+    pub seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_matched_kmers: f64,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_support_kmers: usize,
+    #[serde(default)]
+    pub seed_chain_support_fraction: f64,
+    #[serde(default)]
+    pub seed_median_transcript_gap: f64,
+    #[serde(default)]
+    pub seed_transcript_gap_count: usize,
+    #[serde(default)]
+    pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub exon_path: String,
+    #[serde(default)]
+    pub exon_transitions_confirmed: usize,
+    #[serde(default)]
+    pub exon_transitions_total: usize,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub strand_diagnostics: RnaReadStrandAssignmentDiagnostics,
+    #[serde(default)]
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub origin_reason: String,
+    #[serde(default)]
+    pub origin_confidence: f64,
+    #[serde(default)]
+    pub strand_confidence: f64,
+    #[serde(default)]
+    pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
+    pub perfect_seed_match: bool,
+    pub passed_seed_filter: bool,
+    #[serde(default)]
+    pub msa_eligible: bool,
+    #[serde(default)]
+    pub msa_eligibility_reason: String,
+    pub best_mapping: Option<RnaReadMappingHit>,
+    pub secondary_mappings: Vec<RnaReadMappingHit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonSupportFrequency {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadJunctionSupportFrequency {
+    pub donor_1based: usize,
+    pub acceptor_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadTransitionSupportRow {
+    pub from_exon_ordinal: usize,
+    pub to_exon_ordinal: usize,
+    pub from_start_1based: usize,
+    pub from_end_1based: usize,
+    pub to_start_1based: usize,
+    pub to_end_1based: usize,
+    pub support_read_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadIsoformSupportRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub exon_count: usize,
+    pub expected_transition_count: usize,
+    pub reads_assigned: usize,
+    pub reads_seed_passed: usize,
+    pub transition_rows_supported: usize,
+    pub transition_rows_supported_fraction: f64,
+    pub mean_seed_median_gap: f64,
+    pub mean_confirmed_transition_fraction: f64,
+    pub best_seed_hit_fraction: f64,
+    pub best_weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub reads_chain_same_strand: usize,
+    #[serde(default)]
+    pub reads_with_opposite_strand_competition: usize,
+    #[serde(default)]
+    pub reads_ambiguous_strand_ties: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappedIsoformSupportRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub aligned_read_count: usize,
+    #[serde(default)]
+    pub msa_eligible_read_count: usize,
+    #[serde(default)]
+    pub mean_identity_fraction: f64,
+    #[serde(default)]
+    pub mean_query_coverage_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_score: isize,
+    #[serde(default)]
+    pub secondary_mapping_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadSampleSheetExport {
+    pub schema: String,
+    pub path: String,
+    pub report_count: usize,
+    pub appended: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonPathsExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonAbundanceExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub selected_read_count: usize,
+    pub exon_row_count: usize,
+    pub transition_row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadScoreDensitySvgExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub scale: RnaReadScoreDensityScale,
+    #[serde(default)]
+    pub variant: RnaReadScoreDensityVariant,
+    pub bin_count: usize,
+    pub max_bin_count: u64,
+    pub total_scored_reads: u64,
+    pub derived_from_report_hits_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDotplotSvgExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub point_count: usize,
+    pub rendered_point_count: usize,
+    pub max_points: usize,
+    pub min_score: isize,
+    pub max_score: isize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspectionSubsetSpec {
+    pub effect_filter: RnaReadAlignmentInspectionEffectFilter,
+    pub sort_key: RnaReadAlignmentInspectionSortKey,
+    pub search: String,
+    pub selected_record_indices: Vec<usize>,
+    #[serde(default)]
+    pub score_density_variant: RnaReadScoreDensityVariant,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_density_seed_filter_override: Option<RnaReadSeedFilterConfig>,
+    pub score_bin_index: Option<usize>,
+    pub score_bin_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappedSupportExonAttribution {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappedSupportJunctionAttribution {
+    pub donor_1based: usize,
+    pub acceptor_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspectionRow {
+    pub rank: usize,
+    pub record_index: usize,
+    pub header_id: String,
+    #[serde(default)]
+    pub phase1_primary_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub exon_path: String,
+    #[serde(default)]
+    pub exon_transitions_confirmed: usize,
+    #[serde(default)]
+    pub exon_transitions_total: usize,
+    #[serde(default)]
+    pub selected_strand: String,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub alignment_effect: RnaReadAlignmentEffect,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub alignment_mode: RnaReadAlignmentMode,
+    #[serde(default)]
+    pub target_start_1based: usize,
+    #[serde(default)]
+    pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_length_bp: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
+    #[serde(default)]
+    pub secondary_mapping_count: usize,
+    pub seed_hit_fraction: f64,
+    pub weighted_seed_hit_fraction: f64,
+    pub passed_seed_filter: bool,
+    pub msa_eligible: bool,
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub mapped_exon_support: Vec<RnaReadMappedSupportExonAttribution>,
+    #[serde(default)]
+    pub mapped_junction_support: Vec<RnaReadMappedSupportJunctionAttribution>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentInspection {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub aligned_count: usize,
+    pub subset_match_count: usize,
+    pub limit: usize,
+    pub subset_spec: RnaReadAlignmentInspectionSubsetSpec,
+    pub align_min_identity_fraction: f64,
+    pub max_secondary_mappings: usize,
+    pub rows: Vec<RnaReadAlignmentInspectionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadPairwiseAlignmentDetail {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub record_index: usize,
+    pub header_id: String,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    #[serde(default)]
+    pub alignment_mode: RnaReadAlignmentMode,
+    #[serde(default)]
+    pub backend: RnaReadAlignmentBackend,
+    pub query_length_bp: usize,
+    pub target_length_bp: usize,
+    pub aligned_query_start_0based: usize,
+    pub aligned_query_end_0based_exclusive: usize,
+    pub aligned_target_start_offset_0based: usize,
+    pub aligned_target_end_offset_0based_exclusive: usize,
+    pub target_start_1based: usize,
+    pub target_end_1based: usize,
+    pub aligned_columns: usize,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
+    pub cigar: String,
+    pub aligned_query: String,
+    pub aligned_relation: String,
+    pub aligned_target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaSeedHashCatalogEntry {
+    pub seed_bits: u32,
+    pub kmer_sequence: String,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub template_offset_0based: usize,
+    pub genomic_pos_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaSeedHashTemplateAuditEntry {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub template_sequence: String,
+    pub template_length_bp: usize,
+    pub template_first_genomic_pos_1based: usize,
+    pub template_last_genomic_pos_1based: usize,
+    pub reverse_complemented_from_genome: bool,
+}
+
+/// One genome-position bin used for running RNA-read seed-confirmation
+/// statistics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadSeedHistogramBin {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub confirmed_plus: u64,
+    pub confirmed_minus: u64,
+}
+
+/// Lightweight top-hit row included in running RNA-read progress updates.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RnaReadTopHitPreview {
+    pub record_index: usize,
+    pub header_id: String,
+    pub seed_hit_fraction: f64,
+    pub weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_matched_kmers: f64,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_support_kmers: usize,
+    #[serde(default)]
+    pub seed_chain_support_fraction: f64,
+    #[serde(default)]
+    pub seed_median_transcript_gap: f64,
+    #[serde(default)]
+    pub seed_transcript_gap_count: usize,
+    pub matched_kmers: usize,
+    pub tested_kmers: usize,
+    pub passed_seed_filter: bool,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub selected_strand: String,
+    #[serde(default)]
+    pub competing_opposite_strand: bool,
+    #[serde(default)]
+    pub ambiguous_strand_tie: bool,
+    #[serde(default)]
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub origin_reason: String,
+    #[serde(default)]
+    pub origin_confidence: f64,
+    #[serde(default)]
+    pub strand_confidence: f64,
+    #[serde(default)]
+    pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
+    #[serde(default)]
+    pub msa_eligible: bool,
+    #[serde(default)]
+    pub msa_eligibility_reason: String,
+    #[serde(default)]
+    pub aligned: bool,
+    #[serde(default)]
+    pub best_alignment_mode: String,
+    #[serde(default)]
+    pub best_alignment_transcript_id: String,
+    #[serde(default)]
+    pub best_alignment_transcript_label: String,
+    #[serde(default)]
+    pub best_alignment_strand: String,
+    #[serde(default)]
+    pub best_alignment_target_start_1based: usize,
+    #[serde(default)]
+    pub best_alignment_target_end_1based: usize,
+    #[serde(default)]
+    pub best_alignment_identity_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_query_coverage_fraction: f64,
+    #[serde(default)]
+    pub best_alignment_score: isize,
+    #[serde(default)]
+    pub secondary_mapping_count: usize,
+    pub read_length_bp: usize,
+    pub sequence: String,
+    pub sequence_preview: String,
+}
+
+/// Progress payload emitted by RNA-read interpretation operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadInterpretProgress {
+    pub seq_id: String,
+    pub reads_processed: usize,
+    pub reads_total: usize,
+    #[serde(default)]
+    pub read_bases_processed: u64,
+    #[serde(default)]
+    pub mean_read_length_bp: f64,
+    #[serde(default)]
+    pub median_read_length_bp: usize,
+    #[serde(default)]
+    pub p95_read_length_bp: usize,
+    #[serde(default)]
+    pub input_bytes_processed: u64,
+    #[serde(default)]
+    pub input_bytes_total: u64,
+    pub seed_passed: usize,
+    pub aligned: usize,
+    pub tested_kmers: usize,
+    pub matched_kmers: usize,
+    #[serde(default)]
+    pub seed_compute_ms: f64,
+    #[serde(default)]
+    pub align_compute_ms: f64,
+    #[serde(default)]
+    pub io_read_ms: f64,
+    #[serde(default)]
+    pub fasta_parse_ms: f64,
+    #[serde(default)]
+    pub normalize_compute_ms: f64,
+    #[serde(default)]
+    pub inference_compute_ms: f64,
+    #[serde(default)]
+    pub progress_emit_ms: f64,
+    pub update_every_reads: usize,
+    pub done: bool,
+    pub bins: Vec<RnaReadSeedHistogramBin>,
+    pub score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub seed_pass_score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub top_hits_preview: Vec<RnaReadTopHitPreview>,
+    #[serde(default)]
+    pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
+    #[serde(default)]
+    pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub mapped_exon_support_frequencies: Vec<RnaReadExonSupportFrequency>,
+    #[serde(default)]
+    pub mapped_junction_support_frequencies: Vec<RnaReadJunctionSupportFrequency>,
+    #[serde(default)]
+    pub mapped_isoform_support_rows: Vec<RnaReadMappedIsoformSupportRow>,
+    #[serde(default)]
+    pub reads_with_transition_support: usize,
+    #[serde(default)]
+    pub transition_confirmations: usize,
+    #[serde(default)]
+    pub junction_crossing_seed_bits_indexed: usize,
+    #[serde(default)]
+    pub origin_class_counts: BTreeMap<String, usize>,
+}
+
+/// Persisted RNA-read interpretation report shared across GUI, CLI, and shell
+/// inspection/export flows.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadInterpretationReport {
+    pub schema: String,
+    pub report_id: String,
+    #[serde(default)]
+    pub report_mode: RnaReadReportMode,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    pub generated_at_unix_ms: u128,
+    pub profile: RnaReadInterpretationProfile,
+    pub input_path: String,
+    pub input_format: RnaReadInputFormat,
+    pub scope: SplicingScopePreset,
+    #[serde(default)]
+    pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub target_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub roi_seed_capture_enabled: bool,
+    #[serde(default)]
+    pub checkpoint_path: Option<String>,
+    #[serde(default = "default_rna_read_checkpoint_every_reads")]
+    pub checkpoint_every_reads: usize,
+    #[serde(default)]
+    pub resumed_from_checkpoint: bool,
+    pub seed_filter: RnaReadSeedFilterConfig,
+    pub align_config: RnaReadAlignConfig,
+    pub read_count_total: usize,
+    pub read_count_seed_passed: usize,
+    pub read_count_aligned: usize,
+    #[serde(default)]
+    pub retained_count_msa_eligible: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub hits: Vec<RnaReadInterpretationHit>,
+    #[serde(default)]
+    pub exon_support_frequencies: Vec<RnaReadExonSupportFrequency>,
+    #[serde(default)]
+    pub junction_support_frequencies: Vec<RnaReadJunctionSupportFrequency>,
+    #[serde(default)]
+    pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
+    #[serde(default)]
+    pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub mapped_isoform_support_rows: Vec<RnaReadMappedIsoformSupportRow>,
+    #[serde(default)]
+    pub origin_class_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub seed_pass_score_density_bins: Vec<u64>,
+}
+
+/// Lightweight listing row for RNA-read reports, kept portable so every
+/// adapter can render the same report inventory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadInterpretationReportSummary {
+    pub report_id: String,
+    #[serde(default)]
+    pub report_mode: RnaReadReportMode,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub profile: RnaReadInterpretationProfile,
+    pub input_path: String,
+    pub input_format: RnaReadInputFormat,
+    pub seed_feature_id: usize,
+    pub scope: SplicingScopePreset,
+    #[serde(default)]
+    pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub target_gene_count: usize,
+    #[serde(default)]
+    pub roi_seed_capture_enabled: bool,
+    pub read_count_total: usize,
+    pub read_count_seed_passed: usize,
+    pub read_count_aligned: usize,
+    #[serde(default)]
+    pub retained_count_msa_eligible: usize,
 }

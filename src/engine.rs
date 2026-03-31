@@ -253,38 +253,6 @@ fn default_true() -> bool {
     true
 }
 
-fn default_poly_t_prefix_min_bp() -> usize {
-    18
-}
-
-fn default_rna_seed_stride_bp() -> usize {
-    1
-}
-
-fn default_min_weighted_seed_hit_fraction() -> f64 {
-    0.05
-}
-
-fn default_min_unique_matched_kmers() -> usize {
-    12
-}
-
-fn default_max_median_transcript_gap() -> f64 {
-    4.0
-}
-
-fn default_min_chain_consistency_fraction() -> f64 {
-    0.40
-}
-
-fn default_min_confirmed_exon_transitions() -> usize {
-    1
-}
-
-fn default_min_transition_support_fraction() -> f64 {
-    0.05
-}
-
 fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
 }
@@ -9892,7 +9860,9 @@ impl GentleEngine {
         intervals.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         let mut merged: Vec<(usize, usize)> = vec![];
         for (start, end) in intervals {
-            if let Some(last) = merged.last_mut() && start <= last.1 {
+            if let Some(last) = merged.last_mut()
+                && start <= last.1
+            {
                 last.1 = last.1.max(end);
             } else {
                 merged.push((start, end));
@@ -9900,11 +9870,13 @@ impl GentleEngine {
         }
         let intervals = merged
             .into_iter()
-            .map(|(start_0based, end_0based_exclusive)| DotplotReferenceAnnotationInterval {
-                start_0based,
-                end_0based_exclusive,
-                label: "exon".to_string(),
-            })
+            .map(
+                |(start_0based, end_0based_exclusive)| DotplotReferenceAnnotationInterval {
+                    start_0based,
+                    end_0based_exclusive,
+                    label: "exon".to_string(),
+                },
+            )
             .collect::<Vec<_>>();
         Some(DotplotReferenceAnnotationTrack {
             seq_id: reference_seq_id.to_string(),

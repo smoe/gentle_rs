@@ -1,5 +1,7 @@
 //! Expert-view data contracts for feature-centric deep-inspection UIs.
 
+pub use gentle_protocol::SplicingScopePreset;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -10,41 +12,6 @@ pub const RESTRICTION_EXPERT_INSTRUCTION: &str = "Restriction-site expert view: 
 pub const SPLICING_EXPERT_INSTRUCTION: &str = "Splicing expert view: one lane per transcript on a shared genomic axis. Exon geometry is coordinate-true (labels never resize exon/intron footprints). Donor/acceptor splice boundaries are marked, junction arcs summarize support across transcripts, and the transcript-vs-exon matrix shows isoform differences.";
 
 pub const ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION: &str = "Isoform architecture view: top panel shows transcript/exon or transcript/CDS structure on genomic coordinates with 5'->3' orientation left-to-right (strand-aware axis), bottom panel shows per-isoform protein-domain architecture on amino-acid coordinates. Row order is shared across both panels; CDS-to-protein guide lines indicate which coding segments contribute to which amino-acid spans.";
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SplicingScopePreset {
-    #[default]
-    AllOverlappingBothStrands,
-    TargetGroupAnyStrand,
-    AllOverlappingTargetStrand,
-    TargetGroupTargetStrand,
-}
-
-impl SplicingScopePreset {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::AllOverlappingBothStrands => "all_overlapping_both_strands",
-            Self::TargetGroupAnyStrand => "target_group_any_strand",
-            Self::AllOverlappingTargetStrand => "all_overlapping_target_strand",
-            Self::TargetGroupTargetStrand => "target_group_target_strand",
-        }
-    }
-
-    pub fn restrict_to_target_group(self) -> bool {
-        matches!(
-            self,
-            Self::TargetGroupAnyStrand | Self::TargetGroupTargetStrand
-        )
-    }
-
-    pub fn restrict_to_target_strand(self) -> bool {
-        matches!(
-            self,
-            Self::AllOverlappingTargetStrand | Self::TargetGroupTargetStrand
-        )
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

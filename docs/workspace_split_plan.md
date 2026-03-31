@@ -20,6 +20,10 @@ Current status:
 - the extracted contract slice now also includes the dotplot view payloads,
   `SequenceAlignmentReport`, sequence-feature query payloads, and the small
   `TfbsProgress` / `GenomeTrackImportProgress` / `Capabilities` records;
+- the extracted slice now also covers the portable RNA-read mapping contract
+  layer:
+  `SplicingScopePreset`, seed/alignment configs, inspection/export payloads,
+  progress previews, and the persisted RNA-read report + summary records;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 

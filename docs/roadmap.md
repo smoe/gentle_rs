@@ -39,6 +39,9 @@ order. Durable architecture constraints and decisions remain in
     - dotplot view records, `SequenceAlignmentReport`, sequence-feature query
       payloads, and the small `TfbsProgress` / `GenomeTrackImportProgress` /
       `Capabilities` records now also live there
+    - the portable RNA-read mapping contract layer now also lives there:
+      `SplicingScopePreset`, seed/alignment configs, inspection/export rows,
+      progress previews, and the persisted RNA-read report + summary records
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
