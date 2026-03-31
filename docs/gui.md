@@ -350,15 +350,19 @@ Feature tree grouping:
   - `Fit feature in view` (linear map mode)
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
     (seeds anchored extraction defaults with strand-aware boundary/direction)
-  - `Open Splicing Window` for splicing-compatible feature kinds
+  - `Open Splicing Window`, `Open RNA-read Mapping`, and `Derive + Dotplot`
+    for splicing-compatible feature kinds
     (`mRNA`/`transcript`/`ncRNA`/`misc_RNA`/`exon`/`gene`/`CDS`)
 - Single-click on feature rows or feature glyphs now selects/focuses only; it
   no longer auto-opens the Splicing Expert window.
-- Open the Splicing Expert deliberately via:
+- Open splicing-linked expert windows deliberately via:
   - double-click a feature row
   - double-click a feature glyph on the DNA map
-  - right-click context menu (`Open Splicing Window`) from feature tree or map
-  - `Open Splicing Window` button in the description pane
+  - right-click context menu from feature tree or map
+  - `Feature Details` pane buttons:
+    `Open Splicing Window`, `Open RNA-read Mapping`, `Derive + Dotplot`
+  - right-click the `Feature Details` title to reopen those same three
+    destinations from the currently selected splicing-compatible feature
 - `Filter` narrows all feature rows in the tree.
   - free text searches kind/label/range and selected qualifiers
   - scoped terms are supported:

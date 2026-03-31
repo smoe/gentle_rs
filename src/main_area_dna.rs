@@ -4129,6 +4129,95 @@ mod tests {
     }
 
     #[test]
+    fn open_rna_read_mapping_for_feature_opens_workspace_on_explicit_request() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(2, 34),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("label".into(), Some("GENE1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        let opened = area.open_rna_read_mapping_for_feature(0, "test");
+
+        assert!(opened);
+        assert!(area.show_rna_read_mapping_window);
+        assert_eq!(area.rna_read_mapping_window_feature_id, Some(0));
+        match area.description_cache_expert_view.as_ref() {
+            Some(FeatureExpertView::Splicing(view)) => {
+                assert_eq!(view.target_feature_id, 0);
+                assert_eq!(view.group_label, "GENE1");
+            }
+            other => panic!("expected splicing expert view for mapping action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(2, 34),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("label".into(), Some("GENE1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        let opened = area.open_dotplot_for_feature(0, "test");
+
+        assert!(opened);
+        assert!(area.show_dotplot_window);
+        assert_eq!(area.primary_map_mode, PrimaryMapMode::Dotplot);
+        assert_eq!(area.dotplot_ui.reference_seq_id, "seq_gene");
+        match area.description_cache_expert_view.as_ref() {
+            Some(FeatureExpertView::Splicing(view)) => {
+                assert_eq!(view.target_feature_id, 0);
+                assert_eq!(view.group_label, "GENE1");
+            }
+            other => panic!("expected splicing expert view for dotplot action, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn show_splicing_expert_for_rna_read_mapping_view_selects_current_mapping_report() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -12972,38 +13061,85 @@ impl MainAreaDna {
             .unwrap_or(false)
     }
 
+    fn splicing_expert_view_for_feature(
+        &self,
+        feature_id: usize,
+    ) -> Result<SplicingExpertView, String> {
+        if !self.feature_supports_splicing_expert(feature_id) {
+            return Err("Selected feature does not support splicing-linked actions".to_string());
+        }
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::SplicingFeature {
+            feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+        }) {
+            Ok(FeatureExpertView::Splicing(view)) => Ok(view),
+            Ok(_) => Err("Selected feature does not expose a splicing expert payload".to_string()),
+            Err(err) => Err(err),
+        }
+    }
+
     fn open_splicing_expert_window_for_view(&mut self, view: &SplicingExpertView) {
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
         self.show_splicing_expert_window = true;
     }
 
+    fn focus_splicing_expert_window_view(&self, ctx: &egui::Context, view: &SplicingExpertView) {
+        let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+    }
+
     fn open_splicing_expert_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
-        if !self.feature_supports_splicing_expert(feature_id) {
-            return false;
-        }
-        match self.inspect_feature_expert_target(&FeatureExpertTarget::SplicingFeature {
-            feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
-        }) {
-            Ok(FeatureExpertView::Splicing(view)) => {
+        match self.splicing_expert_view_for_feature(feature_id) {
+            Ok(view) => {
                 self.open_splicing_expert_window_for_view(&view);
                 self.description_cache_expert_view = Some(FeatureExpertView::Splicing(view));
                 self.description_cache_expert_error = None;
                 self.op_status = format!("Opened Splicing Expert from {source}");
                 true
             }
-            Ok(other) => {
-                self.description_cache_expert_view = Some(other);
-                self.description_cache_expert_error =
-                    Some("Selected feature does not expose a splicing expert payload".to_string());
-                self.op_status =
-                    "Selected feature does not expose a splicing expert payload".to_string();
-                false
-            }
             Err(err) => {
                 self.description_cache_expert_error = Some(err.clone());
                 self.op_status = format!("Could not open Splicing Expert from {source}: {err}");
+                false
+            }
+        }
+    }
+
+    fn open_rna_read_mapping_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
+        match self.splicing_expert_view_for_feature(feature_id) {
+            Ok(view) => {
+                self.open_rna_read_mapping_workspace_for_view(&view);
+                self.description_cache_expert_view =
+                    Some(FeatureExpertView::Splicing(view.clone()));
+                self.description_cache_expert_error = None;
+                self.op_status = format!("Opened RNA-read Mapping from {source}");
+                true
+            }
+            Err(err) => {
+                self.description_cache_expert_error = Some(err.clone());
+                self.op_status = format!("Could not open RNA-read Mapping from {source}: {err}");
+                false
+            }
+        }
+    }
+
+    fn open_dotplot_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
+        match self.splicing_expert_view_for_feature(feature_id) {
+            Ok(view) => {
+                self.description_cache_expert_view =
+                    Some(FeatureExpertView::Splicing(view.clone()));
+                self.description_cache_expert_error = None;
+                self.derive_selected_transcript_and_open_dotplot(&view);
+                if self.show_dotplot_window {
+                    self.op_status = format!("Opened transcript dotplot from {source}");
+                }
+                true
+            }
+            Err(err) => {
+                self.description_cache_expert_error = Some(err.clone());
+                self.op_status = format!("Could not open transcript dotplot from {source}: {err}");
                 false
             }
         }
@@ -13966,6 +14102,15 @@ impl MainAreaDna {
         view: &SplicingExpertView,
     ) {
         let viewport_id = Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id);
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+    }
+
+    fn focus_dotplot_workspace_view(&self, ctx: &egui::Context) {
+        let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() else {
+            return;
+        };
+        let viewport_id = Self::dotplot_viewport_id(&viewport_seq_id);
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }
@@ -29718,6 +29863,8 @@ impl MainAreaDna {
         let mut fit_feature: Option<usize> = None;
         let mut promoter_anchor_seed_feature: Option<usize> = None;
         let mut open_splicing_feature: Option<usize> = None;
+        let mut open_rna_read_mapping_feature: Option<usize> = None;
+        let mut open_dotplot_feature: Option<usize> = None;
         let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
@@ -29921,6 +30068,30 @@ impl MainAreaDna {
                                 if splicing_response.clicked() {
                                     clicked_feature = Some((entry.id, false));
                                     open_splicing_feature = Some(entry.id);
+                                    ui.close();
+                                }
+                                let mapping_response = ui.add_enabled(
+                                    self.feature_supports_splicing_expert(entry.id),
+                                    egui::Button::new("Open RNA-read Mapping"),
+                                );
+                                let mapping_response = mapping_response.on_hover_text(
+                                    "Open the dedicated RNA-read Mapping workspace for this feature's splicing locus",
+                                );
+                                if mapping_response.clicked() {
+                                    clicked_feature = Some((entry.id, false));
+                                    open_rna_read_mapping_feature = Some(entry.id);
+                                    ui.close();
+                                }
+                                let dotplot_response = ui.add_enabled(
+                                    self.feature_supports_splicing_expert(entry.id),
+                                    egui::Button::new("Derive + Dotplot"),
+                                );
+                                let dotplot_response = dotplot_response.on_hover_text(
+                                    "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                                );
+                                if dotplot_response.clicked() {
+                                    clicked_feature = Some((entry.id, false));
+                                    open_dotplot_feature = Some(entry.id);
                                     ui.close();
                                 }
                             });
@@ -30130,6 +30301,12 @@ impl MainAreaDna {
         if let Some(feature_id) = open_splicing_feature {
             self.open_splicing_expert_for_feature(feature_id, "feature tree action");
         }
+        if let Some(feature_id) = open_rna_read_mapping_feature {
+            self.open_rna_read_mapping_for_feature(feature_id, "feature tree action");
+        }
+        if let Some(feature_id) = open_dotplot_feature {
+            self.open_dotplot_for_feature(feature_id, "feature tree action");
+        }
     }
 
     fn refresh_description_cache(&mut self) {
@@ -30269,11 +30446,53 @@ impl MainAreaDna {
             ui.set_min_width(ui.available_width());
             self.refresh_description_cache();
             let detail_font_size = self.feature_details_font_size();
-            ui.label(
+            let mut title_response = ui.label(
                 egui::RichText::new(&self.description_cache_title)
                     .strong()
                     .size((detail_font_size + 1.0).clamp(9.0, 26.0)),
             );
+            if let Some(FeatureExpertView::Splicing(splicing)) =
+                self.description_cache_expert_view.clone()
+            {
+                title_response = title_response.on_hover_text(
+                    "Right-click for splicing-linked quick actions: Splicing Expert, RNA-read Mapping, or transcript-derived dotplot",
+                );
+                title_response.context_menu(|ui| {
+                    if ui
+                        .button("Open Splicing Window")
+                        .on_hover_text(
+                            "Open or focus the dedicated Splicing Expert window for this feature",
+                        )
+                        .clicked()
+                    {
+                        self.open_splicing_expert_window_for_view(&splicing);
+                        self.focus_splicing_expert_window_view(ui.ctx(), &splicing);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Open RNA-read Mapping")
+                        .on_hover_text(
+                            "Open or focus the dedicated RNA-read Mapping workspace for this splicing locus",
+                        )
+                        .clicked()
+                    {
+                        self.open_rna_read_mapping_workspace_for_view(&splicing);
+                        self.focus_rna_read_mapping_workspace_view(ui.ctx(), &splicing);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Derive + Dotplot")
+                        .on_hover_text(
+                            "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                        )
+                        .clicked()
+                    {
+                        self.derive_selected_transcript_and_open_dotplot(&splicing);
+                        self.focus_dotplot_workspace_view(ui.ctx());
+                        ui.close();
+                    }
+                });
+            }
             if let Some(range) = &self.description_cache_range {
                 ui.label(
                     egui::RichText::new(range)
@@ -30303,31 +30522,51 @@ impl MainAreaDna {
                             )
                             .size(detail_font_size),
                         );
-                        let button_label = if self.show_splicing_expert_window {
-                            "Focus Splicing Window"
-                        } else {
-                            "Open Splicing Window"
-                        };
-                        if ui
-                            .button(button_label)
-                            .on_hover_text(
-                                "Open or focus the dedicated splicing expert window for this feature",
-                            )
-                            .clicked()
-                        {
-                            let splicing = splicing.clone();
-                            self.open_splicing_expert_window_for_view(&splicing);
-                            let viewport_id = Self::splicing_expert_viewport_id(
-                                &splicing.seq_id,
-                                splicing.target_feature_id,
-                            );
-                            ui.ctx().send_viewport_cmd_to(
-                                viewport_id,
-                                egui::ViewportCommand::Visible(true),
-                            );
-                            ui.ctx()
-                                .send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
-                        }
+                        ui.horizontal_wrapped(|ui| {
+                            let button_label = if self.show_splicing_expert_window {
+                                "Focus Splicing Window"
+                            } else {
+                                "Open Splicing Window"
+                            };
+                            if ui
+                                .button(button_label)
+                                .on_hover_text(
+                                    "Open or focus the dedicated splicing expert window for this feature",
+                                )
+                                .clicked()
+                            {
+                                let splicing = splicing.clone();
+                                self.open_splicing_expert_window_for_view(&splicing);
+                                self.focus_splicing_expert_window_view(ui.ctx(), &splicing);
+                            }
+                            let mapping_label = if self.show_rna_read_mapping_window {
+                                "Focus RNA-read Mapping"
+                            } else {
+                                "Open RNA-read Mapping"
+                            };
+                            if ui
+                                .button(mapping_label)
+                                .on_hover_text(
+                                    "Open or focus the dedicated RNA-read Mapping workspace for this splicing locus",
+                                )
+                                .clicked()
+                            {
+                                let splicing = splicing.clone();
+                                self.open_rna_read_mapping_workspace_for_view(&splicing);
+                                self.focus_rna_read_mapping_workspace_view(ui.ctx(), &splicing);
+                            }
+                            if ui
+                                .button("Derive + Dotplot")
+                                .on_hover_text(
+                                    "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                                )
+                                .clicked()
+                            {
+                                let splicing = splicing.clone();
+                                self.derive_selected_transcript_and_open_dotplot(&splicing);
+                                self.focus_dotplot_workspace_view(ui.ctx());
+                            }
+                        });
                     }
                     _ => self.render_feature_expert_view_ui(ui, &view),
                 }
@@ -30816,6 +31055,8 @@ impl MainAreaDna {
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
                 let mut map_open_splicing_feature: Option<usize> = None;
+                let mut map_open_rna_read_mapping_feature: Option<usize> = None;
+                let mut map_open_dotplot_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let candidate_feature_id = self
                         .map_dna
@@ -30835,6 +31076,28 @@ impl MainAreaDna {
                     );
                     if open_response.clicked() {
                         map_open_splicing_feature = Some(feature_id);
+                        ui.close();
+                    }
+                    let mapping_response = ui.add_enabled(
+                        self.feature_supports_splicing_expert(feature_id),
+                        egui::Button::new("Open RNA-read Mapping"),
+                    );
+                    let mapping_response = mapping_response.on_hover_text(
+                        "Open the dedicated RNA-read Mapping workspace for this feature's splicing locus",
+                    );
+                    if mapping_response.clicked() {
+                        map_open_rna_read_mapping_feature = Some(feature_id);
+                        ui.close();
+                    }
+                    let dotplot_response = ui.add_enabled(
+                        self.feature_supports_splicing_expert(feature_id),
+                        egui::Button::new("Derive + Dotplot"),
+                    );
+                    let dotplot_response = dotplot_response.on_hover_text(
+                        "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                    );
+                    if dotplot_response.clicked() {
+                        map_open_dotplot_feature = Some(feature_id);
                         ui.close();
                     }
                 });
@@ -30906,6 +31169,12 @@ impl MainAreaDna {
                 }
                 if let Some(feature_id) = map_open_splicing_feature {
                     self.open_splicing_expert_for_feature(feature_id, "map context menu");
+                }
+                if let Some(feature_id) = map_open_rna_read_mapping_feature {
+                    self.open_rna_read_mapping_for_feature(feature_id, "map context menu");
+                }
+                if let Some(feature_id) = map_open_dotplot_feature {
+                    self.open_dotplot_for_feature(feature_id, "map context menu");
                 }
             }
         });
