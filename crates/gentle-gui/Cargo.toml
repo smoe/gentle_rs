@@ -1,0 +1,10 @@
+[package]
+name = "gentle-gui"
+version = "0.1.0-internal.3"
+edition = "2024"
+publish = false
+description = "GENtle egui/eframe application layer"
+
+[lib]
+name = "gentle_gui"
+path = "src/lib.rs"

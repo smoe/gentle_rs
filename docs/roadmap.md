@@ -27,6 +27,20 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/ops/operation_handlers.rs` (core operation-dispatch handler extracted from `apply_internal`)
   - `src/engine/analysis/rna_reads.rs` (RNA-read report parsing, scoring, and export helper routines)
   - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
+- Multi-crate destination is now documented in
+  [`docs/workspace_split_plan.md`](workspace_split_plan.md):
+  - intended extraction order:
+    `gentle-protocol -> gentle-engine -> gentle-render -> gentle-shell -> gentle-gui`
+  - workspace scaffold now exists in `crates/` with placeholder members for
+    those five crates; production code is still in the root crate for now
+  - first-wave split deliberately avoids per-feature micro-crates
+    (`genomes`, `gibson`, `rna_reads`, `planning`, and related analysis logic
+    stay together inside the future engine crate initially)
+  - the plan now also maps the current [`src/lib.rs`](../src/lib.rs) module
+    surface onto those future crates, including an explicit note that the
+    egui-bound `render_dna*` / `sequence_rows*` stack stays with the future GUI
+    crate while the first headless render candidates are
+    `lineage_export`, `protocol_cartoon`, `pool_gel`, and `render_export`
 - The source-documentation pilot pass has now deepened `src/genomes.rs`
   beyond a module summary:
   - key public reports/records and catalog methods now describe their role,

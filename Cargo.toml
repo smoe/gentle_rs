@@ -11,6 +11,16 @@ edition = "2024"
 default-run = "gentle"
 build = "build.rs"
 
+[workspace]
+resolver = "3"
+members = [
+    "crates/gentle-protocol",
+    "crates/gentle-engine",
+    "crates/gentle-render",
+    "crates/gentle-shell",
+    "crates/gentle-gui",
+]
+
 [package.metadata.bundle]
 identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file

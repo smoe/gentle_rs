@@ -1,0 +1,10 @@
+[package]
+name = "gentle-render"
+version = "0.1.0-internal.3"
+edition = "2024"
+publish = false
+description = "Headless GENtle export and rendering helpers"
+
+[lib]
+name = "gentle_render"
+path = "src/lib.rs"

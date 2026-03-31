@@ -17,7 +17,7 @@ dependencies = [
  "flate2",
  "gb-io",
  "image",
- "itertools 0.14.0",
+ "itertools 0.11.0",
  "mlua",
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -2310,6 +2310,26 @@ dependencies = [
  "typenum",
  "version_check",
 ]
+
+[[package]]
+name = "gentle-engine"
+version = "0.1.0-internal.3"
+
+[[package]]
+name = "gentle-gui"
+version = "0.1.0-internal.3"
+
+[[package]]
+name = "gentle-protocol"
+version = "0.1.0-internal.3"
+
+[[package]]
+name = "gentle-render"
+version = "0.1.0-internal.3"
+
+[[package]]
+name = "gentle-shell"
+version = "0.1.0-internal.3"
 
 [[package]]
 name = "gethostname"
