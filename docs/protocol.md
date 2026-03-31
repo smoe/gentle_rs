@@ -2468,8 +2468,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - transcript/template target identity
       - phase-2 `alignment_mode`
       - alignment backend (`banded` or `dense_fallback`)
-      - aligned query/template spans, score, identity, query coverage, and
-        CIGAR
+      - aligned query/template spans, full template length, score, identity,
+        query coverage, transcript-template coverage, and CIGAR
       - aligned `query / relation / target` text rows for manual inspection of
         low-complexity or partial confirmations
   - exact-subset export behavior:
@@ -2530,8 +2530,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         `reverse_complement_applied`)
       - phase-2 best-mapping fields
         (`transcript_id`, `transcript_label`, `strand`, `alignment_mode`,
-        `target_start_1based`, `target_end_1based`, `identity_fraction`,
-        `query_coverage_fraction`, `score`, `secondary_mapping_count`)
+        `target_start_1based`, `target_end_1based`, `target_length_bp`,
+        `identity_fraction`, `query_coverage_fraction`,
+        `target_coverage_fraction`, `score`, `secondary_mapping_count`)
       - deterministic comparison field `alignment_effect`
         (`confirmed_assignment`, `reassigned_transcript`,
         `aligned_without_phase1_assignment`)

@@ -688,6 +688,8 @@ Feature tree grouping:
     - inferred exon support reconstructed from assigned transcript paths
     - confirmed junction support from seed-supported transitions
     - isoform ranking from thresholded cDNA assignments
+    - exon/junction/isoform tables now reserve about 8 visible rows before
+      scrolling so they stay usable during manual inspection
   - the RNA-read mapping panel now shows the currently active RNA-read
     parameter summaries even before export, including explicit overlap/order
     density:
@@ -710,6 +712,13 @@ Feature tree grouping:
         `inspect-alignments` payload, not from the capped live preview
       - default table height now targets about 15 visible aligned rows before
         scrolling
+      - aligned-read rows now show:
+        - `Cov%` = how much of the read is aligned
+        - `Tx%` = how much of the transcript template span is covered by that
+          alignment
+      - short local fragment hits are now labeled more honestly in the detail
+        pane: the selected read shows transcript-span coverage and warns when
+        the alignment confirms only a small fragment of the transcript model
       - the score-density histogram above is now part of the inspection loop:
         clicking a bar highlights that bin and turns it into a formal
         `score_bin` subset for `Read effects`
@@ -847,6 +856,10 @@ Feature tree grouping:
     - the preview table now reserves about 12 visible rows before scrolling
       and starts with `Ret.rank`, so orientation is easier to keep while
       triaging
+    - the `align selection` summary now distinguishes the stricter saved-report
+      composite seed-pass count from the raw red `min_hit` line in the
+      histogram; for `seed_passed`, the working-set size comes from retained
+      rows with `passed_seed_filter=yes`
     - preview rows are now sorted by phase-1 `Score`, while `Ret.rank`
       remains the saved-report/live retention-rank position
     - `Id%` and `Cov%` are shown as explicit columns:

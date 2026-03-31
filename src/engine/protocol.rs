@@ -328,9 +328,13 @@ pub struct RnaReadAlignmentDisplay {
     pub target_start_offset_0based: usize,
     #[serde(default)]
     pub target_end_offset_0based_exclusive: usize,
+    #[serde(default)]
+    pub target_length_bp: usize,
     pub score: isize,
     pub identity_fraction: f64,
     pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
     #[serde(default)]
     pub matches: usize,
     #[serde(default)]
@@ -750,9 +754,13 @@ pub struct RnaReadAlignmentInspectionRow {
     pub target_start_1based: usize,
     #[serde(default)]
     pub target_end_1based: usize,
+    #[serde(default)]
+    pub target_length_bp: usize,
     pub score: isize,
     pub identity_fraction: f64,
     pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
     #[serde(default)]
     pub secondary_mapping_count: usize,
     pub seed_hit_fraction: f64,
@@ -814,6 +822,8 @@ pub struct RnaReadPairwiseAlignmentDetail {
     pub score: isize,
     pub identity_fraction: f64,
     pub query_coverage_fraction: f64,
+    #[serde(default)]
+    pub target_coverage_fraction: f64,
     pub cigar: String,
     pub aligned_query: String,
     pub aligned_relation: String,

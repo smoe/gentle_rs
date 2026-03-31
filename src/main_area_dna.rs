@@ -4689,16 +4689,46 @@ mod tests {
             &report,
             RnaReadHitSelection::All,
         );
-        assert!(summary_all.contains("aligns all retained report rows (3)"));
-        assert!(summary_all.contains("1 currently pass the composite seed gate"));
+        assert!(summary_all.contains("aligns all retained saved-report rows (3)"));
+        assert!(
+            summary_all
+                .contains("1 currently pass the composite seed gate recorded for this report")
+        );
         assert!(summary_all.contains("2 are at or above raw min_hit=0.30"));
+        assert!(
+            summary_all.contains("The red histogram line marks only that raw min_hit component")
+        );
 
         let summary_seed_passed = MainAreaDna::format_rna_read_alignment_selection_summary(
             &report,
             RnaReadHitSelection::SeedPassed,
         );
-        assert!(summary_seed_passed.contains("aligns the retained rows that currently pass"));
+        assert!(
+            summary_seed_passed
+                .contains("aligns the retained saved-report rows that currently pass")
+        );
         assert!(summary_seed_passed.contains("(1)"));
+        assert!(summary_seed_passed.contains("passed_seed_filter=yes"));
+    }
+
+    #[test]
+    fn rna_read_support_and_preview_tables_reserve_practical_minimum_heights() {
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Area::new("rna_read_table_height_probe".into()).show(&ctx, |ui| {
+            let support_height = MainAreaDna::default_rna_read_support_table_height(ui);
+            let preview_height = MainAreaDna::default_rna_read_preview_table_height(ui);
+
+            assert!(
+                support_height >= 170.0,
+                "support tables should reserve about eight visible rows"
+            );
+            assert!(
+                preview_height > support_height,
+                "preview table should reserve at least as much space as the support tables"
+            );
+        });
+        let _ = ctx.end_pass();
     }
 
     #[test]
@@ -19327,9 +19357,45 @@ impl MainAreaDna {
         (row_height * 15.0 + 36.0).clamp(320.0, 560.0)
     }
 
+    fn default_rna_read_support_table_height(ui: &egui::Ui) -> f32 {
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace).max(14.0) + 4.0;
+        (row_height * 8.0 + 36.0).clamp(180.0, 260.0)
+    }
+
     fn default_rna_read_preview_table_height(ui: &egui::Ui) -> f32 {
         let row_height = ui.text_style_height(&egui::TextStyle::Monospace).max(14.0) + 4.0;
         (row_height * 12.0 + 36.0).clamp(260.0, 460.0)
+    }
+
+    fn format_rna_read_target_coverage_summary(
+        aligned_target_bp: usize,
+        target_length_bp: usize,
+        target_coverage_fraction: f64,
+    ) -> String {
+        format!(
+            "{} / {} bp ({:.1}%)",
+            aligned_target_bp,
+            target_length_bp,
+            target_coverage_fraction * 100.0
+        )
+    }
+
+    fn rna_read_fragment_alignment_note(
+        target_coverage_fraction: f64,
+        aligned_target_bp: usize,
+        target_length_bp: usize,
+    ) -> Option<String> {
+        if target_length_bp == 0 || target_coverage_fraction >= 0.20 {
+            return None;
+        }
+        Some(format!(
+            "Fragment-only confirmation: the aligned transcript span covers only {} of the transcript template. This can still be biologically useful when the fragment crosses an exon boundary, but it is not a near-full-length transcript confirmation.",
+            Self::format_rna_read_target_coverage_summary(
+                aligned_target_bp,
+                target_length_bp,
+                target_coverage_fraction,
+            )
+        ))
     }
 
     fn render_rna_read_mapped_cdna_panels(
@@ -19866,7 +19932,7 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 egui::Grid::new(format!("rna_alignment_effects_grid_{}", report.report_id))
                     .striped(true)
-                    .num_columns(13)
+                    .num_columns(14)
                     .show(ui, |ui| {
                         ui.small("");
                         ui.small("Rank");
@@ -19878,6 +19944,7 @@ impl MainAreaDna {
                         ui.small("Str");
                         ui.small("Id%");
                         ui.small("Cov%");
+                        ui.small("Tx%");
                         ui.small("Score");
                         ui.small("Exons");
                         ui.small("Jx");
@@ -19932,6 +19999,10 @@ impl MainAreaDna {
                             ui.monospace(format!(
                                 "{:.1}",
                                 row.query_coverage_fraction * 100.0
+                            ));
+                            ui.monospace(format!(
+                                "{:.1}",
+                                row.target_coverage_fraction * 100.0
                             ));
                             ui.monospace(row.score.to_string());
                             ui.monospace(row.mapped_exon_support.len().to_string());
@@ -20105,7 +20176,7 @@ impl MainAreaDna {
                 Self::compact_rna_read_transcript_label(&row.transcript_id, &row.transcript_label)
             ));
             ui.small(format!(
-                "Mode={} strand={} query={} target={}..{} id={:.1}% cov={:.1}% score={} secondary={}",
+                "Mode={} strand={} query={} target={}..{} id={:.1}% cov={:.1}% tx_cov={:.1}% score={} secondary={}",
                 row.alignment_mode.as_str(),
                 if row.strand.trim().is_empty() {
                     "na".to_string()
@@ -20126,9 +20197,31 @@ impl MainAreaDna {
                 row.target_end_1based,
                 row.identity_fraction * 100.0,
                 row.query_coverage_fraction * 100.0,
+                row.target_coverage_fraction * 100.0,
                 row.score,
                 row.secondary_mapping_count
             ));
+            let aligned_target_bp = row
+                .target_end_1based
+                .saturating_sub(row.target_start_1based)
+                .saturating_add(1);
+            ui.small(format!(
+                "Transcript span: {}",
+                Self::format_rna_read_target_coverage_summary(
+                    aligned_target_bp,
+                    row.target_length_bp,
+                    row.target_coverage_fraction
+                )
+            ));
+            if let Some(note) = Self::rna_read_fragment_alignment_note(
+                row.target_coverage_fraction,
+                aligned_target_bp,
+                row.target_length_bp,
+            ) {
+                ui.small(
+                    egui::RichText::new(note).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
             ui.small(format!(
                 "Phase-1 normalization={} | Phase-2 query orientation={}",
                 if row.reverse_complement_applied {
@@ -20166,12 +20259,14 @@ impl MainAreaDna {
                             display.deletions,
                         ));
                         ui.small(format!(
-                            "Query span {}..{} of {} bp | template offsets {}..{} | genomic {}..{}",
+                            "Query span {}..{} of {} bp | template offsets {}..{} of {} bp ({:.1}%) | genomic {}..{}",
                             display.query_start_0based,
                             display.query_end_0based_exclusive,
                             hit.read_length_bp,
                             display.target_start_offset_0based,
                             display.target_end_offset_0based_exclusive,
+                            display.target_length_bp,
+                            display.target_coverage_fraction * 100.0,
                             display.target_start_1based,
                             display.target_end_1based,
                         ));
@@ -20229,7 +20324,7 @@ impl MainAreaDna {
                 {
                     Ok(detail) => {
                         ui.small(format!(
-                            "Backend={} mode={} cigar={} aligned={} columns | query {}..{} / {} bp | template offsets {}..{} / {} bp | genomic {}..{}",
+                            "Backend={} mode={} cigar={} aligned={} columns | query {}..{} / {} bp | template offsets {}..{} / {} bp ({:.1}%) | genomic {}..{}",
                             detail.backend.as_str(),
                             detail.alignment_mode.as_str(),
                             detail.cigar,
@@ -20240,6 +20335,7 @@ impl MainAreaDna {
                             detail.aligned_target_start_offset_0based,
                             detail.aligned_target_end_offset_0based_exclusive,
                             detail.target_length_bp,
+                            detail.target_coverage_fraction * 100.0,
                             detail.target_start_1based,
                             detail.target_end_1based
                         ));
@@ -20428,7 +20524,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(180.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("reported_exon_support_grid_{}", view.seq_id))
                         .striped(true)
@@ -20473,7 +20570,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(180.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("reported_junction_support_grid_{}", view.seq_id))
                         .striped(true)
@@ -20518,7 +20616,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(200.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("reported_isoform_catalogue_grid_{}", view.seq_id))
                         .striped(true)
@@ -20578,7 +20677,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(180.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!(
                         "thresholded_cdna_exon_support_grid_{}",
@@ -20631,7 +20731,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(180.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("rna_transition_support_grid_{}", progress.seq_id))
                         .striped(true)
@@ -20696,7 +20797,8 @@ impl MainAreaDna {
         ));
         ui.collapsing("Thresholded cDNA isoform ranking", |ui| {
             egui::ScrollArea::vertical()
-                .max_height(200.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("rna_isoform_support_grid_{}", progress.seq_id))
                         .striped(true)
@@ -20831,7 +20933,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(240.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!("rna_mapped_exon_support_grid_{}", progress.seq_id))
                         .striped(true)
@@ -20907,7 +21010,8 @@ impl MainAreaDna {
                 return;
             }
             egui::ScrollArea::vertical()
-                .max_height(240.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!(
                         "rna_mapped_junction_support_grid_{}",
@@ -20999,7 +21103,8 @@ impl MainAreaDna {
         ));
         ui.collapsing("Mapped cDNA isoform ranking", |ui| {
             egui::ScrollArea::vertical()
-                .max_height(260.0)
+                .max_height(Self::default_rna_read_support_table_height(ui))
+                .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
                 .show(ui, |ui| {
                     egui::Grid::new(format!(
                         "rna_mapped_isoform_support_grid_{}",
@@ -21390,6 +21495,7 @@ impl MainAreaDna {
                 egui::ScrollArea::both()
                     .id_salt(format!("rna_top_hits_scroll_{}", progress.seq_id))
                     .max_height(Self::default_rna_read_preview_table_height(ui))
+                    .min_scrolled_height(Self::default_rna_read_preview_table_height(ui))
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         egui::Grid::new(format!("rna_top_hits_grid_{}", progress.seq_id))

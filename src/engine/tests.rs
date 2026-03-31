@@ -12212,6 +12212,8 @@ fn test_inspect_rna_read_alignment_detail_reconstructs_template_alignment() {
     assert_eq!(detail.deletions, 0);
     assert!((detail.identity_fraction - 1.0).abs() < 1e-9);
     assert!((detail.query_coverage_fraction - 1.0).abs() < 1e-9);
+    assert_eq!(detail.target_length_bp, read_sequence.len());
+    assert!((detail.target_coverage_fraction - 1.0).abs() < 1e-9);
     assert_eq!(detail.aligned_query, detail.aligned_target);
     assert!(detail.aligned_relation.chars().all(|ch| ch == '|'));
 }
@@ -14920,6 +14922,8 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
         confirmed.phase1_primary_transcript_id,
         tx_confirm.transcript_id
     );
+    assert_eq!(confirmed.target_length_bp, tx_confirm_len);
+    assert!((confirmed.target_coverage_fraction - 1.0).abs() < 1e-9);
     assert_eq!(confirmed.mapped_exon_support.len(), tx_confirm.exons.len());
     assert_eq!(
         confirmed
@@ -14943,6 +14947,8 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
         reassigned.phase1_primary_transcript_id,
         tx_alt.transcript_id
     );
+    assert_eq!(reassigned.target_length_bp, tx_confirm_len);
+    assert!((reassigned.target_coverage_fraction - 1.0).abs() < 1e-9);
 
     let no_phase1 = rows_by_header.get("no_phase1").expect("no-phase1 row");
     assert_eq!(
@@ -14950,6 +14956,8 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
         RnaReadAlignmentEffect::AlignedWithoutPhase1Assignment
     );
     assert!(no_phase1.phase1_primary_transcript_id.is_empty());
+    assert_eq!(no_phase1.target_length_bp, tx_confirm_len);
+    assert!((no_phase1.target_coverage_fraction - 1.0).abs() < 1e-9);
 }
 
 #[test]

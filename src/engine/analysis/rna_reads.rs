@@ -695,6 +695,29 @@ impl GentleEngine {
         let splicing_view = self
             .build_splicing_expert_view(&report.seq_id, report.seed_feature_id, report.scope)
             .ok();
+        let transcript_template_lengths = splicing_view
+            .as_ref()
+            .map(|splicing| {
+                splicing
+                    .transcripts
+                    .iter()
+                    .map(|transcript| {
+                        (
+                            transcript.transcript_id.clone(),
+                            transcript
+                                .exons
+                                .iter()
+                                .map(|exon| {
+                                    exon.end_1based
+                                        .saturating_sub(exon.start_1based)
+                                        .saturating_add(1)
+                                })
+                                .sum::<usize>(),
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>()
+            })
+            .unwrap_or_default();
         let mut ranked_rows = report
             .hits
             .iter()
@@ -717,6 +740,13 @@ impl GentleEngine {
                         Self::collect_mapped_support_attribution_rows(mapping, splicing)
                     })
                     .unwrap_or_default();
+                let aligned_target_length_bp = mapping
+                    .target_end_offset_0based_exclusive
+                    .saturating_sub(mapping.target_start_offset_0based);
+                let target_length_bp = transcript_template_lengths
+                    .get(&mapping.transcript_id)
+                    .copied()
+                    .unwrap_or(aligned_target_length_bp.max(1));
                 Some((
                     rank,
                     RnaReadAlignmentInspectionRow {
@@ -739,9 +769,12 @@ impl GentleEngine {
                         alignment_mode: mapping.alignment_mode,
                         target_start_1based: mapping.target_start_1based,
                         target_end_1based: mapping.target_end_1based,
+                        target_length_bp,
                         score: mapping.score,
                         identity_fraction: mapping.identity_fraction,
                         query_coverage_fraction: mapping.query_coverage_fraction,
+                        target_coverage_fraction: aligned_target_length_bp as f64
+                            / target_length_bp as f64,
                         secondary_mapping_count: hit.secondary_mappings.len(),
                         seed_hit_fraction: hit.seed_hit_fraction,
                         weighted_seed_hit_fraction: hit.weighted_seed_hit_fraction,
@@ -914,6 +947,16 @@ impl GentleEngine {
             score: computed.mapping.score,
             identity_fraction: computed.mapping.identity_fraction,
             query_coverage_fraction: computed.mapping.query_coverage_fraction,
+            target_coverage_fraction: if template.sequence.is_empty() {
+                0.0
+            } else {
+                computed
+                    .mapping
+                    .target_end_offset_0based_exclusive
+                    .saturating_sub(computed.mapping.target_start_offset_0based)
+                    as f64
+                    / template.sequence.len() as f64
+            },
             cigar: computed.cigar.clone(),
             aligned_query,
             aligned_relation,
@@ -5238,9 +5281,20 @@ impl GentleEngine {
             target_end_1based: computed.mapping.target_end_1based,
             target_start_offset_0based: computed.mapping.target_start_offset_0based,
             target_end_offset_0based_exclusive: computed.mapping.target_end_offset_0based_exclusive,
+            target_length_bp: template.sequence.len(),
             score: computed.mapping.score,
             identity_fraction: computed.mapping.identity_fraction,
             query_coverage_fraction: computed.mapping.query_coverage_fraction,
+            target_coverage_fraction: if template.sequence.is_empty() {
+                0.0
+            } else {
+                computed
+                    .mapping
+                    .target_end_offset_0based_exclusive
+                    .saturating_sub(computed.mapping.target_start_offset_0based)
+                    as f64
+                    / template.sequence.len() as f64
+            },
             matches: computed.mapping.matches,
             mismatches: computed.mapping.mismatches,
             insertions: computed.insertions,

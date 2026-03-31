@@ -1516,18 +1516,18 @@ impl MainAreaDna {
             .count();
         match selection {
             RnaReadHitSelection::All => format!(
-                "Phase-2 selection='all' aligns all retained report rows ({retained_total}). Of those, {seed_passed_retained} currently pass the composite seed gate and {raw_min_hit_retained} are at or above raw min_hit={:.2}.",
+                "Phase-2 selection='all' aligns all retained saved-report rows ({retained_total}). Of those, {seed_passed_retained} currently pass the composite seed gate recorded for this report, and {raw_min_hit_retained} are at or above raw min_hit={:.2}. The red histogram line marks only that raw min_hit component, not the full composite gate.",
                 report.seed_filter.min_seed_hit_fraction
             ),
             RnaReadHitSelection::SeedPassed => {
                 if seed_passed_retained > 0 {
                     format!(
-                        "Phase-2 selection='seed_passed' aligns the retained rows that currently pass the composite seed gate ({seed_passed_retained}). If that subset ever becomes empty, the engine falls back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and failing that, to the single best retained row.",
+                        "Phase-2 selection='seed_passed' aligns the retained saved-report rows that currently pass the composite seed gate ({seed_passed_retained}). That count comes from `passed_seed_filter=yes` in the saved report, so it is usually stricter than the raw red min_hit line alone. If that subset ever becomes empty, the engine falls back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and failing that, to the single best retained row.",
                         report.seed_filter.min_seed_hit_fraction
                     )
                 } else {
                     format!(
-                        "Phase-2 selection='seed_passed' currently has no retained composite seed-pass rows. The engine will therefore fall back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and if that is still empty, to the single best retained row.",
+                        "Phase-2 selection='seed_passed' currently has no retained saved-report rows with `passed_seed_filter=yes`. The engine will therefore fall back to retained rows at or above raw min_hit={:.2} ({raw_min_hit_retained}), and if that is still empty, to the single best retained row.",
                         report.seed_filter.min_seed_hit_fraction
                     )
                 }
