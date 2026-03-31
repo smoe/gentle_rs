@@ -13,11 +13,17 @@
 //!   `src/engine.rs`
 
 pub use gentle_protocol::{
-    DotplotMode, EngineError, ErrorCode, FlexibilityModel, PairwiseAlignmentMode,
-    RnaReadAlignmentBackend, RnaReadAlignmentEffect, RnaReadAlignmentInspectionEffectFilter,
+    Capabilities, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayQuerySpec,
+    DotplotQuerySeries, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
+    DotplotView, DotplotViewSummary, EngineError, ErrorCode, FlexibilityModel,
+    GenomeTrackImportProgress, PairwiseAlignmentMode, RnaReadAlignmentBackend,
+    RnaReadAlignmentEffect, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionSortKey, RnaReadAlignmentMode, RnaReadHitSelection,
     RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginClass, RnaReadOriginMode,
     RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
+    SequenceAlignmentReport, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+    SequenceFeatureQueryResult, SequenceFeatureQueryRow, SequenceFeatureRangeRelation,
+    SequenceFeatureSortBy, SequenceFeatureStrandFilter, TfbsProgress,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -639,214 +645,6 @@ pub struct RnaReadInterpretationReportSummary {
     pub retained_count_msa_eligible: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotMatchPoint {
-    pub x_0based: usize,
-    pub y_0based: usize,
-    pub mismatches: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotBoxplotBin {
-    pub query_start_0based: usize,
-    pub query_end_0based_exclusive: usize,
-    pub hit_count: usize,
-    pub min_reference_0based: Option<usize>,
-    pub q1_reference_0based: Option<usize>,
-    pub median_reference_0based: Option<usize>,
-    pub q3_reference_0based: Option<usize>,
-    pub max_reference_0based: Option<usize>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotQuerySeries {
-    pub series_id: String,
-    pub seq_id: String,
-    pub label: String,
-    pub color_rgb: [u8; 3],
-    #[serde(default)]
-    pub mode: DotplotMode,
-    pub span_start_0based: usize,
-    pub span_end_0based: usize,
-    pub point_count: usize,
-    pub points: Vec<DotplotMatchPoint>,
-    pub boxplot_bin_count: usize,
-    pub boxplot_bins: Vec<DotplotBoxplotBin>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotReferenceAnnotationInterval {
-    pub start_0based: usize,
-    pub end_0based_exclusive: usize,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotReferenceAnnotationTrack {
-    pub seq_id: String,
-    pub label: String,
-    pub interval_count: usize,
-    pub intervals: Vec<DotplotReferenceAnnotationInterval>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotOverlayQuerySpec {
-    pub seq_id: String,
-    pub label: String,
-    #[serde(default)]
-    pub span_start_0based: Option<usize>,
-    #[serde(default)]
-    pub span_end_0based: Option<usize>,
-    #[serde(default)]
-    pub mode: DotplotMode,
-    #[serde(default)]
-    pub color_rgb: Option<[u8; 3]>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct DotplotView {
-    pub schema: String,
-    pub dotplot_id: String,
-    pub owner_seq_id: String,
-    pub seq_id: String,
-    pub reference_seq_id: Option<String>,
-    pub generated_at_unix_ms: u128,
-    pub span_start_0based: usize,
-    pub span_end_0based: usize,
-    pub reference_span_start_0based: usize,
-    pub reference_span_end_0based: usize,
-    pub mode: DotplotMode,
-    pub word_size: usize,
-    pub step_bp: usize,
-    pub max_mismatches: usize,
-    pub tile_bp: Option<usize>,
-    pub point_count: usize,
-    pub points: Vec<DotplotMatchPoint>,
-    pub boxplot_bin_count: usize,
-    pub boxplot_bins: Vec<DotplotBoxplotBin>,
-    pub series_count: usize,
-    pub query_series: Vec<DotplotQuerySeries>,
-    #[serde(default)]
-    pub reference_annotation: Option<DotplotReferenceAnnotationTrack>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DotplotViewSummary {
-    pub dotplot_id: String,
-    pub owner_seq_id: String,
-    pub seq_id: String,
-    pub reference_seq_id: Option<String>,
-    pub generated_at_unix_ms: u128,
-    pub span_start_0based: usize,
-    pub span_end_0based: usize,
-    pub reference_span_start_0based: usize,
-    pub reference_span_end_0based: usize,
-    pub mode: DotplotMode,
-    pub word_size: usize,
-    pub step_bp: usize,
-    pub max_mismatches: usize,
-    pub point_count: usize,
-    pub series_count: usize,
-}
-
-impl DotplotView {
-    pub fn normalize_v3_defaults(&mut self) {
-        if self.owner_seq_id.trim().is_empty() {
-            self.owner_seq_id = self.seq_id.clone();
-        }
-        if self.query_series.is_empty() {
-            let label = if self.seq_id.trim().is_empty() {
-                "<query>".to_string()
-            } else {
-                self.seq_id.clone()
-            };
-            self.query_series.push(DotplotQuerySeries {
-                series_id: if self.dotplot_id.trim().is_empty() {
-                    "series_1".to_string()
-                } else {
-                    format!("{}_series_1", self.dotplot_id)
-                },
-                seq_id: self.seq_id.clone(),
-                label,
-                color_rgb: [29, 78, 216],
-                mode: self.mode,
-                span_start_0based: self.span_start_0based,
-                span_end_0based: self.span_end_0based,
-                point_count: if self.point_count == 0 {
-                    self.points.len()
-                } else {
-                    self.point_count
-                },
-                points: self.points.clone(),
-                boxplot_bin_count: if self.boxplot_bin_count == 0 {
-                    self.boxplot_bins.len()
-                } else {
-                    self.boxplot_bin_count
-                },
-                boxplot_bins: self.boxplot_bins.clone(),
-            });
-        }
-        self.series_count = self.query_series.len();
-        if let Some(primary) = self.query_series.first() {
-            if self.seq_id.trim().is_empty() {
-                self.seq_id = primary.seq_id.clone();
-            }
-            self.mode = primary.mode;
-            self.span_start_0based = primary.span_start_0based;
-            self.span_end_0based = primary.span_end_0based;
-            self.point_count = primary.point_count.max(primary.points.len());
-            self.points = primary.points.clone();
-            self.boxplot_bin_count = primary.boxplot_bin_count.max(primary.boxplot_bins.len());
-            self.boxplot_bins = primary.boxplot_bins.clone();
-        }
-        if let Some(annotation) = self.reference_annotation.as_mut() {
-            annotation.interval_count = annotation.intervals.len();
-        }
-    }
-
-    pub fn primary_series(&self) -> Option<&DotplotQuerySeries> {
-        self.query_series.first()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceAlignmentReport {
-    pub schema: String,
-    pub mode: PairwiseAlignmentMode,
-    pub query_seq_id: String,
-    pub target_seq_id: String,
-    pub query_span_start_0based: usize,
-    pub query_span_end_0based: usize,
-    pub target_span_start_0based: usize,
-    pub target_span_end_0based: usize,
-    pub aligned_query_start_0based: usize,
-    pub aligned_query_end_0based_exclusive: usize,
-    pub aligned_target_start_0based: usize,
-    pub aligned_target_end_0based_exclusive: usize,
-    pub score: i32,
-    pub match_score: i32,
-    pub mismatch_score: i32,
-    pub gap_open: i32,
-    pub gap_extend: i32,
-    pub aligned_columns: usize,
-    pub matches: usize,
-    pub mismatches: usize,
-    pub insertions: usize,
-    pub deletions: usize,
-    pub identity_fraction: f64,
-    pub query_coverage_fraction: f64,
-    pub target_coverage_fraction: f64,
-    pub cigar: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// One genome-position bin used for running RNA-read seed-confirmation statistics.
 pub struct RnaReadSeedHistogramBin {
@@ -991,132 +789,6 @@ pub struct RnaReadInterpretProgress {
     pub origin_class_counts: BTreeMap<String, usize>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureRangeRelation {
-    #[default]
-    Overlap,
-    Within,
-    Contains,
-}
-
-impl SequenceFeatureRangeRelation {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Overlap => "overlap",
-            Self::Within => "within",
-            Self::Contains => "contains",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureStrandFilter {
-    #[default]
-    Any,
-    Forward,
-    Reverse,
-}
-
-impl SequenceFeatureStrandFilter {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::Forward => "forward",
-            Self::Reverse => "reverse",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SequenceFeatureSortBy {
-    FeatureId,
-    #[default]
-    Start,
-    End,
-    Kind,
-    Length,
-}
-
-impl SequenceFeatureSortBy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::FeatureId => "feature_id",
-            Self::Start => "start",
-            Self::End => "end",
-            Self::Kind => "kind",
-            Self::Length => "length",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQualifierFilter {
-    pub key: String,
-    pub value_contains: Option<String>,
-    pub value_regex: Option<String>,
-    pub case_sensitive: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQuery {
-    pub seq_id: SeqId,
-    pub include_source: bool,
-    pub include_qualifiers: bool,
-    pub kind_in: Vec<String>,
-    pub kind_not_in: Vec<String>,
-    pub start_0based: Option<usize>,
-    pub end_0based_exclusive: Option<usize>,
-    pub range_relation: SequenceFeatureRangeRelation,
-    pub strand: SequenceFeatureStrandFilter,
-    pub label_contains: Option<String>,
-    pub label_regex: Option<String>,
-    pub qualifier_filters: Vec<SequenceFeatureQualifierFilter>,
-    pub min_len_bp: Option<usize>,
-    pub max_len_bp: Option<usize>,
-    pub limit: Option<usize>,
-    pub offset: usize,
-    pub sort_by: SequenceFeatureSortBy,
-    pub descending: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQueryRow {
-    pub feature_id: usize,
-    pub kind: String,
-    pub start_0based: usize,
-    pub end_0based_exclusive: usize,
-    pub length_bp: usize,
-    pub strand: String,
-    pub label: String,
-    pub labels: Vec<String>,
-    pub qualifiers: BTreeMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SequenceFeatureQueryResult {
-    pub schema: String,
-    pub seq_id: SeqId,
-    pub sequence_length_bp: usize,
-    pub total_feature_count: usize,
-    pub matched_count: usize,
-    pub returned_count: usize,
-    pub offset: usize,
-    pub limit: usize,
-    pub range_relation: String,
-    pub strand_filter: String,
-    pub sort_by: String,
-    pub descending: bool,
-    pub query: SequenceFeatureQuery,
-    pub rows: Vec<SequenceFeatureQueryRow>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// One deterministic workflow run: ordered operations with a caller-supplied
 /// `run_id`.
@@ -1180,31 +852,6 @@ pub struct GenomeAnnotationProjectionTelemetry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Progress payload emitted by TFBS annotation operations.
-pub struct TfbsProgress {
-    pub seq_id: String,
-    pub motif_id: String,
-    pub motif_index: usize,
-    pub motif_count: usize,
-    pub scanned_steps: usize,
-    pub total_steps: usize,
-    pub motif_percent: f64,
-    pub total_percent: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Progress payload emitted by genome track import operations.
-pub struct GenomeTrackImportProgress {
-    pub seq_id: String,
-    pub source: String,
-    pub path: String,
-    pub parsed_records: usize,
-    pub imported_features: usize,
-    pub skipped_records: usize,
-    pub done: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
@@ -1219,15 +866,6 @@ pub struct OperationRecord {
     pub run_id: RunId,
     pub op: Operation,
     pub result: OpResult,
-}
-
-/// Engine capability snapshot used by adapters for discovery/negotiation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capabilities {
-    pub protocol_version: String,
-    pub supported_operations: Vec<String>,
-    pub supported_export_formats: Vec<String>,
-    pub deterministic_operation_log: bool,
 }
 
 /// Compact sequence row used by state-summary style adapter surfaces.

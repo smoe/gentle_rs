@@ -17,6 +17,9 @@ Current status:
 - production code still mostly lives in the root crate;
 - Phase 1 has now started by extracting the first stable id aliases, shared
   enums, and `EngineError`/`ErrorCode` into `crates/gentle-protocol`;
+- the extracted contract slice now also includes the dotplot view payloads,
+  `SequenceAlignmentReport`, sequence-feature query payloads, and the small
+  `TfbsProgress` / `GenomeTrackImportProgress` / `Capabilities` records;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 

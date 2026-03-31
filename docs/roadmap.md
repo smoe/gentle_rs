@@ -36,6 +36,9 @@ order. Durable architecture constraints and decisions remain in
   - Phase 1 is now initiated:
     - the first stable id aliases, shared analysis enums, and
       `EngineError`/`ErrorCode` have moved into `crates/gentle-protocol`
+    - dotplot view records, `SequenceAlignmentReport`, sequence-feature query
+      payloads, and the small `TfbsProgress` / `GenomeTrackImportProgress` /
+      `Capabilities` records now also live there
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
