@@ -881,6 +881,11 @@ Feature tree grouping:
   - `Evaluate Selected (phase-2)` aligns only checkbox-selected top rows
     (`record_index`-exact subset), useful for rapid manual triage before
     running a broader phase-2 pass
+  - the top-hit preview now also supports one-click per-row `Run` for
+    on-demand phase-2 alignment of a single read
+  - the checkbox column header now toggles all currently listed rows in both
+    the top-hit preview and mapped `Read effects` tables without clearing
+    hidden selections outside the current filtered/listed subset
   - top-read rows include strand assignment diagnostics for the joint
     two-strand run (`strand`, `opp`, `ambig`)
   - top-read rows now also expose origin diagnostics from engine
