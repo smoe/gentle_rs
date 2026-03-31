@@ -42,6 +42,9 @@ order. Durable architecture constraints and decisions remain in
     - the portable RNA-read mapping contract layer now also lives there:
       `SplicingScopePreset`, seed/alignment configs, inspection/export rows,
       progress previews, and the persisted RNA-read report + summary records
+    - the portable feature-expert contract layer now also lives there:
+      expert target enums, TFBS/restriction/splicing/isoform view payloads,
+      and the shared instruction strings those views expose
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates

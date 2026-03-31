@@ -24,6 +24,9 @@ Current status:
   layer:
   `SplicingScopePreset`, seed/alignment configs, inspection/export payloads,
   progress previews, and the persisted RNA-read report + summary records;
+- the extracted slice now also covers the portable feature-expert vocabulary:
+  expert target enums, TFBS/restriction/splicing/isoform view payloads, and
+  the shared instruction strings those views expose;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 
