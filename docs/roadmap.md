@@ -32,7 +32,12 @@ order. Durable architecture constraints and decisions remain in
   - intended extraction order:
     `gentle-protocol -> gentle-engine -> gentle-render -> gentle-shell -> gentle-gui`
   - workspace scaffold now exists in `crates/` with placeholder members for
-    those five crates; production code is still in the root crate for now
+    those five crates; production code still mostly lives in the root crate
+  - Phase 1 is now initiated:
+    - the first stable id aliases, shared analysis enums, and
+      `EngineError`/`ErrorCode` have moved into `crates/gentle-protocol`
+    - the existing engine surface re-exports them so callers do not need an
+      all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
     (`genomes`, `gibson`, `rna_reads`, `planning`, and related analysis logic
     stay together inside the future engine crate initially)

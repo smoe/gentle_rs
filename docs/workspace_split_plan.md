@@ -14,8 +14,11 @@ in place. Durable architectural invariants remain in
 Current status:
 
 - the Cargo workspace scaffold and empty member crates now exist;
-- production code still lives in the root crate;
-- no execution or GUI modules have been moved yet.
+- production code still mostly lives in the root crate;
+- Phase 1 has now started by extracting the first stable id aliases, shared
+  enums, and `EngineError`/`ErrorCode` into `crates/gentle-protocol`;
+- the root engine surface currently re-exports those extracted types so
+  downstream callers do not need to change all at once.
 
 ## 1. Goals
 

@@ -8,3 +8,6 @@ description = "Shared machine-readable GENtle contracts"
 [lib]
 name = "gentle_protocol"
 path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "^1", features = ["derive"] }

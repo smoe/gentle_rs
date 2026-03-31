@@ -16,6 +16,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "gb-io",
+ "gentle-protocol",
  "image",
  "itertools 0.11.0",
  "mlua",
@@ -2322,6 +2323,9 @@ version = "0.1.0-internal.3"
 [[package]]
 name = "gentle-protocol"
 version = "0.1.0-internal.3"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "gentle-render"

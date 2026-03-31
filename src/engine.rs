@@ -80,16 +80,7 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
-/// Stable identifier for one sequence entry stored in `ProjectState.sequences`.
-pub type SeqId = String;
-/// Stable identifier for one executed operation journal row.
-pub type OpId = String;
-/// Caller-supplied identifier that groups operations into one workflow/run.
-pub type RunId = String;
-/// Stable identifier for one lineage graph node.
-pub type NodeId = String;
-/// Stable identifier for one wet-lab-style container record.
-pub type ContainerId = String;
+pub use gentle_protocol::{ContainerId, NodeId, OpId, RunId, SeqId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {
