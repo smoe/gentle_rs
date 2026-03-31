@@ -662,9 +662,59 @@ pub struct DotplotBoxplotBin {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct DotplotQuerySeries {
+    pub series_id: String,
+    pub seq_id: String,
+    pub label: String,
+    pub color_rgb: [u8; 3],
+    #[serde(default)]
+    pub mode: DotplotMode,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub point_count: usize,
+    pub points: Vec<DotplotMatchPoint>,
+    pub boxplot_bin_count: usize,
+    pub boxplot_bins: Vec<DotplotBoxplotBin>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotReferenceAnnotationInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotReferenceAnnotationTrack {
+    pub seq_id: String,
+    pub label: String,
+    pub interval_count: usize,
+    pub intervals: Vec<DotplotReferenceAnnotationInterval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotOverlayQuerySpec {
+    pub seq_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub span_start_0based: Option<usize>,
+    #[serde(default)]
+    pub span_end_0based: Option<usize>,
+    #[serde(default)]
+    pub mode: DotplotMode,
+    #[serde(default)]
+    pub color_rgb: Option<[u8; 3]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct DotplotView {
     pub schema: String,
     pub dotplot_id: String,
+    pub owner_seq_id: String,
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
@@ -681,11 +731,16 @@ pub struct DotplotView {
     pub points: Vec<DotplotMatchPoint>,
     pub boxplot_bin_count: usize,
     pub boxplot_bins: Vec<DotplotBoxplotBin>,
+    pub series_count: usize,
+    pub query_series: Vec<DotplotQuerySeries>,
+    #[serde(default)]
+    pub reference_annotation: Option<DotplotReferenceAnnotationTrack>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DotplotViewSummary {
     pub dotplot_id: String,
+    pub owner_seq_id: String,
     pub seq_id: String,
     pub reference_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
@@ -698,6 +753,67 @@ pub struct DotplotViewSummary {
     pub step_bp: usize,
     pub max_mismatches: usize,
     pub point_count: usize,
+    pub series_count: usize,
+}
+
+impl DotplotView {
+    pub fn normalize_v3_defaults(&mut self) {
+        if self.owner_seq_id.trim().is_empty() {
+            self.owner_seq_id = self.seq_id.clone();
+        }
+        if self.query_series.is_empty() {
+            let label = if self.seq_id.trim().is_empty() {
+                "<query>".to_string()
+            } else {
+                self.seq_id.clone()
+            };
+            self.query_series.push(DotplotQuerySeries {
+                series_id: if self.dotplot_id.trim().is_empty() {
+                    "series_1".to_string()
+                } else {
+                    format!("{}_series_1", self.dotplot_id)
+                },
+                seq_id: self.seq_id.clone(),
+                label,
+                color_rgb: [29, 78, 216],
+                mode: self.mode,
+                span_start_0based: self.span_start_0based,
+                span_end_0based: self.span_end_0based,
+                point_count: if self.point_count == 0 {
+                    self.points.len()
+                } else {
+                    self.point_count
+                },
+                points: self.points.clone(),
+                boxplot_bin_count: if self.boxplot_bin_count == 0 {
+                    self.boxplot_bins.len()
+                } else {
+                    self.boxplot_bin_count
+                },
+                boxplot_bins: self.boxplot_bins.clone(),
+            });
+        }
+        self.series_count = self.query_series.len();
+        if let Some(primary) = self.query_series.first() {
+            if self.seq_id.trim().is_empty() {
+                self.seq_id = primary.seq_id.clone();
+            }
+            self.mode = primary.mode;
+            self.span_start_0based = primary.span_start_0based;
+            self.span_end_0based = primary.span_end_0based;
+            self.point_count = primary.point_count.max(primary.points.len());
+            self.points = primary.points.clone();
+            self.boxplot_bin_count = primary.boxplot_bin_count.max(primary.boxplot_bins.len());
+            self.boxplot_bins = primary.boxplot_bins.clone();
+        }
+        if let Some(annotation) = self.reference_annotation.as_mut() {
+            annotation.interval_count = annotation.intervals.len();
+        }
+    }
+
+    pub fn primary_series(&self) -> Option<&DotplotQuerySeries> {
+        self.query_series.first()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

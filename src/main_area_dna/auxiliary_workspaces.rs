@@ -10,6 +10,7 @@
 //! - window-sizing/default helpers for extracted auxiliary tools
 
 use super::*;
+use crate::engine::DotplotOverlayQuerySpec;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -20,6 +21,8 @@ pub(super) struct DotplotOpsUiState {
     pub(super) max_mismatches: String,
     pub(super) tile_bp: String,
     pub(super) mode: DotplotMode,
+    pub(super) overlay_enabled: bool,
+    pub(super) overlay_transcript_feature_ids: Vec<usize>,
     pub(super) dotplot_id: String,
     pub(super) display_density_threshold: f32,
     pub(super) display_intensity_gain: f32,
@@ -42,6 +45,8 @@ impl Default for DotplotOpsUiState {
             max_mismatches: "0".to_string(),
             tile_bp: String::new(),
             mode: DotplotMode::SelfReverseComplement,
+            overlay_enabled: false,
+            overlay_transcript_feature_ids: vec![],
             dotplot_id: "dotplot_primary".to_string(),
             display_density_threshold: 0.0,
             display_intensity_gain: 1.0,
@@ -77,11 +82,146 @@ pub(super) struct DotplotComputeDiagnostics {
     pub(super) estimated_pair_evaluations: usize,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct DotplotOverlayChoice {
+    pub(super) transcript_feature_id: usize,
+    pub(super) transcript_id: String,
+    pub(super) label: String,
+    pub(super) mode: DotplotMode,
+    pub(super) estimated_length_bp: usize,
+    pub(super) derived_seq_id: String,
+    pub(super) color_rgb: [u8; 3],
+}
+
 impl MainAreaDna {
+    const DOTPLOT_AUTO_COMPUTE_DEBOUNCE_MS: u64 = 300;
+
     pub(super) fn dotplot_window_identity_seq_id(&self) -> Option<String> {
         self.seq_id
             .clone()
             .or_else(|| self.current_dotplot_query_seq_id())
+    }
+
+    pub(super) fn dotplot_overlay_series_color(index: usize) -> [u8; 3] {
+        const PALETTE: [[u8; 3]; 8] = [
+            [29, 78, 216],
+            [220, 38, 38],
+            [5, 150, 105],
+            [217, 119, 6],
+            [124, 58, 237],
+            [190, 24, 93],
+            [8, 145, 178],
+            [71, 85, 105],
+        ];
+        PALETTE[index % PALETTE.len()]
+    }
+
+    pub(super) fn normalize_dotplot_transcript_token(raw: &str) -> String {
+        let mut out = String::new();
+        for c in raw.chars() {
+            if c.is_ascii_alphanumeric() {
+                out.push(c.to_ascii_lowercase());
+            } else if matches!(c, '_' | '-' | '.') {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "feature".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    pub(super) fn schedule_dotplot_auto_compute(&mut self) {
+        self.dotplot_auto_compute_dirty = true;
+        self.dotplot_auto_compute_due_at = Some(
+            Instant::now() + Duration::from_millis(Self::DOTPLOT_AUTO_COMPUTE_DEBOUNCE_MS),
+        );
+    }
+
+    pub(super) fn clear_dotplot_auto_compute(&mut self) {
+        self.dotplot_auto_compute_dirty = false;
+        self.dotplot_auto_compute_due_at = None;
+    }
+
+    pub(super) fn dotplot_overlay_reference_view(&self) -> Option<Arc<SplicingExpertView>> {
+        if self.using_dotplot_query_override() || !Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+            return None;
+        }
+        let reference_seq_id = self.dotplot_ui.reference_seq_id.trim();
+        self.current_dotplot_reference_splicing_view()
+            .filter(|view| view.seq_id == reference_seq_id)
+    }
+
+    pub(super) fn dotplot_overlay_choices(&self) -> Vec<DotplotOverlayChoice> {
+        let Some(view) = self.dotplot_overlay_reference_view() else {
+            return vec![];
+        };
+        view.transcripts
+            .iter()
+            .enumerate()
+            .map(|(index, lane)| {
+                let label = if lane.label.trim().is_empty() {
+                    lane.transcript_id.trim().to_string()
+                } else {
+                    lane.label.trim().to_string()
+                };
+                let estimated_length_bp = lane
+                    .exons
+                    .iter()
+                    .map(|exon| {
+                        exon.end_1based
+                            .saturating_add(1)
+                            .saturating_sub(exon.start_1based)
+                    })
+                    .sum::<usize>();
+                let transcript_token =
+                    Self::normalize_dotplot_transcript_token(&lane.transcript_id);
+                DotplotOverlayChoice {
+                    transcript_feature_id: lane.transcript_feature_id,
+                    transcript_id: lane.transcript_id.clone(),
+                    label,
+                    mode: if lane.strand.trim() == "-" {
+                        DotplotMode::PairReverseComplement
+                    } else {
+                        DotplotMode::PairForward
+                    },
+                    estimated_length_bp,
+                    derived_seq_id: format!(
+                        "{}__mrna__f{}__{}",
+                        view.seq_id,
+                        lane.transcript_feature_id + 1,
+                        transcript_token
+                    ),
+                    color_rgb: Self::dotplot_overlay_series_color(index),
+                }
+            })
+            .collect()
+    }
+
+    pub(super) fn sync_dotplot_overlay_selection(&mut self) -> bool {
+        let choices = self.dotplot_overlay_choices();
+        let allowed = choices
+            .iter()
+            .map(|choice| choice.transcript_feature_id)
+            .collect::<BTreeSet<_>>();
+        let before = self.dotplot_ui.overlay_transcript_feature_ids.clone();
+        self.dotplot_ui
+            .overlay_transcript_feature_ids
+            .retain(|feature_id| allowed.contains(feature_id));
+        if self.dotplot_ui.overlay_enabled
+            && !choices.is_empty()
+            && self.dotplot_ui.overlay_transcript_feature_ids.is_empty()
+        {
+            self.dotplot_ui.overlay_transcript_feature_ids = choices
+                .iter()
+                .map(|choice| choice.transcript_feature_id)
+                .collect();
+        }
+        self.dotplot_ui.overlay_transcript_feature_ids.sort_unstable();
+        self.dotplot_ui.overlay_transcript_feature_ids.dedup();
+        before != self.dotplot_ui.overlay_transcript_feature_ids
     }
 
     pub(super) fn current_dotplot_query_seq_id(&self) -> Option<String> {
@@ -135,6 +275,16 @@ impl MainAreaDna {
         0
     }
 
+    pub(super) fn current_dotplot_owner_seq_id(&self) -> Option<String> {
+        if self.dotplot_ui.overlay_enabled
+            && let Some(reference_seq_id) = Some(self.dotplot_ui.reference_seq_id.trim())
+                .filter(|value| !value.is_empty())
+        {
+            return Some(reference_seq_id.to_string());
+        }
+        self.current_dotplot_query_seq_id()
+    }
+
     pub(super) fn clear_dotplot_query_override(&mut self) {
         self.dotplot_query_override_seq_id.clear();
         self.dotplot_query_override_source_label.clear();
@@ -142,11 +292,14 @@ impl MainAreaDna {
     }
 
     pub(super) fn dotplot_selection_sync_enabled_for_view(&self, view: &DotplotView) -> bool {
+        if view.series_count > 1 || view.query_series.len() > 1 {
+            return false;
+        }
         self.seq_id.as_deref() == Some(view.seq_id.as_str())
     }
 
     pub(super) fn dotplot_ids_for_active_sequence(&self) -> Vec<String> {
-        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
+        let Some(seq_id) = self.current_dotplot_owner_seq_id() else {
             return vec![];
         };
         let Some(engine) = self.engine.as_ref() else {
@@ -163,7 +316,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn flexibility_track_ids_for_active_sequence(&self) -> Vec<String> {
-        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
+        let Some(seq_id) = self.current_dotplot_owner_seq_id() else {
             return vec![];
         };
         let Some(engine) = self.engine.as_ref() else {
@@ -841,6 +994,225 @@ impl MainAreaDna {
         })
     }
 
+    pub(super) fn build_dotplot_overlay_estimated_pair_evaluations(&self) -> Result<usize, String> {
+        if !self.dotplot_ui.overlay_enabled {
+            return Err("Dotplot overlay mode is disabled".to_string());
+        }
+        let choices = self.dotplot_overlay_choices();
+        if choices.is_empty() {
+            return Err(
+                "Overlay queries are only available for the active locus reference".to_string(),
+            );
+        }
+        let selected_feature_ids = self
+            .dotplot_ui
+            .overlay_transcript_feature_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if selected_feature_ids.is_empty() {
+            return Err("Select at least one transcript for dotplot overlay".to_string());
+        }
+        let word_size =
+            Self::parse_positive_usize_text(&self.dotplot_ui.word_size, "dotplot word")?;
+        let step_bp = Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step")?;
+        let reference_seq_id = self.dotplot_ui.reference_seq_id.trim();
+        if reference_seq_id.is_empty() {
+            return Err("Overlay mode requires reference_seq_id".to_string());
+        }
+        let Some(engine) = self.engine.as_ref() else {
+            return Err("No engine attached while resolving overlay diagnostics".to_string());
+        };
+        let guard = engine
+            .read()
+            .map_err(|_| "Engine lock poisoned while resolving overlay diagnostics".to_string())?;
+        let reference_len = guard
+            .state()
+            .sequences
+            .get(reference_seq_id)
+            .map(|dna| dna.len())
+            .ok_or_else(|| format!("Reference sequence '{reference_seq_id}' not found"))?;
+        let reference_span_start_0based = Self::parse_optional_usize_text(
+            &self.dotplot_ui.reference_span_start_0based,
+            "dotplot ref_start",
+        )?;
+        let reference_span_end_0based = Self::parse_optional_usize_text(
+            &self.dotplot_ui.reference_span_end_0based,
+            "dotplot ref_end",
+        )?;
+        let (reference_start, reference_end) = Self::resolve_dotplot_span_bounds_for_status(
+            reference_len,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            "Reference",
+        )?;
+        let reference_span_bp = reference_end.saturating_sub(reference_start);
+        let reference_windows =
+            Self::dotplot_window_count(reference_span_bp, word_size.max(1), step_bp.max(1));
+        let mut estimated_pair_evaluations = 0usize;
+        for choice in choices
+            .iter()
+            .filter(|choice| selected_feature_ids.contains(&choice.transcript_feature_id))
+        {
+            let query_len = guard
+                .state()
+                .sequences
+                .get(&choice.derived_seq_id)
+                .map(|dna| dna.len())
+                .unwrap_or(choice.estimated_length_bp);
+            if query_len < word_size {
+                return Err(format!(
+                    "Overlay query '{}' is shorter than word size {}",
+                    choice.label, word_size
+                ));
+            }
+            let query_windows =
+                Self::dotplot_window_count(query_len, word_size.max(1), step_bp.max(1));
+            estimated_pair_evaluations = estimated_pair_evaluations
+                .saturating_add(query_windows.saturating_mul(reference_windows));
+        }
+        Ok(estimated_pair_evaluations)
+    }
+
+    pub(super) fn resolve_dotplot_overlay_query_specs_for_compute(
+        &mut self,
+    ) -> Result<Vec<DotplotOverlayQuerySpec>, String> {
+        if !self.dotplot_ui.overlay_enabled {
+            return Err("Dotplot overlay mode is disabled".to_string());
+        }
+        let Some(reference_view) = self.dotplot_overlay_reference_view() else {
+            return Err(
+                "Overlay queries are only available when the active locus DNA is the reference"
+                    .to_string(),
+            );
+        };
+        let choices = self.dotplot_overlay_choices();
+        let selected_feature_ids = self
+            .dotplot_ui
+            .overlay_transcript_feature_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let selected_choices = choices
+            .into_iter()
+            .filter(|choice| selected_feature_ids.contains(&choice.transcript_feature_id))
+            .collect::<Vec<_>>();
+        if selected_choices.is_empty() {
+            return Err("Select at least one transcript for dotplot overlay".to_string());
+        }
+        let Some(engine) = self.engine.as_ref() else {
+            return Err("No engine attached while resolving dotplot overlay".to_string());
+        };
+        let mut resolved_seq_ids: BTreeMap<usize, String> = BTreeMap::new();
+        let mut missing_feature_ids: Vec<usize> = vec![];
+        {
+            let guard = engine
+                .read()
+                .map_err(|_| "Engine lock poisoned while resolving dotplot overlay".to_string())?;
+            for choice in &selected_choices {
+                if guard.state().sequences.contains_key(&choice.derived_seq_id) {
+                    resolved_seq_ids.insert(
+                        choice.transcript_feature_id,
+                        choice.derived_seq_id.clone(),
+                    );
+                } else {
+                    missing_feature_ids.push(choice.transcript_feature_id);
+                }
+            }
+        }
+        if !missing_feature_ids.is_empty() {
+            let result = self
+                .derive_transcript_sequences_with_compact_feedback(
+                    reference_view.seq_id.clone(),
+                    missing_feature_ids.clone(),
+                    None,
+                    "selected dotplot overlay transcripts",
+                )
+                .ok_or_else(|| {
+                    if self.op_status.trim().is_empty() {
+                        "Could not derive overlay transcript sequences".to_string()
+                    } else {
+                        self.op_status.clone()
+                    }
+                })?;
+            if result.created_seq_ids.len() != missing_feature_ids.len() {
+                return Err(format!(
+                    "Overlay transcript derivation created {} sequence(s) for {} requested transcript(s)",
+                    result.created_seq_ids.len(),
+                    missing_feature_ids.len()
+                ));
+            }
+            for (feature_id, seq_id) in missing_feature_ids
+                .iter()
+                .copied()
+                .zip(result.created_seq_ids.iter().cloned())
+            {
+                resolved_seq_ids.insert(feature_id, seq_id);
+            }
+        }
+        selected_choices
+            .into_iter()
+            .map(|choice| {
+                let seq_id = resolved_seq_ids
+                    .get(&choice.transcript_feature_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!(
+                            "No derived sequence id was resolved for transcript '{}'",
+                            choice.label
+                        )
+                    })?;
+                Ok(DotplotOverlayQuerySpec {
+                    seq_id,
+                    label: choice.label,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: choice.mode,
+                    color_rgb: Some(choice.color_rgb),
+                })
+            })
+            .collect()
+    }
+
+    pub(super) fn maybe_auto_compute_dotplot(&mut self) {
+        if !self.dotplot_auto_compute_dirty {
+            return;
+        }
+        let Some(due_at) = self.dotplot_auto_compute_due_at else {
+            return;
+        };
+        if Instant::now() < due_at {
+            return;
+        }
+        let auto_compute_result = if self.dotplot_ui.overlay_enabled {
+            self.build_dotplot_overlay_estimated_pair_evaluations()
+                .map(|evals| ("overlay".to_string(), evals))
+        } else {
+            self.build_dotplot_compute_diagnostics()
+                .map(|diag| (diag.mode.as_str().to_string(), diag.estimated_pair_evaluations))
+        };
+        match auto_compute_result {
+            Ok((_label, estimated_pair_evaluations))
+                if estimated_pair_evaluations <= MAX_DOTPLOT_PAIR_EVALUATIONS =>
+            {
+                self.compute_primary_dotplot();
+            }
+            Ok((label, estimated_pair_evaluations)) => {
+                self.dotplot_last_compute_status = format!(
+                    "Parameters changed, but auto-compute is paused for {label} because the estimate is {} pair evaluations (> {}). Press `Compute dotplot`.",
+                    estimated_pair_evaluations,
+                    MAX_DOTPLOT_PAIR_EVALUATIONS
+                );
+                self.dotplot_auto_compute_due_at = None;
+            }
+            Err(message) => {
+                self.dotplot_last_compute_status =
+                    format!("Parameters changed. Auto-compute is waiting for valid inputs: {message}");
+                self.dotplot_auto_compute_due_at = None;
+            }
+        }
+    }
+
     pub(super) fn bounded_center_window(
         sequence_len: usize,
         center_0based: usize,
@@ -905,7 +1277,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn ensure_dotplot_cache_current(&mut self) {
-        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
+        let Some(seq_id) = self.current_dotplot_owner_seq_id() else {
             self.invalidate_dotplot_cache();
             return;
         };
@@ -940,7 +1312,7 @@ impl MainAreaDna {
             guard
                 .get_dotplot_view(selected_view_id.as_str())
                 .ok()
-                .filter(|row| row.seq_id == seq_id)
+                .filter(|row| row.owner_seq_id == seq_id)
         };
         let track = if selected_track_id.is_empty() {
             None
@@ -973,18 +1345,8 @@ impl MainAreaDna {
     }
 
     pub(super) fn compute_primary_dotplot(&mut self) {
-        let Some(seq_id) = self.current_dotplot_query_seq_id() else {
-            self.op_status = "No active sequence selected for dotplot computation".to_string();
-            return;
-        };
-        let mut diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
-        let half_window_bp = match self.resolve_dotplot_half_window_bp("dotplot half_window_bp") {
-            Ok(v) => v,
-            Err(e) => {
-                self.op_status = e;
-                return;
-            }
-        };
+        let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
+        let overlay_enabled = self.dotplot_ui.overlay_enabled && requires_reference;
         let word_size = match Self::parse_positive_usize_text(
             &self.dotplot_ui.word_size,
             "dotplot word_size",
@@ -1022,27 +1384,13 @@ impl MainAreaDna {
                     return;
                 }
             };
-        let Some((span_start_0based, span_end_0based)) =
-            self.default_dotplot_span_for_view(half_window_bp)
-        else {
-            self.op_status = "Active sequence is empty; dotplot span unavailable".to_string();
-            return;
-        };
-        if span_end_0based.saturating_sub(span_start_0based) < word_size {
-            self.op_status = format!(
-                "Dotplot span {}..{} is smaller than word_size {}",
-                span_start_0based, span_end_0based, word_size
-            );
-            return;
-        }
-        let store_as = if self.dotplot_ui.dotplot_id.trim().is_empty() {
-            format!("{seq_id}.dotplot")
-        } else {
-            self.dotplot_ui.dotplot_id.trim().to_string()
-        };
-        let requires_reference = Self::dotplot_mode_requires_reference(self.dotplot_ui.mode);
         if requires_reference {
             self.maybe_normalize_dotplot_reference_from_current_input();
+        }
+        let query_seq_id = self.current_dotplot_query_seq_id();
+        if !overlay_enabled && query_seq_id.is_none() {
+            self.op_status = "No active sequence selected for dotplot computation".to_string();
+            return;
         }
         let reference_seq_id = if requires_reference {
             let value = self.dotplot_ui.reference_seq_id.trim();
@@ -1088,7 +1436,128 @@ impl MainAreaDna {
         let auto_fit_reference_span_requested = requires_reference
             && reference_span_start_0based.is_none()
             && reference_span_end_0based.is_none();
+        let store_as = if self.dotplot_ui.dotplot_id.trim().is_empty() {
+            if overlay_enabled {
+                let owner = reference_seq_id
+                    .as_deref()
+                    .unwrap_or_else(|| self.seq_id.as_deref().unwrap_or("dotplot"));
+                format!("{owner}.dotplot.overlay")
+            } else {
+                format!("{}.dotplot", query_seq_id.as_deref().unwrap_or("dotplot"))
+            }
+        } else {
+            self.dotplot_ui.dotplot_id.trim().to_string()
+        };
         self.dotplot_ui.dotplot_id = store_as.clone();
+        if overlay_enabled {
+            let estimated_pair_evaluations = self.build_dotplot_overlay_estimated_pair_evaluations().ok();
+            if let Some(reference_id) = reference_seq_id.as_deref() {
+                let selected_count = self.dotplot_ui.overlay_transcript_feature_ids.len();
+                self.dotplot_last_compute_status = format!(
+                    "Requested overlay compute: reference={} series={} word={} step={} mismatches={} tile_bp={} pair_evals≈{}",
+                    reference_id,
+                    selected_count,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    estimated_pair_evaluations
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "?".to_string())
+                );
+            }
+            let queries = match self.resolve_dotplot_overlay_query_specs_for_compute() {
+                Ok(queries) => queries,
+                Err(message) => {
+                    self.op_status = message;
+                    self.clear_dotplot_auto_compute();
+                    return;
+                }
+            };
+            let owner_seq_id = match reference_seq_id.clone() {
+                Some(value) => value,
+                None => {
+                    self.op_status = "Overlay mode requires reference_seq_id".to_string();
+                    self.clear_dotplot_auto_compute();
+                    return;
+                }
+            };
+            self.apply_operation_with_feedback(Operation::ComputeDotplotOverlay {
+                owner_seq_id,
+                reference_seq_id: reference_seq_id.clone().unwrap_or_default(),
+                reference_span_start_0based,
+                reference_span_end_0based,
+                queries,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                store_as: Some(store_as.clone()),
+            });
+            self.invalidate_dotplot_cache();
+            self.ensure_dotplot_cache_current();
+            if let Some(view) = self.dotplot_cached_view.as_ref() {
+                let total_point_count = view
+                    .query_series
+                    .iter()
+                    .map(|series| series.point_count)
+                    .sum::<usize>();
+                let series_labels = view
+                    .query_series
+                    .iter()
+                    .take(4)
+                    .map(|series| series.label.clone())
+                    .collect::<Vec<_>>();
+                self.dotplot_last_compute_status = format!(
+                    "Computed overlay dotplot '{}' owner={} reference={} [{}..{}] series={} total_points={} queries={}",
+                    view.dotplot_id,
+                    view.owner_seq_id,
+                    view.reference_seq_id
+                        .as_deref()
+                        .unwrap_or(view.owner_seq_id.as_str()),
+                    view.reference_span_start_0based.saturating_add(1),
+                    view.reference_span_end_0based,
+                    view.series_count.max(view.query_series.len()),
+                    total_point_count,
+                    series_labels.join(", ")
+                );
+            }
+            self.clear_dotplot_auto_compute();
+            self.save_engine_ops_state();
+            return;
+        }
+
+        let Some(seq_id) = query_seq_id else {
+            self.op_status = "No active sequence selected for dotplot computation".to_string();
+            self.clear_dotplot_auto_compute();
+            return;
+        };
+        let mut diagnostics_snapshot = self.build_dotplot_compute_diagnostics().ok();
+        let half_window_bp = match self.resolve_dotplot_half_window_bp("dotplot half_window_bp") {
+            Ok(v) => v,
+            Err(e) => {
+                self.op_status = e;
+                self.clear_dotplot_auto_compute();
+                return;
+            }
+        };
+        let Some((span_start_0based, span_end_0based)) =
+            self.default_dotplot_span_for_view(half_window_bp)
+        else {
+            self.op_status = "Active sequence is empty; dotplot span unavailable".to_string();
+            self.clear_dotplot_auto_compute();
+            return;
+        };
+        if span_end_0based.saturating_sub(span_start_0based) < word_size {
+            self.op_status = format!(
+                "Dotplot span {}..{} is smaller than word_size {}",
+                span_start_0based, span_end_0based, word_size
+            );
+            self.clear_dotplot_auto_compute();
+            return;
+        }
         if let Some(diag) = diagnostics_snapshot.as_ref() {
             let reference_label = diag
                 .reference_seq_id
@@ -1233,6 +1702,7 @@ impl MainAreaDna {
                 diag.estimated_pair_evaluations
             );
         }
+        self.clear_dotplot_auto_compute();
         self.save_engine_ops_state();
     }
 
@@ -2689,6 +3159,7 @@ impl MainAreaDna {
         self.last_linear_map_width_px = panel_width;
         self.ensure_dotplot_cache_current();
         let mut save_state = false;
+        let mut compute_inputs_changed = false;
         let dotplot_ids = self.dotplot_ids_for_active_sequence();
         let track_ids = self.flexibility_track_ids_for_active_sequence();
         let reference_seq_ids = self.dotplot_reference_sequence_ids();
@@ -2708,6 +3179,10 @@ impl MainAreaDna {
             }
         }
         if self.normalize_dotplot_half_window_default_if_needed() {
+            save_state = true;
+            compute_inputs_changed = true;
+        }
+        if self.sync_dotplot_overlay_selection() {
             save_state = true;
         }
 
@@ -2769,7 +3244,11 @@ impl MainAreaDna {
                             "Select self/pair and forward/reverse-complement comparison behavior",
                         );
                         if self.dotplot_ui.mode != mode_before {
+                            if !Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+                                self.dotplot_ui.overlay_enabled = false;
+                            }
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         ui.label("half_window_bp").on_hover_text(
                             "Half-width of default query span around current viewport center (default fills to larger query/reference sequence length)",
@@ -2785,6 +3264,7 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         ui.label("word")
                             .on_hover_text("Seed/k-mer length used for candidate matching");
@@ -2793,6 +3273,7 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         ui.label("step")
                             .on_hover_text("Sampling step (bp) along query/reference spans");
@@ -2801,6 +3282,7 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         ui.label("mismatches")
                             .on_hover_text("Allowed mismatches per seed comparison");
@@ -2813,6 +3295,7 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         ui.label("tile_bp").on_hover_text(
                             "Optional rendering/export hint for tile width in bp (analysis metadata)",
@@ -2822,6 +3305,7 @@ impl MainAreaDna {
                             .changed()
                         {
                             save_state = true;
+                            compute_inputs_changed = true;
                         }
                         if ui
                             .button("Compute dotplot")
@@ -2902,6 +3386,7 @@ impl MainAreaDna {
                             {
                                 self.maybe_normalize_dotplot_reference_from_current_input();
                                 save_state = true;
+                                compute_inputs_changed = true;
                             }
                             if !reference_seq_ids.is_empty() {
                                 let selected_reference =
@@ -2926,6 +3411,7 @@ impl MainAreaDna {
                                         {
                                             let _ = self.set_dotplot_reference_to_sequence(id);
                                             save_state = true;
+                                            compute_inputs_changed = true;
                                         }
                                     }
                                 });
@@ -2946,6 +3432,7 @@ impl MainAreaDna {
                                 .changed()
                             {
                                 save_state = true;
+                                compute_inputs_changed = true;
                             }
                             ui.label("ref_end")
                                 .on_hover_text("Optional 0-based exclusive reference span end");
@@ -2960,6 +3447,7 @@ impl MainAreaDna {
                                 .changed()
                             {
                                 save_state = true;
+                                compute_inputs_changed = true;
                             }
                             if ui
                                 .small_button("Fit ref span to hits")
@@ -2978,6 +3466,92 @@ impl MainAreaDna {
                             );
                             ui.small("Leave ref_start/ref_end empty for automatic first-pass full-span compute followed by automatic hit-envelope refit.");
                         });
+                        let overlay_choices = self.dotplot_overlay_choices();
+                        ui.horizontal_wrapped(|ui| {
+                            let overlay_enabled = !overlay_choices.is_empty();
+                            if ui
+                                .add_enabled(
+                                    overlay_enabled,
+                                    egui::Checkbox::new(
+                                        &mut self.dotplot_ui.overlay_enabled,
+                                        "Overlay transcript isoforms",
+                                    ),
+                                )
+                                .on_hover_text(
+                                    "Reference-centered overlay: compare multiple annotated transcript isoforms against the same reference sequence in one plot.",
+                                )
+                                .changed()
+                            {
+                                if self.dotplot_ui.overlay_enabled
+                                    && self.dotplot_ui.overlay_transcript_feature_ids.is_empty()
+                                {
+                                    self.dotplot_ui.overlay_transcript_feature_ids = overlay_choices
+                                        .iter()
+                                        .map(|choice| choice.transcript_feature_id)
+                                        .collect();
+                                }
+                                save_state = true;
+                                compute_inputs_changed = true;
+                            }
+                            if !overlay_enabled {
+                                ui.small(
+                                    if self.using_dotplot_query_override() {
+                                        "Overlay is unavailable while the workspace is bound to an RNA-read query override."
+                                    } else {
+                                        "Overlay becomes available when the current reference is the active locus DNA with transcript annotation."
+                                    },
+                                );
+                            } else {
+                                ui.small(
+                                    "Selected isoforms reuse one shared reference span; colors distinguish the overlaid transcript queries.",
+                                );
+                            }
+                        });
+                        if self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty() {
+                            ui.horizontal_wrapped(|ui| {
+                                for choice in &overlay_choices {
+                                    let mut selected = self
+                                        .dotplot_ui
+                                        .overlay_transcript_feature_ids
+                                        .contains(&choice.transcript_feature_id);
+                                    let swatch = egui::Color32::from_rgb(
+                                        choice.color_rgb[0],
+                                        choice.color_rgb[1],
+                                        choice.color_rgb[2],
+                                    );
+                                    let label = format!(
+                                        "{} ({} bp)",
+                                        choice.label, choice.estimated_length_bp
+                                    );
+                                    if ui
+                                        .checkbox(&mut selected, egui::RichText::new(label).color(swatch))
+                                        .on_hover_text(format!(
+                                            "Use transcript '{}' as an overlaid query against the shared reference span.",
+                                            choice.transcript_id
+                                        ))
+                                        .changed()
+                                    {
+                                        if selected {
+                                            self.dotplot_ui
+                                                .overlay_transcript_feature_ids
+                                                .push(choice.transcript_feature_id);
+                                        } else {
+                                            self.dotplot_ui.overlay_transcript_feature_ids.retain(
+                                                |feature_id| *feature_id != choice.transcript_feature_id,
+                                            );
+                                        }
+                                        self.dotplot_ui
+                                            .overlay_transcript_feature_ids
+                                            .sort_unstable();
+                                        self.dotplot_ui
+                                            .overlay_transcript_feature_ids
+                                            .dedup();
+                                        save_state = true;
+                                        compute_inputs_changed = true;
+                                    }
+                                }
+                            });
+                        }
                     }
 
                     ui.horizontal_wrapped(|ui| {
@@ -3188,7 +3762,16 @@ impl MainAreaDna {
                             }
                             ui.separator();
                         }
-                        if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
+                        let overlay_loaded = self
+                            .dotplot_cached_view
+                            .as_ref()
+                            .map(|view| view.series_count > 1 || view.query_series.len() > 1)
+                            .unwrap_or(false);
+                        if overlay_loaded {
+                            ui.small(
+                                "Overlay hover reports one shared reference coordinate plus one x/query coordinate per isoform. Query-side selection sync and locked crosshair are disabled in overlay mode.",
+                            );
+                        } else if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
                             let active_mode = self
                                 .dotplot_cached_view
                                 .as_ref()
@@ -3273,30 +3856,44 @@ impl MainAreaDna {
                         Some(view) => {
                             let reference_seq_label =
                                 view.reference_seq_id.as_deref().unwrap_or(view.seq_id.as_str());
+                            let total_point_count = view
+                                .query_series
+                                .iter()
+                                .map(|series| series.point_count)
+                                .sum::<usize>()
+                                .max(view.point_count);
                             ui.label(
                                 egui::RichText::new(format!(
-                                    "dotplot '{}' query={} [{}..{}] reference={} [{}..{}] | mode={} | word={} step={} mismatches={} | points={}",
+                                    "dotplot '{}' owner={} primary_query={} [{}..{}] reference={} [{}..{}] | series={} | mode={} | word={} step={} mismatches={} | points={}",
                                     view.dotplot_id,
+                                    view.owner_seq_id,
                                     view.seq_id,
                                     view.span_start_0based.saturating_add(1),
                                     view.span_end_0based,
                                     reference_seq_label,
                                     view.reference_span_start_0based.saturating_add(1),
                                     view.reference_span_end_0based,
+                                    view.series_count.max(view.query_series.len()),
                                     view.mode.as_str(),
                                     view.word_size,
                                     view.step_bp,
                                     view.max_mismatches,
-                                    view.point_count
+                                    total_point_count
                                 ))
                                 .monospace()
                                 .size(self.feature_details_font_size()),
                             );
-                            let flex_track = if self.dotplot_ui.show_flexibility_track {
+                            let overlay_mode = view.series_count > 1 || view.query_series.len() > 1;
+                            let flex_track = if self.dotplot_ui.show_flexibility_track && !overlay_mode {
                                 cached_track.as_ref()
                             } else {
                                 None
                             };
+                            if overlay_mode && self.dotplot_ui.show_flexibility_track {
+                                ui.small(
+                                    "Flexibility track is hidden in overlay mode because the x-axis is normalized separately for each query series.",
+                                );
+                            }
                             self.render_dotplot_density_ui(
                                 ui,
                                 view,
@@ -3305,7 +3902,9 @@ impl MainAreaDna {
                                 self.dotplot_ui.display_intensity_gain,
                             );
                             ui.add_space(6.0);
-                            self.render_dotplot_boxplot_summary_ui(ui, view);
+                            if !overlay_mode {
+                                self.render_dotplot_boxplot_summary_ui(ui, view);
+                            }
                         }
                         None => {
                             ui.add_space(6.0);
@@ -3320,6 +3919,10 @@ impl MainAreaDna {
         if save_state {
             self.save_engine_ops_state();
         }
+        if compute_inputs_changed {
+            self.schedule_dotplot_auto_compute();
+        }
+        self.maybe_auto_compute_dotplot();
     }
 
     pub(super) fn render_primary_splicing_map_ui(&mut self, ui: &mut egui::Ui) {

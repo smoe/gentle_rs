@@ -614,6 +614,18 @@ impl GentleEngine {
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
+            Operation::ComputeDotplotOverlay {
+                owner_seq_id,
+                reference_seq_id,
+                queries,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.sequence_ids, owner_seq_id);
+                Self::push_unique_token(&mut summary.sequence_ids, reference_seq_id);
+                for query in queries {
+                    Self::push_unique_token(&mut summary.sequence_ids, &query.seq_id);
+                }
+            }
             Operation::AlignSequences {
                 query_seq_id,
                 target_seq_id,

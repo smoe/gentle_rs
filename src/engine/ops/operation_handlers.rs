@@ -457,12 +457,12 @@ impl GentleEngine {
             });
         }
         let view = self.get_dotplot_view(normalized_dotplot_id)?;
-        if !view.seq_id.eq_ignore_ascii_case(seq_id) {
+        if !view.owner_seq_id.eq_ignore_ascii_case(seq_id) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Dotplot '{}' belongs to seq_id='{}', not '{}'",
-                    normalized_dotplot_id, view.seq_id, seq_id
+                    normalized_dotplot_id, view.owner_seq_id, seq_id
                 ),
             });
         }
@@ -6516,14 +6516,26 @@ impl GentleEngine {
                 } else {
                     format!("dotplot_{}", result.op_id)
                 };
+                let primary_series = Self::build_dotplot_query_series(
+                    format!("{dotplot_id}_series_1"),
+                    seq_id.clone(),
+                    seq_id.clone(),
+                    Self::default_dotplot_series_color(0),
+                    mode,
+                    span_start_0based,
+                    span_end_0based,
+                    points,
+                    boxplot_bins,
+                );
                 let view = DotplotView {
                     schema: DOTPLOT_VIEW_SCHEMA.to_string(),
                     dotplot_id: dotplot_id.clone(),
+                    owner_seq_id: seq_id.clone(),
                     seq_id: seq_id.clone(),
-                    reference_seq_id: reference_seq_id_for_view,
+                    reference_seq_id: reference_seq_id_for_view.clone(),
                     generated_at_unix_ms: Self::now_unix_ms(),
-                    span_start_0based,
-                    span_end_0based,
+                    span_start_0based: primary_series.span_start_0based,
+                    span_end_0based: primary_series.span_end_0based,
                     reference_span_start_0based,
                     reference_span_end_0based,
                     mode,
@@ -6531,10 +6543,19 @@ impl GentleEngine {
                     step_bp,
                     max_mismatches,
                     tile_bp,
-                    point_count: points.len(),
-                    points,
-                    boxplot_bin_count: boxplot_bins.len(),
-                    boxplot_bins,
+                    point_count: primary_series.point_count,
+                    points: primary_series.points.clone(),
+                    boxplot_bin_count: primary_series.boxplot_bin_count,
+                    boxplot_bins: primary_series.boxplot_bins.clone(),
+                    series_count: 1,
+                    query_series: vec![primary_series],
+                    reference_annotation: reference_seq_id_for_view.as_deref().and_then(|ref_id| {
+                        self.build_dotplot_reference_annotation_track(
+                            ref_id,
+                            reference_span_start_0based,
+                            reference_span_end_0based,
+                        )
+                    }),
                 };
                 let replaced = self
                     .read_dotplot_analysis_store()
@@ -6558,6 +6579,206 @@ impl GentleEngine {
                     result.warnings.push(format!(
                         "Dotplot '{}' reached MAX_DOTPLOT_POINTS ({MAX_DOTPLOT_POINTS}); result was truncated",
                         dotplot_id
+                    ));
+                }
+            }
+            Operation::ComputeDotplotOverlay {
+                owner_seq_id,
+                reference_seq_id,
+                reference_span_start_0based,
+                reference_span_end_0based,
+                queries,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                store_as,
+            } => {
+                let owner_seq_id = owner_seq_id.trim().to_string();
+                if owner_seq_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ComputeDotplotOverlay requires owner_seq_id".to_string(),
+                    });
+                }
+                if !self.state.sequences.contains_key(owner_seq_id.as_str()) {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Owner sequence '{}' not found", owner_seq_id),
+                    });
+                }
+                let reference_seq_id = reference_seq_id.trim().to_string();
+                if reference_seq_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ComputeDotplotOverlay requires reference_seq_id".to_string(),
+                    });
+                }
+                let reference_dna = self.state.sequences.get(&reference_seq_id).ok_or_else(|| {
+                    EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Reference sequence '{}' not found", reference_seq_id),
+                    }
+                })?;
+                if queries.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ComputeDotplotOverlay requires at least one query spec"
+                            .to_string(),
+                    });
+                }
+                let reference_text = reference_dna.get_forward_string().to_ascii_uppercase();
+                let reference_bytes = reference_text.as_bytes();
+                let (reference_span_start_0based, reference_span_end_0based) =
+                    Self::resolve_analysis_span(
+                        reference_bytes.len(),
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                    )?;
+                let reference_span =
+                    &reference_bytes[reference_span_start_0based..reference_span_end_0based];
+                let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
+                    Self::normalize_analysis_id(raw_id, "dotplot")?
+                } else {
+                    format!("dotplot_{}", result.op_id)
+                };
+                let reference_annotation = self.build_dotplot_reference_annotation_track(
+                    &reference_seq_id,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
+                );
+                let mut query_series: Vec<DotplotQuerySeries> = vec![];
+                let mut truncated_series_labels: Vec<String> = vec![];
+                for (index, query) in queries.iter().enumerate() {
+                    let query_seq_id = query.seq_id.trim();
+                    if query_seq_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ComputeDotplotOverlay query spec #{} requires seq_id",
+                                index + 1
+                            ),
+                        });
+                    }
+                    if !matches!(
+                        query.mode,
+                        DotplotMode::PairForward | DotplotMode::PairReverseComplement
+                    ) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ComputeDotplotOverlay query '{}' requires pair mode, got '{}'",
+                                query_seq_id,
+                                query.mode.as_str()
+                            ),
+                        });
+                    }
+                    let query_dna =
+                        self.state.sequences.get(query_seq_id).ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Query sequence '{}' not found", query_seq_id),
+                        })?;
+                    let query_text = query_dna.get_forward_string().to_ascii_uppercase();
+                    let query_bytes = query_text.as_bytes();
+                    let (query_span_start_0based, query_span_end_0based) =
+                        Self::resolve_analysis_span(
+                            query_bytes.len(),
+                            query.span_start_0based,
+                            query.span_end_0based,
+                        )?;
+                    let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
+                    let (points, truncated) = Self::compute_dotplot_points(
+                        query_span,
+                        reference_span,
+                        query_span_start_0based,
+                        reference_span_start_0based,
+                        query.mode,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        MAX_DOTPLOT_POINTS,
+                    )?;
+                    let boxplot_bins = Self::compute_dotplot_boxplot_bins(
+                        &points,
+                        query_span_start_0based,
+                        query_span_end_0based,
+                        DOTPLOT_BOXPLOT_DEFAULT_BINS,
+                    );
+                    let label = if query.label.trim().is_empty() {
+                        query_seq_id.to_string()
+                    } else {
+                        query.label.trim().to_string()
+                    };
+                    if truncated {
+                        truncated_series_labels.push(label.clone());
+                    }
+                    query_series.push(Self::build_dotplot_query_series(
+                        format!("{dotplot_id}_series_{}", index + 1),
+                        query_seq_id.to_string(),
+                        label,
+                        query
+                            .color_rgb
+                            .unwrap_or_else(|| Self::default_dotplot_series_color(index)),
+                        query.mode,
+                        query_span_start_0based,
+                        query_span_end_0based,
+                        points,
+                        boxplot_bins,
+                    ));
+                }
+                let primary_series = query_series.first().cloned().ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: "ComputeDotplotOverlay did not produce a primary query series"
+                        .to_string(),
+                })?;
+                let view = DotplotView {
+                    schema: DOTPLOT_VIEW_SCHEMA.to_string(),
+                    dotplot_id: dotplot_id.clone(),
+                    owner_seq_id: owner_seq_id.clone(),
+                    seq_id: primary_series.seq_id.clone(),
+                    reference_seq_id: Some(reference_seq_id.clone()),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    span_start_0based: primary_series.span_start_0based,
+                    span_end_0based: primary_series.span_end_0based,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
+                    mode: primary_series.mode,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                    point_count: primary_series.point_count,
+                    points: primary_series.points.clone(),
+                    boxplot_bin_count: primary_series.boxplot_bin_count,
+                    boxplot_bins: primary_series.boxplot_bins.clone(),
+                    series_count: query_series.len(),
+                    query_series,
+                    reference_annotation,
+                };
+                let replaced = self
+                    .read_dotplot_analysis_store()
+                    .dotplots
+                    .contains_key(dotplot_id.as_str());
+                self.upsert_dotplot_view(view.clone())?;
+                result.messages.push(format!(
+                    "{} overlay dotplot '{}' for owner '{}' against '{}' (series={}, reference_span={}..{}, word={}, step={}, mismatches={})",
+                    if replaced { "Updated" } else { "Created" },
+                    dotplot_id,
+                    owner_seq_id,
+                    reference_seq_id,
+                    view.series_count,
+                    reference_span_start_0based,
+                    reference_span_end_0based,
+                    word_size,
+                    step_bp,
+                    max_mismatches
+                ));
+                if !truncated_series_labels.is_empty() {
+                    result.warnings.push(format!(
+                        "Overlay dotplot '{}' truncated {} series at MAX_DOTPLOT_POINTS ({MAX_DOTPLOT_POINTS}): {}",
+                        dotplot_id,
+                        truncated_series_labels.len(),
+                        truncated_series_labels.join(", ")
                     ));
                 }
             }

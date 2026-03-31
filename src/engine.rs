@@ -157,7 +157,7 @@ pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
 pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
-const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v2";
+const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v3";
 const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
 const SEQUENCE_ALIGNMENT_REPORT_SCHEMA: &str = "gentle.sequence_alignment_report.v1";
 pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
@@ -4172,6 +4172,24 @@ pub enum Operation {
         #[serde(default)]
         store_as: Option<String>,
     },
+    ComputeDotplotOverlay {
+        owner_seq_id: SeqId,
+        reference_seq_id: SeqId,
+        #[serde(default)]
+        reference_span_start_0based: Option<usize>,
+        #[serde(default)]
+        reference_span_end_0based: Option<usize>,
+        #[serde(default)]
+        queries: Vec<DotplotOverlayQuerySpec>,
+        word_size: usize,
+        step_bp: usize,
+        #[serde(default)]
+        max_mismatches: usize,
+        #[serde(default)]
+        tile_bp: Option<usize>,
+        #[serde(default)]
+        store_as: Option<String>,
+    },
     ComputeFlexibilityTrack {
         seq_id: SeqId,
         #[serde(default)]
@@ -5710,6 +5728,7 @@ impl GentleEngine {
                 "DesignQpcrAssays".to_string(),
                 "DeriveTranscriptSequences".to_string(),
                 "ComputeDotplot".to_string(),
+                "ComputeDotplotOverlay".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
                 "DeriveSplicingReferences".to_string(),
                 "AlignSequences".to_string(),
@@ -9700,6 +9719,10 @@ impl GentleEngine {
         if store.schema.trim().is_empty() {
             store.schema = DOTPLOT_ANALYSIS_SCHEMA.to_string();
         }
+        for view in store.dotplots.values_mut() {
+            view.normalize_v3_defaults();
+            view.schema = DOTPLOT_VIEW_SCHEMA.to_string();
+        }
         store
     }
 
@@ -9799,6 +9822,96 @@ impl GentleEngine {
             }
         }
         mismatches
+    }
+
+    fn default_dotplot_series_color(index: usize) -> [u8; 3] {
+        const PALETTE: [[u8; 3]; 8] = [
+            [29, 78, 216],
+            [220, 38, 38],
+            [5, 150, 105],
+            [217, 119, 6],
+            [124, 58, 237],
+            [190, 24, 93],
+            [8, 145, 178],
+            [71, 85, 105],
+        ];
+        PALETTE[index % PALETTE.len()]
+    }
+
+    fn build_dotplot_query_series(
+        series_id: String,
+        seq_id: String,
+        label: String,
+        color_rgb: [u8; 3],
+        mode: DotplotMode,
+        span_start_0based: usize,
+        span_end_0based: usize,
+        points: Vec<DotplotMatchPoint>,
+        boxplot_bins: Vec<DotplotBoxplotBin>,
+    ) -> DotplotQuerySeries {
+        DotplotQuerySeries {
+            series_id,
+            seq_id,
+            label,
+            color_rgb,
+            mode,
+            span_start_0based,
+            span_end_0based,
+            point_count: points.len(),
+            points,
+            boxplot_bin_count: boxplot_bins.len(),
+            boxplot_bins,
+        }
+    }
+
+    fn build_dotplot_reference_annotation_track(
+        &self,
+        reference_seq_id: &str,
+        reference_span_start_0based: usize,
+        reference_span_end_0based: usize,
+    ) -> Option<DotplotReferenceAnnotationTrack> {
+        let dna = self.state.sequences.get(reference_seq_id)?;
+        let mut intervals: Vec<(usize, usize)> = vec![];
+        for feature in dna.features() {
+            if !feature.kind.to_string().eq_ignore_ascii_case("exon") {
+                continue;
+            }
+            let mut ranges: Vec<(usize, usize)> = vec![];
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            for (start_0based, end_0based_exclusive) in ranges {
+                let clipped_start = start_0based.max(reference_span_start_0based);
+                let clipped_end = end_0based_exclusive.min(reference_span_end_0based);
+                if clipped_end > clipped_start {
+                    intervals.push((clipped_start, clipped_end));
+                }
+            }
+        }
+        if intervals.is_empty() {
+            return None;
+        }
+        intervals.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged: Vec<(usize, usize)> = vec![];
+        for (start, end) in intervals {
+            if let Some(last) = merged.last_mut() && start <= last.1 {
+                last.1 = last.1.max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        let intervals = merged
+            .into_iter()
+            .map(|(start_0based, end_0based_exclusive)| DotplotReferenceAnnotationInterval {
+                start_0based,
+                end_0based_exclusive,
+                label: "exon".to_string(),
+            })
+            .collect::<Vec<_>>();
+        Some(DotplotReferenceAnnotationTrack {
+            seq_id: reference_seq_id.to_string(),
+            label: "merged exons".to_string(),
+            interval_count: intervals.len(),
+            intervals,
+        })
     }
 
     fn dotplot_boxplot_quantile(sorted: &[usize], q: f64) -> Option<usize> {
@@ -10070,14 +10183,27 @@ impl GentleEngine {
             query_bytes.len(),
             DOTPLOT_BOXPLOT_DEFAULT_BINS,
         );
+        let query_label = query_seq_id.trim().to_string();
+        let primary_series = Self::build_dotplot_query_series(
+            "preview_series_1".to_string(),
+            query_seq_id.trim().to_string(),
+            query_label.clone(),
+            Self::default_dotplot_series_color(0),
+            mode,
+            0,
+            query_bytes.len(),
+            points,
+            boxplot_bins,
+        );
         Ok(DotplotView {
             schema: DOTPLOT_VIEW_SCHEMA.to_string(),
             dotplot_id: String::new(),
+            owner_seq_id: query_seq_id.trim().to_string(),
             seq_id: query_seq_id.trim().to_string(),
             reference_seq_id: Some(reference_seq_id.trim().to_string()),
             generated_at_unix_ms: 0,
-            span_start_0based: 0,
-            span_end_0based: query_bytes.len(),
+            span_start_0based: primary_series.span_start_0based,
+            span_end_0based: primary_series.span_end_0based,
             reference_span_start_0based,
             reference_span_end_0based,
             mode,
@@ -10085,10 +10211,13 @@ impl GentleEngine {
             step_bp,
             max_mismatches,
             tile_bp,
-            point_count: points.len(),
-            points,
-            boxplot_bin_count: DOTPLOT_BOXPLOT_DEFAULT_BINS,
-            boxplot_bins,
+            point_count: primary_series.point_count,
+            points: primary_series.points.clone(),
+            boxplot_bin_count: primary_series.boxplot_bin_count,
+            boxplot_bins: primary_series.boxplot_bins.clone(),
+            series_count: 1,
+            query_series: vec![primary_series],
+            reference_annotation: None,
         })
     }
 
@@ -10170,6 +10299,9 @@ impl GentleEngine {
 
     fn upsert_dotplot_view(&mut self, view: DotplotView) -> Result<(), EngineError> {
         let mut store = self.read_dotplot_analysis_store();
+        let mut view = view;
+        view.schema = DOTPLOT_VIEW_SCHEMA.to_string();
+        view.normalize_v3_defaults();
         store.dotplots.insert(view.dotplot_id.clone(), view);
         self.write_dotplot_analysis_store(store)
     }
@@ -10193,13 +10325,14 @@ impl GentleEngine {
             .values()
             .filter(|view| {
                 filter.as_ref().is_none_or(|needle| {
-                    view.seq_id
+                    view.owner_seq_id
                         .to_ascii_lowercase()
                         .eq_ignore_ascii_case(needle)
                 })
             })
             .map(|view| DotplotViewSummary {
                 dotplot_id: view.dotplot_id.clone(),
+                owner_seq_id: view.owner_seq_id.clone(),
                 seq_id: view.seq_id.clone(),
                 reference_seq_id: view.reference_seq_id.clone(),
                 generated_at_unix_ms: view.generated_at_unix_ms,
@@ -10212,12 +10345,13 @@ impl GentleEngine {
                 step_bp: view.step_bp,
                 max_mismatches: view.max_mismatches,
                 point_count: view.point_count,
+                series_count: view.series_count.max(view.query_series.len()),
             })
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| {
-            left.seq_id
+            left.owner_seq_id
                 .to_ascii_lowercase()
-                .cmp(&right.seq_id.to_ascii_lowercase())
+                .cmp(&right.owner_seq_id.to_ascii_lowercase())
                 .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
                 .then(
                     left.dotplot_id
