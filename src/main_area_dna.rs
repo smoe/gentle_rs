@@ -4914,6 +4914,36 @@ mod tests {
     }
 
     #[test]
+    fn build_splicing_rna_read_align_operation_uses_explicit_sorted_subset() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.rna_reads_ui.report_id = "report1".to_string();
+        area.rna_reads_ui.align_phase_selection = RnaReadHitSelection::All;
+
+        let op = area
+            .build_splicing_rna_read_align_operation(Some(vec![9, 2, 9, 5]))
+            .expect("build align op");
+
+        match op {
+            Operation::AlignRnaReadReport {
+                report_id,
+                selection,
+                align_config_override,
+                selected_record_indices,
+            } => {
+                assert_eq!(report_id, "report1");
+                assert_eq!(selection, RnaReadHitSelection::All);
+                assert_eq!(selected_record_indices, vec![2, 5, 9]);
+                assert_eq!(
+                    align_config_override.expect("align config").band_width_bp,
+                    24
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
     fn summarize_rna_read_alignment_effects_counts_each_category() {
         let report = RnaReadInterpretationReport {
             report_id: "rna_effects".to_string(),
@@ -20322,7 +20352,13 @@ impl MainAreaDna {
                             .rna_read_record_indices_all_selected(
                                 displayed_record_indices.iter().copied(),
                             );
-                        if ui.checkbox(&mut select_filtered_rows, "").changed() {
+                        if ui
+                            .checkbox(&mut select_filtered_rows, "")
+                            .on_hover_text(
+                                "Select or clear all aligned rows currently shown by the active filter/search.",
+                            )
+                            .changed()
+                        {
                             let affected = self.set_rna_read_record_indices_selected(
                                 displayed_record_indices.iter().copied(),
                                 select_filtered_rows,
@@ -21939,7 +21975,13 @@ impl MainAreaDna {
                                     .rna_read_record_indices_all_selected(
                                         visible_record_indices.iter().copied(),
                                     );
-                                if ui.checkbox(&mut select_listed_rows, "").changed() {
+                                if ui
+                                    .checkbox(&mut select_listed_rows, "")
+                                    .on_hover_text(
+                                        "Select or clear all currently listed top-hit rows without affecting hidden selections.",
+                                    )
+                                    .changed()
+                                {
                                     let affected = self.set_rna_read_record_indices_selected(
                                         visible_record_indices.iter().copied(),
                                         select_listed_rows,
