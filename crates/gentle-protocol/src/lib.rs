@@ -5,8 +5,15 @@
 //! The first extracted slice is intentionally small: stable identifier aliases,
 //! shared analysis enums, and the portable engine error payload.
 
+pub mod dna_ladder;
+
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, error::Error, fmt};
+
+pub use dna_ladder::{
+    DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
+    RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+};
 
 /// Stable identifier for one sequence entry stored in project state.
 pub type SeqId = String;

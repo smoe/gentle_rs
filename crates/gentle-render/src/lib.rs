@@ -6,6 +6,8 @@
 //! and similar adapter-neutral figure generation.
 
 mod feature_expert;
+pub mod pool_gel;
+pub mod protocol_cartoon;
 
 pub use feature_expert::{
     SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix,

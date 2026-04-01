@@ -1,0 +1,14 @@
+<svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#ffffff" height="700" width="1200" x="0" y="0"/>
+<rect fill="#7f8000" height="6" width="337.5" x="60" y="342"/>
+<rect fill="#7f8000" height="6" width="337.5" x="397.5" y="342"/>
+<rect fill="#7f8000" height="6" width="337.5" x="735" y="342"/>
+<rect fill="#7f8000" height="6" width="67.5" x="1072.5" y="342"/>
+<line stroke="#000000" stroke-width="2" x1="60" x2="1140" y1="350" y2="350"/>
+<text fill="#111111" font-family="monospace" font-size="16" x="12" y="24">
+&lt;no name&gt;
+</text>
+<text fill="#444444" font-family="monospace" font-size="14" text-anchor="end" x="1188" y="24">
+320 bp
+</text>
+</svg>

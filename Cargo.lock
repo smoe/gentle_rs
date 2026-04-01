@@ -2327,6 +2327,7 @@ name = "gentle-protocol"
 version = "0.1.0-internal.3"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2334,6 +2335,8 @@ name = "gentle-render"
 version = "0.1.0-internal.3"
 dependencies = [
  "gentle-protocol",
+ "serde",
+ "serde_json",
  "svg",
 ]
 

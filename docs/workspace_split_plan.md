@@ -27,11 +27,17 @@ Current status:
 - the extracted slice now also covers the portable feature-expert vocabulary:
   expert target enums, TFBS/restriction/splicing/isoform view payloads, and
   the shared instruction strings those views expose;
+- the extracted slice now also includes the shared DNA/RNA ladder catalog
+  types and built-in default ladder sets, again with root-crate shims keeping
+  the old import paths stable;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 - `crates/gentle-render` is no longer only a placeholder:
   the feature-expert SVG renderer and the shared splicing transition-matrix
-  helper now live there, with root-crate shims preserving the old import paths.
+  helper now live there, and the protocol-cartoon catalog plus deterministic
+  SVG rendering now live there too, and the virtual pool-gel layout/SVG layer
+  now lives there as well, with root-crate shims preserving the old import
+  paths.
 - `crates/gentle-shell` is no longer only a placeholder either:
   the glossary-driven shell help rendering layer now lives there, again with
   root-crate shims preserving the old import paths while parser/executor

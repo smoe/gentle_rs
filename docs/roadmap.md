@@ -34,7 +34,9 @@ order. Durable architecture constraints and decisions remain in
   - workspace scaffold now exists in `crates/` with placeholder members for
     those five crates; production code still mostly lives in the root crate,
     although `crates/gentle-render` now already owns the feature-expert SVG
-    renderer plus the shared splicing transition-matrix helper, and
+    renderer, the shared splicing transition-matrix helper, the
+    protocol-cartoon catalog/rendering layer, and the virtual pool-gel
+    layout/export layer, and
     `crates/gentle-shell` now already owns the glossary-driven shell help
     rendering layer
   - Phase 1 is now initiated:
@@ -49,6 +51,8 @@ order. Durable architecture constraints and decisions remain in
     - the portable feature-expert contract layer now also lives there:
       expert target enums, TFBS/restriction/splicing/isoform view payloads,
       and the shared instruction strings those views expose
+    - the shared DNA/RNA ladder catalog layer now also lives there:
+      ladder molecule/catalog records plus the built-in default ladder sets
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates

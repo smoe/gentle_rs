@@ -9,6 +9,11 @@ description = "Headless GENtle export and rendering helpers"
 name = "gentle_render"
 path = "src/lib.rs"
 
+[features]
+snapshot-tests = []
+
 [dependencies]
 gentle-protocol = { path = "../gentle-protocol" }
+serde = { version = "^1", features = ["derive"] }
+serde_json = "^1"
 svg = "*"

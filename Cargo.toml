@@ -62,7 +62,7 @@ name = "gentle"
 [features]
 default = []
 screenshot-capture = []
-snapshot-tests = []
+snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = ["dep:deno_core", "dep:deno_error", "dep:rustyline"]
 lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
