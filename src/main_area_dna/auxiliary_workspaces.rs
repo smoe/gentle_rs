@@ -135,9 +135,8 @@ impl MainAreaDna {
 
     pub(super) fn schedule_dotplot_auto_compute(&mut self) {
         self.dotplot_auto_compute_dirty = true;
-        self.dotplot_auto_compute_due_at = Some(
-            Instant::now() + Duration::from_millis(Self::DOTPLOT_AUTO_COMPUTE_DEBOUNCE_MS),
-        );
+        self.dotplot_auto_compute_due_at =
+            Some(Instant::now() + Duration::from_millis(Self::DOTPLOT_AUTO_COMPUTE_DEBOUNCE_MS));
     }
 
     pub(super) fn clear_dotplot_auto_compute(&mut self) {
@@ -146,7 +145,9 @@ impl MainAreaDna {
     }
 
     pub(super) fn dotplot_overlay_reference_view(&self) -> Option<Arc<SplicingExpertView>> {
-        if self.using_dotplot_query_override() || !Self::dotplot_mode_requires_reference(self.dotplot_ui.mode) {
+        if self.using_dotplot_query_override()
+            || !Self::dotplot_mode_requires_reference(self.dotplot_ui.mode)
+        {
             return None;
         }
         let reference_seq_id = self.dotplot_ui.reference_seq_id.trim();
@@ -219,7 +220,9 @@ impl MainAreaDna {
                 .map(|choice| choice.transcript_feature_id)
                 .collect();
         }
-        self.dotplot_ui.overlay_transcript_feature_ids.sort_unstable();
+        self.dotplot_ui
+            .overlay_transcript_feature_ids
+            .sort_unstable();
         self.dotplot_ui.overlay_transcript_feature_ids.dedup();
         before != self.dotplot_ui.overlay_transcript_feature_ids
     }
@@ -277,8 +280,8 @@ impl MainAreaDna {
 
     pub(super) fn current_dotplot_owner_seq_id(&self) -> Option<String> {
         if self.dotplot_ui.overlay_enabled
-            && let Some(reference_seq_id) = Some(self.dotplot_ui.reference_seq_id.trim())
-                .filter(|value| !value.is_empty())
+            && let Some(reference_seq_id) =
+                Some(self.dotplot_ui.reference_seq_id.trim()).filter(|value| !value.is_empty())
         {
             return Some(reference_seq_id.to_string());
         }
@@ -1111,10 +1114,8 @@ impl MainAreaDna {
                 .map_err(|_| "Engine lock poisoned while resolving dotplot overlay".to_string())?;
             for choice in &selected_choices {
                 if guard.state().sequences.contains_key(&choice.derived_seq_id) {
-                    resolved_seq_ids.insert(
-                        choice.transcript_feature_id,
-                        choice.derived_seq_id.clone(),
-                    );
+                    resolved_seq_ids
+                        .insert(choice.transcript_feature_id, choice.derived_seq_id.clone());
                 } else {
                     missing_feature_ids.push(choice.transcript_feature_id);
                 }
@@ -1188,8 +1189,12 @@ impl MainAreaDna {
             self.build_dotplot_overlay_estimated_pair_evaluations()
                 .map(|evals| ("overlay".to_string(), evals))
         } else {
-            self.build_dotplot_compute_diagnostics()
-                .map(|diag| (diag.mode.as_str().to_string(), diag.estimated_pair_evaluations))
+            self.build_dotplot_compute_diagnostics().map(|diag| {
+                (
+                    diag.mode.as_str().to_string(),
+                    diag.estimated_pair_evaluations,
+                )
+            })
         };
         match auto_compute_result {
             Ok((_label, estimated_pair_evaluations))
@@ -1200,14 +1205,14 @@ impl MainAreaDna {
             Ok((label, estimated_pair_evaluations)) => {
                 self.dotplot_last_compute_status = format!(
                     "Parameters changed, but auto-compute is paused for {label} because the estimate is {} pair evaluations (> {}). Press `Compute dotplot`.",
-                    estimated_pair_evaluations,
-                    MAX_DOTPLOT_PAIR_EVALUATIONS
+                    estimated_pair_evaluations, MAX_DOTPLOT_PAIR_EVALUATIONS
                 );
                 self.dotplot_auto_compute_due_at = None;
             }
             Err(message) => {
-                self.dotplot_last_compute_status =
-                    format!("Parameters changed. Auto-compute is waiting for valid inputs: {message}");
+                self.dotplot_last_compute_status = format!(
+                    "Parameters changed. Auto-compute is waiting for valid inputs: {message}"
+                );
                 self.dotplot_auto_compute_due_at = None;
             }
         }
@@ -1450,7 +1455,8 @@ impl MainAreaDna {
         };
         self.dotplot_ui.dotplot_id = store_as.clone();
         if overlay_enabled {
-            let estimated_pair_evaluations = self.build_dotplot_overlay_estimated_pair_evaluations().ok();
+            let estimated_pair_evaluations =
+                self.build_dotplot_overlay_estimated_pair_evaluations().ok();
             if let Some(reference_id) = reference_seq_id.as_deref() {
                 let selected_count = self.dotplot_ui.overlay_transcript_feature_ids.len();
                 self.dotplot_last_compute_status = format!(

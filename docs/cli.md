@@ -1101,11 +1101,21 @@ Shared shell command:
       the formal structured subset spec (`effect_filter`, `sort_key`,
       `search`, `selected_record_indices`, `score_density_variant`,
       `score_bin_index`, `score_bin_count`) plus `subset_match_count` in the
-      JSON payload so agent-driven inspection stays reproducible.
+      JSON payload so agent-driven inspection stays reproducible. Rows now also
+      include full-length flags:
+      - `full_length_exact`
+      - `full_length_near`
+      - `full_length_strict`
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
       exports an exact saved-report subset and overrides coarse `--selection`;
       `--subset-spec` records the formal subset definition that produced it.
+      TSV rows now include:
+      - `target_coverage_fraction`
+      - `full_length_exact`
+      - `full_length_near`
+      - `full_length_strict`
+      - `full_length_class` (`exact` / `strict_end` / `near` / `partial`)
     - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
       accept the same `--record-indices` exact-subset override plus optional
       `--subset-spec` provenance.
@@ -1153,7 +1163,12 @@ Shared shell command:
         human-readable triage (`mode`, `origin`, target count, ROI-capture
         flag, and read counters)
     - `rna-reads show-report` output includes a `summary` field with the same
-      compact provenance framing
+      compact provenance framing, plus aligned/full-length percentages and
+      compact read-length histogram summaries for:
+      - all reads
+      - seed-passed reads
+      - aligned reads
+      - full-length exact / near / strict subsets
     - tutorial reference (TP53 basis + multi-gene sparse mapping):
       `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns

@@ -1563,6 +1563,12 @@ pub struct RnaReadAlignmentInspectionRow {
     #[serde(default)]
     pub target_coverage_fraction: f64,
     #[serde(default)]
+    pub full_length_exact: bool,
+    #[serde(default)]
+    pub full_length_near: bool,
+    #[serde(default)]
+    pub full_length_strict: bool,
+    #[serde(default)]
     pub secondary_mapping_count: usize,
     pub seed_hit_fraction: f64,
     pub weighted_seed_hit_fraction: f64,
@@ -1854,6 +1860,18 @@ pub struct RnaReadInterpretationReport {
     pub mapped_isoform_support_rows: Vec<RnaReadMappedIsoformSupportRow>,
     #[serde(default)]
     pub origin_class_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub read_length_counts_all: Vec<u64>,
+    #[serde(default)]
+    pub read_length_counts_seed_passed: Vec<u64>,
+    #[serde(default)]
+    pub read_length_counts_aligned: Vec<u64>,
+    #[serde(default)]
+    pub read_length_counts_full_length_exact: Vec<u64>,
+    #[serde(default)]
+    pub read_length_counts_full_length_near: Vec<u64>,
+    #[serde(default)]
+    pub read_length_counts_full_length_strict: Vec<u64>,
     #[serde(default)]
     pub score_density_bins: Vec<u64>,
     #[serde(default)]

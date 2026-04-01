@@ -6614,12 +6614,14 @@ impl GentleEngine {
                         message: "ComputeDotplotOverlay requires reference_seq_id".to_string(),
                     });
                 }
-                let reference_dna = self.state.sequences.get(&reference_seq_id).ok_or_else(|| {
-                    EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Reference sequence '{}' not found", reference_seq_id),
-                    }
-                })?;
+                let reference_dna =
+                    self.state
+                        .sequences
+                        .get(&reference_seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Reference sequence '{}' not found", reference_seq_id),
+                        })?;
                 if queries.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
@@ -6674,10 +6676,13 @@ impl GentleEngine {
                         });
                     }
                     let query_dna =
-                        self.state.sequences.get(query_seq_id).ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Query sequence '{}' not found", query_seq_id),
-                        })?;
+                        self.state
+                            .sequences
+                            .get(query_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Query sequence '{}' not found", query_seq_id),
+                            })?;
                     let query_text = query_dna.get_forward_string().to_ascii_uppercase();
                     let query_bytes = query_text.as_bytes();
                     let (query_span_start_0based, query_span_end_0based) =

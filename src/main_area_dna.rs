@@ -14556,6 +14556,9 @@ impl MainAreaDna {
             );
         });
         self.render_rna_read_mapping_status(ui);
+        let workspace_saved_report = self
+            .current_rna_read_mapping_workspace_report_id()
+            .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id));
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -15603,6 +15606,10 @@ impl MainAreaDna {
                     progress,
                     self.rna_read_evidence_ui.score_density_use_log_scale,
                 );
+                self.render_rna_read_length_distributions_panel(
+                    ui,
+                    workspace_saved_report.as_deref(),
+                );
                 self.render_rna_read_statistics_tabs(ui, view, progress, true);
                 highlight_selection_update =
                     self.render_rna_read_top_hits_preview(ui, view, progress, true);
@@ -15714,6 +15721,7 @@ impl MainAreaDna {
                 progress,
                 self.rna_read_evidence_ui.score_density_use_log_scale,
             );
+            self.render_rna_read_length_distributions_panel(ui, workspace_saved_report.as_deref());
             self.render_rna_read_statistics_tabs(ui, view, progress, true);
             highlight_selection_update =
                 self.render_rna_read_top_hits_preview(ui, view, progress, true);
@@ -15722,10 +15730,7 @@ impl MainAreaDna {
             self.rna_seed_highlight_record_index = next_selection;
         }
         if self.rna_read_task.is_none() {
-            if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
-                && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
-            {
-                let report = report.as_ref();
+            if let Some(report) = workspace_saved_report.as_deref() {
                 let report_seed_pass_pct = if report.read_count_total == 0 {
                     0.0
                 } else {
@@ -16159,6 +16164,7 @@ impl MainAreaDna {
                 progress,
                 self.rna_read_evidence_ui.score_density_use_log_scale,
             );
+            self.render_rna_read_length_distributions_panel(ui, selected_report.as_deref());
             self.render_rna_read_statistics_tabs(ui, view, progress, false);
             if let Some(next_selection) =
                 self.render_rna_read_top_hits_preview(ui, view, progress, false)
@@ -19600,6 +19606,164 @@ impl MainAreaDna {
         )
     }
 
+    fn rna_read_full_length_tooltip() -> &'static str {
+        "Full-length classes: exact = 100% template coverage; near = >=95% template coverage; strict_end = near plus both template ends within 15 bp and identity >= active alignment threshold."
+    }
+
+    fn rna_read_full_length_class_color(label: &str) -> egui::Color32 {
+        match label {
+            "exact" => egui::Color32::from_rgb(4, 120, 87),
+            "strict_end" => egui::Color32::from_rgb(22, 163, 74),
+            "near" => egui::Color32::from_rgb(59, 130, 246),
+            _ => egui::Color32::from_rgb(100, 116, 139),
+        }
+    }
+
+    fn render_rna_read_length_distributions_panel(
+        &self,
+        ui: &mut egui::Ui,
+        report: Option<&RnaReadInterpretationReport>,
+    ) {
+        egui::CollapsingHeader::new("Read length distributions")
+            .default_open(true)
+            .show(ui, |ui| {
+                let Some(report) = report else {
+                    ui.small(
+                        "Load or create a saved RNA-read report to view read-length distributions.",
+                    );
+                    return;
+                };
+                ui.small(
+                    "Engine stores exact 1-bp read-length counts; this panel renders adaptive bins for quick visual inspection.",
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "All encountered reads",
+                    &report.read_length_counts_all,
+                    egui::Color32::from_rgb(71, 85, 105),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "Seed-passed subset",
+                    &report.read_length_counts_seed_passed,
+                    egui::Color32::from_rgb(2, 132, 199),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "Aligned subset",
+                    &report.read_length_counts_aligned,
+                    egui::Color32::from_rgb(22, 163, 74),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "Full-length exact",
+                    &report.read_length_counts_full_length_exact,
+                    egui::Color32::from_rgb(4, 120, 87),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "Full-length near",
+                    &report.read_length_counts_full_length_near,
+                    egui::Color32::from_rgb(14, 165, 233),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    "Full-length strict_end",
+                    &report.read_length_counts_full_length_strict,
+                    egui::Color32::from_rgb(21, 128, 61),
+                );
+            });
+    }
+
+    fn render_rna_read_length_distribution_series(
+        &self,
+        ui: &mut egui::Ui,
+        label: &str,
+        length_counts: &[u64],
+        bar_color: egui::Color32,
+    ) {
+        let total = length_counts.iter().copied().skip(1).sum::<u64>();
+        let bins = GentleEngine::auto_bin_read_length_counts(length_counts, 24);
+        let compact = GentleEngine::format_read_length_distribution_compact(length_counts, 24, 8);
+        ui.horizontal_wrapped(|ui| {
+            ui.small(
+                egui::RichText::new(label)
+                    .strong()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            ui.separator();
+            ui.small(format!("reads={}", Self::format_count_compact_km(total)));
+            if let (Some(first), Some(last)) = (bins.first(), bins.last()) {
+                ui.separator();
+                ui.small(format!("range={}..{} bp", first.0, last.1));
+            }
+            ui.separator();
+            ui.small(format!("bins={}", bins.len()));
+        });
+        if bins.is_empty() {
+            ui.small("No reads in this subset yet.");
+            ui.add_space(2.0);
+            return;
+        }
+
+        let desired = Vec2::new(ui.available_width().max(300.0), 52.0);
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::StrokeKind::Inside,
+        );
+        let max_count = bins.iter().map(|(_, _, count)| *count).max().unwrap_or(1) as f32;
+        let axis_bottom = rect.bottom() - 1.5;
+        let plot_top = rect.top() + 2.0;
+        let plot_h = (axis_bottom - plot_top).max(1.0);
+        let bin_w = rect.width() / bins.len().max(1) as f32;
+        for (idx, (_, _, count)) in bins.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            let x0 = rect.left() + idx as f32 * bin_w + 0.6;
+            let x1 = if idx + 1 == bins.len() {
+                rect.right() - 0.6
+            } else {
+                rect.left() + (idx + 1) as f32 * bin_w - 0.6
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            let h = (*count as f32 / max_count) * plot_h;
+            let bar_rect = egui::Rect::from_min_max(
+                egui::pos2(x0, axis_bottom - h),
+                egui::pos2(x1, axis_bottom),
+            );
+            painter.rect_filled(bar_rect, 0.0, bar_color);
+        }
+        if let Some(pointer) = response.hover_pos()
+            && pointer.x >= rect.left()
+            && pointer.x <= rect.right()
+            && pointer.y >= plot_top
+            && pointer.y <= axis_bottom
+        {
+            let mut idx =
+                ((pointer.x - rect.left()) / rect.width() * bins.len() as f32).floor() as usize;
+            idx = idx.min(bins.len().saturating_sub(1));
+            if let Some((start, end, count)) = bins.get(idx) {
+                response.on_hover_ui_at_pointer(|ui| {
+                    if start == end {
+                        ui.monospace(format!("{start} bp"));
+                    } else {
+                        ui.monospace(format!("{start}..{end} bp"));
+                    }
+                    ui.monospace(format!("reads: {count}"));
+                });
+            }
+        }
+        ui.small(format!("Auto bins: {compact}"));
+        ui.add_space(4.0);
+    }
+
     fn rna_read_fragment_alignment_note(
         target_coverage_fraction: f64,
         aligned_target_bp: usize,
@@ -20152,7 +20316,7 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 egui::Grid::new(format!("rna_alignment_effects_grid_{}", report.report_id))
                     .striped(true)
-                    .num_columns(14)
+                    .num_columns(15)
                     .show(ui, |ui| {
                         let mut select_filtered_rows = self
                             .rna_read_record_indices_all_selected(
@@ -20183,6 +20347,8 @@ impl MainAreaDna {
                         ui.small("Id%");
                         ui.small("Cov%");
                         ui.small("Tx%");
+                        ui.label("FL")
+                            .on_hover_text(Self::rna_read_full_length_tooltip());
                         ui.small("Score");
                         ui.small("Exons");
                         ui.small("Jx");
@@ -20242,6 +20408,16 @@ impl MainAreaDna {
                                 "{:.1}",
                                 row.target_coverage_fraction * 100.0
                             ));
+                            let full_length_class = GentleEngine::rna_read_full_length_class_label(
+                                row.full_length_exact,
+                                row.full_length_near,
+                                row.full_length_strict,
+                            );
+                            ui.colored_label(
+                                Self::rna_read_full_length_class_color(full_length_class),
+                                full_length_class,
+                            )
+                            .on_hover_text(Self::rna_read_full_length_tooltip());
                             ui.monospace(row.score.to_string());
                             ui.monospace(row.mapped_exon_support.len().to_string());
                             ui.monospace(row.mapped_junction_support.len().to_string());
@@ -20286,6 +20462,7 @@ impl MainAreaDna {
             &report.report_id,
             view,
             progress,
+            report.align_config.min_identity_fraction,
             selected_row,
             selected_hit,
         );
@@ -20297,6 +20474,7 @@ impl MainAreaDna {
         report_id: &str,
         view: &SplicingExpertView,
         progress: &RnaReadInterpretProgress,
+        min_identity_fraction: f64,
         row: &RnaReadAlignmentInspectionRow,
         hit: &RnaReadInterpretationHit,
     ) {
@@ -20450,6 +20628,23 @@ impl MainAreaDna {
                     row.target_length_bp,
                     row.target_coverage_fraction
                 )
+            ));
+            let full_length_class = GentleEngine::rna_read_full_length_class_label(
+                row.full_length_exact,
+                row.full_length_near,
+                row.full_length_strict,
+            );
+            ui.colored_label(
+                Self::rna_read_full_length_class_color(full_length_class),
+                format!("Full-length class: {full_length_class}"),
+            )
+            .on_hover_text(Self::rna_read_full_length_tooltip());
+            ui.small(format!(
+                "exact (100% template coverage): {} | near (>=95%): {} | strict_end (near + both ends <=15 bp + id >= {:.1}%): {}",
+                row.full_length_exact,
+                row.full_length_near,
+                min_identity_fraction * 100.0,
+                row.full_length_strict
             ));
             if let Some(note) = Self::rna_read_fragment_alignment_note(
                 row.target_coverage_fraction,

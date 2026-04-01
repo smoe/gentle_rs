@@ -720,6 +720,9 @@ Feature tree grouping:
         - `Cov%` = how much of the read is aligned
         - `Tx%` = how much of the transcript template span is covered by that
           alignment
+        - `FL` = full-length class (`exact`, `strict_end`, `near`, `partial`)
+          derived from transcript-template coverage and current alignment
+          threshold
       - short local fragment hits are now labeled more honestly in the detail
         pane: the selected read shows transcript-span coverage and warns when
         the alignment confirms only a small fragment of the transcript model
@@ -775,6 +778,8 @@ Feature tree grouping:
       - selecting a row opens a detail pane with:
         - phase-1 interpretation fields
         - phase-2 mapping metrics
+        - explicit full-length status (`exact`, `near`, `strict_end`) and class
+          label for the selected row
         - explicit phase-2 query orientation (`as stored` vs
           `reverse-complemented to fit the transcript template`)
         - exact `rust-bio` pairwise alignment strings for the selected
@@ -820,6 +825,13 @@ Feature tree grouping:
         set
       - filtered exports now record that formal subset definition in their
         provenance as `subset_spec=filter=... | sort=... | search=...`
+      - a `Read length distributions` panel now shows auto-binned plots for:
+        - all encountered reads
+        - seed-passed reads
+        - aligned reads
+        - full-length exact / near / strict subsets
+        - the engine stores exact per-bp counts; GUI bins are presentation-only
+          and deterministic from those exact counts
     - `Aggregate support`
       - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are

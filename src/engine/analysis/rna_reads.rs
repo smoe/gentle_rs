@@ -35,6 +35,14 @@ struct RnaReadComputedAlignment {
     cigar: String,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct RnaReadFullLengthClassification {
+    target_coverage_fraction: f64,
+    full_length_exact: bool,
+    full_length_near: bool,
+    full_length_strict: bool,
+}
+
 impl GentleEngine {
     pub(super) fn read_rna_read_report_store_from_metadata(
         value: Option<&serde_json::Value>,
@@ -245,8 +253,59 @@ impl GentleEngine {
         } else {
             (report.read_count_seed_passed as f64 / report.read_count_total as f64) * 100.0
         };
+        let aligned_pct = if report.read_count_total == 0 {
+            0.0
+        } else {
+            (report.read_count_aligned as f64 / report.read_count_total as f64) * 100.0
+        };
+        let full_exact = Self::sum_read_length_counts(&report.read_length_counts_full_length_exact);
+        let full_near = Self::sum_read_length_counts(&report.read_length_counts_full_length_near);
+        let full_strict =
+            Self::sum_read_length_counts(&report.read_length_counts_full_length_strict);
+        let full_exact_pct = if report.read_count_aligned == 0 {
+            0.0
+        } else {
+            (full_exact as f64 / report.read_count_aligned as f64) * 100.0
+        };
+        let full_near_pct = if report.read_count_aligned == 0 {
+            0.0
+        } else {
+            (full_near as f64 / report.read_count_aligned as f64) * 100.0
+        };
+        let full_strict_pct = if report.read_count_aligned == 0 {
+            0.0
+        } else {
+            (full_strict as f64 / report.read_count_aligned as f64) * 100.0
+        };
+        let lengths_all =
+            Self::format_read_length_distribution_compact(&report.read_length_counts_all, 10, 8);
+        let lengths_seed = Self::format_read_length_distribution_compact(
+            &report.read_length_counts_seed_passed,
+            10,
+            8,
+        );
+        let lengths_aligned = Self::format_read_length_distribution_compact(
+            &report.read_length_counts_aligned,
+            10,
+            8,
+        );
+        let lengths_exact = Self::format_read_length_distribution_compact(
+            &report.read_length_counts_full_length_exact,
+            10,
+            8,
+        );
+        let lengths_near = Self::format_read_length_distribution_compact(
+            &report.read_length_counts_full_length_near,
+            10,
+            8,
+        );
+        let lengths_strict = Self::format_read_length_distribution_compact(
+            &report.read_length_counts_full_length_strict,
+            10,
+            8,
+        );
         format!(
-            "{} seq={} profile={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
+            "{} seq={} profile={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} ({:.2}%) full_length(exact/near/strict)={}/{}/{} ({:.2}%/{:.2}%/{:.2}% aligned) msa_eligible(retained)={} len_bp_bins(all|seed|aligned|exact|near|strict)={} | {} | {} | {} | {} | {}",
             report.report_id,
             report.seq_id,
             report.profile.as_str(),
@@ -258,7 +317,20 @@ impl GentleEngine {
             report.read_count_seed_passed,
             seed_pass_pct,
             report.read_count_aligned,
-            report.retained_count_msa_eligible
+            aligned_pct,
+            full_exact,
+            full_near,
+            full_strict,
+            full_exact_pct,
+            full_near_pct,
+            full_strict_pct,
+            report.retained_count_msa_eligible,
+            lengths_all,
+            lengths_seed,
+            lengths_aligned,
+            lengths_exact,
+            lengths_near,
+            lengths_strict
         )
     }
 
@@ -747,6 +819,11 @@ impl GentleEngine {
                     .get(&mapping.transcript_id)
                     .copied()
                     .unwrap_or(aligned_target_length_bp.max(1));
+                let full_length = Self::classify_rna_read_full_length_for_mapping(
+                    mapping,
+                    target_length_bp,
+                    report.align_config.min_identity_fraction,
+                );
                 Some((
                     rank,
                     RnaReadAlignmentInspectionRow {
@@ -773,8 +850,10 @@ impl GentleEngine {
                         score: mapping.score,
                         identity_fraction: mapping.identity_fraction,
                         query_coverage_fraction: mapping.query_coverage_fraction,
-                        target_coverage_fraction: aligned_target_length_bp as f64
-                            / target_length_bp as f64,
+                        target_coverage_fraction: full_length.target_coverage_fraction,
+                        full_length_exact: full_length.full_length_exact,
+                        full_length_near: full_length.full_length_near,
+                        full_length_strict: full_length.full_length_strict,
                         secondary_mapping_count: hit.secondary_mappings.len(),
                         seed_hit_fraction: hit.seed_hit_fraction,
                         weighted_seed_hit_fraction: hit.weighted_seed_hit_fraction,
@@ -1031,7 +1110,7 @@ impl GentleEngine {
         }
         writeln!(
             writer,
-            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
+            "report_id\tseq_id\trank\trecord_index\theader_id\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tselected_strand\treverse_complement_applied\talignment_effect\ttranscript_id\ttranscript_label\tstrand\talignment_mode\ttarget_start_1based\ttarget_end_1based\tscore\tidentity_fraction\tquery_coverage_fraction\ttarget_coverage_fraction\tfull_length_exact\tfull_length_near\tfull_length_strict\tfull_length_class\tsecondary_mapping_count\tseed_hit_fraction\tweighted_seed_hit_fraction\tpassed_seed_filter\tmsa_eligible\torigin_class\tmapped_exon_support\tmapped_junction_support"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1041,9 +1120,14 @@ impl GentleEngine {
             ),
         })?;
         for row in &inspection.rows {
+            let full_length_class = Self::rna_read_full_length_class_label(
+                row.full_length_exact,
+                row.full_length_near,
+                row.full_length_strict,
+            );
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&inspection.report_id),
                 Self::sanitize_tsv_cell(&inspection.seq_id),
                 row.rank,
@@ -1067,6 +1151,11 @@ impl GentleEngine {
                 row.score,
                 row.identity_fraction,
                 row.query_coverage_fraction,
+                row.target_coverage_fraction,
+                row.full_length_exact,
+                row.full_length_near,
+                row.full_length_strict,
+                full_length_class,
                 row.secondary_mapping_count,
                 row.seed_hit_fraction,
                 row.weighted_seed_hit_fraction,
@@ -2039,6 +2128,22 @@ impl GentleEngine {
 
     pub(super) fn sanitize_tsv_cell(raw: &str) -> String {
         raw.replace(['\t', '\n', '\r'], " ")
+    }
+
+    pub(crate) fn rna_read_full_length_class_label(
+        full_length_exact: bool,
+        full_length_near: bool,
+        full_length_strict: bool,
+    ) -> &'static str {
+        if full_length_exact {
+            "exact"
+        } else if full_length_strict {
+            "strict_end"
+        } else if full_length_near {
+            "near"
+        } else {
+            "partial"
+        }
     }
 
     fn ordered_window_overlap_summary(window_len: usize, step_bp: usize) -> String {
@@ -3118,13 +3223,161 @@ impl GentleEngine {
         scaled.min(RNA_READ_SCORE_DENSITY_BIN_COUNT - 1)
     }
 
+    pub(super) fn ensure_read_length_counts_initialized(length_counts: &mut Vec<u64>) {
+        if length_counts.is_empty() {
+            length_counts.push(0);
+        }
+    }
+
     pub(super) fn update_read_length_counts(length_counts: &mut Vec<u64>, read_length_bp: usize) {
+        Self::ensure_read_length_counts_initialized(length_counts);
         if length_counts.len() <= read_length_bp {
             length_counts.resize(read_length_bp.saturating_add(1), 0);
         }
         if let Some(bucket) = length_counts.get_mut(read_length_bp) {
             *bucket = bucket.saturating_add(1);
         }
+    }
+
+    pub(super) fn sum_read_length_counts(length_counts: &[u64]) -> usize {
+        length_counts
+            .iter()
+            .copied()
+            .fold(0usize, |acc, count| acc.saturating_add(count as usize))
+    }
+
+    fn classify_rna_read_full_length(
+        target_start_offset_0based: usize,
+        target_end_offset_0based_exclusive: usize,
+        target_length_bp: usize,
+        identity_fraction: f64,
+        min_identity_fraction: f64,
+    ) -> RnaReadFullLengthClassification {
+        if target_length_bp == 0 {
+            return RnaReadFullLengthClassification::default();
+        }
+        let aligned_target_bp = target_end_offset_0based_exclusive
+            .saturating_sub(target_start_offset_0based)
+            .min(target_length_bp);
+        let target_coverage_fraction = aligned_target_bp as f64 / target_length_bp as f64;
+        let full_length_exact = aligned_target_bp >= target_length_bp;
+        let full_length_near = target_coverage_fraction + f64::EPSILON >= 0.95;
+        let left_end_within_tolerance = target_start_offset_0based <= 15;
+        let right_end_slack = target_length_bp.saturating_sub(target_end_offset_0based_exclusive);
+        let right_end_within_tolerance = right_end_slack <= 15;
+        let full_length_strict = full_length_near
+            && left_end_within_tolerance
+            && right_end_within_tolerance
+            && identity_fraction + f64::EPSILON >= min_identity_fraction;
+        RnaReadFullLengthClassification {
+            target_coverage_fraction,
+            full_length_exact,
+            full_length_near,
+            full_length_strict,
+        }
+    }
+
+    fn classify_rna_read_full_length_for_mapping(
+        mapping: &RnaReadMappingHit,
+        target_length_bp: usize,
+        min_identity_fraction: f64,
+    ) -> RnaReadFullLengthClassification {
+        Self::classify_rna_read_full_length(
+            mapping.target_start_offset_0based,
+            mapping.target_end_offset_0based_exclusive,
+            target_length_bp,
+            mapping.identity_fraction,
+            min_identity_fraction,
+        )
+    }
+
+    pub(super) fn collect_read_length_counts_for_hits<F>(
+        hits: &[RnaReadInterpretationHit],
+        mut include: F,
+    ) -> Vec<u64>
+    where
+        F: FnMut(&RnaReadInterpretationHit) -> bool,
+    {
+        let mut counts = vec![0u64; 1];
+        for hit in hits {
+            if include(hit) {
+                Self::update_read_length_counts(&mut counts, hit.read_length_bp);
+            }
+        }
+        counts
+    }
+
+    pub(crate) fn auto_bin_read_length_counts(
+        length_counts: &[u64],
+        max_bins: usize,
+    ) -> Vec<(usize, usize, u64)> {
+        let max_bins = max_bins.max(1);
+        let non_empty = length_counts
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter_map(|(len_bp, count)| (*count > 0).then_some((len_bp, *count)))
+            .collect::<Vec<_>>();
+        if non_empty.is_empty() {
+            return vec![];
+        }
+        if non_empty.len() <= max_bins {
+            return non_empty
+                .into_iter()
+                .map(|(len_bp, count)| (len_bp, len_bp, count))
+                .collect::<Vec<_>>();
+        }
+        let min_len = non_empty.first().map(|(len_bp, _)| *len_bp).unwrap_or(1);
+        let max_len = non_empty
+            .last()
+            .map(|(len_bp, _)| *len_bp)
+            .unwrap_or(min_len);
+        let span = max_len.saturating_sub(min_len).saturating_add(1);
+        let bin_width = span.div_ceil(max_bins).max(1);
+        let mut bins = Vec::<(usize, usize, u64)>::new();
+        let mut start = min_len;
+        loop {
+            let end = (start.saturating_add(bin_width).saturating_sub(1)).min(max_len);
+            let mut count = 0u64;
+            for len_bp in start..=end {
+                count = count.saturating_add(*length_counts.get(len_bp).unwrap_or(&0));
+            }
+            if count > 0 {
+                bins.push((start, end, count));
+            }
+            if end >= max_len {
+                break;
+            }
+            start = end.saturating_add(1);
+        }
+        bins
+    }
+
+    pub(crate) fn format_read_length_distribution_compact(
+        length_counts: &[u64],
+        max_bins: usize,
+        max_segments: usize,
+    ) -> String {
+        let bins = Self::auto_bin_read_length_counts(length_counts, max_bins);
+        if bins.is_empty() {
+            return "none".to_string();
+        }
+        let keep = max_segments.max(1);
+        let mut parts = bins
+            .iter()
+            .take(keep)
+            .map(|(start, end, count)| {
+                if start == end {
+                    format!("{start}bp:{count}")
+                } else {
+                    format!("{start}-{end}bp:{count}")
+                }
+            })
+            .collect::<Vec<_>>();
+        if bins.len() > keep {
+            parts.push(format!("+{} bins", bins.len() - keep));
+        }
+        parts.join(", ")
     }
 
     pub(super) fn quantile_read_length_from_counts(
@@ -5735,6 +5988,15 @@ impl GentleEngine {
                 ),
             });
         }
+        let transcript_template_lengths = templates
+            .iter()
+            .map(|template| {
+                (
+                    template.transcript_id.clone(),
+                    template.sequence.len().max(1),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let mut seed_index: HashSet<u32> = HashSet::new();
         for template in &templates {
             seed_index.extend(template.kmer_positions.keys().copied());
@@ -5788,7 +6050,20 @@ impl GentleEngine {
             );
         let selected_total = selected_indices.len();
         let mut cumulative_read_bases_processed = 0u64;
-        let mut read_length_counts = vec![0u64; 1];
+        let mut processed_read_length_counts = vec![0u64; 1];
+        let mut read_length_counts_all = if report.read_length_counts_all.is_empty() {
+            Self::collect_read_length_counts_for_hits(&report.hits, |_| true)
+        } else {
+            report.read_length_counts_all.clone()
+        };
+        let mut read_length_counts_seed_passed = if report.read_length_counts_seed_passed.is_empty()
+        {
+            Self::collect_read_length_counts_for_hits(&report.hits, |hit| hit.passed_seed_filter)
+        } else {
+            report.read_length_counts_seed_passed.clone()
+        };
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_all);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_seed_passed);
         let mut cumulative_tested_kmers = 0usize;
         let mut cumulative_matched_kmers = 0usize;
         let mut cumulative_seed_compute_ms = 0.0f64;
@@ -5875,7 +6150,10 @@ impl GentleEngine {
             cumulative_normalize_compute_ms += normalize_started.elapsed().as_secs_f64() * 1000.0;
             cumulative_read_bases_processed =
                 cumulative_read_bases_processed.saturating_add(normalized_sequence.len() as u64);
-            Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
+            Self::update_read_length_counts(
+                &mut processed_read_length_counts,
+                normalized_sequence.len(),
+            );
             let seed_started = Instant::now();
             let windows = Self::full_read_hash_windows(normalized_sequence.len());
             let mut tested_kmers = 0usize;
@@ -6050,7 +6328,7 @@ impl GentleEngine {
                 RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS,
             ) {
                 let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
-                    &read_length_counts,
+                    &processed_read_length_counts,
                     reads_processed,
                     cumulative_read_bases_processed,
                 );
@@ -6141,9 +6419,62 @@ impl GentleEngine {
                 &support_junction_counts,
                 support_aligned_reads,
             );
+        let mut read_length_counts_aligned = vec![0u64; 1];
+        let mut read_length_counts_full_length_exact = vec![0u64; 1];
+        let mut read_length_counts_full_length_near = vec![0u64; 1];
+        let mut read_length_counts_full_length_strict = vec![0u64; 1];
+        for hit in &report.hits {
+            let Some(mapping) = &hit.best_mapping else {
+                continue;
+            };
+            Self::update_read_length_counts(&mut read_length_counts_aligned, hit.read_length_bp);
+            let aligned_target_length_bp = mapping
+                .target_end_offset_0based_exclusive
+                .saturating_sub(mapping.target_start_offset_0based);
+            let target_length_bp = transcript_template_lengths
+                .get(&mapping.transcript_id)
+                .copied()
+                .unwrap_or(aligned_target_length_bp.max(1));
+            let full_length = Self::classify_rna_read_full_length_for_mapping(
+                mapping,
+                target_length_bp,
+                report.align_config.min_identity_fraction,
+            );
+            if full_length.full_length_exact {
+                Self::update_read_length_counts(
+                    &mut read_length_counts_full_length_exact,
+                    hit.read_length_bp,
+                );
+            }
+            if full_length.full_length_near {
+                Self::update_read_length_counts(
+                    &mut read_length_counts_full_length_near,
+                    hit.read_length_bp,
+                );
+            }
+            if full_length.full_length_strict {
+                Self::update_read_length_counts(
+                    &mut read_length_counts_full_length_strict,
+                    hit.read_length_bp,
+                );
+            }
+        }
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_all);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_seed_passed);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_aligned);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_exact);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_near);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_strict);
         report.align_config = align_config;
         report.generated_at_unix_ms = Self::now_unix_ms();
-        report.read_count_aligned = aligned;
+        report.read_length_counts_all = read_length_counts_all;
+        report.read_length_counts_seed_passed = read_length_counts_seed_passed;
+        report.read_length_counts_aligned = read_length_counts_aligned;
+        report.read_length_counts_full_length_exact = read_length_counts_full_length_exact;
+        report.read_length_counts_full_length_near = read_length_counts_full_length_near;
+        report.read_length_counts_full_length_strict = read_length_counts_full_length_strict;
+        report.read_count_aligned =
+            Self::sum_read_length_counts(&report.read_length_counts_aligned);
         report.retained_count_msa_eligible =
             report.hits.iter().filter(|hit| hit.msa_eligible).count();
         report.exon_support_frequencies = exon_support_frequencies;
@@ -6193,7 +6524,7 @@ impl GentleEngine {
         }
         progress_top_hits = Self::retained_rna_read_preview_heap_from_rows(&report.hits);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
-            &read_length_counts,
+            &processed_read_length_counts,
             reads_processed,
             cumulative_read_bases_processed,
         );
@@ -6587,6 +6918,15 @@ impl GentleEngine {
                 ),
             });
         }
+        let transcript_template_lengths = templates
+            .iter()
+            .map(|template| {
+                (
+                    template.transcript_id.clone(),
+                    template.sequence.len().max(1),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let mut seed_index: HashSet<u32> = HashSet::new();
         for template in &templates {
             seed_index.extend(template.kmer_positions.keys().copied());
@@ -6814,13 +7154,36 @@ impl GentleEngine {
             .as_ref()
             .map(|checkpoint| checkpoint.cumulative_read_bases_processed)
             .unwrap_or(0);
-        let mut read_length_counts = loaded_checkpoint
+        let mut read_length_counts_all = loaded_checkpoint
             .as_ref()
-            .map(|checkpoint| checkpoint.read_length_counts.clone())
+            .map(|checkpoint| checkpoint.read_length_counts_all.clone())
             .unwrap_or_else(|| vec![0u64; 1]);
-        if read_length_counts.is_empty() {
-            read_length_counts.push(0);
-        }
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_all);
+        let mut read_length_counts_seed_passed = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts_seed_passed.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_seed_passed);
+        let mut read_length_counts_aligned = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts_aligned.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_aligned);
+        let mut read_length_counts_full_length_exact = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts_full_length_exact.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_exact);
+        let mut read_length_counts_full_length_near = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts_full_length_near.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_near);
+        let mut read_length_counts_full_length_strict = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts_full_length_strict.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        Self::ensure_read_length_counts_initialized(&mut read_length_counts_full_length_strict);
         let mut support_aligned_reads = loaded_checkpoint
             .as_ref()
             .map(|checkpoint| checkpoint.support_aligned_reads)
@@ -6943,7 +7306,10 @@ impl GentleEngine {
                     normalize_started.elapsed().as_secs_f64() * 1000.0;
                 cumulative_read_bases_processed = cumulative_read_bases_processed
                     .saturating_add(normalized_sequence.len() as u64);
-                Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
+                Self::update_read_length_counts(
+                    &mut read_length_counts_all,
+                    normalized_sequence.len(),
+                );
                 let windows = Self::full_read_hash_windows(normalized_sequence.len());
                 let mut tested_kmers = 0usize;
                 let mut matched_kmers = 0usize;
@@ -7130,9 +7496,47 @@ impl GentleEngine {
                 }
                 if passed_seed_filter {
                     seed_passed += 1;
+                    Self::update_read_length_counts(
+                        &mut read_length_counts_seed_passed,
+                        normalized_sequence.len(),
+                    );
                 }
                 if let Some(mapping) = &best_mapping {
                     aligned += 1;
+                    Self::update_read_length_counts(
+                        &mut read_length_counts_aligned,
+                        normalized_sequence.len(),
+                    );
+                    let aligned_target_length_bp = mapping
+                        .target_end_offset_0based_exclusive
+                        .saturating_sub(mapping.target_start_offset_0based);
+                    let target_length_bp = transcript_template_lengths
+                        .get(&mapping.transcript_id)
+                        .copied()
+                        .unwrap_or(aligned_target_length_bp.max(1));
+                    let full_length = Self::classify_rna_read_full_length_for_mapping(
+                        mapping,
+                        target_length_bp,
+                        align_config.min_identity_fraction,
+                    );
+                    if full_length.full_length_exact {
+                        Self::update_read_length_counts(
+                            &mut read_length_counts_full_length_exact,
+                            normalized_sequence.len(),
+                        );
+                    }
+                    if full_length.full_length_near {
+                        Self::update_read_length_counts(
+                            &mut read_length_counts_full_length_near,
+                            normalized_sequence.len(),
+                        );
+                    }
+                    if full_length.full_length_strict {
+                        Self::update_read_length_counts(
+                            &mut read_length_counts_full_length_strict,
+                            normalized_sequence.len(),
+                        );
+                    }
                     support_aligned_reads = support_aligned_reads.saturating_add(1);
                     Self::accumulate_support_counts_for_mapping(
                         mapping,
@@ -7197,7 +7601,7 @@ impl GentleEngine {
                     isoform_support_rows =
                         Self::collect_isoform_support_rows(&isoform_support_accumulators);
                     let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
-                        &read_length_counts,
+                        &read_length_counts_all,
                         reads_processed,
                         cumulative_read_bases_processed,
                     );
@@ -7297,7 +7701,15 @@ impl GentleEngine {
                             cumulative_inference_compute_ms,
                             cumulative_progress_emit_ms,
                             cumulative_read_bases_processed,
-                            read_length_counts: read_length_counts.clone(),
+                            read_length_counts_all: read_length_counts_all.clone(),
+                            read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
+                            read_length_counts_aligned: read_length_counts_aligned.clone(),
+                            read_length_counts_full_length_exact:
+                                read_length_counts_full_length_exact.clone(),
+                            read_length_counts_full_length_near:
+                                read_length_counts_full_length_near.clone(),
+                            read_length_counts_full_length_strict:
+                                read_length_counts_full_length_strict.clone(),
                             support_aligned_reads,
                             support_exon_counts: support_exon_counts.clone(),
                             support_junction_counts: support_junction_counts.clone(),
@@ -7348,7 +7760,7 @@ impl GentleEngine {
             );
         let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&hits);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
-            &read_length_counts,
+            &read_length_counts_all,
             reads_total,
             cumulative_read_bases_processed,
         );
@@ -7431,7 +7843,13 @@ impl GentleEngine {
                 cumulative_inference_compute_ms,
                 cumulative_progress_emit_ms,
                 cumulative_read_bases_processed,
-                read_length_counts: read_length_counts.clone(),
+                read_length_counts_all: read_length_counts_all.clone(),
+                read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
+                read_length_counts_aligned: read_length_counts_aligned.clone(),
+                read_length_counts_full_length_exact: read_length_counts_full_length_exact.clone(),
+                read_length_counts_full_length_near: read_length_counts_full_length_near.clone(),
+                read_length_counts_full_length_strict: read_length_counts_full_length_strict
+                    .clone(),
                 support_aligned_reads,
                 support_exon_counts: support_exon_counts.clone(),
                 support_junction_counts: support_junction_counts.clone(),
@@ -7523,6 +7941,12 @@ impl GentleEngine {
             read_count_total: reads_total,
             read_count_seed_passed: seed_passed,
             read_count_aligned: aligned,
+            read_length_counts_all,
+            read_length_counts_seed_passed,
+            read_length_counts_aligned,
+            read_length_counts_full_length_exact,
+            read_length_counts_full_length_near,
+            read_length_counts_full_length_strict,
             retained_count_msa_eligible,
             warnings,
             hits,
@@ -7731,5 +8155,204 @@ mod tests {
                 .iter()
                 .any(|hit| hit.record_index == rescued.record_index)
         );
+    }
+
+    #[test]
+    fn classify_rna_read_full_length_boundaries_are_deterministic() {
+        let exact = GentleEngine::classify_rna_read_full_length(0, 100, 100, 0.95, 0.90);
+        assert!(exact.full_length_exact);
+        assert!(exact.full_length_near);
+        assert!(exact.full_length_strict);
+        assert!((exact.target_coverage_fraction - 1.0).abs() <= f64::EPSILON);
+
+        let near_strict = GentleEngine::classify_rna_read_full_length(0, 95, 100, 0.95, 0.90);
+        assert!(!near_strict.full_length_exact);
+        assert!(near_strict.full_length_near);
+        assert!(near_strict.full_length_strict);
+
+        let exact_not_strict = GentleEngine::classify_rna_read_full_length(0, 100, 100, 0.80, 0.90);
+        assert!(exact_not_strict.full_length_exact);
+        assert!(exact_not_strict.full_length_near);
+        assert!(!exact_not_strict.full_length_strict);
+
+        let partial = GentleEngine::classify_rna_read_full_length(10, 70, 100, 0.95, 0.90);
+        assert!(!partial.full_length_exact);
+        assert!(!partial.full_length_near);
+        assert!(!partial.full_length_strict);
+    }
+
+    #[test]
+    fn auto_bin_read_length_counts_respects_bin_budget_and_totals() {
+        let mut counts = vec![0u64; 120];
+        for len_bp in 100..110 {
+            counts[len_bp] = 1;
+        }
+        let bins = GentleEngine::auto_bin_read_length_counts(&counts, 4);
+        assert_eq!(bins.len(), 4);
+        assert_eq!(bins[0], (100, 102, 3));
+        assert_eq!(bins[1], (103, 105, 3));
+        assert_eq!(bins[2], (106, 108, 3));
+        assert_eq!(bins[3], (109, 109, 1));
+        assert_eq!(
+            bins.iter().map(|(_, _, count)| *count).sum::<u64>(),
+            10,
+            "auto-binning must preserve total read count",
+        );
+    }
+
+    #[test]
+    fn read_length_histograms_split_all_seed_aligned_and_full_length_subsets() {
+        let mapping_exact_strict = RnaReadMappingHit {
+            transcript_id: "TX".to_string(),
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 100,
+            identity_fraction: 0.99,
+            ..RnaReadMappingHit::default()
+        };
+        let mapping_near_strict = RnaReadMappingHit {
+            transcript_id: "TX".to_string(),
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 95,
+            identity_fraction: 0.96,
+            ..RnaReadMappingHit::default()
+        };
+        let mapping_partial = RnaReadMappingHit {
+            transcript_id: "TX".to_string(),
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 70,
+            identity_fraction: 0.95,
+            ..RnaReadMappingHit::default()
+        };
+        let mapping_exact_low_identity = RnaReadMappingHit {
+            transcript_id: "TX".to_string(),
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 100,
+            identity_fraction: 0.75,
+            ..RnaReadMappingHit::default()
+        };
+        let hits = vec![
+            RnaReadInterpretationHit {
+                read_length_bp: 100,
+                passed_seed_filter: false,
+                best_mapping: None,
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                read_length_bp: 101,
+                passed_seed_filter: true,
+                best_mapping: None,
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                read_length_bp: 102,
+                passed_seed_filter: true,
+                best_mapping: Some(mapping_exact_strict),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                read_length_bp: 103,
+                passed_seed_filter: true,
+                best_mapping: Some(mapping_near_strict),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                read_length_bp: 104,
+                passed_seed_filter: true,
+                best_mapping: Some(mapping_partial),
+                ..RnaReadInterpretationHit::default()
+            },
+            RnaReadInterpretationHit {
+                read_length_bp: 105,
+                passed_seed_filter: true,
+                best_mapping: Some(mapping_exact_low_identity),
+                ..RnaReadInterpretationHit::default()
+            },
+        ];
+
+        let all = GentleEngine::collect_read_length_counts_for_hits(&hits, |_| true);
+        let seed_passed =
+            GentleEngine::collect_read_length_counts_for_hits(&hits, |hit| hit.passed_seed_filter);
+        let aligned = GentleEngine::collect_read_length_counts_for_hits(&hits, |hit| {
+            hit.best_mapping.is_some()
+        });
+
+        let mut full_exact = vec![0u64; 1];
+        let mut full_near = vec![0u64; 1];
+        let mut full_strict = vec![0u64; 1];
+        for hit in hits.iter().filter(|hit| hit.best_mapping.is_some()) {
+            let mapping = hit.best_mapping.as_ref().expect("checked");
+            let class = GentleEngine::classify_rna_read_full_length_for_mapping(mapping, 100, 0.90);
+            if class.full_length_exact {
+                GentleEngine::update_read_length_counts(&mut full_exact, hit.read_length_bp);
+            }
+            if class.full_length_near {
+                GentleEngine::update_read_length_counts(&mut full_near, hit.read_length_bp);
+            }
+            if class.full_length_strict {
+                GentleEngine::update_read_length_counts(&mut full_strict, hit.read_length_bp);
+            }
+        }
+
+        assert_eq!(GentleEngine::sum_read_length_counts(&all), 6);
+        assert_eq!(GentleEngine::sum_read_length_counts(&seed_passed), 5);
+        assert_eq!(GentleEngine::sum_read_length_counts(&aligned), 4);
+        assert_eq!(GentleEngine::sum_read_length_counts(&full_exact), 2);
+        assert_eq!(GentleEngine::sum_read_length_counts(&full_near), 3);
+        assert_eq!(GentleEngine::sum_read_length_counts(&full_strict), 2);
+        assert_eq!(all.get(100).copied().unwrap_or(0), 1);
+        assert_eq!(seed_passed.get(101).copied().unwrap_or(0), 1);
+        assert_eq!(aligned.get(104).copied().unwrap_or(0), 1);
+        assert_eq!(full_exact.get(105).copied().unwrap_or(0), 1);
+        assert_eq!(full_near.get(103).copied().unwrap_or(0), 1);
+        assert_eq!(full_strict.get(103).copied().unwrap_or(0), 1);
+    }
+
+    #[test]
+    fn report_and_checkpoint_deserialize_with_missing_length_histograms() {
+        let report: RnaReadInterpretationReport =
+            serde_json::from_str("{\"report_id\":\"legacy\",\"seq_id\":\"seq\"}")
+                .expect("legacy report json should deserialize");
+        assert!(
+            report.read_length_counts_all.is_empty()
+                && report.read_length_counts_seed_passed.is_empty()
+                && report.read_length_counts_aligned.is_empty()
+                && report.read_length_counts_full_length_exact.is_empty()
+                && report.read_length_counts_full_length_near.is_empty()
+                && report.read_length_counts_full_length_strict.is_empty()
+        );
+
+        let checkpoint: RnaReadInterpretCheckpoint =
+            serde_json::from_str("{\"report_id\":\"legacy\"}")
+                .expect("legacy checkpoint json should deserialize");
+        assert!(
+            checkpoint.read_length_counts_all.is_empty()
+                && checkpoint.read_length_counts_seed_passed.is_empty()
+                && checkpoint.read_length_counts_aligned.is_empty()
+                && checkpoint.read_length_counts_full_length_exact.is_empty()
+                && checkpoint.read_length_counts_full_length_near.is_empty()
+                && checkpoint.read_length_counts_full_length_strict.is_empty()
+        );
+    }
+
+    #[test]
+    fn detail_summary_mentions_full_length_and_length_bins() {
+        let report = RnaReadInterpretationReport {
+            report_id: "r1".to_string(),
+            seq_id: "seq1".to_string(),
+            read_count_total: 10,
+            read_count_seed_passed: 8,
+            read_count_aligned: 6,
+            retained_count_msa_eligible: 4,
+            read_length_counts_all: vec![0, 0, 1, 2],
+            read_length_counts_seed_passed: vec![0, 0, 0, 2],
+            read_length_counts_aligned: vec![0, 0, 0, 1],
+            read_length_counts_full_length_exact: vec![0, 0, 0, 1],
+            read_length_counts_full_length_near: vec![0, 0, 0, 2],
+            read_length_counts_full_length_strict: vec![0, 0, 0, 1],
+            ..RnaReadInterpretationReport::default()
+        };
+        let summary = GentleEngine::format_rna_read_report_detail_summary(&report);
+        assert!(summary.contains("full_length(exact/near/strict)="));
+        assert!(summary.contains("len_bp_bins(all|seed|aligned|exact|near|strict)="));
     }
 }

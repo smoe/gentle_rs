@@ -1830,6 +1830,19 @@ Status:
   - `rna-reads list-reports` / `show-report` shell outputs now include compact
     human-readable provenance summaries (`summary_rows[]` / `summary`) for
     faster triage without post-processing report JSON.
+  - RNA-read reports/checkpoints now persist exact read-length histograms for:
+    all reads, seed-passed reads, aligned reads, and full-length
+    exact/near/strict subsets.
+  - Full-length classification is now explicit across engine/GUI/CLI:
+    - `exact` = `100%` transcript-template coverage
+    - `near` = `>=95%` transcript-template coverage
+    - `strict_end` = `near` + both transcript ends within `15 bp` + identity
+      above active alignment threshold
+  - `rna-reads inspect-alignments` rows and alignment TSV export now include
+    full-length flags and class label columns for downstream filtering.
+  - GUI RNA-read mapping now includes a dedicated `Read length distributions`
+    panel (auto-binned from exact engine counts) and an `FL` marker column in
+    mapped read-effects tables with full-length detail in the selected-row pane.
 
 Track boundaries:
 

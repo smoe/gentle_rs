@@ -2498,6 +2498,16 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `junction_support_frequencies[]`
     - `score_density_bins[]` (`all_scored` phase-1 histogram)
     - `seed_pass_score_density_bins[]` (`composite_seed_gate` histogram)
+    - exact read-length histograms (`length_bp -> count`) for
+      deterministic subset auditing:
+      - `read_length_counts_all`
+      - `read_length_counts_seed_passed`
+      - `read_length_counts_aligned`
+      - `read_length_counts_full_length_exact`
+      - `read_length_counts_full_length_near`
+      - `read_length_counts_full_length_strict`
+      - checkpoint snapshots mirror these vectors so resume/restart keeps
+        histogram accumulation deterministic
     - storage/streaming controls:
       - `report_mode` (`full` or `seed_passed_only`)
       - `checkpoint_path` / `checkpoint_every_reads`
@@ -2533,6 +2543,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         `target_start_1based`, `target_end_1based`, `target_length_bp`,
         `identity_fraction`, `query_coverage_fraction`,
         `target_coverage_fraction`, `score`, `secondary_mapping_count`)
+      - full-length classification flags (derived deterministically from
+        transcript-template coverage and current alignment threshold):
+        - `full_length_exact` (`100%` template coverage)
+        - `full_length_near` (`>=95%` template coverage)
+        - `full_length_strict`
+          (`near` + both template ends within `15 bp` + identity above
+          active alignment threshold)
       - deterministic comparison field `alignment_effect`
         (`confirmed_assignment`, `reassigned_transcript`,
         `aligned_without_phase1_assignment`)
