@@ -1114,7 +1114,8 @@ order. Durable architecture constraints and decisions remain in
 - The same specialist window now also exposes `FetchDbSnpRegion`, so tutorials
   can start from one rsID and extract `+/- 3000 bp` with full feature
   annotation from a prepared reference genome without leaving the NCBI fetch
-  workflow.
+  workflow, including a visible one-base rsID marker feature at the resolved
+  SNP position.
 - `File -> Open Sequence...` now supports multi-file selection and imports the
   chosen files sequentially through the same per-file `LoadFile` path, opening
   one sequence window per successful import.

@@ -4025,6 +4025,32 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
         .expect("extracted sequence");
     assert_eq!(extracted.len(), 41);
     assert!(!extracted.features().is_empty());
+    let marker = extracted
+        .features()
+        .iter()
+        .find(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("variation")
+                && feature
+                    .qualifier_values("label")
+                    .any(|value| value == "rs123")
+        })
+        .expect("dbSNP marker feature");
+    assert_eq!(
+        marker.location.find_bounds().expect("marker bounds"),
+        (20, 21)
+    );
+    assert_eq!(
+        marker.qualifier_values("db_xref").next(),
+        Some("dbSNP:rs123")
+    );
+    assert_eq!(
+        marker.qualifier_values("genomic_position_1based").next(),
+        Some("30")
+    );
+    assert_eq!(
+        marker.qualifier_values("gentle_generated").next(),
+        Some("dbsnp_variant_marker")
+    );
 
     let provenance = engine
         .state()

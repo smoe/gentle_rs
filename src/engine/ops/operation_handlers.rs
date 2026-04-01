@@ -1276,6 +1276,54 @@ impl GentleEngine {
         Ok(seq_id)
     }
 
+    fn build_dbsnp_variant_marker_feature(
+        rs_id: &str,
+        chromosome: &str,
+        chromosome_display: &str,
+        position_1based: usize,
+        assembly_name: Option<&str>,
+        gene_symbols: &[String],
+        local_start_0based: usize,
+    ) -> gb_io::seq::Feature {
+        let chromosome_label = if chromosome_display.trim().is_empty() {
+            chromosome.trim()
+        } else {
+            chromosome_display.trim()
+        };
+        let assembly_label = assembly_name
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unknown");
+        let mut note = format!(
+            "dbSNP variant {rs_id} resolved from NCBI Variation to {chromosome_label}:{position_1based} (assembly={assembly_label})"
+        );
+        if !gene_symbols.is_empty() {
+            note.push_str(&format!(" [genes={}]", gene_symbols.join(", ")));
+        }
+        gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(
+                local_start_0based as i64,
+                local_start_0based.saturating_add(1) as i64,
+            ),
+            qualifiers: vec![
+                ("label".into(), Some(rs_id.to_string())),
+                ("note".into(), Some(note)),
+                ("db_xref".into(), Some(format!("dbSNP:{rs_id}"))),
+                ("chromosome".into(), Some(chromosome.to_string())),
+                (
+                    "genomic_position_1based".into(),
+                    Some(position_1based.to_string()),
+                ),
+                ("assembly_name".into(), Some(assembly_label.to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+                ),
+            ],
+        }
+    }
+
     fn normalize_primer_insertion_intent(
         insertion: &PrimerInsertionIntent,
         template_len: usize,
@@ -3491,7 +3539,7 @@ impl GentleEngine {
                     genome_id,
                     genes
                 ));
-                let _ = self.extract_genome_region_into_state(
+                let seq_id = self.extract_genome_region_into_state(
                     &mut result,
                     &genome_id,
                     &placement.chromosome,
@@ -3505,6 +3553,30 @@ impl GentleEngine {
                     cache_dir,
                     "FetchDbSnpRegion",
                 )?;
+                let local_start_0based = placement.position_1based.saturating_sub(start_1based);
+                if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                    if local_start_0based < dna.len() {
+                        dna.features_mut()
+                            .push(Self::build_dbsnp_variant_marker_feature(
+                                &display_rs_id,
+                                &placement.chromosome,
+                                &placement.chromosome_display,
+                                placement.position_1based,
+                                placement.assembly_name.as_deref(),
+                                &placement.gene_symbols,
+                                local_start_0based,
+                            ));
+                        Self::prepare_sequence(dna);
+                    } else {
+                        result.warnings.push(format!(
+                            "Resolved dbSNP '{}' fell outside extracted sequence '{}' (local position {}, length {})",
+                            display_rs_id,
+                            seq_id,
+                            local_start_0based + 1,
+                            dna.len()
+                        ));
+                    }
+                }
             }
             Operation::ExtractGenomeGene {
                 genome_id,

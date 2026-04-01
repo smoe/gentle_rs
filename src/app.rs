@@ -37091,7 +37091,24 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         app.fetch_dbsnp_region_from_dialog();
 
         let state = app.engine.read().unwrap().state().clone();
-        assert!(state.sequences.contains_key("rs123_gui_fetch"));
+        let extracted = state
+            .sequences
+            .get("rs123_gui_fetch")
+            .expect("gui dbsnp extracted sequence");
+        let marker = extracted
+            .features()
+            .iter()
+            .find(|feature| {
+                feature.kind.to_string().eq_ignore_ascii_case("variation")
+                    && feature
+                        .qualifier_values("label")
+                        .any(|value| value == "rs123")
+            })
+            .expect("gui dbsnp marker");
+        assert_eq!(
+            marker.location.find_bounds().expect("gui marker bounds"),
+            (2, 3)
+        );
         assert_eq!(
             app.new_windows
                 .first()

@@ -247,6 +247,7 @@ impl RenderDna {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
             "MRNA" => Color32::from_rgb(180, 100, 10),
+            "VARIATION" => Color32::from_rgb(225, 127, 15),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
             "TRACK" => Color32::from_rgb(85, 85, 85),
             _ => Color32::GRAY,
@@ -1013,6 +1014,15 @@ mod tests {
         assert_eq!(
             RenderDna::feature_color(&feature),
             Color32::from_rgb(0, 136, 156)
+        );
+    }
+
+    #[test]
+    fn variation_feature_uses_snp_accent_color() {
+        let feature = make_feature("variation", &[("gentle_generated", "dbsnp_variant_marker")]);
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(225, 127, 15)
         );
     }
 }

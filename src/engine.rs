@@ -134,6 +134,7 @@ const CANDIDATE_MACRO_TEMPLATES_SCHEMA: &str = "gentle.candidate_macro_templates
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
+const DBSNP_VARIANT_MARKER_GENERATED_TAG: &str = "dbsnp_variant_marker";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 const GENOME_ANNOTATION_PROJECTION_GENERATED_TAG: &str = "genome_annotation_projection";
 const CONTEXT_LAYER_QUALIFIER_KEY: &str = "gentle_context_layer";

@@ -2998,6 +2998,9 @@ NCBI retrieval behavior:
   settings and defaults to full annotation transfer (`annotation_scope=full`,
   `max_annotation_features=0`) so tutorial/reporter workflows can start from a
   fully annotated local locus slice.
+- Extracted dbSNP regions now also include a one-base `variation` feature
+  labeled with the rsID at the resolved SNP position so the focal variant stays
+  visible in the sequence view.
 - Shell parity route:
   - `genbank fetch ACCESSION [--as-id ID]`
   - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
