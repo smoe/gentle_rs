@@ -28,6 +28,26 @@ fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
 
+fn formula_test_sequence() -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("CDS"),
+        location: gb_io::seq::Location::simple_range(20, 80),
+        qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(10, 40),
+        qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: gb_io::seq::FeatureKind::from("gene"),
+        location: gb_io::seq::Location::simple_range(80, 140),
+        qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+    });
+    dna
+}
+
 fn sequencing_confirmation_junction_target(
     target_id: &str,
     start_0based: usize,
@@ -91,6 +111,59 @@ fn demo_blast_report() -> GenomeBlastReport {
         options_override_json: None,
         effective_options_json: None,
     }
+}
+
+#[test]
+fn feature_coordinate_formula_helper_resolves_boundary_and_offset() {
+    let dna = formula_test_sequence();
+
+    let start = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=CDS.start+10",
+        "primer_design.roi_start_0based",
+    )
+    .expect("formula start");
+    let end = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=CDS.end-5",
+        "primer_design.roi_end_0based",
+    )
+    .expect("formula end");
+
+    assert_eq!(start, 30);
+    assert_eq!(end, 75);
+}
+
+#[test]
+fn feature_coordinate_formula_helper_supports_label_filter_and_occurrence() {
+    let dna = formula_test_sequence();
+
+    let start = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=TP73].start",
+        "primer_design.roi_start_0based",
+    )
+    .expect("label formula");
+    let second_end = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[2].end",
+        "primer_design.roi_end_0based",
+    )
+    .expect("occurrence formula");
+
+    assert_eq!(start, 10);
+    assert_eq!(second_end, 140);
+}
+
+#[test]
+fn feature_coordinate_formula_helper_resolves_selection_range_expression() {
+    let dna = formula_test_sequence();
+
+    let (start, end_exclusive) =
+        resolve_selection_formula_range_0based_on_sequence(&dna, "=CDS.start+10 .. CDS.end-5")
+            .expect("selection formula");
+
+    assert_eq!((start, end_exclusive), (30, 75));
 }
 
 fn splicing_test_sequence() -> DNAsequence {

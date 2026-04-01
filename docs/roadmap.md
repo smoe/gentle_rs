@@ -26,6 +26,7 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/state/lineage_containers.rs` (lineage-node and container/arrangement helper routines)
   - `src/engine/ops/operation_handlers.rs` (core operation-dispatch handler extracted from `apply_internal`)
   - `src/engine/analysis/rna_reads.rs` (RNA-read report parsing, scoring, and export helper routines)
+  - `src/engine/state/feature_coordinate_formulas.rs` (shared feature-relative coordinate formula parsing/resolution helpers for GUI and future shell/CLI reuse)
   - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
 - Multi-crate destination is now documented in
   [`docs/workspace_split_plan.md`](workspace_split_plan.md):
@@ -50,6 +51,9 @@ order. Durable architecture constraints and decisions remain in
     - the portable RNA-read mapping contract layer now also lives there:
       `SplicingScopePreset`, seed/alignment configs, inspection/export rows,
       progress previews, and the persisted RNA-read report + summary records
+    - the portable display contract layer now also lives there:
+      `DisplayTarget`, `DisplaySettings`, and the shared linear/restriction
+      display-mode enums used by GUI/shell-facing settings surfaces
     - the portable feature-expert contract layer now also lives there:
       expert target enums, TFBS/restriction/splicing/isoform view payloads,
       and the shared instruction strings those views expose
@@ -82,6 +86,9 @@ order. Durable architecture constraints and decisions remain in
   `gentle_cli shell`.
 - GUI module decomposition is now underway:
   - `src/app/help_docs.rs` (help/tutorial markdown loading and rewrite helpers extracted from `src/app.rs`)
+  - `src/app/window_registry.rs` (open-window listing/focus helpers plus deferred child-window placement extracted from `src/app.rs`)
+  - `src/main_area_dna/feature_actions.rs` (feature-linked splicing/RNA-mapping/dotplot launcher helpers extracted from `src/main_area_dna.rs`)
+  - `src/main_area_dna/formula_controls.rs` (selection/ROI formula parsing/apply helpers plus shared numeric field parsers extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/rna_read_support.rs` (RNA-read report/cache/inspection helper routines extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/auxiliary_workspaces.rs` (dotplot support plus splicing/RNA-mapping auxiliary workspace helpers extracted from `src/main_area_dna.rs`)
 - Engine-shell decomposition is now underway:
@@ -1345,9 +1352,13 @@ Notes:
          - label filter (`KIND[label=TP73]`)
        - ROI-start range form:
          `=left .. right` (or `=left to right`)
+       - parser/resolver is now engine-owned (`engine/state/feature_coordinate_formulas.rs`)
+         and reused by GUI selection + primer/qPCR ROI controls instead of
+         keeping formula semantics only in `main_area_dna.rs`
+       - GUI-side formula handling now lives behind the focused
+         `main_area_dna/formula_controls.rs` seam rather than staying
+         interleaved with unrelated sequence-window rendering logic
      - remaining:
-       - parser/resolver still lives in GUI adapter path; move to engine-owned
-         shared helper remains pending for stricter cross-adapter parity
        - strand-aware helper aliases (`tss`, `upstream(n)`) remain pending
        - broader GUI/shared-shell parity tests for formula evaluation remain
          pending

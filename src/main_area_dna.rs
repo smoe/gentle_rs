@@ -14,6 +14,10 @@
 //! - extracted helper modules first:
 //!   - `main_area_dna/auxiliary_workspaces.rs` for dotplot/splicing/RNA helper
 //!     workspaces
+//!   - `main_area_dna/feature_actions.rs` for feature-linked expert/mapping
+//!     action launchers
+//!   - `main_area_dna/formula_controls.rs` for selection/ROI formula parsing
+//!     helpers and apply controls
 //!   - `main_area_dna/rna_read_support.rs` for RNA-read report/cache helpers
 //! - early enums and UI-state structs define the sequence-window control
 //!   surface: primer/qPCR dialogs, genome-anchor actions, and engine-op panels
@@ -33,6 +37,12 @@
 
 #[path = "main_area_dna/auxiliary_workspaces.rs"]
 mod auxiliary_workspaces;
+
+#[path = "main_area_dna/feature_actions.rs"]
+mod feature_actions;
+
+#[path = "main_area_dna/formula_controls.rs"]
+mod formula_controls;
 
 #[path = "main_area_dna/rna_read_support.rs"]
 mod rna_read_support;
@@ -65,6 +75,8 @@ use crate::{
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SequencingReadOrientation, SnpMutationSpec,
         SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
+        resolve_formula_roi_range_inputs_0based_on_sequence,
+        resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -954,6 +966,7 @@ mod tests {
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SplicingScopePreset,
+            parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -2027,12 +2040,19 @@ mod tests {
         });
         let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
 
-        let start = area
-            .parse_required_usize_or_formula_text("=CDS.start+10", "primer_design.roi_start_0based")
-            .expect("formula start");
-        let end = area
-            .parse_required_usize_or_formula_text("=CDS.end-5", "primer_design.roi_end_0based")
-            .expect("formula end");
+        let dna = area.dna.read().expect("dna");
+        let start = parse_required_usize_or_formula_text_on_sequence(
+            &dna,
+            "=CDS.start+10",
+            "primer_design.roi_start_0based",
+        )
+        .expect("formula start");
+        let end = parse_required_usize_or_formula_text_on_sequence(
+            &dna,
+            "=CDS.end-5",
+            "primer_design.roi_end_0based",
+        )
+        .expect("formula end");
 
         assert_eq!(start, 30);
         assert_eq!(end, 75);
@@ -2109,15 +2129,19 @@ mod tests {
         });
         let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
 
-        let start = area
-            .parse_required_usize_or_formula_text(
-                "=gene[label=TP73].start",
-                "primer_design.roi_start_0based",
-            )
-            .expect("label formula");
-        let second_end = area
-            .parse_required_usize_or_formula_text("=gene[2].end", "primer_design.roi_end_0based")
-            .expect("occurrence formula");
+        let dna = area.dna.read().expect("dna");
+        let start = parse_required_usize_or_formula_text_on_sequence(
+            &dna,
+            "=gene[label=TP73].start",
+            "primer_design.roi_start_0based",
+        )
+        .expect("label formula");
+        let second_end = parse_required_usize_or_formula_text_on_sequence(
+            &dna,
+            "=gene[2].end",
+            "primer_design.roi_end_0based",
+        )
+        .expect("occurrence formula");
 
         assert_eq!(start, 10);
         assert_eq!(second_end, 140);
@@ -13250,110 +13274,6 @@ impl MainAreaDna {
             .write()
             .expect("DNA display lock poisoned")
             .deselect();
-    }
-
-    fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
-        matches!(
-            kind_upper,
-            "MRNA" | "TRANSCRIPT" | "NCRNA" | "MISC_RNA" | "EXON" | "GENE" | "CDS"
-        )
-    }
-
-    fn feature_supports_splicing_expert(&self, feature_id: usize) -> bool {
-        self.dna
-            .read()
-            .ok()
-            .and_then(|dna| {
-                dna.features().get(feature_id).map(|feature| {
-                    let kind_upper = feature.kind.to_string().trim().to_ascii_uppercase();
-                    Self::feature_kind_supports_splicing_expert(kind_upper.as_str())
-                })
-            })
-            .unwrap_or(false)
-    }
-
-    fn splicing_expert_view_for_feature(
-        &self,
-        feature_id: usize,
-    ) -> Result<SplicingExpertView, String> {
-        if !self.feature_supports_splicing_expert(feature_id) {
-            return Err("Selected feature does not support splicing-linked actions".to_string());
-        }
-        match self.inspect_feature_expert_target(&FeatureExpertTarget::SplicingFeature {
-            feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
-        }) {
-            Ok(FeatureExpertView::Splicing(view)) => Ok(view),
-            Ok(_) => Err("Selected feature does not expose a splicing expert payload".to_string()),
-            Err(err) => Err(err),
-        }
-    }
-
-    fn open_splicing_expert_window_for_view(&mut self, view: &SplicingExpertView) {
-        self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-        self.splicing_expert_window_view = Some(Arc::new(view.clone()));
-        self.show_splicing_expert_window = true;
-    }
-
-    fn focus_splicing_expert_window_view(&self, ctx: &egui::Context, view: &SplicingExpertView) {
-        let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
-    }
-
-    fn open_splicing_expert_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
-        match self.splicing_expert_view_for_feature(feature_id) {
-            Ok(view) => {
-                self.open_splicing_expert_window_for_view(&view);
-                self.description_cache_expert_view = Some(FeatureExpertView::Splicing(view));
-                self.description_cache_expert_error = None;
-                self.op_status = format!("Opened Splicing Expert from {source}");
-                true
-            }
-            Err(err) => {
-                self.description_cache_expert_error = Some(err.clone());
-                self.op_status = format!("Could not open Splicing Expert from {source}: {err}");
-                false
-            }
-        }
-    }
-
-    fn open_rna_read_mapping_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
-        match self.splicing_expert_view_for_feature(feature_id) {
-            Ok(view) => {
-                self.open_rna_read_mapping_workspace_for_view(&view);
-                self.description_cache_expert_view =
-                    Some(FeatureExpertView::Splicing(view.clone()));
-                self.description_cache_expert_error = None;
-                self.op_status = format!("Opened RNA-read Mapping from {source}");
-                true
-            }
-            Err(err) => {
-                self.description_cache_expert_error = Some(err.clone());
-                self.op_status = format!("Could not open RNA-read Mapping from {source}: {err}");
-                false
-            }
-        }
-    }
-
-    fn open_dotplot_for_feature(&mut self, feature_id: usize, source: &str) -> bool {
-        match self.splicing_expert_view_for_feature(feature_id) {
-            Ok(view) => {
-                self.description_cache_expert_view =
-                    Some(FeatureExpertView::Splicing(view.clone()));
-                self.description_cache_expert_error = None;
-                self.derive_selected_transcript_and_open_dotplot(&view);
-                if self.show_dotplot_window {
-                    self.op_status = format!("Opened transcript dotplot from {source}");
-                }
-                true
-            }
-            Err(err) => {
-                self.description_cache_expert_error = Some(err.clone());
-                self.op_status = format!("Could not open transcript dotplot from {source}: {err}");
-                false
-            }
-        }
     }
 
     fn inspect_feature_expert_target(
@@ -24513,534 +24433,6 @@ impl MainAreaDna {
             container_ids: None,
             arrangement_id: None,
         });
-    }
-
-    fn parse_optional_usize_text(raw: &str, field_name: &str) -> Result<Option<usize>, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            Ok(None)
-        } else {
-            trimmed
-                .parse::<usize>()
-                .map(Some)
-                .map_err(|_| format!("Invalid {field_name}: expected an integer"))
-        }
-    }
-
-    fn parse_positive_usize_text(raw: &str, field_name: &str) -> Result<usize, String> {
-        let trimmed = raw.trim();
-        let parsed = trimmed
-            .parse::<usize>()
-            .map_err(|_| format!("Invalid {field_name}: expected an integer"))?;
-        if parsed == 0 {
-            return Err(format!("Invalid {field_name}: expected >= 1"));
-        }
-        Ok(parsed)
-    }
-
-    fn parse_optional_f64_text(raw: &str, field_name: &str) -> Result<Option<f64>, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            Ok(None)
-        } else {
-            trimmed
-                .parse::<f64>()
-                .map(Some)
-                .map_err(|_| format!("Invalid {field_name}: expected a number"))
-        }
-    }
-
-    fn feature_formula_label_values(feature: &gb_io::seq::Feature) -> Vec<String> {
-        let mut labels = Vec::new();
-        for key in [
-            "label",
-            "gene",
-            "locus_tag",
-            "product",
-            "standard_name",
-            "note",
-        ] {
-            for value in feature.qualifier_values(key) {
-                let value = value.trim();
-                if !value.is_empty() {
-                    labels.push(value.to_string());
-                }
-            }
-        }
-        labels
-    }
-
-    fn split_formula_range_expression(expr: &str) -> Option<(String, String)> {
-        if let Some((left, right)) = expr.split_once("..") {
-            let left = left.trim();
-            let right = right.trim();
-            if !left.is_empty() && !right.is_empty() {
-                return Some((left.to_string(), right.to_string()));
-            }
-        }
-        let lower = expr.to_ascii_lowercase();
-        if let Some(split_idx) = lower.find(" to ") {
-            let left = expr[..split_idx].trim();
-            let right = expr[split_idx + 4..].trim();
-            if !left.is_empty() && !right.is_empty() {
-                return Some((left.to_string(), right.to_string()));
-            }
-        }
-        None
-    }
-
-    fn parse_feature_formula_coordinate_expression(
-        &self,
-        expr: &str,
-        field_name: &str,
-    ) -> Result<usize, String> {
-        let raw = expr.trim();
-        if raw.is_empty() {
-            return Err(format!(
-                "Invalid {field_name}: empty feature formula expression"
-            ));
-        }
-
-        let mut idx = 0usize;
-        let bytes = raw.as_bytes();
-        let is_kind_char = |ch: u8| ch.is_ascii_alphanumeric() || matches!(ch, b'_' | b'-');
-        while idx < bytes.len() && is_kind_char(bytes[idx]) {
-            idx += 1;
-        }
-        if idx == 0 {
-            return Err(format!(
-                "Invalid {field_name}: expected feature kind (for example CDS.start+10)"
-            ));
-        }
-        let feature_kind = raw[..idx].trim().to_ascii_uppercase();
-
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            idx += 1;
-        }
-
-        let mut occurrence_index: Option<usize> = None;
-        let mut label_filter: Option<String> = None;
-        if idx < bytes.len() && bytes[idx] == b'[' {
-            idx += 1;
-            let start = idx;
-            while idx < bytes.len() && bytes[idx] != b']' {
-                idx += 1;
-            }
-            if idx >= bytes.len() || bytes[idx] != b']' {
-                return Err(format!(
-                    "Invalid {field_name}: missing closing ']' in feature selector"
-                ));
-            }
-            let inside = raw[start..idx].trim();
-            idx += 1;
-            if inside.is_empty() {
-                return Err(format!("Invalid {field_name}: empty selector inside []"));
-            }
-            let inside_lower = inside.to_ascii_lowercase();
-            if let Some(value_raw) = inside_lower.strip_prefix("label=").map(|_| &inside[6..]) {
-                let label = value_raw.trim();
-                if label.is_empty() {
-                    return Err(format!(
-                        "Invalid {field_name}: label filter must not be empty"
-                    ));
-                }
-                label_filter = Some(label.to_ascii_uppercase());
-            } else {
-                let one_based = inside.parse::<usize>().map_err(|_| {
-                    format!(
-                        "Invalid {field_name}: selector '{}' must be a 1-based occurrence index or label=...",
-                        inside
-                    )
-                })?;
-                if one_based == 0 {
-                    return Err(format!(
-                        "Invalid {field_name}: occurrence index must be >= 1"
-                    ));
-                }
-                occurrence_index = Some(one_based - 1);
-            }
-        }
-
-        let mut saw_separator = false;
-        if idx < bytes.len() && bytes[idx] == b'.' {
-            saw_separator = true;
-            idx += 1;
-        }
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            saw_separator = true;
-            idx += 1;
-        }
-        if !saw_separator {
-            return Err(format!(
-                "Invalid {field_name}: expected `.start`, `.end`, or `.middle` after feature kind"
-            ));
-        }
-
-        let boundary_start = idx;
-        while idx < bytes.len() && bytes[idx].is_ascii_alphabetic() {
-            idx += 1;
-        }
-        if boundary_start == idx {
-            return Err(format!(
-                "Invalid {field_name}: expected boundary token (start|end|middle)"
-            ));
-        }
-        let boundary = match raw[boundary_start..idx]
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "start" => AnchorBoundary::Start,
-            "end" => AnchorBoundary::End,
-            "middle" => AnchorBoundary::Middle,
-            other => {
-                return Err(format!(
-                    "Invalid {field_name}: unknown boundary '{other}' (expected start|end|middle)"
-                ));
-            }
-        };
-
-        let mut offset: isize = 0;
-        while idx < bytes.len() {
-            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                idx += 1;
-            }
-            if idx >= bytes.len() {
-                break;
-            }
-            let sign = match bytes[idx] {
-                b'+' => 1isize,
-                b'-' => -1isize,
-                other => {
-                    return Err(format!(
-                        "Invalid {field_name}: unexpected character '{}' in offset suffix",
-                        other as char
-                    ));
-                }
-            };
-            idx += 1;
-            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                idx += 1;
-            }
-            let number_start = idx;
-            while idx < bytes.len() && bytes[idx].is_ascii_digit() {
-                idx += 1;
-            }
-            if number_start == idx {
-                return Err(format!(
-                    "Invalid {field_name}: expected integer offset after sign"
-                ));
-            }
-            let delta = raw[number_start..idx]
-                .parse::<isize>()
-                .map_err(|_| format!("Invalid {field_name}: could not parse coordinate offset"))?;
-            offset += sign * delta;
-        }
-
-        let dna = self
-            .dna
-            .read()
-            .map_err(|_| format!("Could not read DNA while parsing {field_name}"))?;
-        if dna.len() == 0 {
-            return Err(format!("Invalid {field_name}: active sequence is empty"));
-        }
-
-        let mut matches: Vec<(usize, usize, usize)> = Vec::new();
-        for (feature_id, feature) in dna.features().iter().enumerate() {
-            if feature.kind.to_string().eq_ignore_ascii_case("SOURCE")
-                || !feature.kind.to_string().eq_ignore_ascii_case(&feature_kind)
-            {
-                continue;
-            }
-            if let Some(label_filter) = label_filter.as_ref() {
-                let labels = Self::feature_formula_label_values(feature);
-                let found = labels.iter().any(|label| {
-                    let upper = label.to_ascii_uppercase();
-                    upper == *label_filter || upper.contains(label_filter)
-                });
-                if !found {
-                    continue;
-                }
-            }
-            let mut ranges: Vec<(usize, usize)> = Vec::new();
-            collect_location_ranges_usize(&feature.location, &mut ranges);
-            if ranges.is_empty() {
-                let Ok((from, to)) = feature.location.find_bounds() else {
-                    continue;
-                };
-                if from < 0 || to < 0 {
-                    continue;
-                }
-                ranges.push((from as usize, to as usize));
-            }
-            let start = match ranges.iter().map(|(start, _)| *start).min() {
-                Some(value) => value,
-                None => continue,
-            };
-            let end_exclusive = match ranges.iter().map(|(_, end)| *end).max() {
-                Some(value) => value.min(dna.len()),
-                None => continue,
-            };
-            if end_exclusive <= start || start >= dna.len() {
-                continue;
-            }
-            let anchor_pos = match boundary {
-                AnchorBoundary::Start => start,
-                AnchorBoundary::End => end_exclusive,
-                AnchorBoundary::Middle => start + (end_exclusive.saturating_sub(start) / 2),
-            };
-            if anchor_pos <= dna.len() {
-                matches.push((start, feature_id, anchor_pos));
-            }
-        }
-
-        if matches.is_empty() {
-            return Err(format!(
-                "Invalid {field_name}: no feature matched {}{}",
-                feature_kind,
-                label_filter
-                    .as_ref()
-                    .map(|label| format!("[label={label}]"))
-                    .unwrap_or_default()
-            ));
-        }
-        matches.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-        let occurrence_idx = occurrence_index.unwrap_or(0);
-        let Some((_, _, base_pos)) = matches.get(occurrence_idx) else {
-            return Err(format!(
-                "Invalid {field_name}: occurrence {} requested but only {} match(es) found",
-                occurrence_idx + 1,
-                matches.len()
-            ));
-        };
-        let resolved = *base_pos as isize + offset;
-        if resolved < 0 || resolved > dna.len() as isize {
-            return Err(format!(
-                "Invalid {field_name}: resolved coordinate {} is out of bounds for sequence length {}",
-                resolved,
-                dna.len()
-            ));
-        }
-        Ok(resolved as usize)
-    }
-
-    fn parse_coordinate_term_text(&self, raw: &str, field_name: &str) -> Result<usize, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Err(format!(
-                "Invalid {field_name}: expected an integer or formula"
-            ));
-        }
-        if let Ok(value) = trimmed.parse::<usize>() {
-            return Ok(value);
-        }
-        self.parse_feature_formula_coordinate_expression(trimmed, field_name)
-    }
-
-    fn parse_required_usize_or_formula_text(
-        &self,
-        raw: &str,
-        field_name: &str,
-    ) -> Result<usize, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Err(format!("Invalid {field_name}: expected an integer"));
-        }
-        if let Some(expr) = trimmed.strip_prefix('=') {
-            return self.parse_coordinate_term_text(expr, field_name);
-        }
-        trimmed
-            .parse::<usize>()
-            .map_err(|_| format!("Invalid {field_name}: expected an integer"))
-    }
-
-    fn resolve_roi_range_inputs_0based(
-        &self,
-        roi_start_raw: &str,
-        roi_end_raw: &str,
-        field_prefix: &str,
-    ) -> Result<(usize, usize), String> {
-        let start_trimmed = roi_start_raw.trim();
-        let (start, end_exclusive) = if let Some(formula) = start_trimmed.strip_prefix('=')
-            && let Some((left, right)) = Self::split_formula_range_expression(formula)
-        {
-            (
-                self.parse_coordinate_term_text(
-                    &left,
-                    &format!("{field_prefix}.roi_start_0based"),
-                )?,
-                self.parse_coordinate_term_text(&right, &format!("{field_prefix}.roi_end_0based"))?,
-            )
-        } else {
-            (
-                self.parse_required_usize_or_formula_text(
-                    roi_start_raw,
-                    &format!("{field_prefix}.roi_start_0based"),
-                )?,
-                self.parse_required_usize_or_formula_text(
-                    roi_end_raw,
-                    &format!("{field_prefix}.roi_end_0based"),
-                )?,
-            )
-        };
-        if end_exclusive <= start {
-            return Err(format!(
-                "Invalid {field_prefix} ROI range: start ({start}) must be < end ({end_exclusive})"
-            ));
-        }
-        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
-        if seq_len == 0 {
-            return Err(format!("Invalid {field_prefix}: active sequence is empty"));
-        }
-        if start >= seq_len {
-            return Err(format!(
-                "Invalid {field_prefix}.roi_start_0based: {start} is outside sequence length {seq_len}"
-            ));
-        }
-        if end_exclusive > seq_len {
-            return Err(format!(
-                "Invalid {field_prefix}.roi_end_0based: {end_exclusive} is outside sequence length {seq_len}"
-            ));
-        }
-        Ok((start, end_exclusive))
-    }
-
-    fn resolve_selection_formula_range_0based(&self, raw: &str) -> Result<(usize, usize), String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Err(
-                "Selection formula is empty; expected `=left .. right` or `=left to right`"
-                    .to_string(),
-            );
-        }
-        let expr = trimmed
-            .strip_prefix('=')
-            .ok_or_else(|| "Selection formula must start with '='".to_string())?;
-        let (left_raw, right_raw) =
-            Self::split_formula_range_expression(expr).ok_or_else(|| {
-                "Selection formula must define a range (`=left .. right` or `=left to right`)"
-                    .to_string()
-            })?;
-        let start = self.parse_coordinate_term_text(&left_raw, "selection_formula.start")?;
-        let end_exclusive = self.parse_coordinate_term_text(&right_raw, "selection_formula.end")?;
-        if end_exclusive <= start {
-            return Err(format!(
-                "Invalid selection formula range: start ({start}) must be < end ({end_exclusive})"
-            ));
-        }
-        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
-        if seq_len == 0 {
-            return Err("Cannot apply selection formula: active sequence is empty".to_string());
-        }
-        if start >= seq_len {
-            return Err(format!(
-                "Invalid selection formula start: {start} is outside sequence length {seq_len}"
-            ));
-        }
-        if end_exclusive > seq_len {
-            return Err(format!(
-                "Invalid selection formula end: {end_exclusive} is outside sequence length {seq_len}"
-            ));
-        }
-        Ok((start, end_exclusive))
-    }
-
-    fn apply_selection_formula(&mut self) {
-        let (start, end_exclusive) =
-            match self.resolve_selection_formula_range_0based(&self.selection_formula_text) {
-                Ok(value) => value,
-                Err(err) => {
-                    self.op_status = err;
-                    return;
-                }
-            };
-        match self.set_selection_range_0based(start, end_exclusive) {
-            Ok(()) => {
-                self.op_status = format!(
-                    "Selected region from formula: {}..{} (0-based, end-exclusive)",
-                    start, end_exclusive
-                );
-            }
-            Err(err) => {
-                self.op_status = err;
-            }
-        }
-    }
-
-    fn render_selection_formula_inline_controls(&mut self, ui: &mut egui::Ui, desired_width: f32) {
-        ui.vertical(|ui| {
-            ui.label("Selection formula")
-                .on_hover_text("Set map/text selection from feature-relative formula range");
-            ui.horizontal(|ui| {
-                let field_width = (ui.available_width() - 96.0).clamp(72.0, desired_width);
-                let response = ui
-                    .add(
-                        egui::TextEdit::singleline(&mut self.selection_formula_text)
-                            .desired_width(field_width)
-                            .hint_text("=CDS.start+10 .. CDS.end-500"),
-                    )
-                    .on_hover_text(
-                        "Excel-like range formula. Examples: `=CDS.start+10 .. CDS.end-500`, `=gene[label=TP73].start to gene[label=TP73].end`",
-                    );
-                if response.changed() {
-                    self.save_engine_ops_state();
-                }
-                let apply_clicked = ui
-                    .button("Apply Sel")
-                    .on_hover_text("Resolve selection formula and apply it as current map/text selection")
-                    .clicked();
-                let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if apply_clicked || (enter_pressed && response.lost_focus()) {
-                    self.apply_selection_formula();
-                }
-            });
-        });
-    }
-
-    fn resolve_and_apply_primer_roi_fields(&mut self) {
-        match self.resolve_roi_range_inputs_0based(
-            &self.primer_design_ui.roi_start_0based,
-            &self.primer_design_ui.roi_end_0based,
-            "primer_design",
-        ) {
-            Ok((start, end_exclusive)) => {
-                self.primer_design_ui.roi_start_0based = start.to_string();
-                self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
-                self.op_status = format!(
-                    "Resolved primer ROI formula to {}..{} (0-based, end-exclusive)",
-                    start, end_exclusive
-                );
-            }
-            Err(err) => self.op_status = err,
-        }
-    }
-
-    fn resolve_and_apply_qpcr_roi_fields(&mut self) {
-        match self.resolve_roi_range_inputs_0based(
-            &self.qpcr_design_ui.roi_start_0based,
-            &self.qpcr_design_ui.roi_end_0based,
-            "qpcr_design",
-        ) {
-            Ok((start, end_exclusive)) => {
-                self.qpcr_design_ui.roi_start_0based = start.to_string();
-                self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
-                self.op_status = format!(
-                    "Resolved qPCR ROI formula to {}..{} (0-based, end-exclusive)",
-                    start, end_exclusive
-                );
-            }
-            Err(err) => self.op_status = err,
-        }
-    }
-
-    fn parse_required_usize_text(raw: &str, field_name: &str) -> Result<usize, String> {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return Err(format!("Invalid {field_name}: expected an integer"));
-        }
-        trimmed
-            .parse::<usize>()
-            .map_err(|_| format!("Invalid {field_name}: expected an integer"))
     }
 
     fn parse_required_f64_text(raw: &str, field_name: &str) -> Result<f64, String> {

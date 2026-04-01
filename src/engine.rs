@@ -26,7 +26,7 @@ use crate::{
     DNA_LADDERS, RNA_LADDERS,
     app::GENtleApp,
     dna_sequence::DNAsequence,
-    enzymes::{active_restriction_enzymes, default_preferred_restriction_enzyme_names},
+    enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
@@ -223,6 +223,8 @@ const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]
 mod candidate_metrics;
+#[path = "engine/state/feature_coordinate_formulas.rs"]
+mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
 mod feature_expert_ops;
 #[path = "engine/io/genome_tracks.rs"]
@@ -242,6 +244,11 @@ mod sequencing_confirmation;
 
 #[path = "engine/protocol.rs"]
 mod protocol;
+pub use feature_coordinate_formulas::{
+    parse_feature_coordinate_term_on_sequence, parse_required_usize_or_formula_text_on_sequence,
+    resolve_formula_roi_range_inputs_0based_on_sequence,
+    resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
+};
 pub use protocol::*;
 
 // Shared default helpers used by both engine operations and the extracted
@@ -674,253 +681,6 @@ struct RnaReadInterpretCheckpoint {
     score_density_bins: Vec<u64>,
     seed_pass_score_density_bins: Vec<u64>,
     retained_hits: Vec<RnaReadInterpretationHit>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
-///
-/// Adapters should treat these as the canonical shared display toggles.
-
-pub enum DisplayTarget {
-    SequencePanel,
-    MapPanel,
-    Features,
-    CdsFeatures,
-    GeneFeatures,
-    MrnaFeatures,
-    Tfbs,
-    RestrictionEnzymes,
-    GcContents,
-    OpenReadingFrames,
-    MethylationSites,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
-#[serde(rename_all = "snake_case")]
-/// Rendering mode selector for linear DNA letter layout.
-///
-/// `AutoAdaptive` is the default policy and should be preferred for parity
-/// unless the caller explicitly requests one fixed layout mode.
-pub enum LinearSequenceLetterLayoutMode {
-    #[default]
-    AutoAdaptive,
-    StandardLinear,
-    #[serde(alias = "continuous")]
-    ContinuousHelical,
-    #[serde(
-        alias = "condensed_10_row",
-        alias = "condensed10row",
-        alias = "condensed"
-    )]
-    Condensed10Row,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum RestrictionEnzymeDisplayMode {
-    PreferredOnly,
-    #[default]
-    PreferredAndUnique,
-    UniqueOnly,
-    AllInView,
-}
-
-impl RestrictionEnzymeDisplayMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::PreferredOnly => "Preferred only",
-            Self::PreferredAndUnique => "Preferred + unique",
-            Self::UniqueOnly => "Unique only",
-            Self::AllInView => "All in view",
-        }
-    }
-
-    pub fn short_label(self) -> &'static str {
-        match self {
-            Self::PreferredOnly => "Pref",
-            Self::PreferredAndUnique => "Pref+uniq",
-            Self::UniqueOnly => "Unique",
-            Self::AllInView => "All",
-        }
-    }
-
-    pub fn count_label(self) -> &'static str {
-        match self {
-            Self::PreferredOnly => "preferred cutters",
-            Self::PreferredAndUnique => "preferred/unique cutters",
-            Self::UniqueOnly => "unique cutters",
-            Self::AllInView => "cut sites",
-        }
-    }
-
-    pub fn empty_state_label(self) -> &'static str {
-        match self {
-            Self::PreferredOnly => "No preferred cutters in view.",
-            Self::PreferredAndUnique => "No preferred or unique cutters in view.",
-            Self::UniqueOnly => "No unique cutters in view.",
-            Self::AllInView => "No restriction cut sites in view.",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-/// Project-level display settings persisted in `ProjectState`.
-///
-/// These settings are consumed by GUI renderers and export paths, and are kept
-/// in engine state so behavior is adapter-equivalent.
-pub struct DisplaySettings {
-    pub show_sequence_panel: bool,
-    #[serde(default = "DisplaySettings::default_sequence_panel_max_text_length_bp")]
-    pub sequence_panel_max_text_length_bp: usize,
-    pub auto_hide_sequence_panel_when_linear_bases_visible: bool,
-    pub show_map_panel: bool,
-    pub show_features: bool,
-    pub show_cds_features: bool,
-    pub show_gene_features: bool,
-    pub show_mrna_features: bool,
-    pub show_tfbs: bool,
-    pub regulatory_tracks_near_baseline: bool,
-    pub regulatory_feature_max_view_span_bp: usize,
-    pub tfbs_display_use_llr_bits: bool,
-    pub tfbs_display_min_llr_bits: f64,
-    pub tfbs_display_use_llr_quantile: bool,
-    pub tfbs_display_min_llr_quantile: f64,
-    pub tfbs_display_use_true_log_odds_bits: bool,
-    pub tfbs_display_min_true_log_odds_bits: f64,
-    pub tfbs_display_use_true_log_odds_quantile: bool,
-    pub tfbs_display_min_true_log_odds_quantile: f64,
-    pub vcf_display_show_snp: bool,
-    pub vcf_display_show_ins: bool,
-    pub vcf_display_show_del: bool,
-    pub vcf_display_show_sv: bool,
-    pub vcf_display_show_other: bool,
-    pub vcf_display_pass_only: bool,
-    pub vcf_display_use_min_qual: bool,
-    pub vcf_display_min_qual: f64,
-    pub vcf_display_use_max_qual: bool,
-    pub vcf_display_max_qual: f64,
-    #[serde(default)]
-    pub vcf_display_required_info_keys: Vec<String>,
-    pub show_restriction_enzymes: bool,
-    #[serde(default)]
-    pub restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode,
-    #[serde(default = "DisplaySettings::default_preferred_restriction_enzymes")]
-    pub preferred_restriction_enzymes: Vec<String>,
-    pub show_gc_contents: bool,
-    #[serde(default = "DisplaySettings::default_gc_content_bin_size_bp")]
-    pub gc_content_bin_size_bp: usize,
-    pub show_open_reading_frames: bool,
-    pub show_methylation_sites: bool,
-    pub linear_view_start_bp: usize,
-    pub linear_view_span_bp: usize,
-    pub linear_view_vertical_offset_px: f32,
-    pub linear_sequence_base_text_max_view_span_bp: usize,
-    pub linear_sequence_helical_letters_enabled: bool,
-    pub linear_sequence_helical_max_view_span_bp: usize,
-    #[serde(default = "DisplaySettings::default_linear_sequence_condensed_max_view_span_bp")]
-    pub linear_sequence_condensed_max_view_span_bp: usize,
-    #[serde(default)]
-    pub linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
-    pub linear_sequence_helical_phase_offset_bp: usize,
-    pub linear_show_double_strand_bases: bool,
-    #[serde(default = "DisplaySettings::default_linear_helical_parallel_strands")]
-    pub linear_helical_parallel_strands: bool,
-    pub linear_hide_backbone_when_sequence_bases_visible: bool,
-    pub linear_reverse_strand_use_upside_down_letters: bool,
-    #[serde(default = "DisplaySettings::default_reverse_strand_visual_opacity")]
-    pub reverse_strand_visual_opacity: f32,
-    pub feature_details_font_size: f32,
-    pub linear_external_feature_label_font_size: f32,
-    pub linear_external_feature_label_background_opacity: f32,
-}
-
-impl DisplaySettings {
-    pub const fn default_sequence_panel_max_text_length_bp() -> usize {
-        200_000
-    }
-
-    pub const fn default_gc_content_bin_size_bp() -> usize {
-        100
-    }
-
-    pub const fn default_linear_sequence_condensed_max_view_span_bp() -> usize {
-        1500
-    }
-
-    pub const fn default_linear_helical_parallel_strands() -> bool {
-        true
-    }
-
-    pub const fn default_reverse_strand_visual_opacity() -> f32 {
-        0.55
-    }
-
-    pub fn default_preferred_restriction_enzymes() -> Vec<String> {
-        default_preferred_restriction_enzyme_names()
-    }
-}
-
-impl Default for DisplaySettings {
-    fn default() -> Self {
-        Self {
-            show_sequence_panel: true,
-            sequence_panel_max_text_length_bp: Self::default_sequence_panel_max_text_length_bp(),
-            auto_hide_sequence_panel_when_linear_bases_visible: false,
-            show_map_panel: true,
-            show_features: true,
-            show_cds_features: true,
-            show_gene_features: true,
-            show_mrna_features: true,
-            show_tfbs: false,
-            regulatory_tracks_near_baseline: false,
-            regulatory_feature_max_view_span_bp: 50_000,
-            tfbs_display_use_llr_bits: true,
-            tfbs_display_min_llr_bits: 0.0,
-            tfbs_display_use_llr_quantile: true,
-            tfbs_display_min_llr_quantile: 0.95,
-            tfbs_display_use_true_log_odds_bits: false,
-            tfbs_display_min_true_log_odds_bits: 0.0,
-            tfbs_display_use_true_log_odds_quantile: false,
-            tfbs_display_min_true_log_odds_quantile: 0.95,
-            vcf_display_show_snp: true,
-            vcf_display_show_ins: true,
-            vcf_display_show_del: true,
-            vcf_display_show_sv: true,
-            vcf_display_show_other: true,
-            vcf_display_pass_only: false,
-            vcf_display_use_min_qual: false,
-            vcf_display_min_qual: 0.0,
-            vcf_display_use_max_qual: false,
-            vcf_display_max_qual: 0.0,
-            vcf_display_required_info_keys: vec![],
-            show_restriction_enzymes: true,
-            restriction_enzyme_display_mode: RestrictionEnzymeDisplayMode::default(),
-            preferred_restriction_enzymes: Self::default_preferred_restriction_enzymes(),
-            show_gc_contents: true,
-            gc_content_bin_size_bp: Self::default_gc_content_bin_size_bp(),
-            show_open_reading_frames: false,
-            show_methylation_sites: false,
-            linear_view_start_bp: 0,
-            linear_view_span_bp: 0,
-            linear_view_vertical_offset_px: 0.0,
-            linear_sequence_base_text_max_view_span_bp: 500,
-            linear_sequence_helical_letters_enabled: true,
-            linear_sequence_helical_max_view_span_bp: 2000,
-            linear_sequence_condensed_max_view_span_bp:
-                Self::default_linear_sequence_condensed_max_view_span_bp(),
-            linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::AutoAdaptive,
-            linear_sequence_helical_phase_offset_bp: 0,
-            linear_show_double_strand_bases: true,
-            linear_helical_parallel_strands: Self::default_linear_helical_parallel_strands(),
-            linear_hide_backbone_when_sequence_bases_visible: false,
-            linear_reverse_strand_use_upside_down_letters: true,
-            reverse_strand_visual_opacity: Self::default_reverse_strand_visual_opacity(),
-            feature_details_font_size: 9.0,
-            linear_external_feature_label_font_size: 11.0,
-            linear_external_feature_label_background_opacity: 0.9,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
