@@ -506,7 +506,7 @@ impl GentleEngine {
 
     fn qualifier_text_for_derivation(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
             .map(|value| value.trim().to_string())
             .find(|value| !value.is_empty())
@@ -780,7 +780,7 @@ impl GentleEngine {
             }
         }
         derived.features_mut().push(gb_io::seq::Feature {
-            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: gb_io::seq::Location::simple_range(0, total_len as i64),
             qualifiers: transcript_qualifiers,
         });
@@ -814,7 +814,7 @@ impl GentleEngine {
                 }
             }
             derived.features_mut().push(gb_io::seq::Feature {
-                kind: gb_io::seq::FeatureKind::from("exon"),
+                kind: "exon".into(),
                 location: gb_io::seq::Location::simple_range(segment.2 as i64, segment.3 as i64),
                 qualifiers: exon_qualifiers,
             });
@@ -3667,7 +3667,7 @@ impl GentleEngine {
                             transcript_qualifiers.push(("strand".into(), Some(strand.to_string())));
                         }
                         exon_dna.features_mut().push(gb_io::seq::Feature {
-                            kind: gb_io::seq::FeatureKind::from("mRNA"),
+                            kind: "mRNA".into(),
                             location: gb_io::seq::Location::simple_range(0, sequence_len as i64),
                             qualifiers: transcript_qualifiers,
                         });
@@ -3709,7 +3709,7 @@ impl GentleEngine {
                             qualifiers.push(("strand".into(), Some(strand.to_string())));
                         }
                         exon_dna.features_mut().push(gb_io::seq::Feature {
-                            kind: gb_io::seq::FeatureKind::from("exon"),
+                            kind: "exon".into(),
                             location: gb_io::seq::Location::simple_range(
                                 block.local_start_0based as i64,
                                 block.local_end_0based_exclusive as i64,

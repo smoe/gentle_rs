@@ -2618,7 +2618,7 @@ impl RenderDnaLinear {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gb_io::seq::{FeatureKind, Location};
+    use gb_io::seq::Location;
 
     fn make_test_feature(location: Location) -> Feature {
         make_test_feature_with_kind("mRNA", location)
@@ -2626,7 +2626,7 @@ mod tests {
 
     fn make_test_feature_with_kind(kind: &str, location: Location) -> Feature {
         Feature {
-            kind: FeatureKind::from(kind),
+            kind: kind.to_string().into(),
             location,
             qualifiers: vec![("label".into(), Some("tp73 transcript".to_string()))],
         }
@@ -2763,7 +2763,7 @@ mod tests {
     #[test]
     fn reverse_gene_and_mrna_stack_below_baseline_with_gene_nearer_dna() {
         let gene = Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(120, 310),
             qualifiers: vec![
                 ("label".into(), Some("NEG1".to_string())),
@@ -2771,7 +2771,7 @@ mod tests {
             ],
         };
         let mrna = Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Complement(Box::new(Location::Join(vec![
                 Location::simple_range(120, 180),
                 Location::simple_range(240, 310),
@@ -2997,7 +2997,7 @@ mod tests {
     #[test]
     fn narrow_mcs_misc_feature_survives_overview_pruning() {
         let mcs_feature = Feature {
-            kind: FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location: Location::simple_range(1_000, 1_020),
             qualifiers: vec![
                 ("label".into(), Some("MCS (pUC19)".to_string())),
@@ -3005,7 +3005,7 @@ mod tests {
             ],
         };
         let generic_misc_feature = Feature {
-            kind: FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location: Location::simple_range(2_000, 2_020),
             qualifiers: vec![("label".into(), Some("generic misc feature".to_string()))],
         };

@@ -13,25 +13,25 @@ use super::*;
 impl GentleEngine {
     pub(super) fn is_generated_genome_bed_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
     }
 
     pub(super) fn is_generated_genome_bigwig_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case(GENOME_BIGWIG_TRACK_GENERATED_TAG))
     }
 
     pub(super) fn is_generated_genome_vcf_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case(GENOME_VCF_TRACK_GENERATED_TAG))
     }
 
     pub(super) fn is_generated_blast_hit_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case(BLAST_HIT_TRACK_GENERATED_TAG))
     }
 
@@ -434,7 +434,7 @@ impl GentleEngine {
         };
 
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("track"),
+            kind: "track".into(),
             location,
             qualifiers,
         }
@@ -604,7 +604,7 @@ impl GentleEngine {
         }
 
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("track"),
+            kind: "track".into(),
             location: gb_io::seq::Location::simple_range(
                 local_start_0based as i64,
                 local_end_0based_exclusive as i64,
@@ -692,7 +692,7 @@ impl GentleEngine {
         };
 
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("track"),
+            kind: "track".into(),
             location,
             qualifiers,
         }

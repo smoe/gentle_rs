@@ -58,7 +58,7 @@ fn feature_name(feature: &Feature) -> String {
         "region_name",
         "bound_moiety",
     ] {
-        if let Some(s) = feature.qualifier_values(k.into()).next() {
+        if let Some(s) = feature.qualifier_values(k).next() {
             let label_text = s.to_string();
             if !label_text.trim().is_empty() {
                 return label_text;
@@ -120,7 +120,7 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
 
 fn is_track_feature(feature: &Feature) -> bool {
     feature
-        .qualifier_values("gentle_generated".into())
+        .qualifier_values("gentle_generated")
         .any(|value| {
             matches!(
                 value.trim().to_ascii_lowercase().as_str(),
@@ -131,7 +131,7 @@ fn is_track_feature(feature: &Feature) -> bool {
 
 fn is_vcf_track_feature(feature: &Feature) -> bool {
     feature
-        .qualifier_values("gentle_generated".into())
+        .qualifier_values("gentle_generated")
         .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
 }
 
@@ -143,7 +143,7 @@ fn has_regulatory_hint(feature: &Feature) -> bool {
         "note",
         "label",
     ] {
-        for value in feature.qualifier_values(key.into()) {
+        for value in feature.qualifier_values(key) {
             let lower = value.to_ascii_lowercase();
             if lower.contains("regulatory")
                 || lower.contains("enhancer")
@@ -170,14 +170,14 @@ fn is_regulatory_feature(feature: &Feature) -> bool {
 
 fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
     feature
-        .qualifier_values(key.into())
+        .qualifier_values(key)
         .next()
         .and_then(|v| v.trim().parse::<f64>().ok())
 }
 
 fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
     feature
-        .qualifier_values(key.into())
+        .qualifier_values(key)
         .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
         .map(|value| value.trim().to_string())
         .find(|value| !value.is_empty())
@@ -1159,7 +1159,7 @@ mod tests {
         engine::{DisplaySettings, RestrictionEnzymeDisplayMode},
         enzymes::active_restriction_enzymes,
     };
-    use gb_io::{FeatureKind, seq::Location};
+    use gb_io::seq::Location;
     #[cfg(feature = "snapshot-tests")]
     use std::fs;
 
@@ -1171,7 +1171,7 @@ mod tests {
         llr_bits: f64,
     ) {
         dna.features_mut().push(gb_io::seq::Feature {
-            kind: FeatureKind::from("TFBS"),
+            kind: "TFBS".into(),
             location: Location::simple_range(start as i64, end as i64),
             qualifiers: vec![
                 ("label".into(), Some(label.to_string())),
@@ -1194,7 +1194,7 @@ mod tests {
         info: &str,
     ) {
         dna.features_mut().push(gb_io::seq::Feature {
-            kind: FeatureKind::from("track"),
+            kind: "track".into(),
             location: Location::simple_range(start as i64, end as i64),
             qualifiers: vec![
                 ("label".into(), Some(label.to_string())),

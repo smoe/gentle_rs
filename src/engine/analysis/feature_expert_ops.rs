@@ -17,7 +17,7 @@ impl GentleEngine {
         key: &str,
     ) -> Option<String> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
             .map(|value| value.trim().to_string())
             .find(|value| !value.is_empty())
@@ -25,7 +25,7 @@ impl GentleEngine {
 
     pub(super) fn feature_qualifier_f64(feature: &gb_io::seq::Feature, key: &str) -> Option<f64> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .next()
             .and_then(|v| v.trim().parse::<f64>().ok())
     }

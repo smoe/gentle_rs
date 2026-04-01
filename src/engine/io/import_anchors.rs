@@ -231,7 +231,7 @@ impl GentleEngine {
                 continue;
             }
             for key in ["mol_type", "molecule_type"] {
-                if let Some(value) = feature.qualifier_values(key.into()).next() {
+                if let Some(value) = feature.qualifier_values(key).next() {
                     let v = value.to_ascii_lowercase();
                     if v.contains("synthetic") {
                         return SequenceOrigin::ImportedSynthetic;

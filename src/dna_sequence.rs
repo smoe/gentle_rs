@@ -904,9 +904,9 @@ fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
 fn parse_embl_record(lines: &[String]) -> Result<Seq> {
     #[derive(Debug, Default)]
     struct PendingEmblFeature {
-        kind: Option<gb_io::seq::FeatureKind>,
+        kind: Option<std::borrow::Cow<'static, str>>,
         location_text: String,
-        qualifiers: Vec<(gb_io::seq::QualifierKey, Option<String>)>,
+        qualifiers: Vec<gb_io::seq::Qualifier>,
         last_qualifier_index: Option<usize>,
     }
 
@@ -918,7 +918,7 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
                 } else {
                     (raw_qualifier.trim(), None)
                 };
-                self.qualifiers.push((qk.into(), qv));
+                self.qualifiers.push((qk.to_string().into(), qv));
                 self.last_qualifier_index = Some(self.qualifiers.len().saturating_sub(1));
             } else if let Some(idx) = self.last_qualifier_index {
                 if let Some(existing) = self.qualifiers.get_mut(idx).and_then(|(_, v)| v.as_mut()) {
@@ -1035,7 +1035,7 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
                 seq.features.push(feature.into_feature()?);
             }
             current_feature = Some(PendingEmblFeature {
-                kind: Some(gb_io::seq::FeatureKind::from(key)),
+                kind: Some(key.to_string().into()),
                 location_text: value.trim().to_string(),
                 qualifiers: vec![],
                 last_qualifier_index: None,
@@ -1299,7 +1299,7 @@ mod tests {
             .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
             .filter_map(|feature| {
                 feature
-                    .qualifier_values("gene".into())
+                    .qualifier_values("gene")
                     .next()
                     .map(|value| value.to_string())
             })
@@ -1368,7 +1368,7 @@ mod tests {
             })
             .expect("second record should contain a misc_feature");
         let note = second_misc
-            .qualifier_values("note".into())
+            .qualifier_values("note")
             .next()
             .unwrap_or_default();
         assert!(note.contains("line one"));
@@ -1497,7 +1497,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             "canonical location formatting should preserve both joined intervals"
         );
         assert!(
-            gene.qualifier_values("gene".into())
+            gene.qualifier_values("gene")
                 .any(|value| value == "g1"),
             "gene qualifier should be parsed"
         );
@@ -1513,7 +1513,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             })
             .expect("misc_feature");
         let note = misc
-            .qualifier_values("note".into())
+            .qualifier_values("note")
             .next()
             .unwrap_or_default();
         assert!(
@@ -1640,22 +1640,22 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             .expect("expected at least one regulatory feature");
         assert!(
             regulatory
-                .qualifier_values("regulatory_class".into())
+                .qualifier_values("regulatory_class")
                 .any(|value| !value.trim().is_empty())
         );
         assert!(
             regulatory
-                .qualifier_values("function".into())
+                .qualifier_values("function")
                 .any(|value| value.to_ascii_lowercase().contains("promoter"))
         );
         assert!(
             regulatory
-                .qualifier_values("experiment".into())
+                .qualifier_values("experiment")
                 .any(|value| value.to_ascii_lowercase().contains("reporter gene assay"))
         );
         assert!(
             regulatory
-                .qualifier_values("db_xref".into())
+                .qualifier_values("db_xref")
                 .any(|value| value.contains("GeneID:"))
         );
     }
@@ -1814,7 +1814,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
     fn test_extract_region_preserving_features_linear() {
         let mut dna = DNAsequence::from("ATGCATGCATGC".to_string());
         dna.features_mut().push(gb_io::seq::Feature {
-            kind: gb_io::seq::FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: gb_io::seq::Location::simple_range(2, 8),
             qualifiers: vec![],
         });
@@ -1837,7 +1837,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
         let mut dna = DNAsequence::from("ATGCATGCAT".to_string());
         dna.set_circular(true);
         dna.features_mut().push(gb_io::seq::Feature {
-            kind: gb_io::seq::FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: gb_io::seq::Location::simple_range(8, 9),
             qualifiers: vec![],
         });

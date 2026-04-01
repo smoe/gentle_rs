@@ -668,11 +668,11 @@ fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<Gibs
     let mut hints = vec![];
     for feature in dna.features() {
         let mcs_hint = feature
-            .qualifier_values("mcs_expected_sites".into())
+            .qualifier_values("mcs_expected_sites")
             .next()
             .is_some()
             || feature
-                .qualifier_values("mcs_preset".into())
+                .qualifier_values("mcs_preset")
                 .next()
                 .is_some()
             || feature_first_nonempty_qualifier(
@@ -702,7 +702,7 @@ fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<Gibs
 
         let mut candidate_enzymes = vec![];
         let mut seen_candidates = HashSet::new();
-        for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+        for raw in feature.qualifier_values("mcs_expected_sites") {
             for token in raw
                 .split(',')
                 .map(str::trim)
@@ -722,7 +722,7 @@ fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<Gibs
             }
         }
         for key in ["note", "label", "gene", "name", "standard_name"] {
-            for raw in feature.qualifier_values(key.into()) {
+            for raw in feature.qualifier_values(key) {
                 for name in extract_rebase_enzyme_names_from_text(raw, &lookup) {
                     if seen_candidates.insert(name.clone()) && available_sites.contains(&name) {
                         candidate_enzymes.push(name);
@@ -826,7 +826,7 @@ fn feature_first_nonempty_qualifier(
     keys: &[&str],
 ) -> Option<String> {
     for key in keys {
-        for value in feature.qualifier_values((*key).into()) {
+        for value in feature.qualifier_values(*key) {
             let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
             let normalized = normalized.trim().to_string();
             if !normalized.is_empty() {
@@ -1874,11 +1874,11 @@ fn unwrap_single_complement(location: Location) -> Option<Location> {
 
 fn feature_looks_like_mcs(feature: &Feature) -> bool {
     feature
-        .qualifier_values("mcs_expected_sites".into())
+        .qualifier_values("mcs_expected_sites")
         .next()
         .is_some()
         || feature
-            .qualifier_values("mcs_preset".into())
+            .qualifier_values("mcs_preset")
             .next()
             .is_some()
         || feature_first_nonempty_qualifier(
@@ -1990,7 +1990,7 @@ fn rewrite_mcs_feature_qualifiers(
     );
 
     let mut note = feature
-        .qualifier_values("note".into())
+        .qualifier_values("note")
         .next()
         .unwrap_or_default()
         .trim()
@@ -2013,7 +2013,7 @@ fn rewrite_mcs_feature_qualifiers(
 fn current_mcs_expected_sites(feature: &Feature, lookup: &HashMap<String, String>) -> Vec<String> {
     let mut out = vec![];
     let mut seen = HashSet::new();
-    for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+    for raw in feature.qualifier_values("mcs_expected_sites") {
         for token in raw
             .split(',')
             .map(str::trim)
@@ -2066,7 +2066,7 @@ fn feature_contains_site_span(
 }
 
 fn upsert_feature_qualifier(feature: &mut Feature, key: &str, value: Option<String>) {
-    let qualifier_key = key.into();
+    let qualifier_key = key.to_string().into();
     feature
         .qualifiers
         .retain(|(existing_key, _)| existing_key.as_ref() != key);
@@ -5003,7 +5003,7 @@ mod tests {
         enzymes::active_restriction_enzymes,
         feature_location::{feature_is_reverse, feature_ranges_sorted_i64},
     };
-    use gb_io::seq::{Feature, FeatureKind, Location};
+    use gb_io::seq::{Feature, Location};
 
     fn test_engine_with_sequences() -> GentleEngine {
         let mut engine = GentleEngine::new();
@@ -5242,7 +5242,7 @@ mod tests {
 
     fn feature_qualifier(feature: &Feature, key: &str) -> Option<String> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .next()
             .map(str::to_string)
     }
@@ -5404,12 +5404,12 @@ mod tests {
         let mut dna = restriction_ready_dna("TTTGGATCCAAACCCGGGTTTGAATTCTTT");
         dna.set_circular(true);
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(10, 20),
             qualifiers: vec![("gene".into(), Some("bla".to_string()))],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location: Location::simple_range(3, 21),
             qualifiers: vec![
                 (
@@ -5812,27 +5812,27 @@ mod tests {
                 .get_mut("destination_vector")
                 .expect("destination sequence");
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(2, 8),
                 qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(26, 32),
                 qualifiers: vec![("label".into(), Some("RIGHT".to_string()))],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(8, 14),
                 qualifiers: vec![("label".into(), Some("LEFT_PARTIAL".to_string()))],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(16, 24),
                 qualifiers: vec![("label".into(), Some("RIGHT_PARTIAL".to_string()))],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::Join(vec![
                     Location::simple_range(40, 48),
                     Location::simple_range(0, 2),
@@ -5840,7 +5840,7 @@ mod tests {
                 qualifiers: vec![("label".into(), Some("WRAP".to_string()))],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("misc_feature"),
+                kind: "misc_feature".into(),
                 location: Location::simple_range(10, 20),
                 qualifiers: vec![
                     (
@@ -5852,7 +5852,7 @@ mod tests {
                 ],
             });
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(6, 24),
                 qualifiers: vec![("label".into(), Some("SPAN".to_string()))],
             });
@@ -5864,7 +5864,7 @@ mod tests {
                 .get_mut("insert_x_amplicon")
                 .expect("insert sequence");
             insert.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(4, 10),
                 qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
             });
@@ -5937,7 +5937,7 @@ mod tests {
                 .expect("destination");
         destination.set_circular(true);
         destination.features_mut().push(Feature {
-            kind: FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location: Location::simple_range(20, 30),
             qualifiers: vec![
                 (
@@ -6078,7 +6078,7 @@ mod tests {
                 .expect("destination sequence");
             destination.set_circular(false);
             destination.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(5, 11),
                 qualifiers: vec![("label".into(), Some("DEST_LINEAR".to_string()))],
             });
@@ -6090,7 +6090,7 @@ mod tests {
                 .get_mut("insert_x_amplicon")
                 .expect("insert sequence");
             insert.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(3, 9),
                 qualifiers: vec![("label".into(), Some("INSERT_LINEAR".to_string()))],
             });
@@ -6160,7 +6160,7 @@ mod tests {
                 .get_mut("insert_x_amplicon")
                 .expect("insert sequence");
             insert.features_mut().push(Feature {
-                kind: FeatureKind::from("gene"),
+                kind: "gene".into(),
                 location: Location::simple_range(4, 10),
                 qualifiers: vec![("label".into(), Some("INSERT_REVERSE".to_string()))],
             });

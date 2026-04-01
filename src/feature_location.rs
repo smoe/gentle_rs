@@ -51,7 +51,7 @@ fn location_contains_complement(location: &Location) -> bool {
 }
 
 fn feature_strand_qualifier_is_reverse(feature: &Feature) -> Option<bool> {
-    for value in feature.qualifier_values("strand".into()) {
+    for value in feature.qualifier_values("strand") {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
             "-" | "-1" | "minus" | "reverse" => return Some(true),
@@ -160,11 +160,10 @@ pub fn unwrap_ranges_monotonic(seq_len: i64, ranges: &[(i64, i64)]) -> Vec<(i64,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gb_io::seq::FeatureKind;
 
     fn make_feature(location: Location) -> Feature {
         Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location,
             qualifiers: vec![],
         }
@@ -191,7 +190,7 @@ mod tests {
     #[test]
     fn falls_back_to_strand_qualifier_when_location_lacks_complement() {
         let feature = Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(10, 20),
             qualifiers: vec![("strand".into(), Some("-".to_string()))],
         };
@@ -201,7 +200,7 @@ mod tests {
     #[test]
     fn explicit_complement_location_wins_over_conflicting_qualifier() {
         let feature = Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::Complement(Box::new(Location::simple_range(10, 20))),
             qualifiers: vec![("strand".into(), Some("+".to_string()))],
         };

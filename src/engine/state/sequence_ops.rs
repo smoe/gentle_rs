@@ -1663,7 +1663,7 @@ impl GentleEngine {
 
     pub(super) fn is_generated_tfbs_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case("tfbs"))
     }
 
@@ -1729,7 +1729,7 @@ impl GentleEngine {
             }
         }
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("TFBS"),
+            kind: "TFBS".into(),
             location,
             qualifiers,
         }
@@ -1895,7 +1895,7 @@ impl GentleEngine {
             "standard_name",
             "note",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let v = value.trim();
                 if !v.is_empty() {
                     labels.push(v.to_string());

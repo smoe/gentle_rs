@@ -5,7 +5,7 @@
 //! with explicit diagnostics so import behavior stays deterministic.
 
 use anyhow::{Result, anyhow};
-use gb_io::seq::{Feature, FeatureKind, Location, Seq, Topology};
+use gb_io::seq::{Feature, Location, Seq, Topology};
 use serde::Deserialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,7 +201,7 @@ fn parse_features(record: &GbSeqXml, seq_label: &str) -> Result<Vec<Feature>> {
     for (feature_idx, raw_feature) in feature_table.features.iter().enumerate() {
         let feature_key = nonempty_owned(raw_feature.key.as_deref())
             .unwrap_or_else(|| "misc_feature".to_string());
-        let feature_kind = FeatureKind::from(feature_key.as_str());
+        let feature_kind = feature_key.clone().into();
         let location_text = resolve_feature_location_text(raw_feature).ok_or_else(|| {
             anyhow!(
                 "GBSeq '{}' feature #{} ('{}') is missing location",
@@ -278,7 +278,7 @@ fn location_from_intervals(intervals: &[GbIntervalXml]) -> Option<String> {
     }
 }
 
-fn parse_qualifiers(feature: &GbFeatureXml) -> Vec<(gb_io::seq::QualifierKey, Option<String>)> {
+fn parse_qualifiers(feature: &GbFeatureXml) -> Vec<gb_io::seq::Qualifier> {
     let mut qualifiers = vec![];
     let Some(raw_quals) = feature.qualifiers.as_ref() else {
         return qualifiers;

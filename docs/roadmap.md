@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-31
+Last updated: 2026-04-01
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -92,12 +92,15 @@ order. Durable architecture constraints and decisions remain in
   refactors, cargo-doc output, and AI/code-search triage can reach the right
   file faster instead of treating the split modules as anonymous shards.
 - Dependency note:
-  - `gb-io` is still intentionally sourced from the `nom-7` git branch for now
-  - a trial migration to crates.io `gb-io 0.9.0` is not a drop-in update:
-    `Feature.kind` and qualifier-key APIs move to `Cow<'static, str>` and
-    break a broad set of engine/render/test call sites
-  - treat `gb-io 0.9.x` adoption as a dedicated compatibility pass, not as part
-    of unrelated lockfile or Docker/CI maintenance
+  - GENtle now consumes released crates.io `gb-io 0.9.0` directly instead of
+    the older `nom-7` git branch
+  - the temporary local compatibility shim used during the transition has now
+    been removed again; GENtle call sites were updated onto the upstream
+    `Cow<'static, str>` / `&str` feature-kind and qualifier lookup model
+  - dynamic feature-kind and qualifier-key creation sites now explicitly own
+    their strings where needed (`String -> Cow<'static, str>`) so EMBL/XML
+    import and downstream render/engine paths stay deterministic under
+    `gb-io 0.9.x`
 - Engine-shell agent recursion guardrail is now hardened transitively:
   - nested `agents ask` invocations are blocked not only as direct suggested
     commands, but also when they are wrapped inside `macros run` or expanded

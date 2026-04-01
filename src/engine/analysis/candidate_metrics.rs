@@ -153,7 +153,7 @@ impl GentleEngine {
             "standard_name",
             "note",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let trimmed = value.trim();
                 if !trimmed.is_empty() {
                     labels.push(trimmed.to_ascii_uppercase());

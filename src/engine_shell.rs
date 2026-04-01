@@ -2798,7 +2798,7 @@ fn sequence_anchor_matches_filter(
             "standard_name",
             "note",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let upper = value.to_ascii_uppercase();
                 if upper == expected || upper.contains(&expected) {
                     found = true;

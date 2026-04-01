@@ -7343,13 +7343,13 @@ impl GentleEngine {
 
     fn is_generated_helper_mcs_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|v| v.eq_ignore_ascii_case(HELPER_MCS_GENERATED_TAG))
     }
 
     fn feature_has_qualifier_value(feature: &gb_io::seq::Feature, key: &str, value: &str) -> bool {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .any(|entry| entry.trim().eq_ignore_ascii_case(value))
     }
 
@@ -7482,7 +7482,7 @@ impl GentleEngine {
             ));
         }
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location,
             qualifiers: vec![
                 ("label".into(), Some(format!("MCS ({preset})"))),
@@ -7670,7 +7670,7 @@ impl GentleEngine {
             }
         }
         let mut feature = gb_io::seq::Feature {
-            kind: gb_io::seq::FeatureKind::from("gene"),
+            kind: "gene".into(),
             location,
             qualifiers,
         };
@@ -7724,7 +7724,7 @@ impl GentleEngine {
                 qualifiers.push(("strand".into(), Some(strand.to_string())));
             }
             let mut feature = gb_io::seq::Feature {
-                kind: gb_io::seq::FeatureKind::from("exon"),
+                kind: "exon".into(),
                 location,
                 qualifiers,
             };
@@ -7769,7 +7769,7 @@ impl GentleEngine {
                 qualifiers.push(("strand".into(), Some(strand.to_string())));
             }
             let mut feature = gb_io::seq::Feature {
-                kind: gb_io::seq::FeatureKind::from("CDS"),
+                kind: "CDS".into(),
                 location,
                 qualifiers,
             };
@@ -8009,7 +8009,7 @@ impl GentleEngine {
         }
 
         let mut feature = gb_io::seq::Feature {
-            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location,
             qualifiers,
         };
@@ -8616,7 +8616,7 @@ impl GentleEngine {
             "product",
             "note",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let trimmed = value.trim();
                 if trimmed.is_empty() {
                     continue;
@@ -8916,7 +8916,7 @@ impl GentleEngine {
 
             let qualifiers_ok = qualifier_filters.iter().all(|(filter, regex)| {
                 let values = feature
-                    .qualifier_values(filter.key.as_str().into())
+                    .qualifier_values(filter.key.as_str())
                     .map(|value| value.trim().to_string())
                     .filter(|value| !value.is_empty())
                     .collect::<Vec<_>>();

@@ -79,10 +79,7 @@ quick-xml = { version = "0.37", features = ["serialize"] }
 bio = "*"
 csv = "^1"
 itertools = "*"
-# gb-io = "*" # Until nom-7 is merged and published
-gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7", features = [
-	"serde",
-] }
+gb-io = { version = "0.9.0", features = ["serde"] }
 svg = "*"
 rayon = "*"
 anyhow = "*"

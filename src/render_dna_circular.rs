@@ -1409,11 +1409,11 @@ impl RenderDnaCircular {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gb_io::seq::{FeatureKind, Location};
+    use gb_io::seq::Location;
 
     fn make_test_feature(location: Location) -> Feature {
         Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location,
             qualifiers: vec![("label".into(), Some("tp73 isoform".to_string()))],
         }

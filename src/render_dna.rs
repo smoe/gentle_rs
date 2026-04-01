@@ -325,7 +325,7 @@ impl RenderDna {
 
     pub fn is_track_feature(feature: &Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|value| {
                 matches!(
                     value.trim().to_ascii_lowercase().as_str(),
@@ -339,7 +339,7 @@ impl RenderDna {
 
     pub fn is_vcf_track_feature(feature: &Feature) -> bool {
         feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
     }
 
@@ -351,7 +351,7 @@ impl RenderDna {
             "note",
             "label",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let lower = value.to_ascii_lowercase();
                 if lower.contains("regulatory")
                     || lower.contains("enhancer")
@@ -399,7 +399,7 @@ impl RenderDna {
 
     fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
             .map(|value| value.trim().to_string())
             .find(|value| !value.is_empty())
@@ -407,14 +407,14 @@ impl RenderDna {
 
     fn feature_has_qualifier(feature: &Feature, key: &str) -> bool {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .map(|value| value.trim())
             .any(|value| !value.is_empty())
     }
 
     fn feature_has_qualifier_value(feature: &Feature, key: &str, expected: &str) -> bool {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .any(|value| value.trim().eq_ignore_ascii_case(expected))
     }
 
@@ -494,7 +494,7 @@ impl RenderDna {
             "enzyme_name",
             "rebase_enzyme",
         ] {
-            if feature.qualifier_values(key.into()).next().is_some() {
+            if feature.qualifier_values(key).next().is_some() {
                 return true;
             }
         }
@@ -587,7 +587,7 @@ impl RenderDna {
 
     fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
         feature
-            .qualifier_values(key.into())
+            .qualifier_values(key)
             .next()
             .and_then(|v| v.trim().parse::<f64>().ok())
     }
@@ -778,7 +778,7 @@ impl RenderDna {
             "region_name",
             "bound_moiety",
         ] {
-            let label_text = match feature.qualifier_values(k.into()).next() {
+            let label_text = match feature.qualifier_values(k).next() {
                 Some(s) => s.to_owned(),
                 None => continue,
             };
@@ -841,7 +841,7 @@ impl RenderDna {
             ]
         };
         for key in keys {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
                 let normalized = normalized.trim();
                 if !normalized.is_empty() {
@@ -932,15 +932,15 @@ impl Widget for RenderDna {
 mod tests {
     use super::RenderDna;
     use eframe::egui::Color32;
-    use gb_io::seq::{Feature, FeatureKind, Location};
+    use gb_io::seq::{Feature, Location};
 
     fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
         Feature {
-            kind: FeatureKind::from(kind),
+            kind: kind.to_string().into(),
             location: Location::simple_range(0, 10),
             qualifiers: qualifiers
                 .iter()
-                .map(|(k, v)| ((*k).into(), Some((*v).to_string())))
+                .map(|(k, v)| ((*k).to_string().into(), Some((*v).to_string())))
                 .collect(),
         }
     }

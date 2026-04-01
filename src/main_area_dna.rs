@@ -918,7 +918,7 @@ mod tests {
         protocol_cartoon::pcr_oe_substitution_geometry_bindings,
     };
     use eframe::egui;
-    use gb_io::seq::{Feature, FeatureKind, Location};
+    use gb_io::seq::{Feature, Location};
     use serde_json::json;
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -931,11 +931,11 @@ mod tests {
 
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
-            kind: FeatureKind::from(kind),
+            kind: kind.to_string().into(),
             location: Location::simple_range(0, 10),
             qualifiers: qualifiers
                 .into_iter()
-                .map(|(key, value)| (key.into(), Some(value.to_string())))
+                .map(|(key, value)| (key.to_string().into(), Some(value.to_string())))
                 .collect(),
         }
     }
@@ -984,7 +984,7 @@ mod tests {
         let sequence = String::from_utf8(bases).expect("valid ASCII DNA");
         let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -997,7 +997,7 @@ mod tests {
             ],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(16, 20),
@@ -1222,7 +1222,7 @@ mod tests {
     fn use_mcs_enzymes_prefills_digest_from_mcs_feature() {
         let mut dna = restriction_ready_dna("TTTGAATTCTTTGGATCCTTT");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("misc_feature"),
+            kind: "misc_feature".into(),
             location: Location::simple_range(1, 5),
             qualifiers: vec![
                 (
@@ -1254,7 +1254,7 @@ mod tests {
             "A".repeat(20)
         ));
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("CDS"),
+            kind: "CDS".into(),
             location: Location::simple_range(20, 30),
             qualifiers: vec![("label".into(), Some("coding".to_string()))],
         });
@@ -1893,7 +1893,7 @@ mod tests {
     fn roi_coordinate_formula_resolves_feature_boundary_and_offset() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("CDS"),
+            kind: "CDS".into(),
             location: Location::simple_range(20, 80),
             qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
         });
@@ -1914,7 +1914,7 @@ mod tests {
     fn roi_range_formula_in_start_field_resolves_both_coordinates() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("CDS"),
+            kind: "CDS".into(),
             location: Location::simple_range(20, 80),
             qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
         });
@@ -1931,7 +1931,7 @@ mod tests {
     fn queue_current_primer_roi_fields_supports_range_formula() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("CDS"),
+            kind: "CDS".into(),
             location: Location::simple_range(20, 80),
             qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
         });
@@ -1954,7 +1954,7 @@ mod tests {
     fn selection_formula_applies_current_selection_range() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("CDS"),
+            kind: "CDS".into(),
             location: Location::simple_range(20, 100),
             qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
         });
@@ -1970,12 +1970,12 @@ mod tests {
     fn selection_formula_supports_label_filter_and_occurrence() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(10, 40),
             qualifiers: vec![("label".into(), Some("TP73".to_string()))],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(80, 140),
             qualifiers: vec![("label".into(), Some("TP73".to_string()))],
         });
@@ -2085,12 +2085,12 @@ mod tests {
     fn queue_selected_features_adds_multiple_regions() {
         let mut dna = DNAsequence::from_sequence(&"A".repeat(500)).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(25, 120),
             qualifiers: vec![("label".into(), Some("f1".to_string()))],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(180, 260),
             qualifiers: vec![("label".into(), Some("f2".to_string()))],
         });
@@ -3161,7 +3161,7 @@ mod tests {
     fn seed_anchored_promoter_from_forward_mrna_feature_uses_start_and_upstream() {
         let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::simple_range(10, 40),
             qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
         });
@@ -3181,7 +3181,7 @@ mod tests {
     fn seed_anchored_promoter_from_reverse_mrna_feature_uses_end_and_downstream() {
         let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Complement(Box::new(Location::simple_range(10, 40))),
             qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
         });
@@ -4098,7 +4098,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -4133,7 +4133,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(2, 34),
             qualifiers: vec![
                 ("gene".into(), Some("GENE1".to_string())),
@@ -4141,7 +4141,7 @@ mod tests {
             ],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -4177,7 +4177,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(2, 34),
             qualifiers: vec![
                 ("gene".into(), Some("GENE1".to_string())),
@@ -4185,7 +4185,7 @@ mod tests {
             ],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -5783,7 +5783,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -5796,7 +5796,7 @@ mod tests {
             ],
         });
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("gene"),
+            kind: "gene".into(),
             location: Location::simple_range(2, 34),
             qualifiers: vec![
                 ("gene".into(), Some("GENE1".to_string())),
@@ -5826,7 +5826,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("misc_RNA"),
+            kind: "misc_RNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -5861,7 +5861,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -5892,7 +5892,7 @@ mod tests {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: "mRNA".into(),
             location: Location::Join(vec![
                 Location::simple_range(2, 8),
                 Location::simple_range(12, 20),
@@ -24417,7 +24417,7 @@ impl MainAreaDna {
             "standard_name",
             "note",
         ] {
-            for value in feature.qualifier_values(key.into()) {
+            for value in feature.qualifier_values(key) {
                 let value = value.trim();
                 if !value.is_empty() {
                     labels.push(value.to_string());
@@ -28194,11 +28194,11 @@ impl MainAreaDna {
 
         for feature in dna.features() {
             let mcs_hint = feature
-                .qualifier_values("mcs_expected_sites".into())
+                .qualifier_values("mcs_expected_sites")
                 .next()
                 .is_some()
                 || feature
-                    .qualifier_values("mcs_preset".into())
+                    .qualifier_values("mcs_preset")
                     .next()
                     .is_some()
                 || Self::feature_tree_first_nonempty_qualifier(
@@ -28212,7 +28212,7 @@ impl MainAreaDna {
             }
 
             let mut candidates = vec![];
-            for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+            for raw in feature.qualifier_values("mcs_expected_sites") {
                 for token in raw
                     .split(',')
                     .map(str::trim)
@@ -28227,7 +28227,7 @@ impl MainAreaDna {
                 }
             }
             for key in ["note", "label", "gene", "name", "standard_name"] {
-                for raw in feature.qualifier_values(key.into()) {
+                for raw in feature.qualifier_values(key) {
                     candidates.extend(Self::extract_rebase_enzyme_names_from_text(raw, &lookup));
                 }
             }
@@ -29306,7 +29306,7 @@ impl MainAreaDna {
         keys: &[&str],
     ) -> Option<String> {
         for key in keys {
-            for value in feature.qualifier_values((*key).into()) {
+            for value in feature.qualifier_values(*key) {
                 let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
                 let normalized = normalized.trim().to_string();
                 if !normalized.is_empty() {
@@ -29656,7 +29656,7 @@ impl MainAreaDna {
                 "transcript_variant",
                 "variant",
             ] {
-                for value in feature.qualifier_values(key.into()) {
+                for value in feature.qualifier_values(key) {
                     let trimmed = value.trim();
                     if !trimmed.is_empty() {
                         values.push(trimmed.to_string());
@@ -29669,19 +29669,19 @@ impl MainAreaDna {
                 .collect::<Vec<_>>()
         };
         let source_terms = feature
-            .qualifier_values("gentle_track_source".into())
+            .qualifier_values("gentle_track_source")
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
         let track_terms = feature
-            .qualifier_values("gentle_track_name".into())
-            .chain(feature.qualifier_values("name".into()))
-            .chain(feature.qualifier_values("label".into()))
+            .qualifier_values("gentle_track_name")
+            .chain(feature.qualifier_values("name"))
+            .chain(feature.qualifier_values("label"))
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
         let file_terms = feature
-            .qualifier_values("gentle_track_file".into())
+            .qualifier_values("gentle_track_file")
             .flat_map(|value| {
                 let mut values = Vec::new();
                 let trimmed = value.trim();
@@ -29696,8 +29696,8 @@ impl MainAreaDna {
             })
             .collect::<Vec<_>>();
         let note_terms = feature
-            .qualifier_values("note".into())
-            .chain(feature.qualifier_values("function".into()))
+            .qualifier_values("note")
+            .chain(feature.qualifier_values("function"))
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
@@ -29706,9 +29706,9 @@ impl MainAreaDna {
             kind_label.trim().to_ascii_lowercase(),
         ];
         let mut label_terms = feature
-            .qualifier_values("label".into())
-            .chain(feature.qualifier_values("name".into()))
-            .chain(feature.qualifier_values("gene".into()))
+            .qualifier_values("label")
+            .chain(feature.qualifier_values("name"))
+            .chain(feature.qualifier_values("gene"))
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();

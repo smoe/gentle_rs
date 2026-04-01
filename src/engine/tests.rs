@@ -112,7 +112,7 @@ fn splicing_test_sequence() -> DNAsequence {
     let sequence = String::from_utf8(bases).expect("valid ASCII DNA");
     let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(2, 8),
             gb_io::seq::Location::simple_range(12, 20),
@@ -125,7 +125,7 @@ fn splicing_test_sequence() -> DNAsequence {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(2, 8),
             gb_io::seq::Location::simple_range(16, 20),
@@ -143,7 +143,7 @@ fn splicing_test_sequence() -> DNAsequence {
 fn splicing_seed_feature_sequence() -> DNAsequence {
     let mut dna = splicing_test_sequence();
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(2, 34),
         qualifiers: vec![
             ("gene".into(), Some("GENE1".to_string())),
@@ -151,7 +151,7 @@ fn splicing_seed_feature_sequence() -> DNAsequence {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("CDS"),
+        kind: "CDS".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(2, 8),
             gb_io::seq::Location::simple_range(12, 20),
@@ -169,7 +169,7 @@ fn splicing_seed_feature_sequence() -> DNAsequence {
 fn splicing_misc_rna_sequence() -> DNAsequence {
     let mut dna = splicing_test_sequence();
     for feature in dna.features_mut().iter_mut() {
-        feature.kind = gb_io::seq::FeatureKind::from("misc_RNA");
+        feature.kind = "misc_RNA".into();
     }
     dna
 }
@@ -189,7 +189,7 @@ fn splicing_multi_gene_test_sequence() -> DNAsequence {
     let sequence = String::from_utf8(bases).expect("valid DNA sequence");
     let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(5, 20),
             gb_io::seq::Location::simple_range(31, 45),
@@ -201,7 +201,7 @@ fn splicing_multi_gene_test_sequence() -> DNAsequence {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(5, 20),
             gb_io::seq::Location::simple_range(36, 45),
@@ -213,7 +213,7 @@ fn splicing_multi_gene_test_sequence() -> DNAsequence {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(61, 75),
             gb_io::seq::Location::simple_range(86, 100),
@@ -500,7 +500,7 @@ fn test_extract_region_preserves_overlapping_features() {
     let mut state = ProjectState::default();
     let mut dna = seq("ATGCATGCATGC");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(2, 8),
         qualifiers: vec![("label".into(), Some("gene_a".to_string()))],
     });
@@ -3698,10 +3698,10 @@ fn test_import_genome_bed_track_remaps_for_reverse_anchor() {
     let ranges = crate::feature_location::feature_ranges_sorted_i64(feature);
     assert_eq!(ranges, vec![(9, 11)]);
     assert_eq!(
-        feature.qualifier_values("bed_strand".into()).next(),
+        feature.qualifier_values("bed_strand").next(),
         Some("+")
     );
-    assert_eq!(feature.qualifier_values("strand".into()).next(), Some("-"));
+    assert_eq!(feature.qualifier_values("strand").next(), Some("-"));
 }
 
 #[test]
@@ -3773,7 +3773,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::simple_range(99, 360),
         qualifiers: vec![
             ("gene".into(), Some("TOY1".to_string())),
@@ -4058,14 +4058,14 @@ fn test_annotate_tfbs_adds_scored_features() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .collect();
     assert!(!tfbs_features.is_empty());
     assert!(tfbs_features.iter().all(|f| {
         let motif_len = f
-            .qualifier_values("motif_length_bp".into())
+            .qualifier_values("motif_length_bp")
             .next()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(0);
@@ -4077,15 +4077,15 @@ fn test_annotate_tfbs_adds_scored_features() {
             .unwrap_or(false);
         span_matches
             && motif_len == 4
-            && f.qualifier_values("llr_bits".into()).next().is_some()
-            && f.qualifier_values("llr_quantile".into()).next().is_some()
-            && f.qualifier_values("true_log_odds_bits".into())
+            && f.qualifier_values("llr_bits").next().is_some()
+            && f.qualifier_values("llr_quantile").next().is_some()
+            && f.qualifier_values("true_log_odds_bits")
                 .next()
                 .is_some()
-            && f.qualifier_values("true_log_odds_quantile".into())
+            && f.qualifier_values("true_log_odds_quantile")
                 .next()
                 .is_some()
-            && f.qualifier_values("quantile_scope".into()).next().is_some()
+            && f.qualifier_values("quantile_scope").next().is_some()
     }));
 }
 
@@ -4150,7 +4150,7 @@ fn test_annotate_tfbs_per_tf_override_changes_quantile_threshold() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .count();
@@ -4179,7 +4179,7 @@ fn test_annotate_tfbs_per_tf_override_changes_quantile_threshold() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .count();
@@ -4215,7 +4215,7 @@ fn test_annotate_tfbs_max_hits_cap_and_unlimited() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .count();
@@ -4241,7 +4241,7 @@ fn test_annotate_tfbs_max_hits_cap_and_unlimited() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .count();
@@ -4275,7 +4275,7 @@ fn test_inspect_tfbs_feature_expert_view() {
         .iter()
         .position(|feature| {
             feature
-                .qualifier_values("gentle_generated".into())
+                .qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .expect("a tfbs feature should exist");
@@ -4411,7 +4411,7 @@ fn test_inspect_splicing_feature_expert_view() {
 fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(0, 5),
             gb_io::seq::Location::simple_range(10, 14),
@@ -4456,7 +4456,7 @@ fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
 fn test_splicing_expert_view_reports_cds_flank_phase_reverse() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(0, 5),
             gb_io::seq::Location::simple_range(10, 14),
@@ -4500,7 +4500,7 @@ fn test_splicing_expert_view_reports_cds_flank_phase_reverse() {
 #[test]
 fn test_is_mrna_feature_accepts_transcript_alias() {
     let feature = gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("transcript"),
+        kind: "transcript".into(),
         location: gb_io::seq::Location::simple_range(1, 10),
         qualifiers: vec![],
     };
@@ -4549,7 +4549,7 @@ fn test_derive_transcript_sequences_derives_all_mrna_features() {
         for feature in features {
             if feature.kind.to_string().eq_ignore_ascii_case("mRNA") {
                 let source_seq = feature
-                    .qualifier_values("source_seq_id".into())
+                    .qualifier_values("source_seq_id")
                     .next()
                     .unwrap_or_default()
                     .to_string();
@@ -4567,7 +4567,7 @@ fn test_derive_transcript_sequences_derives_all_mrna_features() {
 fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(2, 6),
             gb_io::seq::Location::simple_range(10, 14),
@@ -4634,7 +4634,7 @@ fn test_render_feature_expert_svg_operation() {
         .iter()
         .position(|feature| {
             feature
-                .qualifier_values("gentle_generated".into())
+                .qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .expect("tfbs feature");
@@ -4746,7 +4746,7 @@ fn test_import_isoform_panel_allows_unmapped_when_strict_false_and_no_mrna_featu
 fn test_isoform_panel_cds_geometry_mode_uses_cds_ranges_when_available() {
     let mut dna = seq(&"ATGC".repeat(120));
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(0, 30),
             gb_io::seq::Location::simple_range(40, 80),
@@ -6776,17 +6776,17 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
         .expect("expected extracted gene feature");
     assert!(
         gene_feature
-            .qualifier_values("gene_id".into())
+            .qualifier_values("gene_id")
             .any(|value| value == "GENE1")
     );
     assert!(
         gene_feature
-            .qualifier_values("gentle_context_layer".into())
+            .qualifier_values("gentle_context_layer")
             .any(|value| value.eq_ignore_ascii_case("contextual_gene"))
     );
     assert!(
         gene_feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|value| value.eq_ignore_ascii_case("genome_annotation_projection"))
     );
     let tx_feature = loaded_gene
@@ -6795,18 +6795,18 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
         .find(|feature| {
             feature.kind.to_string().eq_ignore_ascii_case("mRNA")
                 && feature
-                    .qualifier_values("transcript_id".into())
+                    .qualifier_values("transcript_id")
                     .any(|value| value == "TX1")
         })
         .expect("expected extracted transcript feature");
     assert!(
         tx_feature
-            .qualifier_values("gentle_context_layer".into())
+            .qualifier_values("gentle_context_layer")
             .any(|value| value.eq_ignore_ascii_case("contextual_transcript"))
     );
     assert!(
         tx_feature
-            .qualifier_values("gentle_generated".into())
+            .qualifier_values("gentle_generated")
             .any(|value| value.eq_ignore_ascii_case("genome_annotation_projection"))
     );
     let mut exons = vec![];
@@ -6820,7 +6820,7 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
         .expect("expected projected exon feature");
     assert!(
         projected_exon
-            .qualifier_values("gentle_context_layer".into())
+            .qualifier_values("gentle_context_layer")
             .any(|value| value.eq_ignore_ascii_case("contextual_transcript"))
     );
     assert!(
@@ -6952,7 +6952,7 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .collect();
     assert_eq!(exon_features.len(), 2);
     let first_genomic_start = exon_features[0]
-        .qualifier_values("genomic_start_1based".into())
+        .qualifier_values("genomic_start_1based")
         .next()
         .unwrap_or_default();
     assert_eq!(first_genomic_start, "9");
@@ -7406,13 +7406,13 @@ fn test_extract_genome_region_include_annotation_attaches_features_and_sets_name
     assert!(annotated.features().iter().any(|feature| {
         feature.kind.to_string().eq_ignore_ascii_case("gene")
             && feature
-                .qualifier_values("gene_id".into())
+                .qualifier_values("gene_id")
                 .any(|value| value == "GENE1")
     }));
     assert!(annotated.features().iter().any(|feature| {
         feature.kind.to_string().eq_ignore_ascii_case("mRNA")
             && feature
-                .qualifier_values("transcript_id".into())
+                .qualifier_values("transcript_id")
                 .any(|value| value == "TX1")
     }));
 
@@ -7441,7 +7441,7 @@ fn test_extract_genome_region_include_annotation_attaches_features_and_sets_name
     assert!(default_slice.features().iter().any(|feature| {
         feature.kind.to_string().eq_ignore_ascii_case("gene")
             && feature
-                .qualifier_values("gene_id".into())
+                .qualifier_values("gene_id")
                 .any(|value| value == "GENE1")
     }));
 
@@ -8464,13 +8464,13 @@ fn test_import_genome_bed_track_supports_plain_and_gzip() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
         })
         .collect();
     assert_eq!(generated_plain.len(), 2);
     assert!(generated_plain.iter().any(|f| {
-        f.qualifier_values("label".into())
+        f.qualifier_values("label")
             .next()
             .map(|v| v.contains("peak_a"))
             .unwrap_or(false)
@@ -8499,14 +8499,14 @@ fn test_import_genome_bed_track_supports_plain_and_gzip() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
         })
         .collect();
     assert_eq!(generated_gz.len(), 1);
     assert!(
         generated_gz[0]
-            .qualifier_values("label".into())
+            .qualifier_values("label")
             .next()
             .map(|v| v.contains("peak_a"))
             .unwrap_or(false)
@@ -8592,19 +8592,19 @@ fn test_import_genome_bed_track_supports_concatenated_gzip_members() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
         })
         .collect();
     assert_eq!(generated.len(), 2);
     assert!(generated.iter().any(|f| {
-        f.qualifier_values("label".into())
+        f.qualifier_values("label")
             .next()
             .map(|v| v.contains("peak_a"))
             .unwrap_or(false)
     }));
     assert!(generated.iter().any(|f| {
-        f.qualifier_values("label".into())
+        f.qualifier_values("label")
             .next()
             .map(|v| v.contains("peak_b"))
             .unwrap_or(false)
@@ -8707,7 +8707,7 @@ fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
         .features()
         .iter()
         .filter(|f| {
-            f.qualifier_values("gentle_generated".into())
+            f.qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
         })
         .collect();
@@ -8720,7 +8720,7 @@ fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
     assert_eq!(bigwig_features.len(), 1);
     assert_eq!(
         bigwig_features[0]
-            .qualifier_values("score".into())
+            .qualifier_values("score")
             .next()
             .unwrap_or_default(),
         "2.000000"
@@ -8803,7 +8803,7 @@ fn test_import_genome_vcf_track_supports_multiallelic_and_qual_filters() {
     assert!(
         plain_features
             .iter()
-            .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") })
+            .any(|f| { f.qualifier_values("vcf_alt").any(|v| v == "<DEL>") })
     );
 
     let vcf_gz = td.path().join("variants.vcf.gz");
@@ -8838,7 +8838,7 @@ fn test_import_genome_vcf_track_supports_multiallelic_and_qual_filters() {
     assert_eq!(filtered_features.len(), 1);
     assert_eq!(
         filtered_features[0]
-            .qualifier_values("vcf_id".into())
+            .qualifier_values("vcf_id")
             .next()
             .unwrap_or_default(),
         "rs3"
@@ -8909,46 +8909,46 @@ fn test_import_genome_vcf_track_chrom_alias_and_genotype_summary() {
     assert_eq!(features.len(), 2);
     let alt1 = features
         .iter()
-        .find(|f| f.qualifier_values("vcf_alt".into()).any(|v| v == "G"))
+        .find(|f| f.qualifier_values("vcf_alt").any(|v| v == "G"))
         .expect("ALT=G feature");
     assert_eq!(
-        alt1.qualifier_values("vcf_variant_class".into())
+        alt1.qualifier_values("vcf_variant_class")
             .next()
             .unwrap_or_default(),
         "SNP"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_alt_allele_index".into())
+        alt1.qualifier_values("vcf_alt_allele_index")
             .next()
             .unwrap_or_default(),
         "1"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_alt_carriers".into())
+        alt1.qualifier_values("vcf_alt_carriers")
             .next()
             .unwrap_or_default(),
         "2"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_gt_het".into())
+        alt1.qualifier_values("vcf_gt_het")
             .next()
             .unwrap_or_default(),
         "1"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_gt_hom_alt".into())
+        alt1.qualifier_values("vcf_gt_hom_alt")
             .next()
             .unwrap_or_default(),
         "1"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_phase".into())
+        alt1.qualifier_values("vcf_phase")
             .next()
             .unwrap_or_default(),
         "mixed"
     );
     assert_eq!(
-        alt1.qualifier_values("vcf_alt_carrier_samples".into())
+        alt1.qualifier_values("vcf_alt_carrier_samples")
             .next()
             .unwrap_or_default(),
         "sample_a,sample_b"
@@ -9737,11 +9737,11 @@ fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
         .collect();
     assert_eq!(blast_features.len(), 2);
     assert!(blast_features.iter().any(|f| {
-        f.qualifier_values("blast_subject_id".into())
+        f.qualifier_values("blast_subject_id")
             .any(|v| v == "chr1")
     }));
     assert!(blast_features.iter().any(|f| {
-        f.qualifier_values("blast_subject_id".into())
+        f.qualifier_values("blast_subject_id")
             .any(|v| v == "chr2")
     }));
 
@@ -9775,7 +9775,7 @@ fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
     assert_eq!(blast_features_after_clear.len(), 1);
     assert_eq!(
         blast_features_after_clear[0]
-            .qualifier_values("blast_subject_id".into())
+            .qualifier_values("blast_subject_id")
             .next()
             .unwrap_or_default(),
         "chr3"
@@ -10099,12 +10099,12 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(0, 0),
         qualifiers: vec![("label".into(), Some("TP53".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(11, 11),
         qualifiers: vec![("label".into(), Some("TP53-AS1".to_string()))],
     });
@@ -10237,7 +10237,7 @@ fn test_extract_anchored_region_supports_middle_feature_boundary() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(6, 14),
         qualifiers: vec![("label".into(), Some("MID_GENE".to_string()))],
     });
@@ -10330,7 +10330,7 @@ fn test_candidate_generation_feature_parts_ignores_multipart_gaps() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("exon"),
+        kind: "exon".into(),
         location: gb_io::seq::Location::Join(vec![
             gb_io::seq::Location::simple_range(2, 4),
             gb_io::seq::Location::simple_range(10, 12),
@@ -10395,12 +10395,12 @@ fn test_candidate_distance_feature_boundaries_respects_five_prime_and_three_prim
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(5, 8),
         qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
             12, 15,
         ))),
@@ -10477,12 +10477,12 @@ fn test_candidate_generation_feature_strand_relation_filters_plus_and_minus() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(2, 5),
         qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
             12, 15,
         ))),
@@ -10534,12 +10534,12 @@ fn test_candidate_distance_feature_strand_relation_prefers_matching_strand_featu
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(2, 5),
         qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
             12, 15,
         ))),
@@ -12990,7 +12990,7 @@ fn test_interpret_rna_reads_accepts_reverse_strand_tp73_ncrna_seed() {
         .position(|feature| {
             feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
                 && feature
-                    .qualifier_values("gene".into())
+                    .qualifier_values("gene")
                     .any(|value| value.eq_ignore_ascii_case("TP73-AS3"))
         })
         .expect("TP73-AS3 ncRNA feature");
@@ -16196,17 +16196,17 @@ fn test_candidate_metric_expression_fuzz_smoke_does_not_panic() {
 fn query_sequence_features_filters_by_kind_range_strand_and_label() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(150)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("SOURCE"),
+        kind: "SOURCE".into(),
         location: gb_io::seq::Location::simple_range(0, 600),
         qualifiers: vec![("label".into(), Some("source".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(20, 160),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("CDS"),
+        kind: "CDS".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
             40, 140,
         ))),
@@ -16219,7 +16219,7 @@ fn query_sequence_features_filters_by_kind_range_strand_and_label() {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("promoter"),
+        kind: "promoter".into(),
         location: gb_io::seq::Location::simple_range(180, 260),
         qualifiers: vec![("note".into(), Some("TP73-AS2 promoter".to_string()))],
     });
@@ -16255,7 +16255,7 @@ fn query_sequence_features_filters_by_kind_range_strand_and_label() {
 fn query_sequence_features_applies_qualifier_filters_and_pagination() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(10, 70),
         qualifiers: vec![
             ("label".into(), Some("TP73".to_string())),
@@ -16264,7 +16264,7 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(80, 130),
         qualifiers: vec![
             ("label".into(), Some("TP53".to_string())),
@@ -16273,7 +16273,7 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
         ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("misc_feature"),
+        kind: "misc_feature".into(),
         location: gb_io::seq::Location::simple_range(140, 200),
         qualifiers: vec![
             ("label".into(), Some("TP73_promoter".to_string())),

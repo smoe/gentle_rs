@@ -16,7 +16,7 @@ use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
     write_demo_workflow_with_shebang,
 };
-use gb_io::seq::{Feature, FeatureKind, Location};
+use gb_io::seq::{Feature, Location};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -886,12 +886,12 @@ fn execute_gibson_preview() {
             .expect("destination sequence");
     destination.set_circular(true);
     destination.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(2, 8),
         qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
     });
     destination.features_mut().push(Feature {
-        kind: FeatureKind::from("misc_feature"),
+        kind: "misc_feature".into(),
         location: Location::simple_range(10, 20),
         qualifiers: vec![
             (
@@ -907,7 +907,7 @@ fn execute_gibson_preview() {
     let mut insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
         .expect("insert sequence");
     insert.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(4, 10),
         qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
     });
@@ -1040,12 +1040,12 @@ fn execute_gibson_apply_creates_output_sequences() {
             .expect("destination sequence");
     destination.set_circular(true);
     destination.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(2, 8),
         qualifiers: vec![("label".into(), Some("LEFT".to_string()))],
     });
     destination.features_mut().push(Feature {
-        kind: FeatureKind::from("misc_feature"),
+        kind: "misc_feature".into(),
         location: Location::simple_range(10, 20),
         qualifiers: vec![
             (
@@ -1061,7 +1061,7 @@ fn execute_gibson_apply_creates_output_sequences() {
     let mut insert = DNAsequence::from_sequence("ATGCGTACGTTAGCGTACGATCGTACGTAGCTAGCTAGCATCGATCGA")
         .expect("insert sequence");
     insert.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(4, 10),
         qualifiers: vec![("label".into(), Some("INSERT".to_string()))],
     });
@@ -1167,7 +1167,7 @@ fn execute_gibson_apply_creates_output_sequences() {
         .iter()
         .filter_map(|feature| {
             feature
-                .qualifier_values("label".into())
+                .qualifier_values("label")
                 .next()
                 .map(str::to_string)
         })
@@ -1180,7 +1180,7 @@ fn execute_gibson_apply_creates_output_sequences() {
                 "{} {:?}",
                 feature.kind,
                 feature
-                    .qualifier_values("label".into())
+                    .qualifier_values("label")
                     .next()
                     .map(str::to_string)
             )
@@ -1204,11 +1204,11 @@ fn execute_gibson_apply_creates_output_sequences() {
         .features()
         .iter()
         .find(|feature| {
-            feature.qualifier_values("label".into()).next() == Some("Multiple Cloning Site (MCS)")
+            feature.qualifier_values("label").next() == Some("Multiple Cloning Site (MCS)")
         })
         .expect("assembled product MCS feature");
     assert_eq!(
-        mcs.qualifier_values("mcs_crosscheck_status".into()).next(),
+        mcs.qualifier_values("mcs_crosscheck_status").next(),
         Some("validated_against_assembled_product")
     );
     assert!(
@@ -2555,7 +2555,7 @@ fn execute_candidates_generate_score_distance_and_filter() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(5, 6),
         qualifiers: vec![("label".into(), Some("target".to_string()))],
     });
@@ -2674,12 +2674,12 @@ fn execute_candidates_score_distance_honors_strand_relation() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(2, 5),
         qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
     });
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::Complement(Box::new(Location::simple_range(12, 15))),
         qualifiers: vec![("label".into(), Some("MINUS_GENE".to_string()))],
     });
@@ -5540,7 +5540,7 @@ fn execute_features_query_returns_structured_rows() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: Location::simple_range(10, 90),
         qualifiers: vec![
             ("label".into(), Some("TP73".to_string())),
@@ -5548,7 +5548,7 @@ fn execute_features_query_returns_structured_rows() {
         ],
     });
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("CDS"),
+        kind: "CDS".into(),
         location: Location::Complement(Box::new(Location::simple_range(20, 80))),
         qualifiers: vec![
             ("label".into(), Some("TP73_DBD".to_string())),
@@ -5556,7 +5556,7 @@ fn execute_features_query_returns_structured_rows() {
         ],
     });
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("misc_feature"),
+        kind: "misc_feature".into(),
         location: Location::simple_range(120, 170),
         qualifiers: vec![("note".into(), Some("promoter".to_string()))],
     });
@@ -8484,7 +8484,7 @@ fn parse_uniprot_commands() {
 fn tp53_isoform_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(800)).expect("valid dna");
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: Location::simple_range(99, 560),
         qualifiers: vec![
             ("gene".into(), Some("TP53".to_string())),
@@ -8503,7 +8503,7 @@ fn tp53_isoform_test_sequence() -> DNAsequence {
 fn uniprot_projection_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
     dna.features_mut().push(Feature {
-        kind: FeatureKind::from("mRNA"),
+        kind: "mRNA".into(),
         location: Location::simple_range(99, 360),
         qualifiers: vec![
             ("gene".into(), Some("TOY1".to_string())),
@@ -8548,7 +8548,7 @@ fn execute_inspect_feature_expert_returns_view_json() {
         .iter()
         .position(|feature| {
             feature
-                .qualifier_values("gentle_generated".into())
+                .qualifier_values("gentle_generated")
                 .any(|v| v.eq_ignore_ascii_case("tfbs"))
         })
         .expect("tfbs feature");
