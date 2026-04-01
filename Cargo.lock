@@ -16,7 +16,10 @@ dependencies = [
  "egui_extras",
  "flate2",
  "gb-io",
+ "gentle-gui",
  "gentle-protocol",
+ "gentle-render",
+ "gentle-shell",
  "image",
  "itertools 0.11.0",
  "mlua",
@@ -2319,21 +2322,38 @@ version = "0.1.0-internal.3"
 [[package]]
 name = "gentle-gui"
 version = "0.1.0-internal.3"
+dependencies = [
+ "egui",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "gentle-protocol"
 version = "0.1.0-internal.3"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "gentle-render"
 version = "0.1.0-internal.3"
+dependencies = [
+ "gentle-protocol",
+ "serde",
+ "serde_json",
+ "svg",
+]
 
 [[package]]
 name = "gentle-shell"
 version = "0.1.0-internal.3"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "gethostname"

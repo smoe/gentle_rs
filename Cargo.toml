@@ -62,13 +62,16 @@ name = "gentle"
 [features]
 default = []
 screenshot-capture = []
-snapshot-tests = []
+snapshot-tests = ["gentle-render/snapshot-tests"]
 js-interface = ["dep:deno_core", "dep:deno_error", "dep:rustyline"]
 lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
+gentle-gui = { path = "crates/gentle-gui" }
 gentle-protocol = { path = "crates/gentle-protocol" }
+gentle-render = { path = "crates/gentle-render" }
+gentle-shell = { path = "crates/gentle-shell" }
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 serde_with = "*"
