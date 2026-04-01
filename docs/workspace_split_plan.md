@@ -32,6 +32,10 @@ Current status:
 - `crates/gentle-render` is no longer only a placeholder:
   the feature-expert SVG renderer and the shared splicing transition-matrix
   helper now live there, with root-crate shims preserving the old import paths.
+- `crates/gentle-shell` is no longer only a placeholder either:
+  the glossary-driven shell help rendering layer now lives there, again with
+  root-crate shims preserving the old import paths while parser/executor
+  extraction is still staged.
 
 ## 1. Goals
 
