@@ -31081,22 +31081,33 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
-                let mut open = self.show_help_dialog;
+                if self
+                    .pending_window_open_timestamps
+                    .contains_key(&viewport_id)
+                {
+                    // Older macOS-hosted help windows used a nested egui::Window.
+                    // If that saved hosted-area geometry became invalid, the broken
+                    // rect persisted across restarts. Reset the help viewport's
+                    // local area state on first reopen so the hosted help surface
+                    // can self-heal without wiping unrelated viewport memory.
+                    ctx.memory_mut(|mem| mem.reset_areas());
+                }
                 let render_started = Instant::now();
-                egui::Window::new(title.clone())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(860.0, 680.0))
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
                         self.render_help_contents(ui);
-                    });
+                    },
+                );
                 self.note_slow_open_phase(
                     viewport_id,
                     "Help first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                self.show_help_dialog = open;
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    self.show_help_dialog = false;
+                }
                 return;
             }
 
@@ -36482,6 +36493,22 @@ mod tests {
             app.render_main_workspace_host(ui, false);
         });
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn embedded_help_viewport_renders_without_nested_help_window_area() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_help_dialog = true;
+        app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
+        let stale_help_layer_id =
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new("Help - GUI Manual"));
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_help_dialog(&ctx);
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_help_layer_id)));
         let _ = ctx.end_pass();
     }
 

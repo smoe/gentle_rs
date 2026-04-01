@@ -1165,12 +1165,7 @@ fn execute_gibson_apply_creates_output_sequences() {
     let labels = product
         .features()
         .iter()
-        .filter_map(|feature| {
-            feature
-                .qualifier_values("label")
-                .next()
-                .map(str::to_string)
-        })
+        .filter_map(|feature| feature.qualifier_values("label").next().map(str::to_string))
         .collect::<Vec<_>>();
     let feature_debug = product
         .features()
@@ -1179,10 +1174,7 @@ fn execute_gibson_apply_creates_output_sequences() {
             format!(
                 "{} {:?}",
                 feature.kind,
-                feature
-                    .qualifier_values("label")
-                    .next()
-                    .map(str::to_string)
+                feature.qualifier_values("label").next().map(str::to_string)
             )
         })
         .collect::<Vec<_>>();
@@ -10059,7 +10051,10 @@ fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file
         output.output["schema"].as_str(),
         Some("gentle.rna_read_gene_support_summary.v1")
     );
-    assert_eq!(output.output["report_id"].as_str(), Some("tp53_gene_support"));
+    assert_eq!(
+        output.output["report_id"].as_str(),
+        Some("tp53_gene_support")
+    );
     assert_eq!(
         output.output["requested_gene_ids"]
             .as_array()

@@ -1497,8 +1497,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             "canonical location formatting should preserve both joined intervals"
         );
         assert!(
-            gene.qualifier_values("gene")
-                .any(|value| value == "g1"),
+            gene.qualifier_values("gene").any(|value| value == "g1"),
             "gene qualifier should be parsed"
         );
 
@@ -1512,10 +1511,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
                     .eq_ignore_ascii_case("misc_feature")
             })
             .expect("misc_feature");
-        let note = misc
-            .qualifier_values("note")
-            .next()
-            .unwrap_or_default();
+        let note = misc.qualifier_values("note").next().unwrap_or_default();
         assert!(
             note.contains("line one") && note.contains("line two") && !note.contains("\"\""),
             "wrapped qualifier text should be concatenated and normalized"

@@ -119,14 +119,12 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
 }
 
 fn is_track_feature(feature: &Feature) -> bool {
-    feature
-        .qualifier_values("gentle_generated")
-        .any(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
-            )
-        })
+    feature.qualifier_values("gentle_generated").any(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+        )
+    })
 }
 
 fn is_vcf_track_feature(feature: &Feature) -> bool {

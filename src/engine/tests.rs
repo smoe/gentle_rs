@@ -31,17 +31,17 @@ fn seq(s: &str) -> DNAsequence {
 fn formula_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("CDS"),
+        kind: "CDS".into(),
         location: gb_io::seq::Location::simple_range(20, 80),
         qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(10, 40),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
     });
     dna.features_mut().push(gb_io::seq::Feature {
-        kind: gb_io::seq::FeatureKind::from("gene"),
+        kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(80, 140),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
     });

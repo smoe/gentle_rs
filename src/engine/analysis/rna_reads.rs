@@ -95,10 +95,7 @@ impl RnaReadGeneSupportAccumulator {
 
         let mut seen_direct = BTreeSet::<(usize, usize)>::new();
         for (from, to) in direct_transitions.iter().copied() {
-            if from == to
-                || from.abs_diff(to) != 1
-                || !seen_direct.insert((from, to))
-            {
+            if from == to || from.abs_diff(to) != 1 || !seen_direct.insert((from, to)) {
                 continue;
             }
             *self
@@ -444,13 +441,13 @@ impl GentleEngine {
             .filter(|raw| !raw.is_empty())
             .map(|raw| raw.to_string())
             .collect::<Vec<_>>();
-        normalized.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized
+            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
         normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         if normalized.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "RNA-read gene-support summary requires at least one gene id"
-                    .to_string(),
+                message: "RNA-read gene-support summary requires at least one gene id".to_string(),
             });
         }
         Ok(normalized)
@@ -487,9 +484,7 @@ impl GentleEngine {
             for exon in ordered {
                 let start_1based = exon.start_1based.min(exon.end_1based);
                 let end_1based = exon.start_1based.max(exon.end_1based);
-                let exon_len = end_1based
-                    .saturating_sub(start_1based)
-                    .saturating_add(1);
+                let exon_len = end_1based.saturating_sub(start_1based).saturating_add(1);
                 if exon_len == 0 {
                     continue;
                 }
@@ -556,9 +551,7 @@ impl GentleEngine {
             let mut template_cursor = 0usize;
             for idx in 0..ordered_exons.len() {
                 let (ordinal, start_1based, end_1based) = ordered_exons[idx];
-                let exon_len = end_1based
-                    .saturating_sub(start_1based)
-                    .saturating_add(1);
+                let exon_len = end_1based.saturating_sub(start_1based).saturating_add(1);
                 let exon_offset_start = template_cursor;
                 let exon_offset_end = template_cursor.saturating_add(exon_len);
                 if aligned_start < exon_offset_end
@@ -656,32 +649,34 @@ impl GentleEngine {
         let denominator = read_count as f64;
         let mut rows = pair_counts
             .iter()
-            .filter_map(|((gene_id, from_exon_ordinal, to_exon_ordinal), support_read_count)| {
-                let context = contexts.get(gene_id)?;
-                let from_exon = context
-                    .splicing
-                    .unique_exons
-                    .get(from_exon_ordinal.saturating_sub(1))?;
-                let to_exon = context
-                    .splicing
-                    .unique_exons
-                    .get(to_exon_ordinal.saturating_sub(1))?;
-                Some(RnaReadGeneExonPairSupportRow {
-                    gene_id: context.group_label.clone(),
-                    from_exon_ordinal: *from_exon_ordinal,
-                    from_start_1based: from_exon.start_1based,
-                    from_end_1based: from_exon.end_1based,
-                    to_exon_ordinal: *to_exon_ordinal,
-                    to_start_1based: to_exon.start_1based,
-                    to_end_1based: to_exon.end_1based,
-                    support_read_count: *support_read_count,
-                    support_fraction: if read_count == 0 {
-                        0.0
-                    } else {
-                        *support_read_count as f64 / denominator
-                    },
-                })
-            })
+            .filter_map(
+                |((gene_id, from_exon_ordinal, to_exon_ordinal), support_read_count)| {
+                    let context = contexts.get(gene_id)?;
+                    let from_exon = context
+                        .splicing
+                        .unique_exons
+                        .get(from_exon_ordinal.saturating_sub(1))?;
+                    let to_exon = context
+                        .splicing
+                        .unique_exons
+                        .get(to_exon_ordinal.saturating_sub(1))?;
+                    Some(RnaReadGeneExonPairSupportRow {
+                        gene_id: context.group_label.clone(),
+                        from_exon_ordinal: *from_exon_ordinal,
+                        from_start_1based: from_exon.start_1based,
+                        from_end_1based: from_exon.end_1based,
+                        to_exon_ordinal: *to_exon_ordinal,
+                        to_start_1based: to_exon.start_1based,
+                        to_end_1based: to_exon.end_1based,
+                        support_read_count: *support_read_count,
+                        support_fraction: if read_count == 0 {
+                            0.0
+                        } else {
+                            *support_read_count as f64 / denominator
+                        },
+                    })
+                },
+            )
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| {
             left.gene_id
@@ -729,9 +724,7 @@ impl GentleEngine {
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!(
-                "Could not write RNA-read gene-support summary to '{path}': {e}"
-            ),
+            message: format!("Could not write RNA-read gene-support summary to '{path}': {e}"),
         })
     }
 
@@ -793,7 +786,8 @@ impl GentleEngine {
             let Some(feature_id) = representative_feature_id_by_lower.get(&key).copied() else {
                 continue;
             };
-            let splicing = self.build_splicing_expert_view(&report.seq_id, feature_id, group_scope)?;
+            let splicing =
+                self.build_splicing_expert_view(&report.seq_id, feature_id, group_scope)?;
             let context = Self::rna_read_gene_support_context_from_splicing(splicing);
             contexts.insert(matched_gene_id.clone(), context);
         }
@@ -852,10 +846,8 @@ impl GentleEngine {
                 target_length_bp,
                 report.align_config.min_identity_fraction,
             );
-            let is_complete = Self::rna_read_gene_support_matches_complete_rule(
-                full_length,
-                complete_rule,
-            );
+            let is_complete =
+                Self::rna_read_gene_support_matches_complete_rule(full_length, complete_rule);
             if full_length.full_length_strict {
                 complete_strict_count = complete_strict_count.saturating_add(1);
             }

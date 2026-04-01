@@ -28739,10 +28739,7 @@ impl MainAreaDna {
                 .qualifier_values("mcs_expected_sites")
                 .next()
                 .is_some()
-                || feature
-                    .qualifier_values("mcs_preset")
-                    .next()
-                    .is_some()
+                || feature.qualifier_values("mcs_preset").next().is_some()
                 || Self::feature_tree_first_nonempty_qualifier(
                     feature,
                     &["label", "note", "gene", "name", "standard_name"],

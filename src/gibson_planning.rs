@@ -671,10 +671,7 @@ fn collect_mcs_feature_hints(dna: &crate::dna_sequence::DNAsequence) -> Vec<Gibs
             .qualifier_values("mcs_expected_sites")
             .next()
             .is_some()
-            || feature
-                .qualifier_values("mcs_preset")
-                .next()
-                .is_some()
+            || feature.qualifier_values("mcs_preset").next().is_some()
             || feature_first_nonempty_qualifier(
                 feature,
                 &["label", "note", "gene", "name", "standard_name"],
@@ -1877,10 +1874,7 @@ fn feature_looks_like_mcs(feature: &Feature) -> bool {
         .qualifier_values("mcs_expected_sites")
         .next()
         .is_some()
-        || feature
-            .qualifier_values("mcs_preset")
-            .next()
-            .is_some()
+        || feature.qualifier_values("mcs_preset").next().is_some()
         || feature_first_nonempty_qualifier(
             feature,
             &["label", "note", "gene", "name", "standard_name"],
@@ -5241,10 +5235,7 @@ mod tests {
     }
 
     fn feature_qualifier(feature: &Feature, key: &str) -> Option<String> {
-        feature
-            .qualifier_values(key)
-            .next()
-            .map(str::to_string)
+        feature.qualifier_values(key).next().map(str::to_string)
     }
 
     fn qualifier_csv_contains(feature: &Feature, key: &str, expected: &str) -> bool {
