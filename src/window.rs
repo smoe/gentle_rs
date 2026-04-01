@@ -78,6 +78,16 @@ impl Window {
         }
     }
 
+    pub fn render_sequencing_confirmation_specialist(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) {
+        match self {
+            Self::Dna(window) => window.render_sequencing_confirmation_specialist(ui, ctx),
+        }
+    }
+
     pub fn refresh_from_engine_settings(&mut self) {
         match self {
             Self::Dna(window) => window.refresh_from_engine_settings(),

@@ -1601,6 +1601,7 @@ pub struct RnaReadMappedSupportJunctionAttribution {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Portable per-read alignment-inspection row used by GUI/CLI report tables.
 pub struct RnaReadAlignmentInspectionRow {
     pub rank: usize,
     pub record_index: usize,

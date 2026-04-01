@@ -24,6 +24,9 @@ this as a confidence map for the current GUI surface.
 - Multi-insert Gibson preview is useful, but execution currently requires a
   defined destination opening; `existing_termini` remains the single-fragment
   handoff path.
+- Sequencing confirmation now has a dedicated called-read specialist, but v1
+  is still limited to already-loaded read sequences plus full-span/junction
+  checkpoints; raw ABI/AB1/SCF trace import is still pending.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
@@ -1170,6 +1173,32 @@ Patterns menu:
   - GUI-first testing tutorial:
     - `docs/tutorial/gibson_specialist_testing_gui.md`
   - deliberately does not embed the generic PCR/qPCR specialist UI
+- `Patterns -> Sequencing Confirmation...`
+  - opens a dedicated called-read construct-confirmation specialist for the
+    active/opened expected construct sequence.
+  - the same entry is also available from the command palette as
+    `Sequencing Confirmation`.
+  - current v1 scope mirrors shared-shell `seq-confirm run`:
+    - choose one expected construct sequence
+    - enter one or more already-loaded read sequence IDs
+    - keep the default full-span target and/or add explicit junction
+      breakpoints (`0-based` left-end positions plus flank bp)
+    - run confirmation through the same shared `ConfirmConstructReads`
+      operation used by CLI/shell
+  - saved-report review is built in:
+    - choose a persisted report for the current expected construct
+    - inspect overall status, target-level outcomes, read-level outcomes, and
+      a first-read alignment snapshot
+    - export the selected report as JSON or support TSV
+  - selection convenience:
+    - the active sequence selection can append its `start`, `midpoint`, or
+      `end` as explicit junction breakpoints
+  - current limitation:
+    - this specialist is for called reads only; raw ABI/AB1/SCF trace import
+      and richer trace-aware review are still future work
+  - shared UI-intent parity:
+    - `ui open sequencing-confirmation`
+    - `ui focus sequencing-confirmation`
 - `Patterns -> Planning...`
   - opens a dedicated standalone `Planning` window for the planning meta-layer.
   - supports editing and applying:
@@ -2235,6 +2264,54 @@ Heuristic guidance surfaced in reports/warnings:
 - primer ranking prefers `20..30 bp` side lengths and similar primer Tm
 - 3' GC clamp (`G/C`) is preferred but not hard-required
 - penalties are applied for homopolymer/self-complementary runs and primer-dimer risk
+
+## Sequencing Confirmation
+
+The dedicated `Patterns -> Sequencing Confirmation...` window is the GUI front
+end for called-read construct verification.
+
+Current scope:
+
+- expected construct is the active/opened sequence window
+- read evidence is supplied as already-loaded project sequence IDs
+- target coverage can be:
+  - the default full construct span
+  - one or more explicit junction checkpoints
+- orientation handling follows the shared engine option:
+  forward only or forward + reverse-complement trial
+
+Key controls:
+
+- `Read sequence IDs`: comma-separated IDs of read sequences already present in
+  the project
+- `Include full construct span target`
+- `Junction breakpoints (0-based)` plus `flank`
+- alignment scoring knobs:
+  `mode`, `match`, `mismatch`, `gap open`, `gap extend`
+- confirmation thresholds:
+  `min identity`, `min target coverage`
+- `report id`
+
+Actions:
+
+- `Run confirmation`
+- `Refresh reports`
+- `Show selected`
+- `Export JSON...`
+- `Export TSV...`
+
+Report review surface:
+
+- overall verdict (`confirmed`, `contradicted`, `insufficient_evidence`)
+- per-target table with kind, span, support counts, and reason
+- per-read table with chosen orientation, usability, identity, and coverage
+- first-read alignment snapshot for quick inspection without dropping to shell
+
+Current limitations:
+
+- no ABI/AB1/SCF raw-trace import yet
+- no chromatogram/trace-aware confirmation yet
+- no lineage/artifact projection for confirmation reports yet
 - anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
 - `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line
 

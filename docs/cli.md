@@ -288,9 +288,11 @@ Sequencing-confirmation capability status (called-read phase-1):
     and `--junction-flank N`
   - forward and reverse-complement read evaluation through the same shared
     engine report contract
+  - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
+    and command palette `Sequencing Confirmation`, backed by the same
+    `ConfirmConstructReads` / report-store path
   Not yet included in this phase:
   - ABI/AB1/SCF raw-trace import
-  - GUI specialist review surface
   - lineage/artifact projection for confirmation reports
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.
@@ -629,6 +631,8 @@ Minimum MCP JSON-RPC flow:
     - `retrieve-genome-sequence`
     - `blast-genome-sequence`
     - `import-genome-track`
+    - `pcr-design`
+    - `sequencing-confirmation`
     - `agent-assistant`
     - `prepare-helper-genome`
     - `retrieve-helper-sequence`

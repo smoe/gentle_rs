@@ -47,10 +47,11 @@ use crate::{
         EngineError, ErrorCode, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
-        OperationProgress, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
+        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
+        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionEnzymeDisplayMode,
+        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
@@ -59,7 +60,10 @@ use crate::{
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
-        RnaSeedHashTemplateAuditEntry, SequenceGenomeAnchorSummary, SnpMutationSpec,
+        RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
+        SequencingConfirmationDiscrepancy, SequencingConfirmationReportSummary,
+        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
+        SequencingConfirmationTargetSpec, SequencingReadOrientation, SnpMutationSpec,
         SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
@@ -506,6 +510,46 @@ impl Default for QpcrDesignOpsUiState {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct SequencingConfirmationUiState {
+    read_seq_ids_text: String,
+    report_id: String,
+    selected_report_id: String,
+    junction_positions_0based: String,
+    junction_flank_bp: String,
+    include_full_span_target: bool,
+    allow_reverse_complement: bool,
+    alignment_mode: PairwiseAlignmentMode,
+    match_score: String,
+    mismatch_score: String,
+    gap_open: String,
+    gap_extend: String,
+    min_identity_fraction: String,
+    min_target_coverage_fraction: String,
+}
+
+impl Default for SequencingConfirmationUiState {
+    fn default() -> Self {
+        Self {
+            read_seq_ids_text: String::new(),
+            report_id: "seq_confirm_gui".to_string(),
+            selected_report_id: String::new(),
+            junction_positions_0based: String::new(),
+            junction_flank_bp: "12".to_string(),
+            include_full_span_target: true,
+            allow_reverse_complement: true,
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: "2".to_string(),
+            mismatch_score: "-3".to_string(),
+            gap_open: "-5".to_string(),
+            gap_extend: "-1".to_string(),
+            min_identity_fraction: "0.80".to_string(),
+            min_target_coverage_fraction: "1.0".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct PrimerDesignBatchSpec {
     forward: PrimerDesignSideConstraint,
@@ -624,6 +668,8 @@ struct EngineOpsUiState {
     selection_formula_text: String,
     #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
+    #[serde(default)]
+    sequencing_confirmation_ui: SequencingConfirmationUiState,
     #[serde(default = "default_primer_backend_auto")]
     primer_backend: PrimerDesignBackend,
     #[serde(default = "default_primer3_executable")]
@@ -899,7 +945,7 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
-            LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
+            LinearSequenceLetterLayoutMode, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
             ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
             RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
@@ -907,7 +953,7 @@ mod tests {
             RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-            RnaReadSeedFilterConfig, SplicingScopePreset,
+            RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SplicingScopePreset,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1204,6 +1250,88 @@ mod tests {
             MainAreaDna::parse_positive_usize_text("250", "extension length").unwrap(),
             250
         );
+    }
+
+    #[test]
+    fn build_sequencing_confirmation_targets_includes_full_span_and_junctions() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.sequencing_confirmation_ui.include_full_span_target = true;
+        area.sequencing_confirmation_ui.junction_positions_0based = "25,60".to_string();
+        area.sequencing_confirmation_ui.junction_flank_bp = "12".to_string();
+
+        let targets = area
+            .build_sequencing_confirmation_targets()
+            .expect("targets should build");
+
+        assert_eq!(targets.len(), 3);
+        assert_eq!(targets[0].kind, SequencingConfirmationTargetKind::FullSpan);
+        assert_eq!(targets[0].start_0based, 0);
+        assert_eq!(targets[0].end_0based_exclusive, 200);
+        assert_eq!(targets[1].kind, SequencingConfirmationTargetKind::Junction);
+        assert_eq!(targets[1].junction_left_end_0based, Some(25));
+        assert_eq!(targets[1].start_0based, 13);
+        assert_eq!(targets[1].end_0based_exclusive, 37);
+        assert_eq!(targets[2].junction_left_end_0based, Some(60));
+    }
+
+    #[test]
+    fn build_confirm_construct_reads_operation_uses_gui_state() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.read_seq_ids_text = "read_a,read_b".to_string();
+        area.sequencing_confirmation_ui.report_id = String::new();
+        area.sequencing_confirmation_ui.include_full_span_target = false;
+        area.sequencing_confirmation_ui.junction_positions_0based = "40".to_string();
+        area.sequencing_confirmation_ui.junction_flank_bp = "10".to_string();
+        area.sequencing_confirmation_ui.allow_reverse_complement = false;
+        area.sequencing_confirmation_ui.alignment_mode = PairwiseAlignmentMode::Global;
+        area.sequencing_confirmation_ui.match_score = "3".to_string();
+        area.sequencing_confirmation_ui.mismatch_score = "-4".to_string();
+        area.sequencing_confirmation_ui.gap_open = "-6".to_string();
+        area.sequencing_confirmation_ui.gap_extend = "-2".to_string();
+        area.sequencing_confirmation_ui.min_identity_fraction = "0.90".to_string();
+        area.sequencing_confirmation_ui.min_target_coverage_fraction = "0.75".to_string();
+
+        let (report_id, op) = area
+            .build_confirm_construct_reads_operation()
+            .expect("operation should build");
+
+        assert_eq!(report_id, "expected_seq_seq_confirm");
+        match op {
+            Operation::ConfirmConstructReads {
+                expected_seq_id,
+                read_seq_ids,
+                targets,
+                alignment_mode,
+                match_score,
+                mismatch_score,
+                gap_open,
+                gap_extend,
+                min_identity_fraction,
+                min_target_coverage_fraction,
+                allow_reverse_complement,
+                report_id,
+            } => {
+                assert_eq!(expected_seq_id, "expected_seq");
+                assert_eq!(
+                    read_seq_ids,
+                    vec!["read_a".to_string(), "read_b".to_string()]
+                );
+                assert_eq!(targets.len(), 1);
+                assert_eq!(targets[0].junction_left_end_0based, Some(40));
+                assert_eq!(alignment_mode, PairwiseAlignmentMode::Global);
+                assert_eq!(match_score, 3);
+                assert_eq!(mismatch_score, -4);
+                assert_eq!(gap_open, -6);
+                assert_eq!(gap_extend, -2);
+                assert_eq!(min_identity_fraction, 0.90);
+                assert_eq!(min_target_coverage_fraction, 0.75);
+                assert!(!allow_reverse_complement);
+                assert_eq!(report_id, Some("expected_seq_seq_confirm".to_string()));
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
     }
 
     #[test]
@@ -6435,6 +6563,7 @@ pub struct MainAreaDna {
     pcr_paint_last_drag_start_text: String,
     pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
+    sequencing_confirmation_ui: SequencingConfirmationUiState,
     primer_backend: PrimerDesignBackend,
     primer3_executable: String,
     primer3_preflight_status: String,
@@ -6804,6 +6933,7 @@ impl MainAreaDna {
             pcr_paint_last_drag_start_text: String::new(),
             pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
+            sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
             primer3_preflight_status: String::new(),
@@ -6996,6 +7126,18 @@ impl MainAreaDna {
         ret.ensure_full_restriction_site_catalog_current();
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
+        let default_report_id = ret.sequencing_confirmation_default_report_id();
+        if ret.sequencing_confirmation_ui.report_id.trim().is_empty() {
+            ret.sequencing_confirmation_ui.report_id = default_report_id.clone();
+        }
+        if ret
+            .sequencing_confirmation_ui
+            .selected_report_id
+            .trim()
+            .is_empty()
+        {
+            ret.sequencing_confirmation_ui.selected_report_id = default_report_id;
+        }
         ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
         ret
@@ -24911,6 +25053,24 @@ impl MainAreaDna {
             .map_err(|_| format!("Invalid {field_name}: expected a number"))
     }
 
+    fn parse_required_i32_text(raw: &str, field_name: &str) -> Result<i32, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(format!("Invalid {field_name}: expected an integer"));
+        }
+        trimmed
+            .parse::<i32>()
+            .map_err(|_| format!("Invalid {field_name}: expected an integer"))
+    }
+
+    fn parse_fraction_0_to_1(raw: &str, field_name: &str) -> Result<f64, String> {
+        let value = Self::parse_required_f64_text(raw, field_name)?;
+        if !(0.0..=1.0).contains(&value) {
+            return Err(format!("Invalid {field_name}: expected within 0.0..=1.0"));
+        }
+        Ok(value)
+    }
+
     fn parse_primer_locked_positions(
         raw: &str,
         field_name: &str,
@@ -25975,6 +26135,348 @@ impl MainAreaDna {
         }
     }
 
+    fn sequencing_confirmation_default_report_id(&self) -> String {
+        let seq_component = self
+            .seq_id
+            .as_deref()
+            .map(|value| Self::sanitize_id_component(value, "seq"))
+            .unwrap_or_else(|| "seq".to_string());
+        format!("{seq_component}_seq_confirm")
+    }
+
+    fn parse_sequencing_confirmation_junction_positions(text: &str) -> Result<Vec<usize>, String> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut out = vec![];
+        let mut seen = BTreeSet::new();
+        for token in trimmed.split(|c| matches!(c, ',' | ';' | '\n' | '\r')) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let value = token.parse::<usize>().map_err(|_| {
+                format!(
+                    "Invalid sequencing-confirmation junction position '{}': expected 0-based integer",
+                    token
+                )
+            })?;
+            if seen.insert(value) {
+                out.push(value);
+            }
+        }
+        Ok(out)
+    }
+
+    fn build_sequencing_confirmation_targets(
+        &self,
+    ) -> Result<Vec<SequencingConfirmationTargetSpec>, String> {
+        let ui = &self.sequencing_confirmation_ui;
+        let seq_len = self
+            .dna
+            .read()
+            .map_err(|_| "DNA lock poisoned while preparing sequencing confirmation".to_string())?
+            .len();
+        if seq_len == 0 {
+            return Err(
+                "Sequencing confirmation requires a non-empty expected construct sequence"
+                    .to_string(),
+            );
+        }
+        let junction_flank = Self::parse_positive_usize_text(
+            &ui.junction_flank_bp,
+            "sequencing_confirmation.junction_flank_bp",
+        )?;
+        let junction_positions =
+            Self::parse_sequencing_confirmation_junction_positions(&ui.junction_positions_0based)?;
+        let mut targets = vec![];
+        if ui.include_full_span_target {
+            targets.push(SequencingConfirmationTargetSpec {
+                target_id: "full_span".to_string(),
+                label: "Full construct span".to_string(),
+                kind: SequencingConfirmationTargetKind::FullSpan,
+                start_0based: 0,
+                end_0based_exclusive: seq_len,
+                junction_left_end_0based: None,
+                required: true,
+            });
+        }
+        for (idx, left_end) in junction_positions.iter().copied().enumerate() {
+            if left_end > seq_len {
+                return Err(format!(
+                    "Sequencing-confirmation junction position {} is outside expected sequence length {}",
+                    left_end, seq_len
+                ));
+            }
+            let start_0based = left_end.saturating_sub(junction_flank);
+            let end_0based_exclusive = left_end.saturating_add(junction_flank).min(seq_len);
+            if end_0based_exclusive <= start_0based {
+                return Err(format!(
+                    "Sequencing-confirmation junction {} yields empty support interval {}..{}",
+                    left_end, start_0based, end_0based_exclusive
+                ));
+            }
+            targets.push(SequencingConfirmationTargetSpec {
+                target_id: format!("junction_{}", idx + 1),
+                label: format!("Junction @ {left_end}"),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based,
+                end_0based_exclusive,
+                junction_left_end_0based: Some(left_end),
+                required: true,
+            });
+        }
+        if targets.is_empty() {
+            return Err(
+                "Enable full-span confirmation or add at least one junction breakpoint".to_string(),
+            );
+        }
+        Ok(targets)
+    }
+
+    fn build_confirm_construct_reads_operation(&self) -> Result<(String, Operation), String> {
+        let expected_seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active expected construct sequence".to_string())?;
+        let ui = &self.sequencing_confirmation_ui;
+        let read_seq_ids = Self::parse_ids(&ui.read_seq_ids_text);
+        if read_seq_ids.is_empty() {
+            return Err(
+                "Provide at least one read sequence ID (comma-separated) before running confirmation"
+                    .to_string(),
+            );
+        }
+        let report_id = if ui.report_id.trim().is_empty() {
+            self.sequencing_confirmation_default_report_id()
+        } else {
+            Self::sanitize_id_component(&ui.report_id, "seq_confirm_gui")
+        };
+        let targets = self.build_sequencing_confirmation_targets()?;
+        Ok((
+            report_id.clone(),
+            Operation::ConfirmConstructReads {
+                expected_seq_id,
+                read_seq_ids,
+                targets,
+                alignment_mode: ui.alignment_mode,
+                match_score: Self::parse_required_i32_text(
+                    &ui.match_score,
+                    "sequencing_confirmation.match_score",
+                )?,
+                mismatch_score: Self::parse_required_i32_text(
+                    &ui.mismatch_score,
+                    "sequencing_confirmation.mismatch_score",
+                )?,
+                gap_open: Self::parse_required_i32_text(
+                    &ui.gap_open,
+                    "sequencing_confirmation.gap_open",
+                )?,
+                gap_extend: Self::parse_required_i32_text(
+                    &ui.gap_extend,
+                    "sequencing_confirmation.gap_extend",
+                )?,
+                min_identity_fraction: Self::parse_fraction_0_to_1(
+                    &ui.min_identity_fraction,
+                    "sequencing_confirmation.min_identity_fraction",
+                )?,
+                min_target_coverage_fraction: Self::parse_fraction_0_to_1(
+                    &ui.min_target_coverage_fraction,
+                    "sequencing_confirmation.min_target_coverage_fraction",
+                )?,
+                allow_reverse_complement: ui.allow_reverse_complement,
+                report_id: Some(report_id),
+            },
+        ))
+    }
+
+    fn sequencing_confirmation_report_summaries(&self) -> Vec<SequencingConfirmationReportSummary> {
+        let Some(engine) = self.engine.as_ref() else {
+            return vec![];
+        };
+        let expected_seq_id = self.seq_id.as_deref();
+        engine
+            .read()
+            .ok()
+            .map(|guard| guard.list_sequencing_confirmation_reports(expected_seq_id))
+            .unwrap_or_default()
+    }
+
+    fn list_sequencing_confirmation_reports(&mut self) {
+        let summaries = self.sequencing_confirmation_report_summaries();
+        if summaries.is_empty() {
+            self.op_status =
+                "No persisted sequencing-confirmation reports for this sequence".to_string();
+            return;
+        }
+        if self
+            .sequencing_confirmation_ui
+            .selected_report_id
+            .trim()
+            .is_empty()
+            || !summaries.iter().any(|row| {
+                row.report_id
+                    .eq_ignore_ascii_case(self.sequencing_confirmation_ui.selected_report_id.trim())
+            })
+        {
+            if let Some(row) = summaries.last() {
+                self.sequencing_confirmation_ui.selected_report_id = row.report_id.clone();
+                self.save_engine_ops_state();
+            }
+        }
+        let preview_ids = summaries
+            .iter()
+            .take(8)
+            .map(|row| row.report_id.clone())
+            .collect::<Vec<_>>();
+        let suffix = if summaries.len() > preview_ids.len() {
+            ", ..."
+        } else {
+            ""
+        };
+        self.op_status = format!(
+            "Sequencing-confirmation reports: {} total [{}{}]",
+            summaries.len(),
+            preview_ids.join(", "),
+            suffix
+        );
+    }
+
+    fn show_sequencing_confirmation_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Sequencing-confirmation report_id is empty".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let report = match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_sequencing_confirmation_report(report_id)
+        {
+            Ok(report) => report,
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not load sequencing-confirmation report '{report_id}': {}",
+                    err.message
+                );
+                return;
+            }
+        };
+        self.sequencing_confirmation_ui.selected_report_id = report.report_id.clone();
+        let confirmed = report
+            .targets
+            .iter()
+            .filter(|row| row.status == SequencingConfirmationStatus::Confirmed)
+            .count();
+        let contradicted = report
+            .targets
+            .iter()
+            .filter(|row| row.status == SequencingConfirmationStatus::Contradicted)
+            .count();
+        let insufficient = report
+            .targets
+            .iter()
+            .filter(|row| row.status == SequencingConfirmationStatus::InsufficientEvidence)
+            .count();
+        self.op_status = format!(
+            "Sequencing-confirmation report '{}' expected='{}' status={} reads={} targets={} (confirmed={}, contradicted={}, insufficient={})",
+            report.report_id,
+            report.expected_seq_id,
+            report.overall_status.as_str(),
+            report.reads.len(),
+            report.targets.len(),
+            confirmed,
+            contradicted,
+            insufficient
+        );
+        self.save_engine_ops_state();
+    }
+
+    fn export_sequencing_confirmation_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Sequencing-confirmation report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.seq_confirm_report.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Sequencing-confirmation report export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let exported = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_sequencing_confirmation_report(report_id, &path_text);
+        match exported {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported sequencing-confirmation report '{}' to {}",
+                    report.report_id, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export sequencing-confirmation report '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn export_sequencing_confirmation_support_tsv_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Sequencing-confirmation report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.seq_confirm_support.tsv");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("TSV", &["tsv", "txt"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Sequencing-confirmation TSV export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let exported = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_sequencing_confirmation_support_tsv(report_id, &path_text);
+        match exported {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported sequencing-confirmation support TSV '{}' to {}",
+                    report.report_id, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export sequencing-confirmation support TSV '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
     fn render_primer_side_constraint_editor(
         ui: &mut egui::Ui,
         id_prefix: &str,
@@ -26974,6 +27476,622 @@ impl MainAreaDna {
                 .show(&mut columns[1], |ui| {
                     self.render_primer_design_ops(ui, false);
                 });
+        });
+    }
+
+    fn sequencing_confirmation_status_color(status: SequencingConfirmationStatus) -> egui::Color32 {
+        match status {
+            SequencingConfirmationStatus::Confirmed => egui::Color32::from_rgb(46, 125, 50),
+            SequencingConfirmationStatus::Contradicted => egui::Color32::from_rgb(183, 28, 28),
+            SequencingConfirmationStatus::InsufficientEvidence => {
+                egui::Color32::from_rgb(180, 83, 9)
+            }
+        }
+    }
+
+    pub fn render_sequencing_confirmation_specialist(
+        &mut self,
+        ui: &mut egui::Ui,
+        _ctx: &egui::Context,
+    ) {
+        let expected_seq_id = self.seq_id.clone().unwrap_or_default();
+        let expected_title = self.window_title();
+        let selection = self.current_selection_range_0based();
+        let project_sequence_ids = self.project_sequence_ids();
+        let mut report_summaries = self.sequencing_confirmation_report_summaries();
+        let latest_report_id = report_summaries.last().map(|row| row.report_id.clone());
+        if self.sequencing_confirmation_ui.report_id.trim().is_empty() {
+            self.sequencing_confirmation_ui.report_id =
+                self.sequencing_confirmation_default_report_id();
+        }
+        if self
+            .sequencing_confirmation_ui
+            .selected_report_id
+            .trim()
+            .is_empty()
+            && let Some(report_id) = latest_report_id.clone()
+        {
+            self.sequencing_confirmation_ui.selected_report_id = report_id;
+        }
+        report_summaries = self.sequencing_confirmation_report_summaries();
+        let selected_report = self
+            .sequencing_confirmation_ui
+            .selected_report_id
+            .trim()
+            .to_string();
+        let selected_report = if selected_report.is_empty() {
+            None
+        } else {
+            self.engine
+                .as_ref()
+                .and_then(|engine| engine.read().ok())
+                .and_then(|guard| {
+                    guard
+                        .get_sequencing_confirmation_report(&selected_report)
+                        .ok()
+                })
+        };
+
+        ui.label(
+            "Construct-confirmation specialist for called sequencing reads. Target entry uses the same engine contract as `seq-confirm run`.",
+        );
+        ui.small(
+            "V1 scope is called reads only: confirm full-span and explicit junction checkpoints now; raw ABI/AB1/SCF traces come later.",
+        );
+        ui.separator();
+        ui.columns(2, |columns| {
+            columns[0].heading("Inputs + Run");
+            columns[0].small(format!("Expected construct: {expected_title}"));
+            columns[0].small(format!("Expected sequence ID: {expected_seq_id}"));
+            columns[0].add_space(6.0);
+            columns[0].label("Read sequence IDs");
+            let read_ids_changed = columns[0]
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.sequencing_confirmation_ui.read_seq_ids_text,
+                    )
+                    .desired_width(320.0),
+                )
+                .on_hover_text(
+                    "Comma-separated read sequence IDs already loaded in the current project state.",
+                )
+                .changed();
+            if read_ids_changed {
+                self.save_engine_ops_state();
+            }
+            let alternate_ids = project_sequence_ids
+                .iter()
+                .filter(|seq_id| *seq_id != &expected_seq_id)
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>();
+            if !alternate_ids.is_empty() {
+                columns[0].small(format!(
+                    "Available project sequence IDs: {}{}",
+                    alternate_ids.join(", "),
+                    if project_sequence_ids.len() > alternate_ids.len() {
+                        ", ..."
+                    } else {
+                        ""
+                    }
+                ));
+            }
+            columns[0].separator();
+            columns[0].label("Targets");
+            let include_full_span_changed = columns[0]
+                .checkbox(
+                    &mut self.sequencing_confirmation_ui.include_full_span_target,
+                    "Include full construct span target",
+                )
+                .on_hover_text(
+                    "Keep the default full-span confirmation target in addition to any explicit junction checkpoints.",
+                )
+                .changed();
+            if include_full_span_changed {
+                self.save_engine_ops_state();
+            }
+            columns[0].horizontal_wrapped(|ui| {
+                ui.label("Junction breakpoints (0-based)");
+                let changed = ui
+                    .add(
+                        egui::TextEdit::singleline(
+                            &mut self.sequencing_confirmation_ui.junction_positions_0based,
+                        )
+                        .desired_width(180.0),
+                    )
+                    .on_hover_text(
+                        "Comma-separated left-end positions for explicit junction targets; mirrors `seq-confirm run --junction`.",
+                    )
+                    .changed();
+                ui.label("flank");
+                let flank_changed = ui
+                    .add(
+                        egui::TextEdit::singleline(
+                            &mut self.sequencing_confirmation_ui.junction_flank_bp,
+                        )
+                        .desired_width(56.0),
+                    )
+                    .on_hover_text(
+                        "Number of bp to include on each side of a junction breakpoint.",
+                    )
+                    .changed();
+                if changed || flank_changed {
+                    self.save_engine_ops_state();
+                }
+            });
+            columns[0].horizontal_wrapped(|ui| {
+                if let Some((start, end_exclusive)) = selection {
+                    let mid = start + (end_exclusive.saturating_sub(start) / 2);
+                    ui.small(format!(
+                        "Active selection: {start}..{end_exclusive} (midpoint {mid})"
+                    ));
+                    if ui
+                        .small_button("Add start")
+                        .on_hover_text(
+                            "Append the current selection start as a junction breakpoint.",
+                        )
+                        .clicked()
+                    {
+                        Self::append_unique_csv_token(
+                            &mut self.sequencing_confirmation_ui.junction_positions_0based,
+                            start.to_string(),
+                        );
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button("Add midpoint")
+                        .on_hover_text(
+                            "Append the current selection midpoint as a junction breakpoint.",
+                        )
+                        .clicked()
+                    {
+                        Self::append_unique_csv_token(
+                            &mut self.sequencing_confirmation_ui.junction_positions_0based,
+                            mid.to_string(),
+                        );
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button("Add end")
+                        .on_hover_text(
+                            "Append the current selection end as a junction breakpoint.",
+                        )
+                        .clicked()
+                    {
+                        Self::append_unique_csv_token(
+                            &mut self.sequencing_confirmation_ui.junction_positions_0based,
+                            end_exclusive.to_string(),
+                        );
+                        self.save_engine_ops_state();
+                    }
+                } else {
+                    ui.small(
+                        "No active selection. Select a region in the sequence window if you want one-click junction seeding.",
+                    );
+                }
+            });
+            columns[0].separator();
+            columns[0].label("Alignment + thresholds");
+            columns[0].horizontal(|ui| {
+                ui.label("mode");
+                let mut changed = false;
+                egui::ComboBox::from_id_salt(("seq_confirm_alignment_mode", self.panel_scope_key()))
+                    .selected_text(self.sequencing_confirmation_ui.alignment_mode.as_str())
+                    .show_ui(ui, |ui| {
+                        changed |= ui
+                            .selectable_value(
+                                &mut self.sequencing_confirmation_ui.alignment_mode,
+                                PairwiseAlignmentMode::Local,
+                                "local",
+                            )
+                            .changed();
+                        changed |= ui
+                            .selectable_value(
+                                &mut self.sequencing_confirmation_ui.alignment_mode,
+                                PairwiseAlignmentMode::Global,
+                                "global",
+                            )
+                            .changed();
+                    });
+                if changed {
+                    self.save_engine_ops_state();
+                }
+                let rc_changed = ui
+                    .checkbox(
+                        &mut self.sequencing_confirmation_ui.allow_reverse_complement,
+                        "allow reverse complement",
+                    )
+                    .on_hover_text(
+                        "Try the reverse-complement orientation and keep the better usable alignment.",
+                    )
+                    .changed();
+                if rc_changed {
+                    self.save_engine_ops_state();
+                }
+            });
+            egui::Grid::new(("seq_confirm_controls", self.panel_scope_key()))
+                .num_columns(4)
+                .striped(true)
+                .show(&mut columns[0], |ui| {
+                    ui.label("match");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.match_score,
+                            )
+                            .desired_width(60.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.label("mismatch");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.mismatch_score,
+                            )
+                            .desired_width(60.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.end_row();
+                    ui.label("gap open");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.gap_open,
+                            )
+                            .desired_width(60.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.label("gap extend");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.gap_extend,
+                            )
+                            .desired_width(60.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.end_row();
+                    ui.label("min identity");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.min_identity_fraction,
+                            )
+                            .desired_width(72.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.label("min target coverage");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.min_target_coverage_fraction,
+                            )
+                            .desired_width(72.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.end_row();
+                    ui.label("report id");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.sequencing_confirmation_ui.report_id)
+                                .desired_width(180.0),
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    ui.end_row();
+                });
+            columns[0].horizontal_wrapped(|ui| {
+                if ui
+                    .button("Run confirmation")
+                    .on_hover_text(
+                        "Run ConfirmConstructReads with the current GUI inputs and refresh the selected report.",
+                    )
+                    .clicked()
+                {
+                    match self.build_confirm_construct_reads_operation() {
+                        Ok((report_id, op)) => {
+                            self.sequencing_confirmation_ui.report_id = report_id.clone();
+                            if self.apply_operation_with_feedback_and_result(op).is_some() {
+                                self.sequencing_confirmation_ui.selected_report_id = report_id.clone();
+                                self.show_sequencing_confirmation_report(&report_id);
+                            }
+                            self.save_engine_ops_state();
+                        }
+                        Err(err) => {
+                            self.op_status = err;
+                        }
+                    }
+                }
+                if ui
+                    .button("Refresh reports")
+                    .on_hover_text(
+                        "List persisted sequencing-confirmation reports for this expected construct sequence.",
+                    )
+                    .clicked()
+                {
+                    self.list_sequencing_confirmation_reports();
+                }
+                if ui
+                    .button("Show selected")
+                    .on_hover_text("Refresh status from the currently selected persisted report.")
+                    .clicked()
+                {
+                    let report_id = self
+                        .sequencing_confirmation_ui
+                        .selected_report_id
+                        .clone();
+                    self.show_sequencing_confirmation_report(&report_id);
+                }
+            });
+
+            columns[1].heading("Saved Reports + Evidence");
+            if report_summaries.is_empty() {
+                columns[1].small(
+                    "No sequencing-confirmation reports are stored for this sequence yet. Run confirmation to create one.",
+                );
+            } else {
+                columns[1].horizontal_wrapped(|ui| {
+                ui.label("Saved report");
+                let mut selection_changed = false;
+                egui::ComboBox::from_id_salt((
+                    "seq_confirm_saved_report",
+                    self.panel_scope_key(),
+                ))
+                .selected_text(
+                    report_summaries
+                        .iter()
+                        .find(|row| {
+                            row.report_id.eq_ignore_ascii_case(
+                                self.sequencing_confirmation_ui.selected_report_id.trim(),
+                            )
+                        })
+                        .map(|row| {
+                            format!(
+                                "{} | {} | reads={}",
+                                row.report_id,
+                                row.overall_status.as_str(),
+                                row.read_count
+                            )
+                        })
+                        .unwrap_or_else(|| "<select report>".to_string()),
+                )
+                .show_ui(ui, |ui| {
+                    for row in &report_summaries {
+                        selection_changed |= ui
+                            .selectable_value(
+                                &mut self.sequencing_confirmation_ui.selected_report_id,
+                                row.report_id.clone(),
+                                format!(
+                                    "{} | {} | reads={} targets={}",
+                                    row.report_id,
+                                    row.overall_status.as_str(),
+                                    row.read_count,
+                                    row.target_count
+                                ),
+                            )
+                            .changed();
+                    }
+                });
+                if selection_changed {
+                    self.save_engine_ops_state();
+                }
+                if ui
+                    .button("Export JSON...")
+                    .on_hover_text(
+                        "Export the selected sequencing-confirmation report as pretty-printed JSON.",
+                    )
+                    .clicked()
+                {
+                    let report_id = self
+                        .sequencing_confirmation_ui
+                        .selected_report_id
+                        .clone();
+                    self.export_sequencing_confirmation_report_dialog(&report_id);
+                }
+                if ui
+                    .button("Export TSV...")
+                    .on_hover_text(
+                        "Export one target-support row per checkpoint from the selected report.",
+                    )
+                    .clicked()
+                {
+                    let report_id = self
+                        .sequencing_confirmation_ui
+                        .selected_report_id
+                        .clone();
+                    self.export_sequencing_confirmation_support_tsv_dialog(&report_id);
+                }
+                });
+                if let Some(report) = selected_report.as_ref() {
+                    columns[1].group(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Overall");
+                        ui.colored_label(
+                            Self::sequencing_confirmation_status_color(report.overall_status),
+                            report.overall_status.as_str(),
+                        );
+                        ui.separator();
+                        ui.small(format!("report_id={}", report.report_id));
+                        ui.separator();
+                        ui.small(format!("reads={}", report.reads.len()));
+                        ui.separator();
+                        ui.small(format!("targets={}", report.targets.len()));
+                        if !report.warnings.is_empty() {
+                            ui.separator();
+                            ui.small(format!("warnings={}", report.warnings.len()));
+                        }
+                    });
+                    ui.small(format!(
+                        "mode={} rc_allowed={} identity>={:.2} target_coverage>={:.2}",
+                        report.alignment_mode.as_str(),
+                        report.allow_reverse_complement,
+                        report.min_identity_fraction,
+                        report.min_target_coverage_fraction
+                    ));
+                    });
+                    if !report.warnings.is_empty() {
+                        columns[1].collapsing("Warnings", |ui| {
+                        for warning in &report.warnings {
+                            ui.small(warning);
+                        }
+                        });
+                    }
+                    columns[1].separator();
+                    columns[1].label(egui::RichText::new("Targets").strong());
+                    egui::ScrollArea::vertical()
+                        .id_salt(("seq_confirm_targets_scroll", self.panel_scope_key()))
+                        .max_height(220.0)
+                        .show(&mut columns[1], |ui| {
+                        egui::Grid::new(("seq_confirm_targets_grid", self.panel_scope_key()))
+                            .num_columns(6)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Target");
+                                ui.strong("Kind");
+                                ui.strong("Status");
+                                ui.strong("Span");
+                                ui.strong("Support");
+                                ui.strong("Reason");
+                                ui.end_row();
+                                for target in &report.targets {
+                                    ui.label(&target.label);
+                                    ui.small(target.kind.as_str());
+                                    ui.colored_label(
+                                        Self::sequencing_confirmation_status_color(target.status),
+                                        target.status.as_str(),
+                                    );
+                                    ui.small(format!(
+                                        "{}..{} ({}/{})",
+                                        target.start_0based,
+                                        target.end_0based_exclusive,
+                                        target.covered_bp,
+                                        target.target_length_bp
+                                    ));
+                                    ui.small(format!(
+                                        "+{} / -{}",
+                                        target.support_read_ids.len(),
+                                        target.contradicting_read_ids.len()
+                                    ));
+                                    ui.small(&target.reason);
+                                    ui.end_row();
+                                }
+                            });
+                        });
+                    columns[1].separator();
+                    columns[1].label(egui::RichText::new("Reads").strong());
+                    egui::ScrollArea::vertical()
+                        .id_salt(("seq_confirm_reads_scroll", self.panel_scope_key()))
+                        .max_height(280.0)
+                        .show(&mut columns[1], |ui| {
+                        egui::Grid::new(("seq_confirm_reads_grid", self.panel_scope_key()))
+                            .num_columns(7)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Read");
+                                ui.strong("Orientation");
+                                ui.strong("Usable");
+                                ui.strong("Identity");
+                                ui.strong("Coverage");
+                                ui.strong("Targets");
+                                ui.strong("Discrepancies");
+                                ui.end_row();
+                                for read in &report.reads {
+                                    ui.label(&read.read_seq_id);
+                                    ui.small(match read.orientation {
+                                        SequencingReadOrientation::Forward => "forward",
+                                        SequencingReadOrientation::ReverseComplement => "reverse_complement",
+                                    });
+                                    ui.small(if read.usable { "yes" } else { "no" });
+                                    ui.small(format!("{:.3}", read.best_alignment.identity_fraction));
+                                    ui.small(format!(
+                                        "q={:.3} / t={:.3}",
+                                        read.best_alignment.query_coverage_fraction,
+                                        read.best_alignment.target_coverage_fraction
+                                    ));
+                                    ui.small(format!(
+                                        "+{} / -{}",
+                                        read.confirmed_target_ids.len(),
+                                        read.contradicted_target_ids.len()
+                                    ));
+                                    ui.small(format!("{}", read.discrepancies.len()));
+                                    ui.end_row();
+                                }
+                            });
+                        });
+                    if let Some(best_read) = report.reads.first() {
+                        columns[1].separator();
+                        columns[1].collapsing("First read alignment snapshot", |ui| {
+                        let alignment: &SequenceAlignmentReport = &best_read.best_alignment;
+                        ui.small(format!(
+                            "{} -> {} | mode={} score={} cigar={}",
+                            alignment.query_seq_id,
+                            alignment.target_seq_id,
+                            alignment.mode.as_str(),
+                            alignment.score,
+                            alignment.cigar
+                        ));
+                        ui.small(format!(
+                            "query {}..{} aligned {}..{}",
+                            alignment.query_span_start_0based,
+                            alignment.query_span_end_0based,
+                            alignment.aligned_query_start_0based,
+                            alignment.aligned_query_end_0based_exclusive
+                        ));
+                        ui.small(format!(
+                            "target {}..{} aligned {}..{}",
+                            alignment.target_span_start_0based,
+                            alignment.target_span_end_0based,
+                            alignment.aligned_target_start_0based,
+                            alignment.aligned_target_end_0based_exclusive
+                        ));
+                        if !best_read.discrepancies.is_empty() {
+                            ui.separator();
+                            for discrepancy in best_read
+                                .discrepancies
+                                .iter()
+                                .take(8)
+                            {
+                                let discrepancy: &SequencingConfirmationDiscrepancy = discrepancy;
+                                ui.small(format!(
+                                    "{} q:{}..{} t:{}..{} '{}' vs '{}'",
+                                    discrepancy.kind.as_str(),
+                                    discrepancy.query_start_0based,
+                                    discrepancy.query_end_0based_exclusive,
+                                    discrepancy.target_start_0based,
+                                    discrepancy.target_end_0based_exclusive,
+                                    discrepancy.query_bases,
+                                    discrepancy.target_bases
+                                ));
+                            }
+                        }
+                        });
+                    }
+                } else {
+                    columns[1].small(
+                        "Selected report is not loaded. Choose a saved report or run a new confirmation pass.",
+                    );
+                }
+            }
         });
     }
 
@@ -28015,6 +29133,37 @@ impl MainAreaDna {
             .collect()
     }
 
+    fn append_unique_csv_token(text: &mut String, value: impl Into<String>) {
+        let value = value.into();
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let mut values = Self::parse_ids(text);
+        if values
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(trimmed))
+        {
+            return;
+        }
+        values.push(trimmed.to_string());
+        *text = values.join(",");
+    }
+
+    fn project_sequence_ids(&self) -> Vec<String> {
+        let mut seq_ids = if let Some(engine) = self.engine.as_ref() {
+            engine
+                .read()
+                .ok()
+                .map(|guard| guard.state().sequences.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+        seq_ids.sort_unstable();
+        seq_ids
+    }
+
     fn normalize_enzyme_match_token(text: &str) -> String {
         text.chars()
             .filter(|c| c.is_ascii_alphanumeric())
@@ -28425,6 +29574,7 @@ impl MainAreaDna {
             pcr_paint_intervals: self.pcr_paint_intervals.clone(),
             selection_formula_text: self.selection_formula_text.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
+            sequencing_confirmation_ui: self.sequencing_confirmation_ui.clone(),
             primer_backend: self.primer_backend,
             primer3_executable: self.primer3_executable.clone(),
             primer3_preflight_status: self.primer3_preflight_status.clone(),
@@ -28643,6 +29793,7 @@ impl MainAreaDna {
         self.pcr_paint_last_drag_start_text.clear();
         self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
+        self.sequencing_confirmation_ui = s.sequencing_confirmation_ui;
         self.primer_backend = s.primer_backend;
         self.primer3_executable = if s.primer3_executable.trim().is_empty() {
             "primer3_core".to_string()

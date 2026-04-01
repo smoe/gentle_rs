@@ -8139,6 +8139,26 @@ fn parse_ui_open_and_prepared_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let open_seq_confirm = parse_shell_line("ui open sequencing-confirmation")
+        .expect("parse ui open sequencing-confirmation");
+    match open_seq_confirm {
+        ShellCommand::UiIntent { action, target, .. } => {
+            assert_eq!(action, UiIntentAction::Open);
+            assert_eq!(target, UiIntentTarget::SequencingConfirmation);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let focus_seq_confirm =
+        parse_shell_line("ui focus seq-confirm").expect("parse ui focus seq-confirm");
+    match focus_seq_confirm {
+        ShellCommand::UiIntent { action, target, .. } => {
+            assert_eq!(action, UiIntentAction::Focus);
+            assert_eq!(target, UiIntentTarget::SequencingConfirmation);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let prepared = parse_shell_line("ui prepared-genomes --species human --latest")
         .expect("parse ui prepared-genomes");
     match prepared {

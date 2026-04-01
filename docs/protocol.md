@@ -944,6 +944,18 @@ MCP UI-intent tool contracts (current):
     - required: `action` (`open|focus`), `target`
     - optional: `state_path`, `genome_id`, `helpers`, `catalog_path`,
       `cache_dir`, `filter`, `species`, `latest`
+  - current stable targets:
+    - `prepared-references`
+    - `prepare-reference-genome`
+    - `retrieve-genome-sequence`
+    - `blast-genome-sequence`
+    - `import-genome-track`
+    - `pcr-design`
+    - `sequencing-confirmation`
+    - `agent-assistant`
+    - `prepare-helper-genome`
+    - `retrieve-helper-sequence`
+    - `blast-helper-sequence`
   - behavior:
     - executes shared shell command:
       - `ui open TARGET ...` or `ui focus TARGET ...`

@@ -2293,6 +2293,9 @@ Current baseline:
   - `ui open|focus TARGET ...`
   - `ui prepared-genomes ...`
   - `ui latest-prepared SPECIES ...`
+- specialist targets now include shared-shell/GUI parity for:
+  - `pcr-design`
+  - `sequencing-confirmation`
 - Prepared references supports one-shot disambiguation/open flow:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` still overrides query-based selection
@@ -2473,7 +2476,9 @@ Repeated multi-tool gaps to prioritize:
        shared engine/shell path for already-loaded sequences
      - v1 target coverage supports full-span default confirmation plus explicit
        interval/junction targets
-     - persisted report inspection/export exists before GUI specialist work
+     - dedicated GUI specialist is now available through
+       `Patterns -> Sequencing Confirmation...`, including persisted report
+       review plus JSON/TSV export on top of the same engine report store
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
    - legacy `gentle-m` intake priority: do this before resurrecting broader
