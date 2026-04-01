@@ -3724,6 +3724,16 @@ pub enum Operation {
         accession: String,
         as_id: Option<SeqId>,
     },
+    FetchDbSnpRegion {
+        rs_id: String,
+        genome_id: String,
+        flank_bp: Option<usize>,
+        output_id: Option<SeqId>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     FetchUniprotLinkedGenBank {
         entry_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5452,6 +5462,7 @@ impl GentleEngine {
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
                 "FetchGenBankAccession".to_string(),
+                "FetchDbSnpRegion".to_string(),
                 "FetchUniprotLinkedGenBank".to_string(),
                 "ImportUniprotEntrySequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),

@@ -11,7 +11,481 @@
 
 use super::*;
 
+const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
+    "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
+const DBSNP_REFSNP_ENV_VAR: &str = "GENTLE_NCBI_DBSNP_REFSNP_URL";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DbsnpResolvedPlacement {
+    pub rs_id: String,
+    pub chromosome: String,
+    pub chromosome_display: String,
+    pub position_1based: usize,
+    pub assembly_name: Option<String>,
+    pub gene_symbols: Vec<String>,
+}
+
 impl GentleEngine {
+    pub(super) fn normalize_dbsnp_rs_id(raw: &str) -> Result<(String, String), EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "dbSNP rs_id cannot be empty".to_string(),
+            });
+        }
+        let numeric = trimmed
+            .strip_prefix("rs")
+            .or_else(|| trimmed.strip_prefix("RS"))
+            .or_else(|| trimmed.strip_prefix("Rs"))
+            .or_else(|| trimmed.strip_prefix("rS"))
+            .unwrap_or(trimmed)
+            .trim();
+        if numeric.is_empty() || !numeric.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid dbSNP rs_id '{}' (expected digits or an rs-prefixed identifier such as rs9923231)",
+                    raw
+                ),
+            });
+        }
+        Ok((format!("rs{numeric}"), numeric.to_string()))
+    }
+
+    fn dbsnp_refsnp_url(refsnp_id: &str) -> String {
+        let template = std::env::var(DBSNP_REFSNP_ENV_VAR)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_DBSNP_REFSNP_ENDPOINT.to_string());
+        if template.contains("{refsnp_id}") || template.contains("{rs_id}") {
+            return template
+                .replace("{refsnp_id}", refsnp_id)
+                .replace("{rs_id}", refsnp_id);
+        }
+        if template.ends_with('/') {
+            return format!("{template}{refsnp_id}");
+        }
+        template
+    }
+
+    fn json_scalar_to_string(value: &serde_json::Value) -> Option<String> {
+        value
+            .as_str()
+            .map(|raw| raw.to_string())
+            .or_else(|| value.as_u64().map(|raw| raw.to_string()))
+            .or_else(|| value.as_i64().map(|raw| raw.to_string()))
+    }
+
+    fn dbsnp_assembly_family_token(raw: &str) -> Option<String> {
+        let token = raw.trim();
+        if token.is_empty() {
+            return None;
+        }
+        for chunk in token.split(|c: char| !c.is_ascii_alphanumeric() && c != '.') {
+            let lower = chunk.to_ascii_lowercase();
+            if lower.is_empty() {
+                continue;
+            }
+            let core = lower
+                .split_once(".p")
+                .map(|(prefix, _)| prefix)
+                .unwrap_or(lower.as_str())
+                .trim();
+            if core.is_empty() {
+                continue;
+            }
+            let has_alpha = core.chars().any(|c| c.is_ascii_alphabetic());
+            let has_digit = core.chars().any(|c| c.is_ascii_digit());
+            if has_alpha && has_digit {
+                return Some(core.to_string());
+            }
+        }
+        None
+    }
+
+    fn dbsnp_accession_chromosome_alias(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let upper = trimmed.to_ascii_uppercase();
+        let without_version = upper.split('.').next().unwrap_or(&upper);
+        let suffix = without_version
+            .strip_prefix("NC_")
+            .or_else(|| without_version.strip_prefix("CM"))
+            .unwrap_or(without_version)
+            .trim_start_matches('0');
+        if suffix.is_empty() || !suffix.chars().all(|ch| ch.is_ascii_digit()) {
+            return None;
+        }
+        Some(match suffix {
+            "23" => "X".to_string(),
+            "24" => "Y".to_string(),
+            "12920" => "MT".to_string(),
+            other => other.to_string(),
+        })
+    }
+
+    fn dbsnp_collect_gene_symbols(document: &serde_json::Value) -> Vec<String> {
+        let mut symbols = std::collections::BTreeSet::new();
+        let allele_annotations = document
+            .get("primary_snapshot_data")
+            .and_then(|value| value.get("allele_annotations"))
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for allele_annotation in allele_annotations {
+            let assembly_annotations = allele_annotation
+                .get("assembly_annotation")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            for assembly_annotation in assembly_annotations {
+                let genes = assembly_annotation
+                    .get("genes")
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                for gene in genes {
+                    for key in ["locus", "name", "symbol"] {
+                        if let Some(symbol) = gene
+                            .get(key)
+                            .and_then(Self::json_scalar_to_string)
+                            .map(|value| value.trim().to_string())
+                            .filter(|value| !value.is_empty())
+                        {
+                            symbols.insert(symbol);
+                        }
+                    }
+                }
+            }
+        }
+        symbols.into_iter().collect()
+    }
+
+    pub(super) fn fetch_dbsnp_refsnp_json(
+        refsnp_id: &str,
+    ) -> Result<(String, serde_json::Value), EngineError> {
+        let source_url = Self::dbsnp_refsnp_url(refsnp_id);
+        let text = if let Some(path) = source_url.strip_prefix("file://") {
+            std::fs::read_to_string(path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read dbSNP source file '{}' for rs{}: {e}",
+                    path, refsnp_id
+                ),
+            })?
+        } else {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(45))
+                .build()
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not create dbSNP HTTP client: {e}"),
+                })?;
+            let response = client.get(&source_url).send().map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not fetch dbSNP refSNP '{}' from '{}': {e}",
+                    refsnp_id, source_url
+                ),
+            })?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let detail = if status == reqwest::StatusCode::NOT_FOUND {
+                    format!(
+                        "dbSNP refSNP '{}' was not found (HTTP {}) at '{}'",
+                        refsnp_id, status, source_url
+                    )
+                } else {
+                    format!(
+                        "dbSNP refSNP '{}' returned HTTP status {} at '{}'",
+                        refsnp_id, status, source_url
+                    )
+                };
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: detail,
+                });
+            }
+            response.text().map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read dbSNP response body for rs{}: {e}",
+                    refsnp_id
+                ),
+            })?
+        };
+        let document =
+            serde_json::from_str::<serde_json::Value>(&text).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse dbSNP response JSON for rs{}: {e}",
+                    refsnp_id
+                ),
+            })?;
+        if let Some(error_text) = document
+            .get("error")
+            .and_then(Self::json_scalar_to_string)
+            .or_else(|| {
+                document
+                    .get("error")
+                    .and_then(|value| value.get("message"))
+                    .and_then(Self::json_scalar_to_string)
+            })
+        {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "dbSNP refSNP '{}' returned error: {}",
+                    refsnp_id, error_text
+                ),
+            });
+        }
+        Ok((source_url, document))
+    }
+
+    pub(super) fn resolve_dbsnp_primary_placement(
+        document: &serde_json::Value,
+        requested_rs_id: &str,
+        requested_assembly_family: Option<&str>,
+    ) -> Result<DbsnpResolvedPlacement, EngineError> {
+        let resolved_rs_id = document
+            .get("refsnp_id")
+            .and_then(Self::json_scalar_to_string)
+            .map(|value| format!("rs{}", value.trim().trim_start_matches("rs")))
+            .unwrap_or_else(|| requested_rs_id.to_string());
+        let requested_family = requested_assembly_family
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let placements = document
+            .get("primary_snapshot_data")
+            .and_then(|value| value.get("placements_with_allele"))
+            .and_then(|value| value.as_array())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "dbSNP record '{}' does not include any primary genomic placements",
+                    resolved_rs_id
+                ),
+            })?;
+        let mut available_assemblies = std::collections::BTreeSet::new();
+        let mut available_families = std::collections::BTreeSet::new();
+        let mut best: Option<(usize, String, String, Option<String>)> = None;
+        for placement in placements {
+            let placement_seq_id = placement
+                .get("seq_id")
+                .and_then(Self::json_scalar_to_string)
+                .unwrap_or_default();
+            let traits = placement
+                .get("placement_annot")
+                .and_then(|value| value.get("seq_id_traits_by_assembly"))
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut best_trait_score = 0usize;
+            let mut matched_assembly_name: Option<String> = None;
+            for assembly_trait in traits {
+                let is_chromosome = assembly_trait
+                    .get("is_chromosome")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false);
+                if !is_chromosome {
+                    continue;
+                }
+                let assembly_name = assembly_trait
+                    .get("assembly_name")
+                    .and_then(Self::json_scalar_to_string);
+                if let Some(name) = assembly_name.as_ref() {
+                    available_assemblies.insert(name.clone());
+                    if let Some(family) = Self::dbsnp_assembly_family_token(name) {
+                        available_families.insert(family);
+                    }
+                }
+                if let Some(requested_family) = requested_family.as_deref()
+                    && assembly_name
+                        .as_deref()
+                        .and_then(Self::dbsnp_assembly_family_token)
+                        .as_deref()
+                        != Some(requested_family)
+                {
+                    continue;
+                }
+                let mut score = 0usize;
+                if placement
+                    .get("is_ptlp")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+                {
+                    score += 8;
+                }
+                if assembly_trait
+                    .get("is_top_level")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+                {
+                    score += 4;
+                }
+                if !assembly_trait
+                    .get("is_alt")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+                {
+                    score += 2;
+                }
+                if !assembly_trait
+                    .get("is_patch")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+                {
+                    score += 1;
+                }
+                if matched_assembly_name.is_none() || score > best_trait_score {
+                    best_trait_score = score;
+                    matched_assembly_name = assembly_name;
+                }
+            }
+            if requested_family.is_some() && matched_assembly_name.is_none() {
+                continue;
+            }
+            if requested_family.is_none()
+                && matched_assembly_name.is_none()
+                && placement_seq_id.is_empty()
+            {
+                continue;
+            }
+            let (_position_0based, spdi_seq_id) = placement
+                .get("alleles")
+                .and_then(|value| value.as_array())
+                .and_then(|alleles| {
+                    alleles.iter().find_map(|allele| {
+                        let spdi = allele.get("allele")?.get("spdi")?;
+                        let position = spdi.get("position")?.as_u64()?;
+                        let seq_id = spdi.get("seq_id").and_then(Self::json_scalar_to_string);
+                        Some((position as usize, seq_id.unwrap_or_default()))
+                    })
+                })
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "dbSNP record '{}' does not include chromosome-position allele coordinates",
+                        resolved_rs_id
+                    ),
+                })?;
+            let chromosome = if spdi_seq_id.trim().is_empty() {
+                placement_seq_id.clone()
+            } else {
+                spdi_seq_id
+            };
+            let overall_score = best_trait_score;
+            let is_better = best
+                .as_ref()
+                .map(|(score, _, _, _)| overall_score > *score)
+                .unwrap_or(true);
+            if is_better {
+                best = Some((
+                    overall_score,
+                    chromosome,
+                    Self::dbsnp_accession_chromosome_alias(&placement_seq_id)
+                        .unwrap_or_else(|| placement_seq_id.clone()),
+                    matched_assembly_name,
+                ));
+            }
+            if best_trait_score >= 15 {
+                // Prefer the first strong top-level chromosome placement that matches the requested assembly.
+                break;
+            }
+        }
+        let Some((_, chromosome, chromosome_display, assembly_name)) = best else {
+            if let Some(requested_family) = requested_family.as_deref()
+                && !available_families.contains(requested_family)
+            {
+                return Self::resolve_dbsnp_primary_placement(document, requested_rs_id, None);
+            }
+            let available = if available_assemblies.is_empty() {
+                "none reported".to_string()
+            } else {
+                available_assemblies
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let detail = if let Some(requested_family) = requested_family.as_deref() {
+                format!(
+                    "dbSNP record '{}' has no top-level chromosome placement matching assembly family '{}' (available assemblies: {})",
+                    resolved_rs_id, requested_family, available
+                )
+            } else {
+                format!(
+                    "dbSNP record '{}' has no usable top-level chromosome placement",
+                    resolved_rs_id
+                )
+            };
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: detail,
+            });
+        };
+        let gene_symbols = Self::dbsnp_collect_gene_symbols(document);
+        let position_1based = placements
+            .iter()
+            .find_map(|placement| {
+                let placement_seq_id = placement
+                    .get("seq_id")
+                    .and_then(Self::json_scalar_to_string)
+                    .unwrap_or_default();
+                let matches_chromosome = placement_seq_id == chromosome
+                    || placement
+                        .get("alleles")
+                        .and_then(|value| value.as_array())
+                        .map(|alleles| {
+                            alleles.iter().any(|allele| {
+                                allele
+                                    .get("allele")
+                                    .and_then(|value| value.get("spdi"))
+                                    .and_then(|value| value.get("seq_id"))
+                                    .and_then(Self::json_scalar_to_string)
+                                    .map(|seq_id| seq_id == chromosome)
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false);
+                if !matches_chromosome {
+                    return None;
+                }
+                placement
+                    .get("alleles")
+                    .and_then(|value| value.as_array())
+                    .and_then(|alleles| {
+                        alleles.iter().find_map(|allele| {
+                            allele
+                                .get("allele")
+                                .and_then(|value| value.get("spdi"))
+                                .and_then(|value| value.get("position"))
+                                .and_then(|value| value.as_u64())
+                                .map(|value| value as usize + 1)
+                        })
+                    })
+            })
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "dbSNP record '{}' did not expose a usable 1-based genomic position",
+                    resolved_rs_id
+                ),
+            })?;
+        Ok(DbsnpResolvedPlacement {
+            rs_id: resolved_rs_id,
+            chromosome,
+            chromosome_display,
+            position_1based,
+            assembly_name,
+            gene_symbols,
+        })
+    }
+
     pub(super) fn feature_qualifier_text(
         feature: &gb_io::seq::Feature,
         key: &str,

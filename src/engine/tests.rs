@@ -407,11 +407,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
         .first()
         .expect("GENE2 first exon")
         .start_1based;
-    let gene2_end = gene2_tx
-        .exons
-        .last()
-        .expect("GENE2 last exon")
-        .end_1based;
+    let gene2_end = gene2_tx.exons.last().expect("GENE2 last exon").end_1based;
 
     engine
         .upsert_rna_read_report(RnaReadInterpretationReport {
@@ -561,9 +557,8 @@ fn find_gene_support_exon_row<'a>(
     gene_id: &str,
     exon_ordinal: usize,
 ) -> Option<&'a RnaReadGeneExonSupportRow> {
-    rows.iter().find(|row| {
-        row.gene_id.eq_ignore_ascii_case(gene_id) && row.exon_ordinal == exon_ordinal
-    })
+    rows.iter()
+        .find(|row| row.gene_id.eq_ignore_ascii_case(gene_id) && row.exon_ordinal == exon_ordinal)
 }
 
 fn find_gene_support_pair_row<'a>(
@@ -3892,6 +3887,179 @@ fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
 }
 
 #[test]
+fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
+    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+    let td = tempdir().unwrap();
+    let fasta_path = td.path().join("toy.fa");
+    let ann_path = td.path().join("toy.gtf");
+    fs::write(
+        &fasta_path,
+        ">chr1\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\n",
+    )
+    .unwrap();
+    fs::write(
+        &ann_path,
+        "chr1\tsrc\tgene\t1\t60\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\nchr1\tsrc\ttranscript\t1\t60\t.\t+\t.\tgene_id \"GENE1\"; transcript_id \"TX1\"; gene_name \"ONE\";\nchr1\tsrc\texon\t1\t60\t.\t+\t.\tgene_id \"GENE1\"; transcript_id \"TX1\"; exon_number \"1\";\nchr1\tsrc\tCDS\t10\t45\t.\t+\t0\tgene_id \"GENE1\"; transcript_id \"TX1\";\n",
+    )
+    .unwrap();
+    let cache_dir = td.path().join("cache");
+    let cache_dir_str = cache_dir.display().to_string();
+    let catalog_path = td.path().join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy dbsnp genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta_path.display(),
+            ann_path.display(),
+            cache_dir.display()
+        ),
+    )
+    .unwrap();
+    let catalog_path_str = catalog_path.display().to_string();
+    let mock_dir = td.path().join("mock_dbsnp");
+    fs::create_dir_all(&mock_dir).unwrap();
+    fs::write(
+        mock_dir.join("123.json"),
+        r#"{
+  "refsnp_id": "123",
+  "primary_snapshot_data": {
+    "placements_with_allele": [
+      {
+        "seq_id": "chr1",
+        "is_ptlp": true,
+        "placement_annot": {
+          "seq_id_traits_by_assembly": [
+            {
+              "assembly_name": "ToyGenome.1",
+              "is_top_level": true,
+              "is_alt": false,
+              "is_patch": false,
+              "is_chromosome": true
+            }
+          ]
+        },
+        "alleles": [
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "chr1",
+                "position": 29,
+                "deleted_sequence": "A",
+                "inserted_sequence": "G"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "allele_annotations": [
+      {
+        "assembly_annotation": [
+          {
+            "genes": [
+              {
+                "locus": "tagA"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+    )
+    .unwrap();
+    let refsnp_template = format!("file://{}/{{refsnp_id}}.json", mock_dir.display());
+    let _dbsnp_env = EnvVarGuard::set("GENTLE_NCBI_DBSNP_REFSNP_URL", &refsnp_template);
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: Some(cache_dir_str.clone()),
+            timeout_seconds: None,
+        })
+        .expect("prepare ToyGenome");
+
+    let result = engine
+        .apply(Operation::FetchDbSnpRegion {
+            rs_id: "rs123".to_string(),
+            genome_id: "ToyGenome".to_string(),
+            flank_bp: Some(20),
+            output_id: Some("rs123_local".to_string()),
+            annotation_scope: Some(GenomeAnnotationScope::Full),
+            max_annotation_features: Some(0),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: Some(cache_dir_str.clone()),
+        })
+        .expect("fetch dbsnp region");
+
+    assert_eq!(result.created_seq_ids, vec!["rs123_local".to_string()]);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("Resolved dbSNP 'rs123'")),
+        "messages were: {:?}",
+        result.messages
+    );
+    let telemetry = result
+        .genome_annotation_projection
+        .as_ref()
+        .expect("annotation telemetry");
+    assert_eq!(telemetry.requested_scope, "full");
+    assert!(telemetry.attached_feature_count > 0);
+    let extracted = engine
+        .state()
+        .sequences
+        .get("rs123_local")
+        .expect("extracted sequence");
+    assert_eq!(extracted.len(), 41);
+    assert!(!extracted.features().is_empty());
+
+    let provenance = engine
+        .state()
+        .metadata
+        .get(PROVENANCE_METADATA_KEY)
+        .and_then(|v| v.get(GENOME_EXTRACTIONS_METADATA_KEY))
+        .and_then(|v| v.as_array())
+        .and_then(|records| {
+            records.iter().find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|id| id == "rs123_local")
+                    .unwrap_or(false)
+            })
+        })
+        .cloned()
+        .expect("dbsnp provenance record");
+    assert_eq!(
+        provenance
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+        "FetchDbSnpRegion"
+    );
+    assert_eq!(
+        provenance
+            .get("chromosome")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+        "chr1"
+    );
+}
+
+#[test]
 fn test_load_file_operation_genbank_region_anchor_enables_bed_import() {
     let mut engine = GentleEngine::new();
     let res = engine
@@ -4049,10 +4217,7 @@ fn test_import_genome_bed_track_remaps_for_reverse_anchor() {
     assert!(crate::feature_location::feature_is_reverse(feature));
     let ranges = crate::feature_location::feature_ranges_sorted_i64(feature);
     assert_eq!(ranges, vec![(9, 11)]);
-    assert_eq!(
-        feature.qualifier_values("bed_strand").next(),
-        Some("+")
-    );
+    assert_eq!(feature.qualifier_values("bed_strand").next(), Some("+"));
     assert_eq!(feature.qualifier_values("strand").next(), Some("-"));
 }
 
@@ -4431,9 +4596,7 @@ fn test_annotate_tfbs_adds_scored_features() {
             && motif_len == 4
             && f.qualifier_values("llr_bits").next().is_some()
             && f.qualifier_values("llr_quantile").next().is_some()
-            && f.qualifier_values("true_log_odds_bits")
-                .next()
-                .is_some()
+            && f.qualifier_values("true_log_odds_bits").next().is_some()
             && f.qualifier_values("true_log_odds_quantile")
                 .next()
                 .is_some()
@@ -10088,14 +10251,16 @@ fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
         .filter(|f| GentleEngine::is_generated_blast_hit_feature(f))
         .collect();
     assert_eq!(blast_features.len(), 2);
-    assert!(blast_features.iter().any(|f| {
-        f.qualifier_values("blast_subject_id")
-            .any(|v| v == "chr1")
-    }));
-    assert!(blast_features.iter().any(|f| {
-        f.qualifier_values("blast_subject_id")
-            .any(|v| v == "chr2")
-    }));
+    assert!(
+        blast_features
+            .iter()
+            .any(|f| { f.qualifier_values("blast_subject_id").any(|v| v == "chr1") })
+    );
+    assert!(
+        blast_features
+            .iter()
+            .any(|f| { f.qualifier_values("blast_subject_id").any(|v| v == "chr2") })
+    );
 
     let second = engine
         .apply(Operation::ImportBlastHitsTrack {

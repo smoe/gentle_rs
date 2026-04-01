@@ -364,6 +364,7 @@ impl GentleEngine {
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::FetchGenBankAccession { .. } => Some("Fetched GenBank sequence".to_string()),
+            Operation::FetchDbSnpRegion { .. } => Some("Fetched dbSNP region".to_string()),
             Operation::FetchUniprotLinkedGenBank { .. } => {
                 Some("Fetched UniProt-linked GenBank sequence".to_string())
             }

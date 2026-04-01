@@ -1257,6 +1257,7 @@ Node click behavior in lineage `Graph` view:
   - `GENE` for `ExtractGenomeGene`
   - `REGION` for `ExtractGenomeRegion`
   - `GB` for `FetchGenBankAccession`
+  - `RS` for `FetchDbSnpRegion`
   - clicking the badge reopens the matching retrieval dialog with saved inputs
     prefilled
   - if a genome anchor exists, it is shown in the same tooltip; GenBank source
@@ -2981,17 +2982,25 @@ UniProt mapping behavior:
   currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 
-GenBank accession fetch behavior:
+NCBI retrieval behavior:
 
-- `Fetch GenBank Accession...` opens a specialist window for:
-  - online fetch by accession (`FetchGenBankAccession`)
+- `Fetch GenBank / dbSNP...` opens a combined specialist window for:
+  - online GenBank fetch by accession (`FetchGenBankAccession`)
   - optional project sequence ID override (`as_id`)
-  - automatic sequence-window open for newly imported sequence IDs
+  - dbSNP rsID resolution plus annotated region extraction (`FetchDbSnpRegion`)
+  - `+/- flank bp` control for the extracted region (default `3000`)
+  - prepared-genome target selection plus optional output sequence ID override
+  - automatic sequence-window open for newly imported or extracted sequence IDs
 - Sequences fetched from GenBank can still participate in genome-anchored
   workflows (for example BED/BigWig/VCF projection once anchored). This is a
   complement to GenBank provenance, not a source conflict.
+- dbSNP extraction in that window uses the reference-genome catalog/cache
+  settings and defaults to full annotation transfer (`annotation_scope=full`,
+  `max_annotation_features=0`) so tutorial/reporter workflows can start from a
+  fully annotated local locus slice.
 - Shell parity route:
   - `genbank fetch ACCESSION [--as-id ID]`
+  - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
 
 Resource import behavior:
 

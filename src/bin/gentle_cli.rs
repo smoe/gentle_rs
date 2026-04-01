@@ -623,6 +623,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "rna-reads",
     "tracks",
     "genbank",
+    "dbsnp",
     "uniprot",
     "screenshot-window",
     "inspect-feature-expert",
@@ -3668,6 +3669,136 @@ mod tests {
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
         );
+    }
+
+    #[test]
+    fn test_forwarded_dbsnp_fetch_dispatch_matches_shared_shell_execution() {
+        let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
+        let td = tempdir().expect("tempdir");
+        let fasta_path = td.path().join("toy.fa");
+        let ann_path = td.path().join("toy.gtf");
+        let cache_dir = td.path().join("cache");
+        let cache_dir_str = cache_dir.to_string_lossy().to_string();
+        fs::write(
+            &fasta_path,
+            ">chr1\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\n",
+        )
+        .expect("write fasta");
+        fs::write(
+            &ann_path,
+            "chr1\tsrc\tgene\t1\t60\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"ONE\";\n",
+        )
+        .expect("write gtf");
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "toy dbsnp genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                fasta_path.display(),
+                ann_path.display(),
+                cache_dir.display()
+            ),
+        )
+        .expect("write catalog");
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let mock_dir = td.path().join("mock_dbsnp");
+        fs::create_dir_all(&mock_dir).expect("create mock dir");
+        fs::write(
+            mock_dir.join("123.json"),
+            r#"{
+  "refsnp_id": "123",
+  "primary_snapshot_data": {
+    "placements_with_allele": [
+      {
+        "seq_id": "chr1",
+        "is_ptlp": true,
+        "placement_annot": {
+          "seq_id_traits_by_assembly": [
+            {
+              "assembly_name": "ToyGenome.1",
+              "is_top_level": true,
+              "is_alt": false,
+              "is_patch": false,
+              "is_chromosome": true
+            }
+          ]
+        },
+        "alleles": [
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "chr1",
+                "position": 29,
+                "deleted_sequence": "A",
+                "inserted_sequence": "G"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+        )
+        .expect("write mock dbsnp payload");
+        let refsnp_template = format!("file://{}/{{refsnp_id}}.json", mock_dir.display());
+        let _dbsnp_env = EnvVarGuard::set("GENTLE_NCBI_DBSNP_REFSNP_URL", &refsnp_template);
+
+        let mut prep_engine = GentleEngine::new();
+        prep_engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: Some(cache_dir_str.clone()),
+                timeout_seconds: None,
+            })
+            .expect("prepare ToyGenome");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "dbsnp".to_string(),
+            "fetch".to_string(),
+            "rs123".to_string(),
+            "ToyGenome".to_string(),
+            "--flank-bp".to_string(),
+            "20".to_string(),
+            "--output-id".to_string(),
+            "rs123_fetch".to_string(),
+            "--catalog".to_string(),
+            catalog_path_str.clone(),
+            "--cache-dir".to_string(),
+            cache_dir_str.clone(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+        assert!(forwarded_state.sequences.contains_key("rs123_fetch"));
     }
 
     #[test]

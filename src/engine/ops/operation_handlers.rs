@@ -93,6 +93,237 @@ impl GentleEngine {
             .replace('\'', "&apos;")
     }
 
+    fn extract_genome_region_into_state(
+        &mut self,
+        result: &mut OpResult,
+        genome_id: &str,
+        chromosome: &str,
+        start_1based: usize,
+        end_1based: usize,
+        output_id: Option<SeqId>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        include_genomic_annotation: Option<bool>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        provenance_operation: &str,
+    ) -> Result<SeqId, EngineError> {
+        let catalog_path = catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+        let catalog = GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not open genome catalog '{catalog_path}': {e}"),
+        })?;
+        let sequence = catalog
+            .get_sequence_region_with_cache(
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Could not load genome region {}:{}-{} from '{}': {}",
+                    chromosome, start_1based, end_1based, genome_id, e
+                ),
+            })?;
+        let default_id = format!(
+            "{}_{}_{}_{}",
+            Self::normalize_id_token(genome_id),
+            Self::normalize_id_token(chromosome),
+            start_1based,
+            end_1based
+        );
+        let base = output_id.unwrap_or(default_id);
+        let seq_id = self.import_genome_slice_sequence(result, sequence, base)?;
+        let requested_scope = Self::resolve_extract_region_annotation_scope(
+            annotation_scope,
+            include_genomic_annotation,
+        );
+        let effective_cap = match max_annotation_features {
+            Some(0) => None,
+            Some(value) => Some(value),
+            None => matches!(requested_scope, GenomeAnnotationScope::Full)
+                .then_some(DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP),
+        };
+        let mut genes: Vec<GenomeGeneRecord> = vec![];
+        let mut transcripts: Vec<GenomeTranscriptRecord> = vec![];
+        if !matches!(requested_scope, GenomeAnnotationScope::None) {
+            match catalog.list_gene_regions(genome_id, cache_dir.as_deref()) {
+                Ok(records) => {
+                    genes = records
+                        .into_iter()
+                        .filter(|record| {
+                            Self::genome_chromosome_matches(&record.chromosome, chromosome)
+                                && record.end_1based >= start_1based
+                                && record.start_1based <= end_1based
+                        })
+                        .collect();
+                }
+                Err(e) => result.warnings.push(format!(
+                    "Could not inspect gene records for extracted region '{}': {}",
+                    seq_id, e
+                )),
+            }
+            match catalog.list_gene_transcript_records(
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                None,
+                None,
+                cache_dir.as_deref(),
+            ) {
+                Ok(records) => {
+                    transcripts = records;
+                }
+                Err(e) => result.warnings.push(format!(
+                    "Could not inspect transcript/exon annotation for extracted region '{}': {}",
+                    seq_id, e
+                )),
+            }
+        }
+        let mut effective_scope = requested_scope;
+        let mut fallback_reason: Option<String> = None;
+        let mut projection = Self::build_extract_region_annotation_projection(
+            &genes,
+            &transcripts,
+            start_1based,
+            end_1based,
+            requested_scope,
+        );
+        let candidate_before_fallback = projection.feature_count();
+        if let Some(cap) = effective_cap {
+            if projection.feature_count() > cap {
+                if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                    let core_projection = Self::build_extract_region_annotation_projection(
+                        &genes,
+                        &transcripts,
+                        start_1based,
+                        end_1based,
+                        GenomeAnnotationScope::Core,
+                    );
+                    if core_projection.feature_count() <= cap {
+                        effective_scope = GenomeAnnotationScope::Core;
+                        projection = core_projection;
+                        fallback_reason = Some(format!(
+                            "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                            candidate_before_fallback
+                        ));
+                    } else {
+                        effective_scope = GenomeAnnotationScope::None;
+                        projection = ExtractRegionAnnotationProjectionBatch::default();
+                        fallback_reason = Some(format!(
+                            "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
+                        ));
+                    }
+                } else {
+                    effective_scope = GenomeAnnotationScope::None;
+                    projection = ExtractRegionAnnotationProjectionBatch::default();
+                    fallback_reason = Some(format!(
+                        "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                    ));
+                }
+            }
+        }
+
+        let attached_feature_count = projection.feature_count();
+        let genes_attached = projection.gene_count;
+        let transcripts_attached = projection.transcript_count;
+        let exons_attached = projection.exon_count;
+        let cds_attached = projection.cds_count;
+        if attached_feature_count > 0 {
+            if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                dna.features_mut().extend(projection.features);
+                Self::prepare_sequence(dna);
+            }
+            result.messages.push(format!(
+                "Attached {} genomic annotation feature(s) to extracted region '{}' (scope={}, genes={}, transcripts={}, exons={}, cds={})",
+                attached_feature_count,
+                seq_id,
+                effective_scope.as_str(),
+                genes_attached,
+                transcripts_attached,
+                exons_attached,
+                cds_attached
+            ));
+        } else if matches!(effective_scope, GenomeAnnotationScope::None) {
+            result.messages.push(format!(
+                "Extracted region '{}' without projected genomic annotation (scope={})",
+                seq_id,
+                effective_scope.as_str()
+            ));
+        } else {
+            result.messages.push(format!(
+                "No overlapping genomic annotation features were found for extracted region '{}'",
+                seq_id
+            ));
+        }
+        if let Some(reason) = fallback_reason.as_ref() {
+            result.warnings.push(reason.clone());
+        }
+        result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
+            requested_scope: requested_scope.as_str().to_string(),
+            effective_scope: effective_scope.as_str().to_string(),
+            max_features_cap: effective_cap,
+            candidate_feature_count: candidate_before_fallback,
+            attached_feature_count,
+            dropped_feature_count: candidate_before_fallback.saturating_sub(attached_feature_count),
+            genes_attached,
+            transcripts_attached,
+            exons_attached,
+            cds_attached,
+            fallback_applied: fallback_reason.is_some(),
+            fallback_reason,
+        });
+        self.maybe_attach_known_helper_mcs_annotation(&seq_id, genome_id, result);
+        let source_plan = catalog.source_plan(genome_id, cache_dir.as_deref()).ok();
+        let inspection = catalog
+            .inspect_prepared_genome(genome_id, cache_dir.as_deref())
+            .ok()
+            .flatten();
+        let (
+            sequence_source_type,
+            annotation_source_type,
+            sequence_source,
+            annotation_source,
+            sequence_sha1,
+            annotation_sha1,
+        ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+        self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+            seq_id: seq_id.clone(),
+            recorded_at_unix_ms: Self::now_unix_ms(),
+            operation: provenance_operation.to_string(),
+            genome_id: genome_id.to_string(),
+            catalog_path: catalog_path.clone(),
+            cache_dir: cache_dir.clone(),
+            chromosome: Some(chromosome.to_string()),
+            start_1based: Some(start_1based),
+            end_1based: Some(end_1based),
+            gene_query: None,
+            occurrence: None,
+            gene_extract_mode: None,
+            promoter_upstream_bp: None,
+            gene_id: None,
+            gene_name: None,
+            strand: None,
+            anchor_strand: Some('+'),
+            anchor_verified: Some(true),
+            sequence_source_type,
+            annotation_source_type,
+            sequence_source,
+            annotation_source,
+            sequence_sha1,
+            annotation_sha1,
+        });
+        result.messages.push(format!(
+            "Extracted genome region {}:{}-{} from '{}' as '{}'",
+            chromosome, start_1based, end_1based, genome_id, seq_id
+        ));
+        Ok(seq_id)
+    }
+
     fn dotplot_svg_mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
         let t = t.clamp(0.0, 1.0);
         let lerp = |a: u8, b: u8| -> u8 {
@@ -3154,223 +3385,126 @@ impl GentleEngine {
                 catalog_path,
                 cache_dir,
             } => {
-                let catalog_path =
-                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-                let catalog =
-                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
-                    })?;
-                let sequence = catalog
-                    .get_sequence_region_with_cache(
-                        &genome_id,
-                        &chromosome,
-                        start_1based,
-                        end_1based,
-                        cache_dir.as_deref(),
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load genome region {}:{}-{} from '{}': {}",
-                            chromosome, start_1based, end_1based, genome_id, e
-                        ),
-                    })?;
-                let default_id = format!(
-                    "{}_{}_{}_{}",
-                    Self::normalize_id_token(&genome_id),
-                    Self::normalize_id_token(&chromosome),
-                    start_1based,
-                    end_1based
-                );
-                let base = output_id.unwrap_or(default_id);
-                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
-                let requested_scope = Self::resolve_extract_region_annotation_scope(
-                    annotation_scope,
-                    include_genomic_annotation,
-                );
-                let effective_cap =
-                    max_annotation_features
-                        .filter(|value| *value > 0)
-                        .or_else(|| {
-                            matches!(requested_scope, GenomeAnnotationScope::Full)
-                                .then_some(DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP)
-                        });
-                let mut genes: Vec<GenomeGeneRecord> = vec![];
-                let mut transcripts: Vec<GenomeTranscriptRecord> = vec![];
-                if !matches!(requested_scope, GenomeAnnotationScope::None) {
-                    match catalog.list_gene_regions(&genome_id, cache_dir.as_deref()) {
-                        Ok(records) => {
-                            genes = records
-                                .into_iter()
-                                .filter(|record| {
-                                    Self::genome_chromosome_matches(&record.chromosome, &chromosome)
-                                        && record.end_1based >= start_1based
-                                        && record.start_1based <= end_1based
-                                })
-                                .collect();
-                        }
-                        Err(e) => result.warnings.push(format!(
-                            "Could not inspect gene records for extracted region '{}': {}",
-                            seq_id, e
-                        )),
-                    }
-                    match catalog.list_gene_transcript_records(
-                        &genome_id,
-                        &chromosome,
-                        start_1based,
-                        end_1based,
-                        None,
-                        None,
-                        cache_dir.as_deref(),
-                    ) {
-                        Ok(records) => {
-                            transcripts = records;
-                        }
-                        Err(e) => result.warnings.push(format!(
-                            "Could not inspect transcript/exon annotation for extracted region '{}': {}",
-                            seq_id, e
-                        )),
-                    }
-                }
-                let mut effective_scope = requested_scope;
-                let mut fallback_reason: Option<String> = None;
-                let mut projection = Self::build_extract_region_annotation_projection(
-                    &genes,
-                    &transcripts,
+                let _ = self.extract_genome_region_into_state(
+                    &mut result,
+                    &genome_id,
+                    &chromosome,
                     start_1based,
                     end_1based,
-                    requested_scope,
-                );
-                let candidate_before_fallback = projection.feature_count();
-                if let Some(cap) = effective_cap {
-                    if projection.feature_count() > cap {
-                        if matches!(requested_scope, GenomeAnnotationScope::Full) {
-                            let core_projection = Self::build_extract_region_annotation_projection(
-                                &genes,
-                                &transcripts,
-                                start_1based,
-                                end_1based,
-                                GenomeAnnotationScope::Core,
-                            );
-                            if core_projection.feature_count() <= cap {
-                                effective_scope = GenomeAnnotationScope::Core;
-                                projection = core_projection;
-                                fallback_reason = Some(format!(
-                                    "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
-                                    candidate_before_fallback
-                                ));
-                            } else {
-                                effective_scope = GenomeAnnotationScope::None;
-                                projection = ExtractRegionAnnotationProjectionBatch::default();
-                                fallback_reason = Some(format!(
-                                    "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
-                                ));
-                            }
-                        } else {
-                            effective_scope = GenomeAnnotationScope::None;
-                            projection = ExtractRegionAnnotationProjectionBatch::default();
-                            fallback_reason = Some(format!(
-                                "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
-                            ));
+                    output_id,
+                    annotation_scope,
+                    max_annotation_features,
+                    include_genomic_annotation,
+                    catalog_path,
+                    cache_dir,
+                    "ExtractGenomeRegion",
+                )?;
+            }
+            Operation::FetchDbSnpRegion {
+                rs_id,
+                genome_id,
+                flank_bp,
+                output_id,
+                annotation_scope,
+                max_annotation_features,
+                catalog_path,
+                cache_dir,
+            } => {
+                let genome_id = genome_id.trim().to_string();
+                if genome_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Genome id cannot be empty for dbSNP fetch".to_string(),
+                    });
+                }
+                let (display_rs_id, refsnp_id) = Self::normalize_dbsnp_rs_id(&rs_id)?;
+                let resolved_catalog_path =
+                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let catalog =
+                    GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not open genome catalog '{}': {}",
+                                resolved_catalog_path, e
+                            ),
                         }
-                    }
-                }
-
-                let attached_feature_count = projection.feature_count();
-                let genes_attached = projection.gene_count;
-                let transcripts_attached = projection.transcript_count;
-                let exons_attached = projection.exon_count;
-                let cds_attached = projection.cds_count;
-                if attached_feature_count > 0 {
-                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                        dna.features_mut().extend(projection.features);
-                        Self::prepare_sequence(dna);
-                    }
-                    result.messages.push(format!(
-                        "Attached {} genomic annotation feature(s) to extracted region '{}' (scope={}, genes={}, transcripts={}, exons={}, cds={})",
-                        attached_feature_count,
-                        seq_id,
-                        effective_scope.as_str(),
-                        genes_attached,
-                        transcripts_attached,
-                        exons_attached,
-                        cds_attached
-                    ));
-                } else if matches!(effective_scope, GenomeAnnotationScope::None) {
-                    result.messages.push(format!(
-                        "Extracted region '{}' without projected genomic annotation (scope={})",
-                        seq_id,
-                        effective_scope.as_str()
-                    ));
+                    })?;
+                let compatibility = catalog
+                    .inspect_prepared_genome_compatibility(&genome_id, cache_dir.as_deref())
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not inspect prepared compatibility for '{}': {}",
+                            genome_id, e
+                        ),
+                    })?;
+                let (source_url, document) = Self::fetch_dbsnp_refsnp_json(&refsnp_id)?;
+                let placement = Self::resolve_dbsnp_primary_placement(
+                    &document,
+                    &display_rs_id,
+                    compatibility.requested_family.as_deref(),
+                )?;
+                let flank_bp = flank_bp.unwrap_or(3000);
+                let start_1based = placement.position_1based.saturating_sub(flank_bp).max(1);
+                let end_1based = placement.position_1based.saturating_add(flank_bp);
+                let chromosome_label = if placement.chromosome_display.trim().is_empty() {
+                    placement.chromosome.clone()
                 } else {
-                    result.messages.push(format!(
-                        "No overlapping genomic annotation features were found for extracted region '{}'",
-                        seq_id
-                    ));
-                }
-                if let Some(reason) = fallback_reason.as_ref() {
-                    result.warnings.push(reason.clone());
-                }
-                result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
-                    requested_scope: requested_scope.as_str().to_string(),
-                    effective_scope: effective_scope.as_str().to_string(),
-                    max_features_cap: effective_cap,
-                    candidate_feature_count: candidate_before_fallback,
-                    attached_feature_count,
-                    dropped_feature_count: candidate_before_fallback
-                        .saturating_sub(attached_feature_count),
-                    genes_attached,
-                    transcripts_attached,
-                    exons_attached,
-                    cds_attached,
-                    fallback_applied: fallback_reason.is_some(),
-                    fallback_reason,
+                    placement.chromosome_display.clone()
+                };
+                let output_id = output_id.or_else(|| {
+                    Some(format!(
+                        "{}_{}_{}_{}",
+                        Self::normalize_id_token(&display_rs_id),
+                        Self::normalize_id_token(&chromosome_label),
+                        start_1based,
+                        end_1based
+                    ))
                 });
-                self.maybe_attach_known_helper_mcs_annotation(&seq_id, &genome_id, &mut result);
-                let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
-                let inspection = catalog
-                    .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
-                    .ok()
-                    .flatten();
-                let (
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
-                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                    seq_id: seq_id.clone(),
-                    recorded_at_unix_ms: Self::now_unix_ms(),
-                    operation: "ExtractGenomeRegion".to_string(),
-                    genome_id: genome_id.clone(),
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                    chromosome: Some(chromosome.clone()),
-                    start_1based: Some(start_1based),
-                    end_1based: Some(end_1based),
-                    gene_query: None,
-                    occurrence: None,
-                    gene_extract_mode: None,
-                    promoter_upstream_bp: None,
-                    gene_id: None,
-                    gene_name: None,
-                    strand: None,
-                    anchor_strand: Some('+'),
-                    anchor_verified: Some(true),
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                });
-                result.messages.push(format!(
-                    "Extracted genome region {}:{}-{} from '{}' as '{}'",
-                    chromosome, start_1based, end_1based, genome_id, seq_id
+                let annotation_scope =
+                    Some(annotation_scope.unwrap_or(GenomeAnnotationScope::Full));
+                let include_genomic_annotation = Some(!matches!(
+                    annotation_scope,
+                    Some(GenomeAnnotationScope::None)
                 ));
+                let max_annotation_features = Some(max_annotation_features.unwrap_or(0));
+                let assembly_name = placement
+                    .assembly_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("unknown");
+                let genes = if placement.gene_symbols.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [genes={}]", placement.gene_symbols.join(", "))
+                };
+                result.messages.push(format!(
+                    "Resolved dbSNP '{}' from '{}' to {}:{} (assembly={}) and extracted +/-{} bp on '{}'{}",
+                    placement.rs_id,
+                    source_url,
+                    chromosome_label,
+                    placement.position_1based,
+                    assembly_name,
+                    flank_bp,
+                    genome_id,
+                    genes
+                ));
+                let _ = self.extract_genome_region_into_state(
+                    &mut result,
+                    &genome_id,
+                    &placement.chromosome,
+                    start_1based,
+                    end_1based,
+                    output_id,
+                    annotation_scope,
+                    max_annotation_features,
+                    include_genomic_annotation,
+                    Some(resolved_catalog_path),
+                    cache_dir,
+                    "FetchDbSnpRegion",
+                )?;
             }
             Operation::ExtractGenomeGene {
                 genome_id,

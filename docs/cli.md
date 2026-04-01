@@ -330,9 +330,11 @@ UniProt mapping capability status:
   - `uniprot projection-show PROJECTION_ID`
 - shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
   - `genbank fetch ACCESSION [--as-id ID]`
+- shared shell (`gentle_cli shell`, GUI shell): dbSNP-guided annotated region extraction
+  - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
-    `FetchGenBankAccession`
+    `FetchGenBankAccession`, `FetchDbSnpRegion`
 - `ImportUniprotEntrySequence` is currently disabled (`Unsupported`) because
   first-class protein sequence windows are deferred; use UniProt metadata +
   projection routes instead.

@@ -742,6 +742,7 @@ Current draft operations:
   - currently returns `Unsupported`: protein sequence windows are deferred; use
     UniProt entries as metadata/projection sources in this release.
 - `FetchGenBankAccession { accession, as_id? }`
+- `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
@@ -871,6 +872,8 @@ external coding agent runtime, see:
   - `uniprot projection-show PROJECTION_ID`
 - shared-shell GenBank route:
   - `genbank fetch ACCESSION [--as-id ID]`
+- shared-shell dbSNP route:
+  - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
 - shared-shell protocol-cartoon routes:
   - `protocol-cartoon list`
   - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`

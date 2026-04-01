@@ -823,6 +823,11 @@ pub struct GENtleApp {
     genbank_accession: String,
     genbank_as_id: String,
     genbank_status: String,
+    dbsnp_rs_id: String,
+    dbsnp_genome_id: String,
+    dbsnp_flank_bp: String,
+    dbsnp_output_id: String,
+    dbsnp_status: String,
     genome_blast_source_mode: GenomeBlastSourceMode,
     genome_blast_query_manual: String,
     genome_blast_query_seq_id: String,
@@ -1693,6 +1698,13 @@ enum LineageRetrievalDescriptor {
         accession: String,
         as_id: Option<String>,
     },
+    DbSnpRegion {
+        genome_id: String,
+        rs_id: String,
+        flank_bp: usize,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
 }
 
 #[derive(Clone)]
@@ -2201,6 +2213,11 @@ impl Default for GENtleApp {
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
             genbank_status: String::new(),
+            dbsnp_rs_id: String::new(),
+            dbsnp_genome_id: "Human GRCh38 Ensembl 113".to_string(),
+            dbsnp_flank_bp: "3000".to_string(),
+            dbsnp_output_id: String::new(),
+            dbsnp_status: String::new(),
             genome_blast_source_mode: GenomeBlastSourceMode::Manual,
             genome_blast_query_manual: String::new(),
             genome_blast_query_seq_id: String::new(),
@@ -4389,9 +4406,10 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
-                title: "Fetch GenBank Accession".to_string(),
-                detail: "Fetch one GenBank accession and import it as a sequence".to_string(),
-                keywords: "genbank ncbi accession fetch import".to_string(),
+                title: "GenBank / dbSNP Fetch".to_string(),
+                detail: "Fetch GenBank accessions or rsID-anchored genome regions from NCBI"
+                    .to_string(),
+                keywords: "genbank dbsnp rsid snp ncbi accession fetch import genome".to_string(),
                 action: CommandPaletteAction::OpenGenbank,
             },
             CommandPaletteEntry {
@@ -4867,7 +4885,7 @@ Error: `{err}`"
         } else if viewport_id == Self::uniprot_viewport_id() {
             "UniProt focus acquisition"
         } else if viewport_id == Self::genbank_viewport_id() {
-            "GenBank focus acquisition"
+            "GenBank / dbSNP focus acquisition"
         } else {
             "Window focus acquisition"
         }
@@ -6671,6 +6689,7 @@ Error: `{err}`"
             self.queue_focus_viewport(Self::genbank_viewport_id());
             return;
         }
+        self.seed_dbsnp_defaults_if_needed();
         self.show_genbank_dialog = true;
     }
 
@@ -6743,6 +6762,20 @@ Error: `{err}`"
                     as_id: as_id.clone(),
                 })
             }
+            Operation::FetchDbSnpRegion {
+                rs_id,
+                genome_id,
+                flank_bp,
+                catalog_path,
+                cache_dir,
+                ..
+            } => Some(LineageRetrievalDescriptor::DbSnpRegion {
+                genome_id: genome_id.clone(),
+                rs_id: rs_id.clone(),
+                flank_bp: flank_bp.unwrap_or(3000),
+                catalog_path: catalog_path.clone(),
+                cache_dir: cache_dir.clone(),
+            }),
             _ => None,
         }
     }
@@ -6752,6 +6785,7 @@ Error: `{err}`"
             LineageRetrievalDescriptor::GenomeGene { .. } => "GENE",
             LineageRetrievalDescriptor::GenomeRegion { .. } => "REGION",
             LineageRetrievalDescriptor::GenBankAccession { .. } => "GB",
+            LineageRetrievalDescriptor::DbSnpRegion { .. } => "RS",
         }
     }
 
@@ -6804,6 +6838,21 @@ Error: `{err}`"
                 ));
                 lines.push(
                     "GenBank retrieval and genome anchoring are complementary (no source conflict)"
+                        .to_string(),
+                );
+            }
+            LineageRetrievalDescriptor::DbSnpRegion {
+                genome_id,
+                rs_id,
+                flank_bp,
+                ..
+            } => {
+                lines.push(format!(
+                    "Retrieval pattern: dbSNP '{}' +/-{} bp on '{}'",
+                    rs_id, flank_bp, genome_id
+                ));
+                lines.push(
+                    "dbSNP resolution uses NCBI Variation, then extracts the annotated locus from the selected prepared genome."
                         .to_string(),
                 );
             }
@@ -6910,6 +6959,37 @@ Error: `{err}`"
                 self.genbank_status = format!(
                     "Reopened retrieval pattern: GenBank accession '{}'",
                     accession
+                );
+            }
+            LineageRetrievalDescriptor::DbSnpRegion {
+                genome_id,
+                rs_id,
+                flank_bp,
+                catalog_path,
+                cache_dir,
+            } => {
+                if let Some(path) = catalog_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.reference_genome_catalog_path = path.to_string();
+                }
+                if let Some(path) = cache_dir
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    self.reference_genome_cache_dir = path.to_string();
+                }
+                self.dbsnp_genome_id = genome_id.clone();
+                self.dbsnp_rs_id = rs_id.clone();
+                self.dbsnp_flank_bp = flank_bp.to_string();
+                self.dbsnp_output_id.clear();
+                self.open_genbank_dialog();
+                self.dbsnp_status = format!(
+                    "Reopened retrieval pattern: dbSNP '{}' +/-{} bp on '{}'",
+                    rs_id, flank_bp, genome_id
                 );
             }
         }
@@ -7312,6 +7392,37 @@ Error: `{err}`"
             None
         } else {
             Some(trimmed.to_string())
+        }
+    }
+
+    fn dbsnp_catalog_path_opt(&self) -> Option<String> {
+        let trimmed = self.reference_genome_catalog_path.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn dbsnp_cache_dir_opt(&self) -> Option<String> {
+        let trimmed = self.reference_genome_cache_dir.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn seed_dbsnp_defaults_if_needed(&mut self) {
+        if self.dbsnp_genome_id.trim().is_empty() {
+            if self.genome_id.trim().is_empty() {
+                self.dbsnp_genome_id = "Human GRCh38 Ensembl 113".to_string();
+            } else {
+                self.dbsnp_genome_id = self.genome_id.trim().to_string();
+            }
+        }
+        if self.dbsnp_flank_bp.trim().is_empty() {
+            self.dbsnp_flank_bp = "3000".to_string();
         }
     }
 
@@ -9387,9 +9498,9 @@ Error: `{err}`"
         )
     }
 
-    fn format_extract_region_status(result: &OpResult) -> String {
+    fn format_extract_region_like_status(prefix: &str, result: &OpResult) -> String {
         let mut text = Self::format_op_result_status(
-            "Extract region: ok",
+            prefix,
             &result.created_seq_ids,
             &result.warnings,
             &result.messages,
@@ -9424,6 +9535,14 @@ Error: `{err}`"
             }
         }
         text
+    }
+
+    fn format_extract_region_status(result: &OpResult) -> String {
+        Self::format_extract_region_like_status("Extract region: ok", result)
+    }
+
+    fn format_dbsnp_fetch_status(result: &OpResult) -> String {
+        Self::format_extract_region_like_status("dbSNP fetch: ok", result)
     }
 
     fn collect_prepared_genome_inspections(
@@ -11976,6 +12095,54 @@ Error: `{err}`"
         }
     }
 
+    fn fetch_dbsnp_region_from_dialog(&mut self) {
+        self.seed_dbsnp_defaults_if_needed();
+        let rs_id = self.dbsnp_rs_id.trim().to_string();
+        if rs_id.is_empty() {
+            self.dbsnp_status = "dbSNP rs_id cannot be empty".to_string();
+            return;
+        }
+        let genome_id = self.dbsnp_genome_id.trim().to_string();
+        if genome_id.is_empty() {
+            self.dbsnp_status = "Prepared genome id cannot be empty".to_string();
+            return;
+        }
+        let flank_bp = if self.dbsnp_flank_bp.trim().is_empty() {
+            3000
+        } else {
+            match self.dbsnp_flank_bp.trim().parse::<usize>() {
+                Ok(value) => value,
+                Err(_) => {
+                    self.dbsnp_status =
+                        "flank bp must be a non-negative integer (empty = 3000)".to_string();
+                    return;
+                }
+            }
+        };
+        let op = Operation::FetchDbSnpRegion {
+            rs_id,
+            genome_id,
+            flank_bp: Some(flank_bp),
+            output_id: Self::uniprot_optional_trimmed(&self.dbsnp_output_id),
+            annotation_scope: Some(GenomeAnnotationScope::Full),
+            max_annotation_features: Some(0),
+            catalog_path: self.dbsnp_catalog_path_opt(),
+            cache_dir: self.dbsnp_cache_dir_opt(),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                self.dbsnp_status = Self::format_dbsnp_fetch_status(&result);
+            }
+            Err(err) => {
+                self.dbsnp_status = format!("dbSNP fetch failed: {}", err.message);
+            }
+        }
+    }
+
     fn sort_uniprot_entries_recent(mut rows: Vec<UniprotEntrySummary>) -> Vec<UniprotEntrySummary> {
         rows.sort_by(|left, right| {
             right
@@ -12133,17 +12300,17 @@ Error: `{err}`"
         if !self.show_genbank_dialog {
             return;
         }
+        const WINDOW_TITLE: &str = "GenBank / dbSNP Fetch";
         let mut open = self.show_genbank_dialog;
         let mut close_requested = false;
-        egui::Window::new("GenBank Accession Fetch")
+        egui::Window::new(WINDOW_TITLE)
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_size(Vec2::new(760.0, 240.0))
-            .min_size(Vec2::new(640.0, 220.0))
+            .default_size(Vec2::new(820.0, 420.0))
+            .min_size(Vec2::new(680.0, 320.0))
             .show(ctx, |ui| {
-                let close_hover =
-                    Self::specialist_window_close_hover_text("GenBank Accession Fetch");
+                let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
                 if self.render_specialist_window_nav_with_close(
                     ui,
                     Some(("Close", close_hover.as_str())),
@@ -12151,8 +12318,10 @@ Error: `{err}`"
                     close_requested = true;
                 }
                 ui.label(
-                    "Fetch one GenBank accession through NCBI EFetch and import it as a project sequence.",
+                    "Fetch one GenBank accession as a project sequence, or resolve a dbSNP rsID into an annotated genomic region from a prepared reference genome.",
                 );
+                ui.separator();
+                ui.label("GenBank accession");
                 ui.horizontal(|ui| {
                     ui.label("accession");
                     ui.text_edit_singleline(&mut self.genbank_accession)
@@ -12178,6 +12347,54 @@ Error: `{err}`"
                 if !self.genbank_status.trim().is_empty() {
                     ui.separator();
                     ui.monospace(self.genbank_status.clone());
+                }
+                ui.separator();
+                ui.label("dbSNP locus extraction");
+                ui.small(
+                    "Resolve one rsID through NCBI Variation, then extract +/- flank bp with full feature annotation from the selected prepared reference genome.",
+                );
+                ui.horizontal(|ui| {
+                    ui.label("rs_id");
+                    ui.text_edit_singleline(&mut self.dbsnp_rs_id)
+                        .on_hover_text("dbSNP identifier such as rs9923231");
+                    ui.label("genome");
+                    ui.text_edit_singleline(&mut self.dbsnp_genome_id)
+                        .on_hover_text(
+                            "Prepared reference genome ID from the reference genome catalog",
+                        );
+                    if ui
+                        .button("Fetch Region")
+                        .on_hover_text(
+                            "Resolve the rsID and extract the annotated genomic interval",
+                        )
+                        .clicked()
+                    {
+                        self.fetch_dbsnp_region_from_dialog();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("flank_bp");
+                    ui.text_edit_singleline(&mut self.dbsnp_flank_bp)
+                        .on_hover_text("Bases to include on each side of the SNP (default 3000)");
+                    ui.label("output_id");
+                    ui.text_edit_singleline(&mut self.dbsnp_output_id).on_hover_text(
+                        "Optional project sequence id override (auto-generated when empty)",
+                    );
+                });
+                let catalog_label = self
+                    .dbsnp_catalog_path_opt()
+                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let cache_label = self
+                    .dbsnp_cache_dir_opt()
+                    .unwrap_or_else(|| DEFAULT_GENOME_CACHE_DIR.to_string());
+                ui.small("Examples: rs9923231, rs334");
+                ui.small(format!(
+                    "Uses reference genome catalog '{}' and cache '{}'.",
+                    catalog_label, cache_label
+                ));
+                if !self.dbsnp_status.trim().is_empty() {
+                    ui.separator();
+                    ui.monospace(self.dbsnp_status.clone());
                 }
             });
         if close_requested {
@@ -22179,8 +22396,10 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Fetch GenBank Accession...")
-                    .on_hover_text("Fetch one GenBank accession and import it as a sequence")
+                    .button("Fetch GenBank / dbSNP...")
+                    .on_hover_text(
+                        "Fetch one GenBank accession or resolve a dbSNP rsID into a genome region",
+                    )
                     .clicked()
                 {
                     self.open_genbank_dialog();
@@ -36786,6 +37005,108 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             app.genbank_status.contains("GenBank fetch: ok"),
             "status was: {}",
             app.genbank_status
+        );
+    }
+
+    #[test]
+    fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
+        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let (catalog_path, cache_dir_str) = write_toy_prepare_catalog(temp.path());
+        let mock_dir = temp.path().join("mock_dbsnp");
+        fs::create_dir_all(&mock_dir).expect("mock dir");
+        fs::write(
+            mock_dir.join("123.json"),
+            r#"{
+  "refsnp_id": "123",
+  "primary_snapshot_data": {
+    "placements_with_allele": [
+      {
+        "seq_id": "chr1",
+        "is_ptlp": true,
+        "placement_annot": {
+          "seq_id_traits_by_assembly": [
+            {
+              "assembly_name": "ToyGenome.1",
+              "is_top_level": true,
+              "is_alt": false,
+              "is_patch": false,
+              "is_chromosome": true
+            }
+          ]
+        },
+        "alleles": [
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "chr1",
+                "position": 3,
+                "deleted_sequence": "A",
+                "inserted_sequence": "G"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "allele_annotations": [
+      {
+        "assembly_annotation": [
+          {
+            "genes": [
+              {
+                "locus": "tagA"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+        )
+        .expect("write mock dbsnp payload");
+        let refsnp_template = format!("file://{}/{{refsnp_id}}.json", mock_dir.display());
+        let _env_guard = EnvVarGuard::set("GENTLE_NCBI_DBSNP_REFSNP_URL", &refsnp_template);
+
+        app.reference_genome_catalog_path = catalog_path.clone();
+        app.reference_genome_cache_dir = cache_dir_str.clone();
+        app.engine
+            .write()
+            .unwrap()
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: Some(cache_dir_str.clone()),
+                timeout_seconds: None,
+            })
+            .expect("prepare ToyGenome");
+
+        app.dbsnp_rs_id = "rs123".to_string();
+        app.dbsnp_genome_id = "ToyGenome".to_string();
+        app.dbsnp_flank_bp = "2".to_string();
+        app.dbsnp_output_id = "rs123_gui_fetch".to_string();
+        app.fetch_dbsnp_region_from_dialog();
+
+        let state = app.engine.read().unwrap().state().clone();
+        assert!(state.sequences.contains_key("rs123_gui_fetch"));
+        assert_eq!(
+            app.new_windows
+                .first()
+                .and_then(|window| window.sequence_id()),
+            Some("rs123_gui_fetch".to_string())
+        );
+        assert!(
+            app.dbsnp_status.contains("dbSNP fetch: ok"),
+            "status was: {}",
+            app.dbsnp_status
+        );
+        assert!(
+            app.dbsnp_status.contains("annotation: requested=full"),
+            "status was: {}",
+            app.dbsnp_status
         );
     }
 

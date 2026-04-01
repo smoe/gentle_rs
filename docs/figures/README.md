@@ -196,25 +196,29 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
-## Planned VKORC1/rs9923231 Pattern-to-Construct Showcase
+## Planned VKORC1/rs9923231 PGx-Alert-to-Construct Showcase
 
 The next README/community-facing showcase should be a
-**VKORC1/rs9923231 pattern-to-study-construct** story aligned with the
+**VKORC1/rs9923231 pharmacogenomic-alert-to-study-construct** story aligned with the
 ClawBio/OpenClaw handoff model:
 
-- ClawBio identifies the warfarin-associated `rs9923231` signal in one genome
+- ClawBio identifies the warfarin-associated `rs9923231` alert in one genome
 - GENtle retrieves the relevant `VKORC1` context, derives allele-specific
   upstream regulatory fragments, and plans luciferase reporter constructs
 - the run yields both explanation figures and a reproducibility bundle
 - the baseline claim is allele-specific promoter activity; any warfarin
   treatment arm is a later extension, not the first assay claim
+- the opening visual should look like a real ClawBio handoff:
+  an alert/report card first, then a construct-design explanation
 
 The intended asset set is:
 
-1. `vkorc1_rs9923231_pattern_panel.*`
-   - upstream warfarin/PGx summary panel from the ClawBio side
+1. `vkorc1_rs9923231_pgx_alert_panel.*`
+   - upstream warfarin/PGx alert panel from the ClawBio side
    - likely assembled from the ClawBio skill/report layer rather than from a
      pure GENtle render
+   - should carry the actual alert semantics:
+     drug, genotype call, `VKORC1`, and `rs9923231`
 2. `vkorc1_rs9923231_context_map.*`
    - planned GENtle figure showing the local `rs9923231` / `VKORC1` /
      `LOC124903680` neighborhood
@@ -230,7 +234,8 @@ The intended asset set is:
 4. `vkorc1_rs9923231_luciferase_protocol_cartoon.svg`
    - planned VKORC1-targeted promoter->luciferase cloning mechanism strip
    - should come from the same protocol-cartoon engine family already used for
-     Gibson README figures
+     Gibson README figures, but presented as a reporter-assay build rather than
+     as a generic cloning strip
 5. `vkorc1_rs9923231_luciferase_lineage.svg`
    - planned lineage/provenance export showing allele-specific inserts,
      primers, and assembled reporter construct(s) from the same project state

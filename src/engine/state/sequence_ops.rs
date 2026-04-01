@@ -692,6 +692,7 @@ impl GentleEngine {
                 Self::push_unique_token(&mut summary.file_paths, bindings_path);
             }
             Operation::FetchGenBankAccession { .. }
+            | Operation::FetchDbSnpRegion { .. }
             | Operation::FetchUniprotLinkedGenBank { .. } => {}
             Operation::DigestContainer { container_id, .. }
             | Operation::LigationContainer { container_id, .. }

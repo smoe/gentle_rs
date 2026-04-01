@@ -547,6 +547,19 @@
       {
          "aliases": [],
          "engine_operations": [
+            "FetchDbSnpRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "dbsnp fetch",
+         "summary": "Resolve one dbSNP rsID and extract an annotated genomic region from a prepared genome.",
+         "usage": "dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "FetchUniprotSwissProt"
          ],
          "interfaces": [

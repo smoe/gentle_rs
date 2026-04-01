@@ -180,8 +180,8 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::genbank_viewport_id()),
                 viewport_id: Self::genbank_viewport_id(),
-                title: "GenBank Accession Fetch".to_string(),
-                detail: "GenBank accession fetch/import tool".to_string(),
+                title: "GenBank / dbSNP Fetch".to_string(),
+                detail: "GenBank accession and dbSNP retrieval tool".to_string(),
             });
         }
 

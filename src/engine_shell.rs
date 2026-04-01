@@ -597,6 +597,16 @@ pub enum ShellCommand {
         accession: String,
         as_id: Option<String>,
     },
+    DbsnpFetch {
+        rs_id: String,
+        genome_id: String,
+        flank_bp: Option<usize>,
+        output_id: Option<String>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     UniprotImportSwissProt {
         path: String,
         entry_id: Option<String>,
@@ -4415,6 +4425,24 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::DbsnpFetch {
+                rs_id,
+                genome_id,
+                flank_bp,
+                output_id,
+                ..
+            } => format!(
+                "fetch dbSNP variant '{}' on '{}' (flank_bp={}, output_id={})",
+                rs_id,
+                genome_id,
+                flank_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "3000".to_string()),
+                output_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::UniprotImportSwissProt { path, entry_id } => format!(
                 "import UniProt SWISS-PROT text from '{}' (entry_id={})",
                 path,
@@ -6531,6 +6559,7 @@ impl ShellCommand {
                 | Self::TracksTrackedApply { .. }
                 | Self::UniprotFetch { .. }
                 | Self::GenbankFetch { .. }
+                | Self::DbsnpFetch { .. }
                 | Self::UniprotImportSwissProt { .. }
                 | Self::UniprotMap { .. }
                 | Self::MacrosRun { .. }
@@ -9070,6 +9099,114 @@ fn parse_genbank_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_dbsnp_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("dbsnp requires a subcommand: fetch".to_string());
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "dbsnp fetch requires RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]".to_string(),
+                );
+            }
+            let rs_id = tokens[2].trim().to_string();
+            if rs_id.is_empty() {
+                return Err("dbsnp fetch RS_ID must not be empty".to_string());
+            }
+            let genome_id = tokens[3].trim().to_string();
+            if genome_id.is_empty() {
+                return Err("dbsnp fetch GENOME_ID must not be empty".to_string());
+            }
+            let mut flank_bp: Option<usize> = None;
+            let mut output_id: Option<String> = None;
+            let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+            let mut max_annotation_features: Option<usize> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--flank-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--flank-bp", "dbsnp fetch")?;
+                        flank_bp = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --flank-bp value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            "dbsnp fetch",
+                        )?);
+                    }
+                    "--annotation-scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--annotation-scope",
+                            "dbsnp fetch",
+                        )?;
+                        annotation_scope = Some(match raw.trim().to_ascii_lowercase().as_str() {
+                            "none" => GenomeAnnotationScope::None,
+                            "core" => GenomeAnnotationScope::Core,
+                            "full" => GenomeAnnotationScope::Full,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --annotation-scope value '{other}' for dbsnp fetch (expected none|core|full)"
+                                ));
+                            }
+                        });
+                    }
+                    "--max-annotation-features" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-annotation-features",
+                            "dbsnp fetch",
+                        )?;
+                        max_annotation_features = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-annotation-features value '{raw}': {e}")
+                        })?);
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "dbsnp fetch",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "dbsnp fetch",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for dbsnp fetch")),
+                }
+            }
+            Ok(ShellCommand::DbsnpFetch {
+                rs_id,
+                genome_id,
+                flank_bp,
+                output_id,
+                annotation_scope,
+                max_annotation_features,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        other => Err(format!(
+            "Unknown dbsnp subcommand '{other}' (expected fetch)"
+        )),
+    }
+}
+
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -10827,6 +10964,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "helpers" => parse_reference_command(tokens, true),
         "panels" => parse_panels_command(tokens),
         "genbank" => parse_genbank_command(tokens),
+        "dbsnp" => parse_dbsnp_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
@@ -11734,6 +11872,33 @@ pub fn execute_shell_command_with_options(
                 .apply(Operation::FetchGenBankAccession {
                     accession: accession.clone(),
                     as_id: as_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::DbsnpFetch {
+            rs_id,
+            genome_id,
+            flank_bp,
+            output_id,
+            annotation_scope,
+            max_annotation_features,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::FetchDbSnpRegion {
+                    rs_id: rs_id.clone(),
+                    genome_id: genome_id.clone(),
+                    flank_bp: *flank_bp,
+                    output_id: output_id.clone(),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

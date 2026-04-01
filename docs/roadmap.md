@@ -630,34 +630,39 @@ order. Durable architecture constraints and decisions remain in
       (`docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`)
   - planned ClawBio-facing showcase moved out of the top-level README until the
     assets exist:
-    - working title: `From Pattern To Study Construct`
+    - working title: `From PGx Alert To Reporter Construct`
     - division of labor:
-      - ClawBio interprets one genome and identifies an interesting pattern
-      - GENtle turns that pattern into a concrete construct-design workflow for
-        downstream study
+      - ClawBio interprets a concrete pharmacogenomic alert from one genome and
+        names the causative variant/drug context
+      - GENtle turns that alert into a concrete allele-specific reporter
+        construct-design workflow for downstream study
     - intended narrative:
-      1. start from ClawBio's existing warfarin pharmacogenomics story, where
-         `rs9923231` marks increased VKORC1-associated warfarin sensitivity
-      2. make the coordinate handoff explicit:
+      1. start from ClawBio's existing warfarin pharmacogenomics story, where a
+         personal-genome or drug-photo workflow flags `VKORC1`-associated
+         warfarin sensitivity and names `rs9923231`
+      2. carry over the precise alert context rather than only the bare rsID:
+         genotype call, drug context, and the statement that the interesting
+         follow-up question is regulatory rather than coding
+      3. make the coordinate handoff explicit:
          current dbSNP/GRCh38 uses `chr16:31096368`, while 23andMe-style demo
          data may still use the older GRCh37-space coordinate
-      3. hand the locus into GENtle as an explicit retrieval/design target and
+      4. hand the locus into GENtle as an explicit retrieval/design target and
          render the local `rs9923231` / `VKORC1` / `LOC124903680` context
-      4. derive one or more strand-aware upstream regulatory fragments for the
+      5. derive one or more strand-aware upstream regulatory fragments for the
          reverse-strand `VKORC1` promoter region
-      5. materialize paired reporter inserts for the reference and variant
+      6. materialize paired reporter inserts for the reference and variant
          alleles rather than only one generic study fragment
-      6. move directly into promoter->luciferase reporter assembly planning for
+      7. move directly into promoter->luciferase reporter assembly planning for
          those fragments and one luciferase destination vector
-      7. execute the workflow through the ClawBio skill wrapper so the run
+      8. execute the workflow through the ClawBio skill wrapper so the run
          emits the reproducibility bundle and machine-readable result
-      8. export explanation artifacts from the same project state
-      9. optional follow-up, not first claim:
+      9. export explanation artifacts from the same project state
+      10. optional follow-up, not first claim:
          add a warfarin-treatment assay arm after the baseline allele-specific
          promoter-activity workflow is in place
     - intended figure set:
-      - one upstream pattern panel stating that ClawBio found `rs9923231` in a
-        warfarin-sensitivity interpretation
+      - one upstream pharmacogenomic alert panel stating that ClawBio found
+        `rs9923231` in a warfarin-sensitivity interpretation
       - one GENtle context figure showing the local `VKORC1`/`LOC124903680`
         genomic neighborhood and the SNP position
       - one derived-fragment figure showing the exact promoter fragment(s)
@@ -691,9 +696,9 @@ order. Durable architecture constraints and decisions remain in
          reports
     - target message:
       - ClawBio can say "this genome carries the warfarin-associated
-        `rs9923231` VKORC1 signal"
+        `rs9923231` VKORC1 alert"
       - GENtle can answer "here are the exact allele-specific promoter
-        luciferase constructs we should build to study that signal"
+        luciferase constructs we should build to test that alert mechanistically"
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command
@@ -886,6 +891,7 @@ order. Durable architecture constraints and decisions remain in
     - `FetchUniprotSwissProt` (online accession/id fetch)
     - `ProjectUniprotToGenome` (feature-to-genome mapping via transcript/CDS)
     - `FetchGenBankAccession` (online GenBank accession fetch + direct import)
+    - `FetchDbSnpRegion` (online dbSNP rsID resolution + annotated locus extraction)
     - `ImportUniprotEntrySequence` remains present for protocol compatibility
       but is intentionally disabled (`Unsupported`) until first-class
       protein-sequence windows are implemented.
@@ -894,6 +900,7 @@ order. Durable architecture constraints and decisions remain in
     - `gentle.uniprot_genome_projections.v1`
   - shared-shell commands:
     - `genbank fetch ACCESSION [--as-id ID]`
+    - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
     - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
       `uniprot projection-show`
@@ -1101,9 +1108,13 @@ order. Durable architecture constraints and decisions remain in
   (`FetchUniprotSwissProt`, `ImportUniprotSwissProt`,
   `ProjectUniprotToGenome`) and a recent-entry table for quick `entry_id`
   reuse.
-- File menu now also includes `Fetch GenBank Accession...` specialist dialog
+- File menu now also includes `Fetch GenBank / dbSNP...` specialist dialog
   backed by shared engine operation `FetchGenBankAccession` (accession + optional
   `as_id`, with imported sequence window auto-open).
+- The same specialist window now also exposes `FetchDbSnpRegion`, so tutorials
+  can start from one rsID and extract `+/- 3000 bp` with full feature
+  annotation from a prepared reference genome without leaving the NCBI fetch
+  workflow.
 - `File -> Open Sequence...` now supports multi-file selection and imports the
   chosen files sequentially through the same per-file `LoadFile` path, opening
   one sequence window per successful import.
