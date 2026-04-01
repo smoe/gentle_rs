@@ -10528,6 +10528,9 @@ Error: `{err}`"
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                sequencing_trace_import_report: None,
+                sequencing_trace_record: None,
+                sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
@@ -37738,6 +37741,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                sequencing_trace_import_report: None,
+                sequencing_trace_record: None,
+                sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
             }),
         })
@@ -37791,6 +37797,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                sequencing_trace_import_report: None,
+                sequencing_trace_record: None,
+                sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
             }),
         })
@@ -37829,6 +37838,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                sequencing_trace_import_report: None,
+                sequencing_trace_record: None,
+                sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
             }),
         })
@@ -37872,6 +37884,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             }),
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            sequencing_trace_import_report: None,
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));

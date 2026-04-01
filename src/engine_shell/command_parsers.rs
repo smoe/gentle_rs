@@ -2706,6 +2706,93 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
     }
 }
 
+pub(super) fn parse_seq_trace_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "seq-trace requires a subcommand: import, list, show".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "import" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "seq-trace import requires PATH [--trace-id ID] [--seq-id ID]".to_string(),
+                );
+            }
+            let path = tokens[2].clone();
+            let mut trace_id: Option<String> = None;
+            let mut seq_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--trace-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--trace-id", "seq-trace import")?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            trace_id = Some(trimmed.to_string());
+                        }
+                    }
+                    "--seq-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--seq-id", "seq-trace import")?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            seq_id = Some(trimmed.to_string());
+                        }
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for seq-trace import"));
+                    }
+                }
+            }
+            Ok(ShellCommand::SeqTraceImport {
+                path,
+                trace_id,
+                seq_id,
+            })
+        }
+        "list" => {
+            let mut seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--seq-id", "seq-trace list")?;
+                        let trimmed = raw.trim();
+                        seq_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        if seq_id.is_none() && !other.starts_with('-') {
+                            seq_id = Some(other.to_string());
+                            idx += 1;
+                        } else {
+                            return Err(format!("Unknown option '{other}' for seq-trace list"));
+                        }
+                    }
+                }
+            }
+            Ok(ShellCommand::SeqTraceList { seq_id })
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("seq-trace show requires TRACE_ID".to_string());
+            }
+            Ok(ShellCommand::SeqTraceShow {
+                trace_id: tokens[2].trim().to_string(),
+            })
+        }
+        other => Err(format!(
+            "Unknown seq-trace subcommand '{other}' (expected import, list, show)"
+        )),
+    }
+}
+
 pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(

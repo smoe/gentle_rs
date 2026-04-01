@@ -114,6 +114,11 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
+const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
+pub const SEQUENCING_TRACE_RECORD_SCHEMA: &str = "gentle.sequencing_trace_record.v1";
+pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str =
+    "gentle.sequencing_trace_import_report.v1";
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
@@ -232,6 +237,8 @@ mod feature_expert_ops;
 mod genome_tracks;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
+#[path = "engine/io/sequencing_traces.rs"]
+mod sequencing_traces;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
 #[path = "engine/ops/operation_handlers.rs"]
@@ -2417,6 +2424,14 @@ struct PrimerDesignStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+struct SequencingTraceStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    traces: BTreeMap<String, SequencingTraceRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 struct SequencingConfirmationReportStore {
     schema: String,
     updated_at_unix_ms: u128,
@@ -3981,6 +3996,20 @@ pub enum Operation {
         gap_open: i32,
         #[serde(default = "default_pairwise_gap_extend")]
         gap_extend: i32,
+    },
+    ImportSequencingTrace {
+        path: String,
+        #[serde(default)]
+        trace_id: Option<String>,
+        #[serde(default)]
+        seq_id: Option<SeqId>,
+    },
+    ListSequencingTraces {
+        #[serde(default)]
+        seq_id: Option<SeqId>,
+    },
+    ShowSequencingTrace {
+        trace_id: String,
     },
     ConfirmConstructReads {
         expected_seq_id: SeqId,

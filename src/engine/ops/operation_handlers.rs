@@ -2721,6 +2721,9 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            sequencing_trace_import_report: None,
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
         };
 
@@ -7488,6 +7491,68 @@ impl GentleEngine {
                         report.targets.len() - 8
                     ));
                 }
+            }
+            Operation::ImportSequencingTrace {
+                path,
+                trace_id,
+                seq_id,
+            } => {
+                let report = self.import_sequencing_trace(
+                    &path,
+                    trace_id.as_deref(),
+                    seq_id.as_deref(),
+                )?;
+                let record = self.get_sequencing_trace(&report.trace_id)?;
+                result.sequencing_trace_import_report = Some(report.clone());
+                result.sequencing_trace_record = Some(record.clone());
+                result.messages.push(format!(
+                    "Imported sequencing trace '{}': {}",
+                    report.trace_id,
+                    Self::format_sequencing_trace_detail_summary(&record)
+                ));
+                if !report.warnings.is_empty() {
+                    for warning in report.warnings.iter().take(8) {
+                        result.warnings.push(warning.clone());
+                    }
+                    if report.warnings.len() > 8 {
+                        result.warnings.push(format!(
+                            "... {} additional sequencing-trace warning(s) omitted",
+                            report.warnings.len() - 8
+                        ));
+                    }
+                }
+            }
+            Operation::ListSequencingTraces { seq_id } => {
+                let rows = self.list_sequencing_traces(seq_id.as_deref());
+                result.sequencing_trace_summaries = Some(rows.clone());
+                result.messages.push(format!(
+                    "Sequencing traces: {} row(s){}",
+                    rows.len(),
+                    seq_id
+                        .as_deref()
+                        .map(|s| format!(" (seq_id='{}')", s))
+                        .unwrap_or_default()
+                ));
+                for row in rows.iter().take(8) {
+                    result.messages.push(format!(
+                        "  - {}",
+                        Self::format_sequencing_trace_summary_row(row)
+                    ));
+                }
+                if rows.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional trace row(s) omitted",
+                        rows.len() - 8
+                    ));
+                }
+            }
+            Operation::ShowSequencingTrace { trace_id } => {
+                let record = self.get_sequencing_trace(&trace_id)?;
+                result.sequencing_trace_record = Some(record.clone());
+                result.messages.push(format!(
+                    "Sequencing trace summary: {}",
+                    Self::format_sequencing_trace_detail_summary(&record)
+                ));
             }
             Operation::ListSequencingConfirmationReports { expected_seq_id } => {
                 let rows = self.list_sequencing_confirmation_reports(expected_seq_id.as_deref());

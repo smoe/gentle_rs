@@ -1648,6 +1648,54 @@
          "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
       },
       {
+         "aliases": [
+            "seq_trace import",
+            "seqtrace import"
+         ],
+         "engine_operations": [
+            "ImportSequencingTrace"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace import",
+         "summary": "Import one ABI/AB1 or SCF trace into the shared sequencing-trace evidence store.",
+         "usage": "seq-trace import PATH [--trace-id ID] [--seq-id ID]"
+      },
+      {
+         "aliases": [
+            "seq_trace list",
+            "seqtrace list"
+         ],
+         "engine_operations": [
+            "ListSequencingTraces"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace list",
+         "summary": "List imported sequencing traces, optionally filtered by associated sequence id.",
+         "usage": "seq-trace list [SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "seq_trace show",
+            "seqtrace show"
+         ],
+         "engine_operations": [
+            "ShowSequencingTrace"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace show",
+         "summary": "Inspect one persisted sequencing-trace evidence record by id.",
+         "usage": "seq-trace show TRACE_ID"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InterpretRnaReads"

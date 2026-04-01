@@ -7167,6 +7167,9 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            sequencing_trace_import_report: None,
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
@@ -7206,6 +7209,9 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            sequencing_trace_import_report: None,
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;

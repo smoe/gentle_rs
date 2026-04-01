@@ -5,10 +5,17 @@ fixtures.
 
 Status:
 
-- This directory currently contains provenance notes only.
-- No sequencing-confirmation fixture payloads are committed here yet.
-- The first committed pack should stay small and deterministic, then layer real
-  public read evidence on top for manual/exploratory benchmarking.
+- Committed raw-trace fixtures now cover one positive ABI/AB1 import path and
+  one malformed-edge rejection path:
+  - `3100.ab1`
+  - `fake.ab1`
+- SCF parser coverage is currently deterministic but synthetic-only via
+  in-test byte construction in
+  `src/engine/io/sequencing_traces.rs`; no public SCF payload is committed
+  here yet.
+- The first called-read construct-confirmation pack should still stay small and
+  deterministic, then layer real public read evidence on top for
+  manual/exploratory benchmarking.
 
 ## Priority Order
 
@@ -83,9 +90,19 @@ Status:
 
 - Origin:
   - Biopython repository, commit
-    `d76a5581ca3317ec850d72450c458ec4e34e2583`
+    `d59ab34b2483c7e58c18d13f66fdff5339a11a08`
   - source tree:
     `Tests/Abi/`
+- Committed GENtle subset:
+  - `3100.ab1`
+    - copied from `Tests/Abi/3100.ab1`
+    - current GENtle usage:
+      - positive ABI/AB1 parser coverage in `src/engine/tests.rs`
+      - import/list/show shell parity coverage in `src/engine_shell/tests.rs`
+  - `fake.ab1`
+    - copied from `Tests/Abi/fake.ab1`
+    - current GENtle usage:
+      - malformed/unsupported ABI rejection coverage in `src/engine/tests.rs`
 - Recommended positive fixtures:
   - `310.ab1`
   - `3100.ab1`
@@ -105,12 +122,19 @@ Status:
   - good nostalgia bridge to `gentle-m` `ABItype.cpp`/`SCFtype.cpp` work
 - Deterministic retrieval:
   - raw file pattern pinned to commit:
-    `https://raw.githubusercontent.com/biopython/biopython/d76a5581ca3317ec850d72450c458ec4e34e2583/Tests/Abi/<FILE>`
+    `https://raw.githubusercontent.com/biopython/biopython/d59ab34b2483c7e58c18d13f66fdff5339a11a08/Tests/Abi/<FILE>`
   - example:
-    `https://raw.githubusercontent.com/biopython/biopython/d76a5581ca3317ec850d72450c458ec4e34e2583/Tests/Abi/310.ab1`
+    `https://raw.githubusercontent.com/biopython/biopython/d59ab34b2483c7e58c18d13f66fdff5339a11a08/Tests/Abi/3100.ab1`
 - Planned GENtle usage:
-  - `src/genbank.rs` or new trace-parser module tests once ABI/AB1 import work
-    starts
+  - `src/engine/tests.rs`
+  - `src/engine_shell/tests.rs`
+  - future GUI trace-review smoke coverage once raw-trace inspection lands
+- Current limitation:
+  - no public SCF file is committed here yet
+  - SCF support is currently exercised with a synthetic minimal `.scf` payload
+    built inside `src/engine/io/sequencing_traces.rs`
+  - if a provenance-safe public SCF fixture is adopted later, document its
+    exact origin and retrieval here in the same style
   - negative/edge parsing regressions before trace-aware confirmation is added
 - Licensing note:
   - preserve upstream attribution when copying individual fixtures from
@@ -130,5 +154,5 @@ Status:
    derivation rules here.
 2. Keep `PRJNA1066256` as the first real public benchmark for exploratory
    confirmation runs outside the default CI fixture set.
-3. Bring in the smallest useful subset of Biopython ABI fixtures only when
-   raw-trace import begins.
+3. Keep the current tiny ABI subset (`3100.ab1`, `fake.ab1`) as the default
+   committed parser pack until a provenance-safe SCF file is added.
