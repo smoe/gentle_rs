@@ -10369,6 +10369,7 @@ Error: `{err}`"
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                rna_read_gene_support_summary: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -37397,6 +37398,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                rna_read_gene_support_summary: None,
             }),
         })
         .expect("send prepare done");
@@ -37449,6 +37451,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                rna_read_gene_support_summary: None,
             }),
         })
         .expect("send track import done");
@@ -37486,6 +37489,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                rna_read_gene_support_summary: None,
             }),
         })
         .expect("send track import done");
@@ -37528,6 +37532,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             }),
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            rna_read_gene_support_summary: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

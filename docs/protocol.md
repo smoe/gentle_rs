@@ -2338,6 +2338,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - Operations:
   - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
+  - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
   - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`,
     `misc_RNA`, `exon`, `gene`, or `CDS` feature; transcript-template
     admission then follows the selected splicing-scope rules around that seed.
@@ -2484,6 +2485,49 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       the subset definition that produced it
     - intended for exporting the exact contributor reads surfaced by mapped
       `Audit` actions in the GUI
+  - target-gene cohort summary behavior:
+    - `SummarizeRnaReadGeneSupport` is non-mutating and consumes one persisted
+      aligned RNA-read report
+    - required `gene_ids[]` are normalized/deduplicated and matched
+      case-insensitively against the same splicing group-label logic already
+      used for transcript grouping
+    - output schema:
+      - `gentle.rna_read_gene_support_summary.v1`
+    - base cohort:
+      - retained rows with `best_mapping` present
+      - optionally intersected with explicit `selected_record_indices[]`
+    - accepted target cohort:
+      - base-cohort rows whose `best_mapping.transcript_feature_id` resolves to
+        one of the requested matched genes/groups
+    - complete/fragment split:
+      - `complete_rule = near|strict|exact` controls which accepted rows land
+        in the `complete` cohort
+      - `fragment` is the remaining accepted-target cohort
+      - summary still reports nested `complete_strict_count` and
+        `complete_exact_count` regardless of the chosen `complete_rule`
+    - support attribution is derived from phase-2 mapped support, not phase-1
+      `exon_path`
+    - per-cohort output blocks:
+      - `all_target`
+      - `fragments`
+      - `complete`
+    - each block includes:
+      - `read_count`
+      - `exon_support[]`
+      - `exon_pair_support[]`
+      - `direct_transition_support[]`
+    - row semantics:
+      - `exon_support[]`: each exon counted at most once per read
+      - `exon_pair_support[]`: every ordered exon_i -> exon_j pair observed in
+        the mapped exon order once per read, including skipped pairs like
+        `1->3`
+      - `direct_transition_support[]`: neighboring exon steps only, so
+        `1->2` is counted but skipped pairs like `1->3` are not
+      - all support fractions are normalized by the enclosing cohort size
+      - exon and pair rows carry deterministic gene-level exon ordinals plus
+        genomic coordinates for auditability
+    - when `path` / shell `--output` is provided, the exact same JSON payload
+      returned to the caller is also written to disk
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -2577,6 +2621,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
+  - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -2592,6 +2637,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       ROI-capture flag, read counters)
     - `rna-reads show-report` includes `summary` with the same provenance
       framing for one report
+    - `rna-reads summarize-gene-support` returns the full
+      `gentle.rna_read_gene_support_summary.v1` payload directly, including
+      `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
+      selected-record echo fields, and per-cohort support tables
     - `rna-reads inspect-alignments` returns aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics), plus a
       structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,

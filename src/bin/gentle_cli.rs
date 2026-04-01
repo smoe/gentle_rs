@@ -3517,6 +3517,42 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_rna_reads_summarize_gene_support() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "rna-reads".to_string(),
+            "summarize-gene-support".to_string(),
+            "tp53_reads".to_string(),
+            "--gene".to_string(),
+            "TP53".to_string(),
+            "--gene".to_string(),
+            "TP73".to_string(),
+            "--record-indices".to_string(),
+            "1,4".to_string(),
+            "--complete-rule".to_string(),
+            "exact".to_string(),
+            "--output".to_string(),
+            "tp53_support.json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::RnaReadsSummarizeGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                output_path,
+            })
+                if report_id == "tp53_reads"
+                    && gene_ids == vec!["TP53".to_string(), "TP73".to_string()]
+                    && selected_record_indices == vec![1, 4]
+                    && complete_rule == gentle::engine::RnaReadGeneSupportCompleteRule::Exact
+                    && output_path.as_deref() == Some("tp53_support.json")
+        ));
+    }
+
+    #[test]
     fn test_forwarded_resources_sync_rebase_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_rebase_withrefm(td.path());

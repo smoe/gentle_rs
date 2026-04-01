@@ -204,6 +204,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads align-report`
   - `rna-reads list-reports`
   - `rna-reads show-report`
+  - `rna-reads summarize-gene-support`
   - `rna-reads inspect-alignments`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
@@ -214,9 +215,10 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-alignments-tsv`
   - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
-  `ListRnaReadReports`, `ShowRnaReadReport`, `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
-  `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`,
-  `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
+  `ListRnaReadReports`, `ShowRnaReadReport`,
+  `SummarizeRnaReadGeneSupport`, `ExportRnaReadReport`,
+  `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
+  `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Concatenated gzip members are accepted for gzipped FASTA input as well.
@@ -224,15 +226,30 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `apply_with_progress` runs.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
-  - `align-report`: retained-hit alignment pass (phase-2) that updates
-    mapping fields, MSA-eligibility counters, exon-transition rows, and
-    exon/junction abundance frequencies in the persisted report; retained hits
-    are re-ranked by alignment-aware retention rank after alignment.
+    - `align-report`: retained-hit alignment pass (phase-2) that updates
+      mapping fields, MSA-eligibility counters, exon-transition rows, and
+      exon/junction abundance frequencies in the persisted report; retained hits
+      are re-ranked by alignment-aware retention rank after alignment.
     - supports explicit row filtering via
       `--record-indices i,j,k` (0-based stored `record_index` values);
       when provided, this overrides `--selection`.
     - default adapter behavior now uses `selection=all` so rescued retained
       rows also receive round-2 similarity/coverage scores.
+  - `summarize-gene-support`: non-mutating target-gene cohort summary over one
+    saved aligned RNA-read report.
+    - `--gene GENE` is required and repeatable; matches are case-insensitive
+      against the same transcript group-label logic used by the splicing view.
+    - optional `--record-indices i,j,k` restricts the base aligned cohort to an
+      exact saved-report subset before target-gene filtering.
+    - `--complete-rule near|strict|exact` controls the fragment-vs-complete
+      cohort split; strict and exact counts are still reported explicitly in the
+      payload.
+    - output is JSON on stdout by default; `--output PATH` writes the exact same
+      payload to disk.
+    - payload tables include:
+      - per-cohort exon support
+      - ordered exon-pair support (including skipped pairs like `1->3`)
+      - neighboring direct-transition support only (for example `1->2`)
   - `inspect-alignments`: non-mutating ranked alignment inspection
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
@@ -1085,6 +1102,7 @@ Shared shell command:
     - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
+    - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -1106,6 +1124,18 @@ Shared shell command:
       - `full_length_exact`
       - `full_length_near`
       - `full_length_strict`
+    - `rna-reads summarize-gene-support` returns a machine-readable
+      `gentle.rna_read_gene_support_summary.v1` payload for one or more target
+      genes from a saved aligned report:
+      - base cohort = aligned retained rows, optionally narrowed by
+        `--record-indices`
+      - accepted target cohort = base rows whose best mapping resolves to one
+        of the requested genes
+      - cohort tables are emitted for `all_target`, `fragments`, and
+        `complete`
+      - `exon_pair_support` includes skipped ordered pairs like `1->3`
+      - `direct_transition_support` includes neighboring exon steps only
+      - `--output PATH` writes the same JSON returned on stdout
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
       exports an exact saved-report subset and overrides coarse `--selection`;

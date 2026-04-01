@@ -792,6 +792,12 @@ impl GentleEngine {
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
+        if let Operation::SummarizeRnaReadGeneSupport {
+            path: Some(path), ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         summary
     }
 
@@ -827,6 +833,9 @@ impl GentleEngine {
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
+            Operation::SummarizeRnaReadGeneSupport {
+                path: Some(path), ..
+            } => push(path),
             _ => {}
         }
         paths

@@ -43,9 +43,10 @@ use crate::{
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
-        RnaReadSeedFilterConfig, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
+        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset,
@@ -1325,6 +1326,13 @@ pub enum ShellCommand {
     },
     RnaReadsShowReport {
         report_id: String,
+    },
+    RnaReadsSummarizeGeneSupport {
+        report_id: String,
+        gene_ids: Vec<String>,
+        selected_record_indices: Vec<usize>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        output_path: Option<String>,
     },
     RnaReadsInspectAlignments {
         report_id: String,
@@ -6264,6 +6272,24 @@ impl ShellCommand {
             Self::RnaReadsShowReport { report_id } => {
                 format!("show stored RNA-read report '{}'", report_id)
             }
+            Self::RnaReadsSummarizeGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                output_path,
+            } => format!(
+                "summarize RNA-read gene support for '{}' (genes={}, selected_record_indices={}, complete_rule={}, output={})",
+                report_id,
+                if gene_ids.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    gene_ids.join(",")
+                },
+                selected_record_indices.len(),
+                complete_rule.as_str(),
+                output_path.as_deref().unwrap_or("stdout")
+            ),
             Self::RnaReadsInspectAlignments {
                 report_id,
                 selection,
@@ -15934,6 +15960,32 @@ pub fn execute_shell_command_with_options(
                     "report": report,
                     "summary": summary,
                 }),
+            }
+        }
+        ShellCommand::RnaReadsSummarizeGeneSupport {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            output_path,
+        } => {
+            let summary = engine
+                .summarize_rna_read_gene_support(
+                    report_id,
+                    gene_ids,
+                    selected_record_indices,
+                    *complete_rule,
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output_path.as_deref() {
+                engine
+                    .write_rna_read_gene_support_summary_json(&summary, path)
+                    .map_err(|e| e.to_string())?;
+            }
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&summary)
+                    .map_err(|e| format!("Could not serialize gene-support summary: {e}"))?,
             }
         }
         ShellCommand::RnaReadsInspectAlignments {

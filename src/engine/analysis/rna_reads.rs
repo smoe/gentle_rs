@@ -43,6 +43,72 @@ struct RnaReadFullLengthClassification {
     full_length_strict: bool,
 }
 
+#[derive(Debug, Clone)]
+struct RnaReadGeneSupportContext {
+    group_label: String,
+    splicing: SplicingExpertView,
+    transcript_lengths: HashMap<usize, usize>,
+    transcript_ordered_exons: HashMap<usize, Vec<(usize, usize, usize)>>,
+}
+
+#[derive(Debug, Default)]
+struct RnaReadGeneSupportAccumulator {
+    read_count: usize,
+    exon_counts: BTreeMap<(String, usize), usize>,
+    exon_pair_counts: BTreeMap<(String, usize, usize), usize>,
+    direct_transition_counts: BTreeMap<(String, usize, usize), usize>,
+}
+
+impl RnaReadGeneSupportAccumulator {
+    fn add_read(
+        &mut self,
+        gene_id: &str,
+        exon_ordinals: &[usize],
+        direct_transitions: &[(usize, usize)],
+    ) {
+        self.read_count = self.read_count.saturating_add(1);
+
+        let mut seen_exons = BTreeSet::<usize>::new();
+        for exon_ordinal in exon_ordinals.iter().copied() {
+            if seen_exons.insert(exon_ordinal) {
+                *self
+                    .exon_counts
+                    .entry((gene_id.to_string(), exon_ordinal))
+                    .or_insert(0) += 1;
+            }
+        }
+
+        let mut seen_pairs = BTreeSet::<(usize, usize)>::new();
+        for left_idx in 0..exon_ordinals.len() {
+            for right_idx in left_idx + 1..exon_ordinals.len() {
+                let from = exon_ordinals[left_idx];
+                let to = exon_ordinals[right_idx];
+                if from == to || !seen_pairs.insert((from, to)) {
+                    continue;
+                }
+                *self
+                    .exon_pair_counts
+                    .entry((gene_id.to_string(), from, to))
+                    .or_insert(0) += 1;
+            }
+        }
+
+        let mut seen_direct = BTreeSet::<(usize, usize)>::new();
+        for (from, to) in direct_transitions.iter().copied() {
+            if from == to
+                || from.abs_diff(to) != 1
+                || !seen_direct.insert((from, to))
+            {
+                continue;
+            }
+            *self
+                .direct_transition_counts
+                .entry((gene_id.to_string(), from, to))
+                .or_insert(0) += 1;
+        }
+    }
+}
+
 impl GentleEngine {
     pub(super) fn read_rna_read_report_store_from_metadata(
         value: Option<&serde_json::Value>,
@@ -367,6 +433,468 @@ impl GentleEngine {
             message: format!("Could not write RNA-read report to '{path}': {e}"),
         })?;
         Ok(report)
+    }
+
+    fn normalize_rna_read_gene_support_ids(
+        gene_ids: &[String],
+    ) -> Result<Vec<String>, EngineError> {
+        let mut normalized = gene_ids
+            .iter()
+            .map(|raw| raw.trim())
+            .filter(|raw| !raw.is_empty())
+            .map(|raw| raw.to_string())
+            .collect::<Vec<_>>();
+        normalized.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read gene-support summary requires at least one gene id"
+                    .to_string(),
+            });
+        }
+        Ok(normalized)
+    }
+
+    fn rna_read_gene_support_group_scope(scope: SplicingScopePreset) -> SplicingScopePreset {
+        if scope.restrict_to_target_strand() {
+            SplicingScopePreset::TargetGroupTargetStrand
+        } else {
+            SplicingScopePreset::TargetGroupAnyStrand
+        }
+    }
+
+    fn rna_read_gene_support_context_from_splicing(
+        splicing: SplicingExpertView,
+    ) -> RnaReadGeneSupportContext {
+        let unique_exons = splicing
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(idx, exon)| (idx + 1, exon.start_1based, exon.end_1based))
+            .collect::<Vec<_>>();
+        let mut transcript_lengths = HashMap::<usize, usize>::new();
+        let mut transcript_ordered_exons = HashMap::<usize, Vec<(usize, usize, usize)>>::new();
+        for transcript in &splicing.transcripts {
+            let reverse_order = transcript.strand.trim() == "-";
+            let ordered = if reverse_order {
+                transcript.exons.iter().rev().collect::<Vec<_>>()
+            } else {
+                transcript.exons.iter().collect::<Vec<_>>()
+            };
+            let mut ordered_exons = Vec::<(usize, usize, usize)>::new();
+            let mut transcript_len = 0usize;
+            for exon in ordered {
+                let start_1based = exon.start_1based.min(exon.end_1based);
+                let end_1based = exon.start_1based.max(exon.end_1based);
+                let exon_len = end_1based
+                    .saturating_sub(start_1based)
+                    .saturating_add(1);
+                if exon_len == 0 {
+                    continue;
+                }
+                let mut matching_unique_exons = unique_exons
+                    .iter()
+                    .copied()
+                    .filter(|(_, unique_start_1based, unique_end_1based)| {
+                        *unique_start_1based >= start_1based && *unique_end_1based <= end_1based
+                    })
+                    .collect::<Vec<_>>();
+                matching_unique_exons.sort_by(|left, right| {
+                    if reverse_order {
+                        right.1.cmp(&left.1).then(right.2.cmp(&left.2))
+                    } else {
+                        left.1.cmp(&right.1).then(left.2.cmp(&right.2))
+                    }
+                });
+                for (ordinal, unique_start_1based, unique_end_1based) in matching_unique_exons {
+                    ordered_exons.push((ordinal, unique_start_1based, unique_end_1based));
+                }
+                transcript_len = transcript_len.saturating_add(exon_len);
+            }
+            transcript_lengths.insert(transcript.transcript_feature_id, transcript_len);
+            transcript_ordered_exons.insert(transcript.transcript_feature_id, ordered_exons);
+        }
+        RnaReadGeneSupportContext {
+            group_label: splicing.group_label.clone(),
+            splicing,
+            transcript_lengths,
+            transcript_ordered_exons,
+        }
+    }
+
+    fn rna_read_gene_support_matches_complete_rule(
+        full_length: RnaReadFullLengthClassification,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> bool {
+        match complete_rule {
+            RnaReadGeneSupportCompleteRule::Near => full_length.full_length_near,
+            RnaReadGeneSupportCompleteRule::Strict => full_length.full_length_strict,
+            RnaReadGeneSupportCompleteRule::Exact => full_length.full_length_exact,
+        }
+    }
+
+    fn collect_rna_read_gene_support_for_mapping(
+        mapping: &RnaReadMappingHit,
+        context: &RnaReadGeneSupportContext,
+    ) -> (Vec<usize>, Vec<(usize, usize)>) {
+        let Some(ordered_exons) = context
+            .transcript_ordered_exons
+            .get(&mapping.transcript_feature_id)
+        else {
+            return (vec![], vec![]);
+        };
+        if ordered_exons.is_empty() {
+            return (vec![], vec![]);
+        }
+
+        let mut exon_ordinals = Vec::<usize>::new();
+        let mut direct_transitions = Vec::<(usize, usize)>::new();
+        if mapping.target_end_offset_0based_exclusive > mapping.target_start_offset_0based {
+            let aligned_start = mapping.target_start_offset_0based;
+            let aligned_end = mapping.target_end_offset_0based_exclusive;
+            let mut template_cursor = 0usize;
+            for idx in 0..ordered_exons.len() {
+                let (ordinal, start_1based, end_1based) = ordered_exons[idx];
+                let exon_len = end_1based
+                    .saturating_sub(start_1based)
+                    .saturating_add(1);
+                let exon_offset_start = template_cursor;
+                let exon_offset_end = template_cursor.saturating_add(exon_len);
+                if aligned_start < exon_offset_end
+                    && aligned_end > exon_offset_start
+                    && exon_ordinals.last().copied() != Some(ordinal)
+                {
+                    exon_ordinals.push(ordinal);
+                }
+                if idx + 1 < ordered_exons.len()
+                    && aligned_start < exon_offset_end
+                    && aligned_end > exon_offset_end
+                {
+                    let next_ordinal = ordered_exons[idx + 1].0;
+                    if direct_transitions.last().copied() != Some((ordinal, next_ordinal)) {
+                        direct_transitions.push((ordinal, next_ordinal));
+                    }
+                }
+                template_cursor = exon_offset_end;
+                if template_cursor >= aligned_end {
+                    break;
+                }
+            }
+            return (exon_ordinals, direct_transitions);
+        }
+
+        let span_start = mapping.target_start_1based.min(mapping.target_end_1based);
+        let span_end = mapping.target_start_1based.max(mapping.target_end_1based);
+        for idx in 0..ordered_exons.len() {
+            let (ordinal, start_1based, end_1based) = ordered_exons[idx];
+            if span_start <= end_1based && span_end >= start_1based {
+                exon_ordinals.push(ordinal);
+            }
+            if idx + 1 >= ordered_exons.len() {
+                continue;
+            }
+            let (_, next_start_1based, next_end_1based) = ordered_exons[idx + 1];
+            let (donor_1based, acceptor_1based) = if start_1based <= next_start_1based {
+                (end_1based, next_start_1based)
+            } else {
+                (next_end_1based, start_1based)
+            };
+            if span_start <= donor_1based && span_end >= acceptor_1based {
+                direct_transitions.push((ordinal, ordered_exons[idx + 1].0));
+            }
+        }
+        exon_ordinals.dedup();
+        direct_transitions.dedup();
+        (exon_ordinals, direct_transitions)
+    }
+
+    fn build_rna_read_gene_support_exon_rows(
+        accumulator: &RnaReadGeneSupportAccumulator,
+        contexts: &BTreeMap<String, RnaReadGeneSupportContext>,
+    ) -> Vec<RnaReadGeneExonSupportRow> {
+        let denominator = accumulator.read_count as f64;
+        let mut rows = accumulator
+            .exon_counts
+            .iter()
+            .filter_map(|((gene_id, exon_ordinal), support_read_count)| {
+                let context = contexts.get(gene_id)?;
+                let exon = context
+                    .splicing
+                    .unique_exons
+                    .get(exon_ordinal.saturating_sub(1))?;
+                Some(RnaReadGeneExonSupportRow {
+                    gene_id: context.group_label.clone(),
+                    exon_ordinal: *exon_ordinal,
+                    start_1based: exon.start_1based,
+                    end_1based: exon.end_1based,
+                    support_read_count: *support_read_count,
+                    support_fraction: if accumulator.read_count == 0 {
+                        0.0
+                    } else {
+                        *support_read_count as f64 / denominator
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.gene_id
+                .to_ascii_lowercase()
+                .cmp(&right.gene_id.to_ascii_lowercase())
+                .then(left.exon_ordinal.cmp(&right.exon_ordinal))
+                .then(left.start_1based.cmp(&right.start_1based))
+                .then(left.end_1based.cmp(&right.end_1based))
+        });
+        rows
+    }
+
+    fn build_rna_read_gene_support_pair_rows(
+        pair_counts: &BTreeMap<(String, usize, usize), usize>,
+        read_count: usize,
+        contexts: &BTreeMap<String, RnaReadGeneSupportContext>,
+    ) -> Vec<RnaReadGeneExonPairSupportRow> {
+        let denominator = read_count as f64;
+        let mut rows = pair_counts
+            .iter()
+            .filter_map(|((gene_id, from_exon_ordinal, to_exon_ordinal), support_read_count)| {
+                let context = contexts.get(gene_id)?;
+                let from_exon = context
+                    .splicing
+                    .unique_exons
+                    .get(from_exon_ordinal.saturating_sub(1))?;
+                let to_exon = context
+                    .splicing
+                    .unique_exons
+                    .get(to_exon_ordinal.saturating_sub(1))?;
+                Some(RnaReadGeneExonPairSupportRow {
+                    gene_id: context.group_label.clone(),
+                    from_exon_ordinal: *from_exon_ordinal,
+                    from_start_1based: from_exon.start_1based,
+                    from_end_1based: from_exon.end_1based,
+                    to_exon_ordinal: *to_exon_ordinal,
+                    to_start_1based: to_exon.start_1based,
+                    to_end_1based: to_exon.end_1based,
+                    support_read_count: *support_read_count,
+                    support_fraction: if read_count == 0 {
+                        0.0
+                    } else {
+                        *support_read_count as f64 / denominator
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.gene_id
+                .to_ascii_lowercase()
+                .cmp(&right.gene_id.to_ascii_lowercase())
+                .then(left.from_exon_ordinal.cmp(&right.from_exon_ordinal))
+                .then(left.to_exon_ordinal.cmp(&right.to_exon_ordinal))
+                .then(left.from_start_1based.cmp(&right.from_start_1based))
+                .then(left.to_start_1based.cmp(&right.to_start_1based))
+        });
+        rows
+    }
+
+    fn build_rna_read_gene_support_cohort_summary(
+        accumulator: &RnaReadGeneSupportAccumulator,
+        contexts: &BTreeMap<String, RnaReadGeneSupportContext>,
+    ) -> RnaReadGeneSupportCohortSummary {
+        RnaReadGeneSupportCohortSummary {
+            read_count: accumulator.read_count,
+            exon_support: Self::build_rna_read_gene_support_exon_rows(accumulator, contexts),
+            exon_pair_support: Self::build_rna_read_gene_support_pair_rows(
+                &accumulator.exon_pair_counts,
+                accumulator.read_count,
+                contexts,
+            ),
+            direct_transition_support: Self::build_rna_read_gene_support_pair_rows(
+                &accumulator.direct_transition_counts,
+                accumulator.read_count,
+                contexts,
+            ),
+        }
+    }
+
+    pub(crate) fn write_rna_read_gene_support_summary_json(
+        &self,
+        summary: &RnaReadGeneSupportSummary,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(summary).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize RNA-read gene-support summary '{}': {e}",
+                summary.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read gene-support summary to '{path}': {e}"
+            ),
+        })
+    }
+
+    pub fn summarize_rna_read_gene_support(
+        &self,
+        report_id: &str,
+        gene_ids: &[String],
+        selected_record_indices: &[usize],
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> Result<RnaReadGeneSupportSummary, EngineError> {
+        let requested_gene_ids = Self::normalize_rna_read_gene_support_ids(gene_ids)?;
+        let mut selected_record_indices = selected_record_indices.to_vec();
+        selected_record_indices.sort_unstable();
+        selected_record_indices.dedup();
+
+        let report = self.get_rna_read_report(report_id)?;
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+            })?;
+        let (_base_splicing, transcript_lanes) =
+            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
+        let features = dna.features();
+        let mut canonical_by_lower = BTreeMap::<String, String>::new();
+        let mut representative_feature_id_by_lower = HashMap::<String, usize>::new();
+        for lane in &transcript_lanes {
+            let Some(feature) = features.get(lane.transcript_feature_id) else {
+                continue;
+            };
+            let group_label = Self::splicing_group_label(feature, lane.transcript_feature_id);
+            let key = group_label.to_ascii_lowercase();
+            canonical_by_lower
+                .entry(key.clone())
+                .or_insert_with(|| group_label.clone());
+            representative_feature_id_by_lower
+                .entry(key)
+                .or_insert(lane.transcript_feature_id);
+        }
+
+        let mut matched_gene_ids = Vec::<String>::new();
+        let mut missing_gene_ids = Vec::<String>::new();
+        for gene_id in &requested_gene_ids {
+            let key = gene_id.to_ascii_lowercase();
+            if let Some(canonical) = canonical_by_lower.get(&key) {
+                matched_gene_ids.push(canonical.clone());
+            } else {
+                missing_gene_ids.push(gene_id.clone());
+            }
+        }
+
+        let mut contexts = BTreeMap::<String, RnaReadGeneSupportContext>::new();
+        let group_scope = Self::rna_read_gene_support_group_scope(report.scope);
+        for matched_gene_id in &matched_gene_ids {
+            let key = matched_gene_id.to_ascii_lowercase();
+            let Some(feature_id) = representative_feature_id_by_lower.get(&key).copied() else {
+                continue;
+            };
+            let splicing = self.build_splicing_expert_view(&report.seq_id, feature_id, group_scope)?;
+            let context = Self::rna_read_gene_support_context_from_splicing(splicing);
+            contexts.insert(matched_gene_id.clone(), context);
+        }
+
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let mut transcript_gene_lookup = HashMap::<usize, String>::new();
+        for (gene_id, context) in &contexts {
+            for transcript in &context.splicing.transcripts {
+                transcript_gene_lookup.insert(transcript.transcript_feature_id, gene_id.clone());
+            }
+        }
+
+        let mut all_target = RnaReadGeneSupportAccumulator::default();
+        let mut fragments = RnaReadGeneSupportAccumulator::default();
+        let mut complete = RnaReadGeneSupportAccumulator::default();
+        let mut aligned_base_count = 0usize;
+        let mut accepted_target_count = 0usize;
+        let mut complete_count = 0usize;
+        let mut complete_strict_count = 0usize;
+        let mut complete_exact_count = 0usize;
+
+        for hit in &report.hits {
+            let Some(mapping) = hit.best_mapping.as_ref() else {
+                continue;
+            };
+            if !explicit_record_filter.is_empty()
+                && !explicit_record_filter.contains(&hit.record_index)
+            {
+                continue;
+            }
+            aligned_base_count = aligned_base_count.saturating_add(1);
+
+            let Some(gene_id) = transcript_gene_lookup.get(&mapping.transcript_feature_id) else {
+                continue;
+            };
+            let Some(context) = contexts.get(gene_id) else {
+                continue;
+            };
+            accepted_target_count = accepted_target_count.saturating_add(1);
+
+            let target_length_bp = context
+                .transcript_lengths
+                .get(&mapping.transcript_feature_id)
+                .copied()
+                .unwrap_or_else(|| {
+                    mapping
+                        .target_end_offset_0based_exclusive
+                        .saturating_sub(mapping.target_start_offset_0based)
+                        .max(1)
+                });
+            let full_length = Self::classify_rna_read_full_length_for_mapping(
+                mapping,
+                target_length_bp,
+                report.align_config.min_identity_fraction,
+            );
+            let is_complete = Self::rna_read_gene_support_matches_complete_rule(
+                full_length,
+                complete_rule,
+            );
+            if full_length.full_length_strict {
+                complete_strict_count = complete_strict_count.saturating_add(1);
+            }
+            if full_length.full_length_exact {
+                complete_exact_count = complete_exact_count.saturating_add(1);
+            }
+            if is_complete {
+                complete_count = complete_count.saturating_add(1);
+            }
+
+            let (exon_ordinals, direct_transitions) =
+                Self::collect_rna_read_gene_support_for_mapping(mapping, context);
+            all_target.add_read(gene_id, &exon_ordinals, &direct_transitions);
+            if is_complete {
+                complete.add_read(gene_id, &exon_ordinals, &direct_transitions);
+            } else {
+                fragments.add_read(gene_id, &exon_ordinals, &direct_transitions);
+            }
+        }
+
+        Ok(RnaReadGeneSupportSummary {
+            schema: RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA.to_string(),
+            report_id: report.report_id,
+            seq_id: report.seq_id,
+            requested_gene_ids,
+            matched_gene_ids,
+            missing_gene_ids,
+            selected_record_indices,
+            complete_rule,
+            aligned_base_count,
+            accepted_target_count,
+            fragment_count: fragments.read_count,
+            complete_count,
+            complete_strict_count,
+            complete_exact_count,
+            all_target: Self::build_rna_read_gene_support_cohort_summary(&all_target, &contexts),
+            fragments: Self::build_rna_read_gene_support_cohort_summary(&fragments, &contexts),
+            complete: Self::build_rna_read_gene_support_cohort_summary(&complete, &contexts),
+        })
     }
 
     pub fn export_rna_read_hits_fasta(
@@ -6647,6 +7175,7 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            rna_read_gene_support_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
@@ -6685,6 +7214,7 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            rna_read_gene_support_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {

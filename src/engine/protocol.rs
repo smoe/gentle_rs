@@ -42,6 +42,82 @@ use super::{
     RunId, SeqId, SequencingConfirmationReport,
 };
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadGeneSupportCompleteRule {
+    #[default]
+    Near,
+    Strict,
+    Exact,
+}
+
+impl RnaReadGeneSupportCompleteRule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Near => "near",
+            Self::Strict => "strict",
+            Self::Exact => "exact",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneExonSupportRow {
+    pub gene_id: String,
+    pub exon_ordinal: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneExonPairSupportRow {
+    pub gene_id: String,
+    pub from_exon_ordinal: usize,
+    pub from_start_1based: usize,
+    pub from_end_1based: usize,
+    pub to_exon_ordinal: usize,
+    pub to_start_1based: usize,
+    pub to_end_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneSupportCohortSummary {
+    pub read_count: usize,
+    pub exon_support: Vec<RnaReadGeneExonSupportRow>,
+    pub exon_pair_support: Vec<RnaReadGeneExonPairSupportRow>,
+    pub direct_transition_support: Vec<RnaReadGeneExonPairSupportRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneSupportSummary {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub requested_gene_ids: Vec<String>,
+    pub matched_gene_ids: Vec<String>,
+    pub missing_gene_ids: Vec<String>,
+    pub selected_record_indices: Vec<usize>,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    pub aligned_base_count: usize,
+    pub accepted_target_count: usize,
+    pub fragment_count: usize,
+    pub complete_count: usize,
+    pub complete_strict_count: usize,
+    pub complete_exact_count: usize,
+    pub all_target: RnaReadGeneSupportCohortSummary,
+    pub fragments: RnaReadGeneSupportCohortSummary,
+    pub complete: RnaReadGeneSupportCohortSummary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// One deterministic workflow run: ordered operations with a caller-supplied
 /// `run_id`.
@@ -73,6 +149,8 @@ pub struct OpResult {
     pub sequence_alignment: Option<SequenceAlignmentReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2202,6 +2202,7 @@ mod tests {
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                rna_read_gene_support_summary: None,
             },
             Instant::now(),
         );

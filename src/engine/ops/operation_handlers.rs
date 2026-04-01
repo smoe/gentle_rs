@@ -2442,6 +2442,7 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            rna_read_gene_support_summary: None,
         };
 
         match op {
@@ -7476,6 +7477,36 @@ impl GentleEngine {
                         .messages
                         .push(format!("  origin_classes={class_summary}"));
                 }
+            }
+            Operation::SummarizeRnaReadGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                path,
+            } => {
+                let summary = self.summarize_rna_read_gene_support(
+                    &report_id,
+                    &gene_ids,
+                    &selected_record_indices,
+                    complete_rule,
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_rna_read_gene_support_summary_json(&summary, path)?;
+                    result.messages.push(format!(
+                        "Wrote RNA-read gene-support summary '{}' to '{}'",
+                        summary.report_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "RNA-read gene-support summary for '{}' matched {} gene(s), missing {}, accepted_target_reads={}, complete_rule={}",
+                    summary.report_id,
+                    summary.matched_gene_ids.len(),
+                    summary.missing_gene_ids.len(),
+                    summary.accepted_target_count,
+                    summary.complete_rule.as_str()
+                ));
+                result.rna_read_gene_support_summary = Some(summary);
             }
             Operation::ExportRnaReadReport { report_id, path } => {
                 let report = self.export_rna_read_report(&report_id, &path)?;

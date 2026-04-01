@@ -167,6 +167,7 @@ const RNA_READ_CHECKPOINT_SCHEMA: &str = "gentle.rna_read_interpret_checkpoint.v
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
+const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
@@ -4297,6 +4298,16 @@ pub enum Operation {
     ShowRnaReadReport {
         report_id: String,
     },
+    SummarizeRnaReadGeneSupport {
+        report_id: String,
+        gene_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default)]
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ExportRnaReadReport {
         report_id: String,
         path: String,
@@ -5714,6 +5725,7 @@ impl GentleEngine {
                 "AlignRnaReadReport".to_string(),
                 "ListRnaReadReports".to_string(),
                 "ShowRnaReadReport".to_string(),
+                "SummarizeRnaReadGeneSupport".to_string(),
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
                 "ExportRnaReadSampleSheet".to_string(),
@@ -6975,6 +6987,7 @@ impl GentleEngine {
                 | Operation::ExportProcessRunBundle { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
+                | Operation::SummarizeRnaReadGeneSupport { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }

@@ -1841,6 +1841,16 @@ Status:
     - `near` = `>=95%` transcript-template coverage
     - `strict_end` = `near` + both transcript ends within `15 bp` + identity
       above active alignment threshold
+  - New non-mutating target-gene cohort summaries are now available from saved
+    aligned RNA-read reports via `SummarizeRnaReadGeneSupport` /
+    `rna-reads summarize-gene-support`:
+    - requested gene ids match case-insensitively against splicing group labels
+    - summaries report aligned-base vs accepted-target counts plus
+      fragment/complete splits (`near|strict|exact`)
+    - per-cohort support tables now include exon support, ordered exon-pair
+      support, and neighboring direct-transition support
+    - skipped exon pairs like `1->3` are now separated from direct neighboring
+      transitions like `1->2`
   - `rna-reads inspect-alignments` rows and alignment TSV export now include
     full-length flags and class label columns for downstream filtering.
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`

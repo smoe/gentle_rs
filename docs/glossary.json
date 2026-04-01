@@ -1688,6 +1688,20 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "SummarizeRnaReadGeneSupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads summarize-gene-support",
+         "summary": "Summarize aligned RNA-read support for one or more target genes from a saved report.",
+         "usage": "rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",

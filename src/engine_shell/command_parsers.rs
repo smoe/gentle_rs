@@ -1995,6 +1995,19 @@ pub(super) fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelect
     }
 }
 
+pub(super) fn parse_rna_read_gene_support_complete_rule(
+    raw: &str,
+) -> Result<RnaReadGeneSupportCompleteRule, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "near" => Ok(RnaReadGeneSupportCompleteRule::Near),
+        "strict" => Ok(RnaReadGeneSupportCompleteRule::Strict),
+        "exact" => Ok(RnaReadGeneSupportCompleteRule::Exact),
+        other => Err(format!(
+            "Unsupported RNA-read gene-support complete rule '{other}', expected near|strict|exact"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_read_alignment_effect_filter(
     raw: &str,
 ) -> Result<RnaReadAlignmentInspectionEffectFilter, String> {
@@ -2957,7 +2970,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -3422,6 +3435,83 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             Ok(ShellCommand::RnaReadsShowReport {
                 report_id: tokens[2].clone(),
+            })
+        }
+        "summarize-gene-support" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads summarize-gene-support requires REPORT_ID --gene GENE [--gene GENE ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err(
+                    "rna-reads summarize-gene-support REPORT_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_ids = Vec::<String>::new();
+            let mut selected_record_indices = Vec::<usize>::new();
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut output_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads summarize-gene-support",
+                        )?;
+                        gene_ids.push(raw);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads summarize-gene-support",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads summarize-gene-support",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                    }
+                    "--output" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "rna-reads summarize-gene-support",
+                        )?;
+                        output_path = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads summarize-gene-support"
+                        ));
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                return Err(
+                    "rna-reads summarize-gene-support requires at least one --gene GENE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsSummarizeGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                output_path,
             })
         }
         "inspect-alignments" => {
@@ -3958,7 +4048,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

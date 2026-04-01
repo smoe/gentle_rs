@@ -227,6 +227,285 @@ fn splicing_multi_gene_test_sequence() -> DNAsequence {
     dna
 }
 
+fn build_rna_read_gene_support_test_engine() -> GentleEngine {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_multi_gene_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let features = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .clone();
+    let seed_feature_id = features
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE1")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE1 seed feature");
+    let gene2_feature_id = features
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE2")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE2 feature");
+    let gene1_view = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            seed_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
+        .expect("GENE1 splicing view");
+    let gene2_view = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            gene2_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
+        .expect("GENE2 splicing view");
+    let gene1_tx_full = gene1_view
+        .transcripts
+        .iter()
+        .find(|row| row.transcript_id == "NM_GENE1_1")
+        .expect("GENE1 full transcript")
+        .clone();
+    let gene1_tx_skip = gene1_view
+        .transcripts
+        .iter()
+        .find(|row| row.transcript_id == "NM_GENE1_2")
+        .expect("GENE1 skip transcript")
+        .clone();
+    let gene2_tx = gene2_view
+        .transcripts
+        .iter()
+        .find(|row| row.transcript_id == "NM_GENE2_1")
+        .expect("GENE2 transcript")
+        .clone();
+
+    let transcript_length_bp = |lane: &SplicingTranscriptLane| -> usize {
+        lane.exons
+            .iter()
+            .map(|exon| {
+                exon.end_1based
+                    .saturating_sub(exon.start_1based)
+                    .saturating_add(1)
+            })
+            .sum::<usize>()
+    };
+    let gene1_tx_full_len = transcript_length_bp(&gene1_tx_full);
+    let gene1_tx_skip_len = transcript_length_bp(&gene1_tx_skip);
+    let gene2_tx_len = transcript_length_bp(&gene2_tx);
+    let gene1_full_start = gene1_tx_full
+        .exons
+        .first()
+        .expect("GENE1 full first exon")
+        .start_1based;
+    let gene1_full_end = gene1_tx_full
+        .exons
+        .last()
+        .expect("GENE1 full last exon")
+        .end_1based;
+    let gene1_partial_end = gene1_tx_full
+        .exons
+        .first()
+        .expect("GENE1 partial exon")
+        .end_1based;
+    let gene1_skip_start = gene1_tx_skip
+        .exons
+        .first()
+        .expect("GENE1 skip first exon")
+        .start_1based;
+    let gene1_skip_end = gene1_tx_skip
+        .exons
+        .last()
+        .expect("GENE1 skip last exon")
+        .end_1based;
+    let gene2_start = gene2_tx
+        .exons
+        .first()
+        .expect("GENE2 first exon")
+        .start_1based;
+    let gene2_end = gene2_tx
+        .exons
+        .last()
+        .expect("GENE2 last exon")
+        .end_1based;
+
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_gene_support".to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            origin_mode: RnaReadOriginMode::MultiGeneSparse,
+            target_gene_ids: vec!["GENE2".to_string()],
+            align_config: RnaReadAlignConfig {
+                min_identity_fraction: 0.60,
+                ..RnaReadAlignConfig::default()
+            },
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "gene1_full".to_string(),
+                    sequence: "A".repeat(gene1_tx_full_len),
+                    read_length_bp: gene1_tx_full_len,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: gene1_tx_full.transcript_feature_id,
+                        transcript_id: gene1_tx_full.transcript_id.clone(),
+                        transcript_label: gene1_tx_full.label.clone(),
+                        strand: gene1_tx_full.strand.clone(),
+                        target_start_1based: gene1_full_start,
+                        target_end_1based: gene1_full_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: gene1_tx_full_len,
+                        score: 200,
+                        identity_fraction: 0.99,
+                        query_coverage_fraction: 1.0,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "gene1_fragment".to_string(),
+                    sequence: "A".repeat(
+                        gene1_tx_full
+                            .exons
+                            .first()
+                            .expect("GENE1 first exon")
+                            .end_1based
+                            .saturating_sub(
+                                gene1_tx_full
+                                    .exons
+                                    .first()
+                                    .expect("GENE1 first exon")
+                                    .start_1based,
+                            )
+                            .saturating_add(1),
+                    ),
+                    read_length_bp: gene1_tx_full
+                        .exons
+                        .first()
+                        .expect("GENE1 first exon")
+                        .end_1based
+                        .saturating_sub(
+                            gene1_tx_full
+                                .exons
+                                .first()
+                                .expect("GENE1 first exon")
+                                .start_1based,
+                        )
+                        .saturating_add(1),
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: gene1_tx_full.transcript_feature_id,
+                        transcript_id: gene1_tx_full.transcript_id.clone(),
+                        transcript_label: gene1_tx_full.label.clone(),
+                        strand: gene1_tx_full.strand.clone(),
+                        target_start_1based: gene1_full_start,
+                        target_end_1based: gene1_partial_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: gene1_tx_full
+                            .exons
+                            .first()
+                            .expect("GENE1 first exon")
+                            .end_1based
+                            .saturating_sub(
+                                gene1_tx_full
+                                    .exons
+                                    .first()
+                                    .expect("GENE1 first exon")
+                                    .start_1based,
+                            )
+                            .saturating_add(1),
+                        score: 120,
+                        identity_fraction: 0.97,
+                        query_coverage_fraction: 0.60,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "gene1_skip_complete".to_string(),
+                    sequence: "A".repeat(gene1_tx_skip_len),
+                    read_length_bp: gene1_tx_skip_len,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: gene1_tx_skip.transcript_feature_id,
+                        transcript_id: gene1_tx_skip.transcript_id.clone(),
+                        transcript_label: gene1_tx_skip.label.clone(),
+                        strand: gene1_tx_skip.strand.clone(),
+                        target_start_1based: gene1_skip_start,
+                        target_end_1based: gene1_skip_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: gene1_tx_skip_len,
+                        score: 170,
+                        identity_fraction: 0.50,
+                        query_coverage_fraction: 1.0,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 3,
+                    header_id: "gene2_full".to_string(),
+                    sequence: "A".repeat(gene2_tx_len),
+                    read_length_bp: gene2_tx_len,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: gene2_tx.transcript_feature_id,
+                        transcript_id: gene2_tx.transcript_id.clone(),
+                        transcript_label: gene2_tx.label.clone(),
+                        strand: gene2_tx.strand.clone(),
+                        target_start_1based: gene2_start,
+                        target_end_1based: gene2_end,
+                        target_start_offset_0based: 0,
+                        target_end_offset_0based_exclusive: gene2_tx_len,
+                        score: 190,
+                        identity_fraction: 0.98,
+                        query_coverage_fraction: 1.0,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert gene-support report");
+    engine
+}
+
+fn find_gene_support_exon_row<'a>(
+    rows: &'a [RnaReadGeneExonSupportRow],
+    gene_id: &str,
+    exon_ordinal: usize,
+) -> Option<&'a RnaReadGeneExonSupportRow> {
+    rows.iter().find(|row| {
+        row.gene_id.eq_ignore_ascii_case(gene_id) && row.exon_ordinal == exon_ordinal
+    })
+}
+
+fn find_gene_support_pair_row<'a>(
+    rows: &'a [RnaReadGeneExonPairSupportRow],
+    gene_id: &str,
+    from_exon_ordinal: usize,
+    to_exon_ordinal: usize,
+) -> Option<&'a RnaReadGeneExonPairSupportRow> {
+    rows.iter().find(|row| {
+        row.gene_id.eq_ignore_ascii_case(gene_id)
+            && row.from_exon_ordinal == from_exon_ordinal
+            && row.to_exon_ordinal == to_exon_ordinal
+    })
+}
+
 fn synth_oligo(desc: &str, sequence: &[u8]) -> DNAsequence {
     let record = fasta::Record::with_attrs("synthetic", Some(desc), sequence);
     DNAsequence::from_fasta_record(&record)
@@ -11854,6 +12133,154 @@ fn test_parse_fasta_records_with_offsets_supports_concatenated_gzip_input() {
 #[test]
 fn test_rna_read_seed_filter_default_kmer_len_is_10() {
     assert_eq!(RnaReadSeedFilterConfig::default().kmer_len, 10);
+}
+
+#[test]
+fn test_summarize_rna_read_gene_support_filters_requested_gene_in_multi_gene_sparse_report() {
+    let mut engine = build_rna_read_gene_support_test_engine();
+    let result = engine
+        .apply(Operation::SummarizeRnaReadGeneSupport {
+            report_id: "rna_reads_gene_support".to_string(),
+            gene_ids: vec!["GENE1".to_string()],
+            selected_record_indices: vec![],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            path: None,
+        })
+        .expect("summarize RNA-read gene support");
+    let summary = result
+        .rna_read_gene_support_summary
+        .expect("gene-support summary payload");
+
+    assert_eq!(
+        summary.schema,
+        "gentle.rna_read_gene_support_summary.v1".to_string()
+    );
+    assert_eq!(summary.report_id, "rna_reads_gene_support");
+    assert_eq!(summary.seq_id, "seq_a");
+    assert_eq!(summary.requested_gene_ids, vec!["GENE1".to_string()]);
+    assert_eq!(summary.matched_gene_ids, vec!["GENE1".to_string()]);
+    assert!(summary.missing_gene_ids.is_empty());
+    assert_eq!(summary.aligned_base_count, 4);
+    assert_eq!(summary.accepted_target_count, 3);
+    assert_eq!(summary.all_target.read_count, 3);
+    assert!(
+        summary
+            .all_target
+            .exon_support
+            .iter()
+            .all(|row| row.gene_id == "GENE1")
+    );
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("accepted_target_reads=3"))
+    );
+}
+
+#[test]
+fn test_summarize_rna_read_gene_support_splits_fragments_from_complete_reads() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let summary = engine
+        .summarize_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("summarize RNA-read gene support");
+
+    assert_eq!(summary.complete_rule, RnaReadGeneSupportCompleteRule::Near);
+    assert_eq!(summary.accepted_target_count, 3);
+    assert_eq!(summary.fragment_count, 1);
+    assert_eq!(summary.complete_count, 2);
+    assert_eq!(summary.complete_strict_count, 1);
+    assert_eq!(summary.complete_exact_count, 2);
+    assert_eq!(summary.fragments.read_count, 1);
+    assert_eq!(summary.complete.read_count, 2);
+}
+
+#[test]
+fn test_summarize_rna_read_gene_support_counts_skipped_exon_pairs_without_direct_transition() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let summary = engine
+        .summarize_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[2],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("summarize RNA-read gene support");
+
+    let pair = find_gene_support_pair_row(&summary.all_target.exon_pair_support, "GENE1", 1, 3)
+        .expect("skipped exon pair support");
+    assert_eq!(pair.support_read_count, 1);
+    assert!((pair.support_fraction - 1.0).abs() < f64::EPSILON);
+    assert!(
+        find_gene_support_pair_row(&summary.all_target.direct_transition_support, "GENE1", 1, 3)
+            .is_none()
+    );
+}
+
+#[test]
+fn test_summarize_rna_read_gene_support_counts_adjacent_pairs_as_direct_transitions() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let summary = engine
+        .summarize_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[0],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("summarize RNA-read gene support");
+
+    let exon1 = find_gene_support_exon_row(&summary.all_target.exon_support, "GENE1", 1)
+        .expect("exon 1 support");
+    let exon2 = find_gene_support_exon_row(&summary.all_target.exon_support, "GENE1", 2)
+        .expect("exon 2 support");
+    let adjacent_pair =
+        find_gene_support_pair_row(&summary.all_target.exon_pair_support, "GENE1", 1, 2)
+            .expect("adjacent exon pair support");
+    let direct_transition =
+        find_gene_support_pair_row(&summary.all_target.direct_transition_support, "GENE1", 1, 2)
+            .expect("adjacent direct transition support");
+
+    assert_eq!(exon1.support_read_count, 1);
+    assert_eq!(exon2.support_read_count, 1);
+    assert_eq!(adjacent_pair.support_read_count, 1);
+    assert!((adjacent_pair.support_fraction - 1.0).abs() < f64::EPSILON);
+    assert_eq!(direct_transition.support_read_count, 1);
+    assert!((direct_transition.support_fraction - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn test_summarize_rna_read_gene_support_honors_selected_record_indices_before_gene_filtering() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let summary = engine
+        .summarize_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[3, 2, 2],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("summarize RNA-read gene support");
+
+    assert_eq!(summary.selected_record_indices, vec![2, 3]);
+    assert_eq!(summary.aligned_base_count, 2);
+    assert_eq!(summary.accepted_target_count, 1);
+    assert_eq!(summary.fragment_count, 0);
+    assert_eq!(summary.complete_count, 1);
+    assert_eq!(summary.all_target.read_count, 1);
+    assert!(
+        find_gene_support_pair_row(&summary.all_target.exon_pair_support, "GENE1", 1, 3).is_some()
+    );
+    assert!(
+        summary
+            .all_target
+            .exon_support
+            .iter()
+            .all(|row| row.gene_id == "GENE1")
+    );
 }
 
 #[test]
