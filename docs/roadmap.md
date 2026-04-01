@@ -32,7 +32,9 @@ order. Durable architecture constraints and decisions remain in
   - intended extraction order:
     `gentle-protocol -> gentle-engine -> gentle-render -> gentle-shell -> gentle-gui`
   - workspace scaffold now exists in `crates/` with placeholder members for
-    those five crates; production code still mostly lives in the root crate
+    those five crates; production code still mostly lives in the root crate,
+    although `crates/gentle-render` now already owns the feature-expert SVG
+    renderer plus the shared splicing transition-matrix helper
   - Phase 1 is now initiated:
     - the first stable id aliases, shared analysis enums, and
       `EngineError`/`ErrorCode` have moved into `crates/gentle-protocol`

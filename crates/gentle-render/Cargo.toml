@@ -8,3 +8,7 @@ description = "Headless GENtle export and rendering helpers"
 [lib]
 name = "gentle_render"
 path = "src/lib.rs"
+
+[dependencies]
+gentle-protocol = { path = "../gentle-protocol" }
+svg = "*"

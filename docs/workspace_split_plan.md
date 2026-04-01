@@ -29,6 +29,9 @@ Current status:
   the shared instruction strings those views expose;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
+- `crates/gentle-render` is no longer only a placeholder:
+  the feature-expert SVG renderer and the shared splicing transition-matrix
+  helper now live there, with root-crate shims preserving the old import paths.
 
 ## 1. Goals
 
