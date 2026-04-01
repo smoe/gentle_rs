@@ -16,6 +16,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "gb-io",
+ "gentle-gui",
  "gentle-protocol",
  "gentle-render",
  "gentle-shell",
@@ -2321,6 +2322,12 @@ version = "0.1.0-internal.3"
 [[package]]
 name = "gentle-gui"
 version = "0.1.0-internal.3"
+dependencies = [
+ "egui",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "gentle-protocol"

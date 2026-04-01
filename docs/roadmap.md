@@ -38,7 +38,9 @@ order. Durable architecture constraints and decisions remain in
     protocol-cartoon catalog/rendering layer, and the virtual pool-gel
     layout/export layer, and
     `crates/gentle-shell` now already owns the glossary-driven shell help
-    rendering layer
+    rendering layer, while `crates/gentle-gui` now already owns the
+    window-backdrop configuration/rendering helper and embedded icon/resource
+    helper
   - Phase 1 is now initiated:
     - the first stable id aliases, shared analysis enums, and
       `EngineError`/`ErrorCode` have moved into `crates/gentle-protocol`

@@ -42,6 +42,10 @@ Current status:
   the glossary-driven shell help rendering layer now lives there, again with
   root-crate shims preserving the old import paths while parser/executor
   extraction is still staged.
+- `crates/gentle-gui` is no longer only a placeholder either:
+  the window-backdrop configuration/rendering helper and embedded icon/resource
+  helper now live there, with root-crate shims preserving the old import paths
+  while the broader GUI extraction remains staged.
 
 ## 1. Goals
 

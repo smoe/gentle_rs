@@ -68,6 +68,7 @@ lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
+gentle-gui = { path = "crates/gentle-gui" }
 gentle-protocol = { path = "crates/gentle-protocol" }
 gentle-render = { path = "crates/gentle-render" }
 gentle-shell = { path = "crates/gentle-shell" }
