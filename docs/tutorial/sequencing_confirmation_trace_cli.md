@@ -6,8 +6,8 @@
 > shared `seq-trace ...` and `seq-confirm ...` shell routes plus deterministic
 > local fixtures.
 
-This tutorial shows the current raw-trace sequencing-confirmation workflow
-without waiting for GUI chromatogram review.
+This tutorial shows the shared shell/CLI route for the current raw-trace
+sequencing-confirmation workflow.
 
 You will:
 
@@ -22,7 +22,8 @@ The important current boundary is:
 
 - imported traces are stored as evidence inputs,
 - confirmation still uses the shared `ConfirmConstructReads` report model, and
-- GUI trace review is still a later milestone.
+- the GUI specialist now uses that same persisted report model; this page stays
+  on the shell/CLI route for parity and regression checks.
 
 ## Inputs
 
@@ -170,8 +171,8 @@ What to look for in the report payload:
 - `reads[0].trace_id` is `abi_demo_trace`
 - `reads[0].confirmed_target_ids` contains `junction_1`
 
-This is how later GUI trace review will reconnect the confirmation row back to
-its trace record without inventing a second confirmation report family.
+This is how GUI trace review reconnects the confirmation row back to its trace
+record without inventing a second confirmation report family.
 
 ## Step 7: Export the Report Artifacts
 
@@ -233,7 +234,7 @@ trust-building step:
 - real imported trace evidence can participate in construct confirmation,
 - the evidence store stays separate from project sequences, and
 - the resulting report is still one shared engine-owned artifact usable across
-  CLI, shell, future GUI review, and future agent workflows.
+  CLI, shell, GUI review, and future agent workflows.
 
 ## Related Reading
 

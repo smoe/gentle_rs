@@ -2342,6 +2342,10 @@ Heuristic guidance surfaced in reports/warnings:
 The dedicated `Patterns -> Sequencing Confirmation...` window is the GUI front
 end for construct verification from called reads and imported sequencing traces.
 
+Tutorial:
+
+- [`docs/tutorial/sequencing_confirmation_gui.md`](./tutorial/sequencing_confirmation_gui.md)
+
 Current scope:
 
 - expected construct is the active/opened sequence window

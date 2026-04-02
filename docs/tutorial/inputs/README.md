@@ -41,25 +41,35 @@ Current intended use in GENtle:
 Files:
 
 - `sequencing_confirmation_trace_demo_construct.fa`
+- `sequencing_confirmation_trace_demo_baseline.fa`
 
 Purpose:
 
-- Minimal expected construct for the CLI trace-aware sequencing-confirmation
-  tutorial.
-- Lets one bundled ABI/AB1 trace confirm a known local junction target without
-  adding another binary tutorial artifact.
+- Minimal expected-construct plus baseline/reference pair for the sequencing-
+  confirmation tutorials.
+- Lets one bundled ABI/AB1 trace confirm a known local junction target and one
+  intended tutorial SNP without adding another binary tutorial artifact.
 
 Provenance:
 
-- Hand-crafted local tutorial input derived from the first `48` called bases of
-  the committed ABI fixture
+- Both files are hand-crafted local tutorial inputs derived from the first
+  `48` called bases of the committed ABI fixture
   `test_files/fixtures/sequencing_confirmation/3100.ab1`.
-- Exact sequence:
+- Exact expected sequence (`trace_demo_construct`):
   `CAAGATTGCATTCATGATCTACGATTACTAGCGATTCCAGCTTCATAT`
+- Exact baseline/reference sequence (`trace_demo_baseline`):
+  `CAAGATTGCATTCATGATCTACGGTTACTAGCGATTCCAGCTTCATAT`
+- The two differ by one tutorial SNP at position `24` (1-based):
+  expected=`A`, baseline=`G`.
 
 Current intended use in GENtle:
 
-- Load it as `trace_demo_construct` in
-  `docs/tutorial/sequencing_confirmation_trace_cli.md`.
-- Pair it with the bundled `3100.ab1` trace via `seq-trace import` and
-  `seq-confirm run --trace-id ...`.
+- Load `trace_demo_construct` in
+  [`docs/tutorial/sequencing_confirmation_trace_cli.md`](../sequencing_confirmation_trace_cli.md)
+  for the shell/CLI path.
+- Load both `trace_demo_construct` and `trace_demo_baseline` in
+  [`docs/tutorial/sequencing_confirmation_gui.md`](../sequencing_confirmation_gui.md)
+  for the GUI-first path.
+- Pair them with the bundled `3100.ab1` trace via either:
+  - `seq-trace import` + `seq-confirm run --trace-id ...`, or
+  - GUI `Patterns -> Sequencing Confirmation...` raw trace import.

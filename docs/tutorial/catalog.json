@@ -94,6 +94,20 @@
       "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
     },
     {
+      "id": "sequencing_confirmation_gui",
+      "title": "Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)",
+      "path": "docs/tutorial/sequencing_confirmation_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+    },
+    {
       "id": "sequencing_confirmation_trace_cli",
       "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
       "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",

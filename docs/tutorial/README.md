@@ -65,8 +65,13 @@ If you want to use GENtle with agents, MCP, or the command line:
 - Use the agent interfaces tutorial:
   [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 
-If you want to validate a construct from imported ABI/AB1/SCF evidence today,
-without waiting for GUI chromatogram review:
+If you want to validate a construct from imported ABI/AB1/SCF evidence in the
+GUI today:
+
+- Use the sequencing-confirmation GUI tutorial:
+  [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md)
+
+If you want the matching shell/CLI parity route:
 
 - Use the sequencing-trace confirmation tutorial:
   [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md)
@@ -90,8 +95,11 @@ Treat the tutorial catalog as three confidence bands:
   routes, but still depend on live GUI wording and layout.
 - Multi-insert Gibson walkthrough work for preview/review, with the current
   apply guardrail on destination opening still in force.
-- Trace-aware sequencing confirmation via CLI/shared shell is ready for
-  deterministic local use, but GUI trace review is still pending.
+- Trace-aware sequencing confirmation via both the GUI specialist and
+  CLI/shared shell is ready for deterministic local use.
+- Current sequencing-confirmation caveat:
+  chromatogram review is still variant-focused rather than a full whole-trace
+  browser.
 
 ### Exploratory / drift-prone
 
@@ -109,6 +117,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
+| [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
@@ -175,7 +184,15 @@ Use the labels above as trust/maintenance signals:
 2. Verify capabilities with `gentle_cli help` or MCP `tools/list`
 3. Use executable tutorials as the reproducible backing layer
 
-### Path G: Trace-aware sequencing confirmation
+### Path G: GUI-first sequencing confirmation
+
+1. Read [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md)
+2. Load the tiny expected construct and baseline sequence
+3. Import the bundled `3100.ab1` trace inside `Patterns -> Sequencing Confirmation...`
+4. Run confirmation and inspect the intended-edit chromatogram
+5. Reopen the stored report from lineage
+
+### Path H: Trace-aware sequencing confirmation via shell/CLI
 
 1. Read [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md)
 2. Import the bundled `3100.ab1` trace into a dedicated temporary CLI state
