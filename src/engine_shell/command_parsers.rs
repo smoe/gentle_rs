@@ -2804,7 +2804,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
         "run" => {
             if tokens.len() < 4 {
                 return Err(
-                    "seq-confirm run requires EXPECTED_SEQ_ID --reads ID[,ID...] [--read ID]... [--junction LEFT_END_0BASED]... [--junction-flank N] [--report-id ID] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement]"
+                    "seq-confirm run requires EXPECTED_SEQ_ID plus at least one --reads/--read or --trace-ids/--trace-id value [--junction LEFT_END_0BASED]... [--junction-flank N] [--report-id ID] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement]"
                         .to_string(),
                 );
             }
@@ -2813,6 +2813,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                 return Err("seq-confirm run EXPECTED_SEQ_ID must not be empty".to_string());
             }
             let mut read_seq_ids: Vec<String> = vec![];
+            let mut trace_ids: Vec<String> = vec![];
             let mut targets: Vec<SequencingConfirmationTargetSpec> = vec![];
             let mut alignment_mode = PairwiseAlignmentMode::Local;
             let mut match_score = 2i32;
@@ -2850,6 +2851,36 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                             return Err("--read for seq-confirm run must not be empty".to_string());
                         }
                         read_seq_ids.push(trimmed.to_string());
+                    }
+                    "--trace-ids" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--trace-ids",
+                            "seq-confirm run",
+                        )?;
+                        let parsed = raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|value| value.to_string())
+                            .collect::<Vec<_>>();
+                        if parsed.is_empty() {
+                            return Err(
+                                "--trace-ids for seq-confirm run must include at least one ID"
+                                    .to_string(),
+                            );
+                        }
+                        trace_ids.extend(parsed);
+                    }
+                    "--trace-id" | "--trace" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "seq-confirm run")?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{flag} for seq-confirm run must not be empty"));
+                        }
+                        trace_ids.push(trimmed.to_string());
                     }
                     "--junction" => {
                         let raw =
@@ -2954,9 +2985,10 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                     }
                 }
             }
-            if read_seq_ids.is_empty() {
+            if read_seq_ids.is_empty() && trace_ids.is_empty() {
                 return Err(
-                    "seq-confirm run requires at least one read via --reads or --read".to_string(),
+                    "seq-confirm run requires at least one read via --reads/--read or one trace via --trace-ids/--trace-id"
+                        .to_string(),
                 );
             }
             if !junction_positions.is_empty() {
@@ -2978,6 +3010,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
             Ok(ShellCommand::SeqConfirmRun {
                 expected_seq_id,
                 read_seq_ids,
+                trace_ids,
                 targets,
                 alignment_mode,
                 match_score,

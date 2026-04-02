@@ -270,14 +270,14 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
     - or paste copied JSON directly:
       `gentle_cli workflow '{"run_id":"workflow_rna_reads_tp73_ncbi_cdna_srr32957124","ops":[{"InterpretRnaReads":{"seq_id":"tp73.ncbi","seed_feature_id":0,"profile":"nanopore_cdna_v1","input_path":"reads.fa.gz","input_format":"fasta","scope":"all_overlapping_both_strands","seed_filter":{"kmer_len":10,"seed_stride_bp":1,"min_seed_hit_fraction":0.30,"min_weighted_seed_hit_fraction":0.05,"min_unique_matched_kmers":12,"max_median_transcript_gap":4.0,"min_chain_consistency_fraction":0.40,"min_confirmed_exon_transitions":1,"min_transition_support_fraction":0.05,"cdna_poly_t_flip_enabled":true,"poly_t_prefix_min_bp":18},"align_config":{"band_width_bp":24,"min_identity_fraction":0.60,"max_secondary_mappings":0},"report_id":"cdna_reads"}}]}'`
 
-Sequencing-confirmation capability status (called-read phase-1):
+Sequencing-confirmation capability status (called-read plus trace-aware engine baseline):
 
 - `gentle_cli`: supported via shared-shell commands plus the current GUI
   specialist:
   - `seq-trace import PATH [--trace-id ID] [--seq-id ID]`
   - `seq-trace list [SEQ_ID]`
   - `seq-trace show TRACE_ID`
-  - `seq-confirm run EXPECTED_SEQ_ID --reads ID[,ID...]`
+  - `seq-confirm run EXPECTED_SEQ_ID --reads ID[,ID...] [--trace-id ID]... [--trace-ids ID[,ID...]]`
   - `seq-confirm list-reports [EXPECTED_SEQ_ID]`
   - `seq-confirm show-report REPORT_ID`
   - `seq-confirm export-report REPORT_ID OUTPUT.json`
@@ -287,8 +287,10 @@ Sequencing-confirmation capability status (called-read phase-1):
   backed by `ConfirmConstructReads`, `ListSequencingConfirmationReports`,
   `ShowSequencingConfirmationReport`, `ExportSequencingConfirmationReport`, and
   `ExportSequencingConfirmationSupportTsv`.
-  Phase-1 scope:
+  Current scope:
   - expected construct plus already-loaded read sequences
+  - imported ABI/AB1/SCF traces can now participate directly in
+    `seq-confirm run` without first materializing a project sequence
   - default full-span confirmation when no explicit targets are supplied
   - explicit junction targets via `--junction LEFT_END_0BASED`
     and `--junction-flank N`
@@ -297,16 +299,19 @@ Sequencing-confirmation capability status (called-read phase-1):
   - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
     and command palette `Sequencing Confirmation`, backed by the same
     `ConfirmConstructReads` / report-store path
-  - raw ABI/AB1/SCF intake now stores trace evidence separately from
+  - raw ABI/AB1/SCF intake stores trace evidence separately from
     confirmation reports:
     - preserves file-supplied called bases
     - preserves called-base confidence arrays when available
     - preserves peak locations when available
     - keeps one imported trace store that can be listed/shown without running
       confirmation
+  - trace-aware confirmation keeps one shared report model:
+    - sequence-backed and trace-backed evidence rows land in the same
+      confirmation report
+    - trace-backed rows expose their `trace_id` and evidence kind
+    - target support/contradiction ids can now reflect imported trace ids
   Not yet included in this phase:
-  - trace-aware confirmation that links imported traces into
-    construct-confirmation verdicts
   - GUI trace review / chromatogram inspection
   - lineage/artifact projection for confirmation reports
 - `gentle_js`: baseline support via `apply_operation` for the same operation

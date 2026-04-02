@@ -1315,6 +1315,7 @@ mod tests {
             Operation::ConfirmConstructReads {
                 expected_seq_id,
                 read_seq_ids,
+                trace_ids,
                 targets,
                 alignment_mode,
                 match_score,
@@ -1331,6 +1332,7 @@ mod tests {
                     read_seq_ids,
                     vec!["read_a".to_string(), "read_b".to_string()]
                 );
+                assert!(trace_ids.is_empty());
                 assert_eq!(targets.len(), 1);
                 assert_eq!(targets[0].junction_left_end_0based, Some(40));
                 assert_eq!(alignment_mode, PairwiseAlignmentMode::Global);
@@ -25654,6 +25656,7 @@ impl MainAreaDna {
             Operation::ConfirmConstructReads {
                 expected_seq_id,
                 read_seq_ids,
+                trace_ids: vec![],
                 targets,
                 alignment_mode: ui.alignment_mode,
                 match_score: Self::parse_required_i32_text(

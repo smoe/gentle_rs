@@ -66,6 +66,60 @@ fn sequencing_confirmation_fixture_path(name: &str) -> String {
     )
 }
 
+fn synthetic_scf_bytes(called_bases: &[u8]) -> Vec<u8> {
+    let samples = 4u32;
+    let sample_size = 1u32;
+    let samples_offset = 128u32;
+    let sample_section_len = samples * 4 * sample_size;
+    let bases = called_bases.len() as u32;
+    let bases_offset = samples_offset + sample_section_len;
+    let base_section_len = bases * 12;
+    let comments = b"NAME=shell_trace\nRUN=shell_demo\nMACH=staden_test\n\0";
+    let comments_offset = bases_offset + base_section_len;
+    let total_len = comments_offset as usize + comments.len();
+    let mut bytes = vec![0u8; total_len];
+    bytes[0..4].copy_from_slice(b".scf");
+    bytes[4..8].copy_from_slice(&samples.to_be_bytes());
+    bytes[8..12].copy_from_slice(&samples_offset.to_be_bytes());
+    bytes[12..16].copy_from_slice(&bases.to_be_bytes());
+    bytes[16..20].copy_from_slice(&0u32.to_be_bytes());
+    bytes[20..24].copy_from_slice(&0u32.to_be_bytes());
+    bytes[24..28].copy_from_slice(&bases_offset.to_be_bytes());
+    bytes[28..32].copy_from_slice(&(comments.len() as u32).to_be_bytes());
+    bytes[32..36].copy_from_slice(&comments_offset.to_be_bytes());
+    bytes[36..40].copy_from_slice(b"3.00");
+    bytes[40..44].copy_from_slice(&sample_size.to_be_bytes());
+    bytes[44..48].copy_from_slice(&0u32.to_be_bytes());
+    bytes[48..52].copy_from_slice(&0u32.to_be_bytes());
+    bytes[52..56].copy_from_slice(&0u32.to_be_bytes());
+
+    let base_start = bases_offset as usize;
+    for idx in 0..bases as usize {
+        let peak_index = (idx as u32) + 1;
+        let offset = base_start + idx * 4;
+        bytes[offset..offset + 4].copy_from_slice(&peak_index.to_be_bytes());
+    }
+    let prob_a_offset = base_start + bases as usize * 4;
+    let prob_c_offset = prob_a_offset + bases as usize;
+    let prob_g_offset = prob_c_offset + bases as usize;
+    let prob_t_offset = prob_g_offset + bases as usize;
+    let called_bases_offset = prob_t_offset + bases as usize;
+    for (idx, base) in called_bases.iter().enumerate() {
+        match *base {
+            b'A' => bytes[prob_a_offset + idx] = 70,
+            b'C' => bytes[prob_c_offset + idx] = 71,
+            b'G' => bytes[prob_g_offset + idx] = 72,
+            b'T' => bytes[prob_t_offset + idx] = 73,
+            _ => {}
+        }
+    }
+    bytes[called_bases_offset..called_bases_offset + called_bases.len()]
+        .copy_from_slice(called_bases);
+    bytes[comments_offset as usize..comments_offset as usize + comments.len()]
+        .copy_from_slice(comments);
+    bytes
+}
+
 fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path::PathBuf {
     let install_dir = root.join(genome_id.to_ascii_lowercase());
     std::fs::create_dir_all(install_dir.join("blastdb")).expect("create install dir");
@@ -329,13 +383,14 @@ fn parse_workflow_payload_keeps_whitespace() {
 #[test]
 fn parse_seq_confirm_run_command() {
     let cmd = parse_shell_line(
-        "seq-confirm run construct --reads read_a,read_b --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",
+        "seq-confirm run construct --reads read_a,read_b --trace-id abi_trace --trace-ids abi_trace_2,abi_trace_3 --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",
     )
     .expect("parse seq-confirm run");
     match cmd {
         ShellCommand::SeqConfirmRun {
             expected_seq_id,
             read_seq_ids,
+            trace_ids,
             targets,
             alignment_mode,
             min_identity_fraction,
@@ -346,6 +401,7 @@ fn parse_seq_confirm_run_command() {
         } => {
             assert_eq!(expected_seq_id, "construct");
             assert_eq!(read_seq_ids, vec!["read_a", "read_b"]);
+            assert_eq!(trace_ids, vec!["abi_trace", "abi_trace_2", "abi_trace_3"]);
             assert_eq!(targets.len(), 1);
             assert_eq!(targets[0].kind, SequencingConfirmationTargetKind::Junction);
             assert_eq!(targets[0].start_0based, 4);
@@ -471,6 +527,7 @@ fn execute_seq_confirm_run_returns_persisted_report() {
         &ShellCommand::SeqConfirmRun {
             expected_seq_id: "construct".to_string(),
             read_seq_ids: vec!["read_junction".to_string()],
+            trace_ids: vec![],
             targets: vec![SequencingConfirmationTargetSpec {
                 target_id: "junction_1".to_string(),
                 label: "Insert junction".to_string(),
@@ -517,6 +574,75 @@ fn execute_seq_confirm_run_returns_persisted_report() {
     assert_eq!(
         listed.output["reports"][0]["overall_status"].as_str(),
         Some("confirmed")
+    );
+}
+
+#[test]
+fn execute_seq_confirm_run_accepts_imported_trace_evidence() {
+    let td = tempdir().expect("tempdir");
+    let trace_path = td.path().join("junction_trace.scf");
+    fs::write(&trace_path, synthetic_scf_bytes(b"CCGTAACC")).expect("write scf");
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceImport {
+            path: trace_path.to_str().expect("utf-8 path").to_string(),
+            trace_id: Some("junction_trace".to_string()),
+            seq_id: None,
+        },
+    )
+    .expect("import trace");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmRun {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec![],
+            trace_ids: vec!["junction_trace".to_string()],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 4,
+                end_0based_exclusive: 12,
+                junction_left_end_0based: Some(8),
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_trace".to_string()),
+        },
+    )
+    .expect("execute seq-confirm from trace");
+
+    assert_eq!(
+        run.output["report"]["overall_status"].as_str(),
+        Some("confirmed")
+    );
+    assert_eq!(
+        run.output["report"]["trace_ids"][0].as_str(),
+        Some("junction_trace")
+    );
+    assert_eq!(
+        run.output["report"]["reads"][0]["evidence_kind"].as_str(),
+        Some("trace")
+    );
+    assert_eq!(
+        run.output["report"]["reads"][0]["trace_id"].as_str(),
+        Some("junction_trace")
     );
 }
 

@@ -1300,6 +1300,7 @@ pub enum ShellCommand {
     SeqConfirmRun {
         expected_seq_id: String,
         read_seq_ids: Vec<String>,
+        trace_ids: Vec<String>,
         targets: Vec<SequencingConfirmationTargetSpec>,
         alignment_mode: PairwiseAlignmentMode,
         match_score: i32,
@@ -6199,6 +6200,7 @@ impl ShellCommand {
             Self::SeqConfirmRun {
                 expected_seq_id,
                 read_seq_ids,
+                trace_ids,
                 targets,
                 alignment_mode,
                 match_score,
@@ -6210,9 +6212,10 @@ impl ShellCommand {
                 allow_reverse_complement,
                 report_id,
             } => format!(
-                "confirm construct '{}' from {} read(s) (targets={}, mode={}, match={}, mismatch={}, gap_open={}, gap_extend={}, min_identity={:.2}, min_target_coverage={:.2}, allow_rc={}, report_id='{}')",
+                "confirm construct '{}' from {} read(s) and {} trace(s) (targets={}, mode={}, match={}, mismatch={}, gap_open={}, gap_extend={}, min_identity={:.2}, min_target_coverage={:.2}, allow_rc={}, report_id='{}')",
                 expected_seq_id,
                 read_seq_ids.len(),
+                trace_ids.len(),
                 if targets.is_empty() {
                     "default_full_span".to_string()
                 } else {
@@ -16011,6 +16014,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::SeqConfirmRun {
             expected_seq_id,
             read_seq_ids,
+            trace_ids,
             targets,
             alignment_mode,
             match_score,
@@ -16026,6 +16030,7 @@ pub fn execute_shell_command_with_options(
                 .apply(Operation::ConfirmConstructReads {
                     expected_seq_id: expected_seq_id.clone(),
                     read_seq_ids: read_seq_ids.clone(),
+                    trace_ids: trace_ids.clone(),
                     targets: targets.clone(),
                     alignment_mode: *alignment_mode,
                     match_score: *match_score,

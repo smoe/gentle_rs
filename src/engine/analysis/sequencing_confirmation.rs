@@ -1,7 +1,9 @@
-//! Sequencing-confirmation storage and called-read construct checks.
+//! Sequencing-confirmation storage and construct checks from read or trace evidence.
 //!
-//! Phase 1 focuses on deterministic confirmation from already-called read
-//! sequences. Raw ABI/AB1/SCF intake and trace-aware enrichment follow later.
+//! The baseline workflow started with deterministic confirmation from already-
+//! called read sequences. Imported ABI/AB1/SCF traces now participate as
+//! evidence too by reusing their stored called bases while keeping the raw
+//! trace store separate from confirmation reports.
 //!
 //! Look here for:
 //! - sequencing-confirmation report-store helpers
@@ -22,6 +24,16 @@ pub(super) struct ComputedPairwiseAlignment {
 struct TargetEvidenceStats {
     covered_bp: usize,
     contradicted: bool,
+}
+
+#[derive(Debug, Clone)]
+struct SequencingConfirmationEvidenceInput {
+    evidence_kind: SequencingConfirmationEvidenceKind,
+    evidence_id: String,
+    display_read_seq_id: String,
+    trace_id: Option<String>,
+    linked_seq_id: Option<String>,
+    called_bases: String,
 }
 
 impl GentleEngine {
@@ -546,6 +558,7 @@ impl GentleEngine {
         &mut self,
         expected_seq_id: &str,
         read_seq_ids: &[String],
+        trace_ids: &[String],
         targets: &[SequencingConfirmationTargetSpec],
         alignment_mode: PairwiseAlignmentMode,
         match_score: i32,
@@ -557,10 +570,12 @@ impl GentleEngine {
         allow_reverse_complement: bool,
         report_id: Option<&str>,
     ) -> Result<SequencingConfirmationReport, EngineError> {
-        if read_seq_ids.is_empty() {
+        if read_seq_ids.is_empty() && trace_ids.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "ConfirmConstructReads requires at least one read sequence".to_string(),
+                message:
+                    "ConfirmConstructReads requires at least one read sequence or sequencing trace"
+                        .to_string(),
             });
         }
         if !(0.0..=1.0).contains(&min_identity_fraction) {
@@ -633,6 +648,7 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
 
+        let mut evidence_inputs = vec![];
         for read_seq_id in read_seq_ids {
             let read_dna = self
                 .state
@@ -652,9 +668,44 @@ impl GentleEngine {
                     ),
                 });
             }
+            evidence_inputs.push(SequencingConfirmationEvidenceInput {
+                evidence_kind: SequencingConfirmationEvidenceKind::Sequence,
+                evidence_id: read_seq_id.clone(),
+                display_read_seq_id: read_seq_id.clone(),
+                trace_id: None,
+                linked_seq_id: Some(read_seq_id.clone()),
+                called_bases: read_text,
+            });
+        }
+        for trace_id in trace_ids {
+            let trace = self.get_sequencing_trace(trace_id)?;
+            let called_bases = trace.called_bases.trim().to_ascii_uppercase();
+            if called_bases.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "ConfirmConstructReads cannot use sequencing trace '{}' because it has no called bases",
+                        trace.trace_id
+                    ),
+                });
+            }
+            evidence_inputs.push(SequencingConfirmationEvidenceInput {
+                evidence_kind: SequencingConfirmationEvidenceKind::Trace,
+                evidence_id: trace.trace_id.clone(),
+                display_read_seq_id: trace
+                    .seq_id
+                    .clone()
+                    .unwrap_or_else(|| trace.trace_id.clone()),
+                trace_id: Some(trace.trace_id.clone()),
+                linked_seq_id: trace.seq_id.clone(),
+                called_bases,
+            });
+        }
+
+        for evidence in evidence_inputs {
             let forward_alignment = Self::compute_pairwise_alignment_report(
-                read_seq_id,
-                read_text.as_str(),
+                evidence.evidence_id.as_str(),
+                evidence.called_bases.as_str(),
                 None,
                 None,
                 expected_seq_id,
@@ -668,9 +719,9 @@ impl GentleEngine {
                 gap_extend,
             )?;
             let reverse_alignment = if allow_reverse_complement {
-                let reverse_text = Self::reverse_complement(&read_text);
+                let reverse_text = Self::reverse_complement(&evidence.called_bases);
                 Some(Self::compute_pairwise_alignment_report(
-                    read_seq_id,
+                    evidence.evidence_id.as_str(),
                     reverse_text.as_str(),
                     None,
                     None,
@@ -730,23 +781,32 @@ impl GentleEngine {
                 if stats.contradicted {
                     target_result
                         .contradicting_read_ids
-                        .push(read_seq_id.clone());
+                        .push(evidence.evidence_id.clone());
                     contradicted_target_ids.push(target_spec.target_id.clone());
                 } else if coverage_fraction >= min_target_coverage_fraction
                     && alignment.report.identity_fraction >= min_identity_fraction
                 {
-                    target_result.support_read_ids.push(read_seq_id.clone());
+                    target_result
+                        .support_read_ids
+                        .push(evidence.evidence_id.clone());
                     confirmed_target_ids.push(target_spec.target_id.clone());
                 }
             }
             if alignment.report.identity_fraction < min_identity_fraction {
                 warnings.push(format!(
-                    "Read '{}' best alignment identity {:.3} is below min_identity_fraction {:.3}",
-                    read_seq_id, alignment.report.identity_fraction, min_identity_fraction
+                    "{} '{}' best alignment identity {:.3} is below min_identity_fraction {:.3}",
+                    evidence.evidence_kind.as_str(),
+                    evidence.evidence_id,
+                    alignment.report.identity_fraction,
+                    min_identity_fraction
                 ));
             }
             reads.push(SequencingConfirmationReadResult {
-                read_seq_id: read_seq_id.clone(),
+                evidence_kind: evidence.evidence_kind,
+                evidence_id: evidence.evidence_id.clone(),
+                read_seq_id: evidence.display_read_seq_id,
+                trace_id: evidence.trace_id,
+                linked_seq_id: evidence.linked_seq_id,
                 orientation,
                 usable: !covered_target_ids.is_empty(),
                 best_alignment: alignment.report,
@@ -817,6 +877,7 @@ impl GentleEngine {
             min_target_coverage_fraction,
             allow_reverse_complement,
             read_seq_ids: read_seq_ids.to_vec(),
+            trace_ids: trace_ids.to_vec(),
             target_count: target_results.len(),
             reads,
             targets: target_results,
@@ -886,10 +947,12 @@ impl GentleEngine {
         report: &SequencingConfirmationReport,
     ) -> String {
         format!(
-            "{} expected={} status={} reads={} targets={} mode={} rc_allowed={} identity>={:.2} coverage>={:.2}",
+            "{} expected={} status={} reads={} traces={} evidence={} targets={} mode={} rc_allowed={} identity>={:.2} coverage>={:.2}",
             report.report_id,
             report.expected_seq_id,
             report.overall_status.as_str(),
+            report.read_seq_ids.len(),
+            report.trace_ids.len(),
             report.reads.len(),
             report.targets.len(),
             report.alignment_mode.as_str(),

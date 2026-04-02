@@ -2526,7 +2526,13 @@ Repeated multi-tool gaps to prioritize:
        and shell routes `seq-trace import|list|show`
      - raw-trace intake is intentionally non-mutating with respect to construct
        sequences and remains separate from `SequencingConfirmationReport`
-       verdicts
+       verdict storage
+     - trace-aware confirmation integration is now available through the same
+       shared engine/shell path:
+       - `seq-confirm run` accepts imported trace ids alongside read ids
+       - trace-backed evidence rows stay inside the same confirmation report
+       - target support and contradiction ids can now reflect imported trace
+         evidence directly
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack
@@ -2539,7 +2545,7 @@ Repeated multi-tool gaps to prioritize:
      - ABI/AB1/SCF raw-trace import and inspection second
        - shipped through engine/shell/CLI
      - trace-aware confirmation integration third
-       - still pending
+       - shipped through engine/shell/CLI
      - GUI trace review / chromatogram inspection remains the next follow-up
    - likely legacy code seeds:
      - `gentle-m` `src/ABItype.cpp`

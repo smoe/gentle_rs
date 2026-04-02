@@ -702,6 +702,7 @@ Current draft operations:
 - `ImportSequencingTrace { path, trace_id?, seq_id? }` (implemented baseline; imports one ABI/AB1 or SCF evidence file into the shared sequencing-trace store without mutating construct sequences)
 - `ListSequencingTraces { seq_id? }`
 - `ShowSequencingTrace { trace_id }`
+- `ConfirmConstructReads { expected_seq_id, read_seq_ids?, trace_ids?, targets?, alignment_mode?, match_score?, mismatch_score?, gap_open?, gap_extend?, min_identity_fraction?, min_target_coverage_fraction?, allow_reverse_complement?, report_id? }` (implemented baseline; accepts already-loaded read sequences and/or imported sequencing traces as evidence inputs into one shared confirmation report)
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
 - `ListRnaReadReports { seq_id? }`
@@ -746,8 +747,12 @@ Sequencing-trace evidence notes:
   - peak locations when available
   - compact per-channel trace-length summaries
   - optional sample/run/machine metadata when present in the source file
-- future trace-aware confirmation should link a confirmation read row to one
-  imported trace record by evidence id rather than forking the report model
+- trace-aware confirmation now reuses the same `SequencingConfirmationReport`
+  model:
+  - `ConfirmConstructReads` accepts `trace_ids` in addition to `read_seq_ids`
+  - per-evidence rows expose evidence kind plus optional `trace_id`
+  - target support/contradiction ids may now refer to imported trace ids when
+    traces provide the relevant evidence
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,

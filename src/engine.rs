@@ -3330,6 +3330,24 @@ impl SequencingReadOrientation {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Origin of one sequencing-confirmation evidence row.
+pub enum SequencingConfirmationEvidenceKind {
+    #[default]
+    Sequence,
+    Trace,
+}
+
+impl SequencingConfirmationEvidenceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequence => "sequence",
+            Self::Trace => "trace",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Biology-facing target classes supported by sequencing confirmation v1.
 pub enum SequencingConfirmationTargetKind {
     #[default]
@@ -3437,9 +3455,15 @@ pub struct SequencingConfirmationTargetResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// Best-alignment and discrepancy summary for one input sequencing read.
+/// Best-alignment and discrepancy summary for one input sequencing evidence row.
 pub struct SequencingConfirmationReadResult {
+    pub evidence_kind: SequencingConfirmationEvidenceKind,
+    pub evidence_id: String,
     pub read_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_seq_id: Option<String>,
     pub orientation: SequencingReadOrientation,
     pub usable: bool,
     pub best_alignment: SequenceAlignmentReport,
@@ -3454,7 +3478,7 @@ pub struct SequencingConfirmationReadResult {
 /// Stored construct-confirmation report shared by shell, GUI, and exports.
 ///
 /// Start here when following the sequencing-confirmation workflow end to end:
-/// it ties together requested targets, per-read alignments, and the overall
+/// it ties together requested targets, per-evidence alignments, and the overall
 /// confirmed/contradicted/insufficient-evidence verdict.
 pub struct SequencingConfirmationReport {
     pub schema: String,
@@ -3471,6 +3495,8 @@ pub struct SequencingConfirmationReport {
     pub min_target_coverage_fraction: f64,
     pub allow_reverse_complement: bool,
     pub read_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub trace_ids: Vec<String>,
     pub target_count: usize,
     pub reads: Vec<SequencingConfirmationReadResult>,
     pub targets: Vec<SequencingConfirmationTargetResult>,
@@ -4015,6 +4041,8 @@ pub enum Operation {
         expected_seq_id: SeqId,
         #[serde(default)]
         read_seq_ids: Vec<SeqId>,
+        #[serde(default)]
+        trace_ids: Vec<String>,
         #[serde(default)]
         targets: Vec<SequencingConfirmationTargetSpec>,
         #[serde(default = "default_sequencing_confirmation_alignment_mode")]

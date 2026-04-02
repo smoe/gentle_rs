@@ -12172,6 +12172,7 @@ fn test_confirm_construct_reads_confirms_junction_target_and_lists_report() {
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
             read_seq_ids: vec!["read_junction".to_string()],
+            trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
                 "junction_1",
                 4,
@@ -12205,7 +12206,13 @@ fn test_confirm_construct_reads_confirms_junction_target_and_lists_report() {
         SequencingConfirmationStatus::Confirmed
     );
     assert_eq!(report.targets[0].support_read_ids, vec!["read_junction"]);
+    assert!(report.trace_ids.is_empty());
     assert_eq!(report.reads.len(), 1);
+    assert_eq!(
+        report.reads[0].evidence_kind,
+        SequencingConfirmationEvidenceKind::Sequence
+    );
+    assert_eq!(report.reads[0].evidence_id, "read_junction");
     assert_eq!(
         report.reads[0].orientation,
         SequencingReadOrientation::Forward
@@ -12244,6 +12251,7 @@ fn test_confirm_construct_reads_supports_reverse_complement_reads() {
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
             read_seq_ids: vec!["read_rc".to_string()],
+            trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
                 "junction_1",
                 4,
@@ -12296,6 +12304,7 @@ fn test_confirm_construct_reads_reports_insufficient_evidence_for_truncated_read
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
             read_seq_ids: vec!["read_short".to_string()],
+            trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
                 "junction_1",
                 4,
@@ -12348,6 +12357,7 @@ fn test_export_sequencing_confirmation_support_tsv_writes_target_rows() {
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
             read_seq_ids: vec!["read_junction".to_string()],
+            trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
                 "junction_1",
                 4,
@@ -12434,6 +12444,79 @@ fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
         .get_sequencing_trace("abi_trace")
         .expect("stored trace");
     assert_eq!(shown.called_bases, record.called_bases);
+}
+
+#[test]
+fn test_confirm_construct_reads_accepts_imported_trace_evidence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(SequencingTraceRecord {
+            schema: SEQUENCING_TRACE_RECORD_SCHEMA.to_string(),
+            trace_id: "junction_trace".to_string(),
+            format: SequencingTraceFormat::Scf,
+            source_path: "synthetic.scf".to_string(),
+            imported_at_unix_ms: 1,
+            seq_id: None,
+            sample_name: Some("junction_trace".to_string()),
+            sample_well: None,
+            run_name: None,
+            machine_name: None,
+            machine_model: None,
+            called_bases: "CCGTAACC".to_string(),
+            called_base_confidence_values: vec![80; 8],
+            peak_locations: (1..=8).collect(),
+            channel_summaries: vec![],
+            comments_text: None,
+        })
+        .expect("store trace");
+
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            read_seq_ids: vec![],
+            trace_ids: vec!["junction_trace".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_trace".to_string()),
+        })
+        .expect("confirm construct from trace");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(report.read_seq_ids, Vec::<String>::new());
+    assert_eq!(report.trace_ids, vec!["junction_trace"]);
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.targets[0].support_read_ids, vec!["junction_trace"]);
+    assert_eq!(
+        report.reads[0].evidence_kind,
+        SequencingConfirmationEvidenceKind::Trace
+    );
+    assert_eq!(report.reads[0].evidence_id, "junction_trace");
+    assert_eq!(report.reads[0].trace_id.as_deref(), Some("junction_trace"));
+    assert_eq!(report.reads[0].read_seq_id, "junction_trace");
+    assert_eq!(report.reads[0].confirmed_target_ids, vec!["junction_1"]);
 }
 
 #[test]

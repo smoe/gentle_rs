@@ -7469,6 +7469,7 @@ impl GentleEngine {
             Operation::ConfirmConstructReads {
                 expected_seq_id,
                 read_seq_ids,
+                trace_ids,
                 targets,
                 alignment_mode,
                 match_score,
@@ -7483,6 +7484,7 @@ impl GentleEngine {
                 let report = self.confirm_construct_reads(
                     &expected_seq_id,
                     &read_seq_ids,
+                    &trace_ids,
                     &targets,
                     alignment_mode,
                     match_score,

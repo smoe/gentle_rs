@@ -1,6 +1,6 @@
 # Sequencing Confirmation Implementation Plan
 
-Status: phase-1 called-read engine contract landed (2026-03-26)
+Status: called-read + raw-trace + trace-aware engine/shell baseline landed (2026-04-02)
 
 Current implementation snapshot:
 
@@ -11,10 +11,11 @@ Current implementation snapshot:
   - shared shell/CLI `seq-confirm` run/list/show/export routes
   - deterministic regression coverage for forward, reverse-complement, and
     truncated-read evidence cases
+  - raw ABI/AB1/SCF trace import plus shared `seq-trace import|list|show`
+  - trace-aware confirmation refinement through the same
+    `ConfirmConstructReads` contract using imported `trace_ids`
 - still pending from this plan:
-  - GUI specialist and visual review surface
-  - raw ABI/AB1/SCF trace import
-  - trace-aware confirmation refinement
+  - deeper GUI trace review / chromatogram inspection
   - lineage/artifact projection for confirmation reports
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
@@ -467,6 +468,19 @@ Called-read confirmation must stand on its own first.
 
 Use trace support to refine evidence interpretation without changing the core
 confirmation contract.
+
+Status:
+
+- shipped baseline:
+  - `ConfirmConstructReads` accepts imported `trace_ids` alongside
+    `read_seq_ids`
+  - imported traces contribute their stored called-base strings as evidence
+  - confirmation reports now expose evidence kind plus optional `trace_id` for
+    each evidence row
+- still pending within this phase:
+  - confidence-aware contradiction softening
+  - ambiguous-base handling
+  - GUI chromatogram review attached to trace-backed evidence rows
 
 Possible extensions:
 
