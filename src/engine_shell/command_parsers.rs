@@ -2851,12 +2851,8 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                         read_seq_ids.push(trimmed.to_string());
                     }
                     "--trace-ids" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--trace-ids",
-                            "seq-confirm run",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--trace-ids", "seq-confirm run")?;
                         let parsed = raw
                             .split(',')
                             .map(str::trim)

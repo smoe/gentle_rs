@@ -254,6 +254,9 @@ order. Durable architecture constraints and decisions remain in
   - root GENtle window now acts as a neutral workspace host
   - the project/lineage surface is rendered as the first hosted internal
     window instead of being privileged root content
+  - the hosted project/lineage peer-window path has been restored after a
+    regression where the lineage surface was accidentally painted directly into
+    the root host as if maximized
   - hosted DNA windows now render through embedded/window-local panel paths
     with per-instance scope ids so multiple hosted windows no longer share
   - hosted Help/Tutorial now uses a stable embedded child-window id instead of

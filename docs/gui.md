@@ -75,6 +75,8 @@ macOS auxiliary-window stability note:
   internal window inside that root workspace, and sequence/help/configuration
   plus other auxiliary workspaces are hosted as sibling internal windows on
   macOS until the upstream viewport lifecycle bug is understood or fixed.
+- The project/lineage surface should therefore open as one draggable/resizable
+  hosted peer window again, rather than filling the root host as if maximized.
 - Hosted windows are kept inside a small safety inset from the root workspace
   edges so resizing/moving them does not immediately hit the physical screen
   border and trigger the macOS menu bar or Dock.

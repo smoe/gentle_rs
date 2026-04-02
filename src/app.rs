@@ -2372,6 +2372,10 @@ impl Default for GENtleApp {
 }
 
 impl GENtleApp {
+    fn main_workspace_hosted_window_id() -> egui::Id {
+        egui::Id::new("main_workspace_hosted_window")
+    }
+
     fn help_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Help Viewport")
     }
@@ -28892,6 +28896,48 @@ Error: `{err}`"
         });
     }
 
+    fn render_hosted_main_workspace_window(&mut self, ctx: &egui::Context, project_dirty: bool) {
+        let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+        let min_size = Vec2::new(900.0, 560.0);
+        let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+            Vec2::new(1280.0, 860.0),
+            constrain_rect,
+            min_size,
+        );
+        let default_pos =
+            crate::egui_compat::clamp_hosted_window_default_pos(None, constrain_rect, default_size);
+        egui::Window::new(format!("Project — {}", self.current_project_name()))
+            .id(Self::main_workspace_hosted_window_id())
+            .collapsible(false)
+            .resizable(true)
+            .default_pos(default_pos)
+            .default_size(default_size)
+            .min_size(min_size)
+            .max_size(constrain_rect.size())
+            .constrain_to(constrain_rect)
+            .show(ctx, |ui| {
+                self.render_main_workspace_host(ui, project_dirty);
+            });
+    }
+
+    fn render_root_workspace(&mut self, ctx: &egui::Context, project_dirty: bool) {
+        crate::egui_compat::show_central_panel(
+            ctx,
+            egui::CentralPanel::default().frame(egui::Frame::NONE),
+            |ui| {
+                let host_rect = ui.max_rect();
+                ui.painter()
+                    .rect_filled(host_rect, 0.0, egui::Color32::from_gray(218));
+                if !Self::should_embed_child_viewports() {
+                    self.render_main_workspace_host(ui, project_dirty);
+                }
+            },
+        );
+        if Self::should_embed_child_viewports() {
+            self.render_hosted_main_workspace_window(ctx, project_dirty);
+        }
+    }
+
     fn apply_configuration_external_apps(&mut self) {
         self.configuration_rnapkin_executable =
             self.configuration_rnapkin_executable.trim().to_string();
@@ -32633,17 +32679,8 @@ impl GENtleApp {
                 },
             );
 
-            // Show main window
-            crate::egui_compat::show_central_panel(
-                ctx,
-                egui::CentralPanel::default().frame(egui::Frame::NONE),
-                |ui| {
-                    let host_rect = ui.max_rect();
-                    ui.painter()
-                        .rect_filled(host_rect, 0.0, egui::Color32::from_gray(218));
-                    self.render_main_workspace_host(ui, project_dirty);
-                },
-            );
+            // Show main/root workspace host
+            self.render_root_workspace(ctx, project_dirty);
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
             self.render_uniprot_dialog(ctx);
@@ -36811,7 +36848,7 @@ mod tests {
         let mut app = GENtleApp::default();
         let hosted_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new("main_workspace_hosted_window"),
+            GENtleApp::main_workspace_hosted_window_id(),
         );
 
         ctx.begin_pass(egui::RawInput::default());
@@ -36819,6 +36856,21 @@ mod tests {
             app.render_main_workspace_host(ui, false);
         });
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_main_workspace_window_renders_as_separate_embedded_window() {
+        let ctx = egui::Context::default();
+        let mut app = GENtleApp::default();
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            GENtleApp::main_workspace_hosted_window_id(),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_hosted_main_workspace_window(&ctx, false);
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         let _ = ctx.end_pass();
     }
 
