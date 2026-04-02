@@ -2738,6 +2738,54 @@ mod tests {
     }
 
     #[test]
+    fn gibson_arrangements_baseline_example_materializes_arrangement_ready_state() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "gibson_arrangements_baseline")
+            .expect("arrangements tutorial example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let state =
+            run_example_workflow_for_project_state(&loaded.example, Path::new("."), run_dir.path())
+                .expect("workflow should produce project state");
+
+        assert!(state.sequences.contains_key("gibson_destination_pgex"));
+        assert!(state.sequences.contains_key("gibson_insert_demo"));
+        assert!(state
+            .sequences
+            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+
+        let arrangement = state
+            .container_state
+            .arrangements
+            .values()
+            .next()
+            .expect("arrangement baseline should create one arrangement");
+        assert_eq!(arrangement.lane_container_ids.len(), 3);
+
+        let lane_members = arrangement
+            .lane_container_ids
+            .iter()
+            .map(|container_id| {
+                state
+                    .container_state
+                    .containers
+                    .get(container_id)
+                    .map(|container| container.members.clone())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lane_members,
+            vec![
+                vec!["gibson_destination_pgex".to_string()],
+                vec!["gibson_insert_demo".to_string()],
+                vec!["gibson_destination_pgex_with_gibson_insert_demo".to_string()],
+            ]
+        );
+    }
+
+    #[test]
     fn oe_substitution_example_materializes_staged_pcr_artifacts() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
