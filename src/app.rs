@@ -2394,14 +2394,11 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Help Viewport")
     }
 
-    fn legacy_hosted_help_layer_ids(title: &str) -> [egui::LayerId; 2] {
-        [
-            egui::LayerId::new(
-                egui::Order::Middle,
-                egui::Id::new(("hosted_help_window", Self::help_viewport_id())),
-            ),
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string())),
-        ]
+    fn legacy_root_help_layer_ids(title: &str) -> [egui::LayerId; 1] {
+        [egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(title.to_string()),
+        )]
     }
 
     fn stale_help_title_layer_id(title: &str) -> egui::LayerId {
@@ -2419,7 +2416,7 @@ impl GENtleApp {
     }
 
     fn reset_root_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
-        let stale_hosted_help_layers = Self::legacy_hosted_help_layer_ids(title);
+        let stale_hosted_help_layers = Self::legacy_root_help_layer_ids(title);
         if stale_hosted_help_layers
             .iter()
             .any(|layer_id| ctx.memory(|mem| mem.areas().is_visible(layer_id)))
@@ -37030,7 +37027,7 @@ mod tests {
     fn stale_help_window_area_in_root_context_is_reset_when_detected() {
         let ctx = egui::Context::default();
         let title = "Help - Gibson Arrangements Tutorial";
-        let stale_help_layer_ids = GENtleApp::legacy_hosted_help_layer_ids(title);
+        let stale_help_layer_ids = GENtleApp::legacy_root_help_layer_ids(title);
 
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new(title).show(&ctx, |ui| {
@@ -37048,6 +37045,30 @@ mod tests {
         for layer_id in stale_help_layer_ids {
             assert!(!ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
         }
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn root_help_cleanup_ignores_stable_hosted_help_window_id() {
+        let ctx = egui::Context::default();
+        let title = "Help - Gibson Arrangements Tutorial";
+        let hosted_help_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title)
+            .id(egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())))
+            .show(&ctx, |ui| {
+                ui.label("stable hosted help window");
+            });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
+
+        assert!(!GENtleApp::reset_root_help_areas_if_legacy_layers_visible(
+            &ctx, title
+        ));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
         let _ = ctx.end_pass();
     }
 
