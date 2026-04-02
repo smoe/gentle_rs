@@ -3,7 +3,7 @@
   "id": "sequencing_confirmation_trace_cli",
   "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
   "catalog": {
-    "order": 6,
+    "order": 7,
     "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
     "type": "cli_walkthrough",
     "status": "manual/hybrid",

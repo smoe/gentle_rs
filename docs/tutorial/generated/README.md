@@ -43,7 +43,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 - 13. [Selection-first PCR batch primer design (offline)](./chapters/13_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes`
 - 14. [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/14_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no`
 - 15. [Gibson Specialist Starter Project (offline)](./chapters/15_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes`
-- 16. [Gibson Arrangements Starter Project (offline)](./chapters/16_gibson_arrangements_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes`
+- 16. [Gibson Arrangements Starter Project (offline)](./chapters/16_gibson_arrangements_baseline.md) - `core` - example `gibson_arrangements_baseline` - executed `yes`
 
 ## Concepts and Where They Recur
 

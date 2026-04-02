@@ -37143,6 +37143,31 @@ mod tests {
     }
 
     #[test]
+    fn open_tutorial_project_chapter_arrangements_baseline_opens_arrangement_ready_state() {
+        let mut app = GENtleApp::default();
+
+        app.open_tutorial_project_chapter("gibson_arrangements_baseline");
+
+        assert!(app.app_status.contains("Opened tutorial project"));
+        assert!(app.show_help_dialog);
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(
+            app.help_tutorial_title
+                .contains("Gibson Arrangements Tutorial")
+        );
+        assert!(
+            app.help_tutorial_markdown
+                .contains("serial arrangement")
+        );
+        let engine = app.engine.read().unwrap();
+        assert!(engine
+            .state()
+            .sequences
+            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+        assert_eq!(engine.state().container_state.arrangements.len(), 1);
+    }
+
+    #[test]
     fn open_new_windows_from_files_imports_selected_files_consecutively() {
         let mut app = GENtleApp::default();
         let temp = tempdir().expect("tempdir");

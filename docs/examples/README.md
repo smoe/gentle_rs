@@ -79,6 +79,10 @@ Relevant executable Gibson specialist setup baseline:
 - `docs/examples/workflows/gibson_specialist_testing_baseline.json`
   - loads one circular destination and one linear insert under stable IDs for
     `Open Tutorial Project...` and GUI specialist testing
+- `docs/examples/workflows/gibson_arrangements_baseline.json`
+  - loads the same deterministic destination and insert, then applies the
+    canonical single-insert Gibson plan so arrangement/gel tutorials open with
+    the assembled product and stored lane arrangement already present
 
 ## Test examples
 

@@ -2,26 +2,26 @@
 
 - Chapter id: `gibson_arrangements_baseline`
 - Tier: `core`
-- Example id: `gibson_specialist_testing_baseline`
-- Source example: `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+- Example id: `gibson_arrangements_baseline`
+- Source example: `docs/examples/workflows/gibson_arrangements_baseline.json`
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Build the same stable Gibson starter project, but open directly into the arrangement-focused guide for container, arrangement, and gel-export review.
+Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, and the stored three-lane lane set already present.
 
-This chapter reuses the deterministic pGEX + insert starter baseline from the Gibson specialist tutorial, but changes the guide handoff so `File -> Open Tutorial Project...` can land directly on arrangement inspection and gel-export workflow instead of overlap/primer setup.
+This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, and gel export without first repeating the cloning step.
 
 ## When This Routine Is Useful
 
-- You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier specialist tutorial.
-- You want a reproducible starter state for checking singleton output containers and arrangement-level gel export.
+- You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.
+- You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.
 - You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial.
 
 ## What You Learn
 
-- Use one executable starter project to reach the arrangement walkthrough directly.
-- Recognize that the same deterministic Gibson baseline can support more than one tutorial guide.
-- Replay the same arrangement-focused setup from GUI and CLI without changing the biological inputs.
+- Use one executable starter project to reach an arrangement-ready walkthrough directly.
+- Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.
+- Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply.
 
 ## Concepts and Recurrence
 
@@ -38,41 +38,44 @@ This chapter reuses the deterministic pGEX + insert starter baseline from the Gi
 ## GUI First
 
 1. Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.
-2. Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
-3. The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 2` onward.
+2. Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.
+3. The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward.
 
 ## Command Equivalent (After GUI)
 
 Run the same routine non-interactively once the GUI flow is clear:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json'
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_arrangements_baseline.json'
 ```
 
 ## Parameters That Matter
 
-- `destination seq_id = gibson_destination_pgex` (where used: Gibson destination lane in the arrangement walkthrough)
+- `destination seq_id = gibson_destination_pgex` (where used: Stored vector lane in the arrangement walkthrough)
   - Why it matters: Keeps the original vector lane stable across the arrangement guide and CLI replay.
   - How to derive it: This workflow assigns the ID directly during `LoadFile`.
 - `insert seq_id = gibson_insert_demo` (where used: Insert lane in the arrangement walkthrough)
   - Why it matters: Provides the same deterministic insert lane that the Gibson arrangement is expected to reference.
   - How to derive it: This workflow assigns the ID directly during `LoadFile`.
-- `workflow example = gibson_specialist_testing_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
-  - Why it matters: The arrangement starter project intentionally reuses the same stable baseline as the Gibson specialist starter project.
+- `assembled product seq_id = gibson_destination_pgex_with_gibson_insert_demo` (where used: Stored Gibson result already present when the arrangement tutorial opens)
+  - Why it matters: Makes the arrangement tutorial disjunct from the separate Gibson-specialist apply walkthrough while keeping one deterministic product identity.
+  - How to derive it: The chapter workflow applies the canonical single-insert Gibson plan before the guide opens.
+- `workflow example = gibson_arrangements_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
+  - Why it matters: The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.
   - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
 
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
 ```
 
 ## Checkpoints
 
-- The tutorial project opens with exactly the expected destination and insert IDs already loaded.
+- The tutorial project opens with the expected destination, insert, and assembled-product IDs already loaded.
 - The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.
-- The arrangement guide can start from this baseline without any additional sequence imports.
+- The arrangement guide can start from this baseline without an additional manual Gibson apply.
 
 ## Retained Outputs
 
@@ -80,5 +83,5 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialis
 
 ## Canonical Source
 
-- Workflow file: `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+- Workflow file: `docs/examples/workflows/gibson_arrangements_baseline.json`
 - Inspect this JSON file directly when you need full option-level detail.

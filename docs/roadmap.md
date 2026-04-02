@@ -987,6 +987,18 @@ order. Durable architecture constraints and decisions remain in
         walkthrough
       - now opens the matching Help/Tutorial guide automatically when the
         starter project is opened from the GUI
+  - executable `Open Tutorial Project...` baseline added for Gibson
+    arrangements:
+    - workflow example:
+      `docs/examples/workflows/gibson_arrangements_baseline.json`
+    - generated chapter:
+      `docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`
+    - role:
+      - builds the same deterministic pGEX + insert setup, then applies the
+        canonical single-insert Gibson plan before the guide opens
+      - keeps the arrangements tutorial disjunct from the Gibson-specialist
+        apply tutorial while preserving one deterministic product/arrangement
+        state for GUI and CLI replay
   - dedicated online TP53 isoform architecture chapter added:
     `tp53_isoform_architecture_online` (backed by canonical
     `tp53_isoform_architecture_online` workflow example and curated panel

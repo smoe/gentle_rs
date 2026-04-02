@@ -949,25 +949,25 @@
       "id": "gibson_arrangements_baseline",
       "order": 16,
       "title": "Gibson Arrangements Starter Project (offline)",
-      "example_id": "gibson_specialist_testing_baseline",
+      "example_id": "gibson_arrangements_baseline",
       "tier": "core",
       "guide_path": "docs/tutorial/gibson_arrangements_gui.md",
-      "summary": "Build the same stable Gibson starter project, but open directly into the arrangement-focused guide for container, arrangement, and gel-export review.",
-      "narrative": "This chapter reuses the deterministic pGEX + insert starter baseline from the Gibson specialist tutorial, but changes the guide handoff so `File -> Open Tutorial Project...` can land directly on arrangement inspection and gel-export workflow instead of overlap/primer setup.",
+      "summary": "Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, and the stored three-lane lane set already present.",
+      "narrative": "This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, and gel export without first repeating the cloning step.",
       "use_cases": [
-        "You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier specialist tutorial.",
-        "You want a reproducible starter state for checking singleton output containers and arrangement-level gel export.",
+        "You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.",
+        "You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.",
         "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
       ],
       "gui_steps": [
         "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
-        "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 2` onward."
+        "Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
+        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward."
       ],
       "learning_objectives": [
-        "Use one executable starter project to reach the arrangement walkthrough directly.",
-        "Recognize that the same deterministic Gibson baseline can support more than one tutorial guide.",
-        "Replay the same arrangement-focused setup from GUI and CLI without changing the biological inputs."
+        "Use one executable starter project to reach an arrangement-ready walkthrough directly.",
+        "Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.",
+        "Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply."
       ],
       "concepts": [
         "shared_engine_contract",
@@ -977,7 +977,7 @@
       "parameter_notes": [
         {
           "parameter": "destination seq_id = gibson_destination_pgex",
-          "where_used": "Gibson destination lane in the arrangement walkthrough",
+          "where_used": "Stored vector lane in the arrangement walkthrough",
           "why_it_matters": "Keeps the original vector lane stable across the arrangement guide and CLI replay.",
           "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
           "omit_when": ""
@@ -990,21 +990,28 @@
           "omit_when": ""
         },
         {
-          "parameter": "workflow example = gibson_specialist_testing_baseline",
+          "parameter": "assembled product seq_id = gibson_destination_pgex_with_gibson_insert_demo",
+          "where_used": "Stored Gibson result already present when the arrangement tutorial opens",
+          "why_it_matters": "Makes the arrangement tutorial disjunct from the separate Gibson-specialist apply walkthrough while keeping one deterministic product identity.",
+          "how_to_derive": "The chapter workflow applies the canonical single-insert Gibson plan before the guide opens.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "workflow example = gibson_arrangements_baseline",
           "where_used": "`Open Tutorial Project...` and CLI workflow replay",
-          "why_it_matters": "The arrangement starter project intentionally reuses the same stable baseline as the Gibson specialist starter project.",
+          "why_it_matters": "The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.",
           "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.",
           "omit_when": ""
         }
       ],
       "follow_up_commands": [
-        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json"
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json"
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "The tutorial project opens with exactly the expected destination and insert IDs already loaded.",
+        "The tutorial project opens with the expected destination, insert, and assembled-product IDs already loaded.",
         "The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.",
-        "The arrangement guide can start from this baseline without any additional sequence imports."
+        "The arrangement guide can start from this baseline without an additional manual Gibson apply."
       ]
     }
   ]

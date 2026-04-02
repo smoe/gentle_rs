@@ -2961,9 +2961,10 @@ Tutorial projects:
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking
   - `docs/tutorial/gibson_arrangements_gui.md`
-    - follows the same offline Gibson starter project through
-      `Apply Gibson Cloning`, singleton output containers, automatic
-      arrangement creation, and arrangement-level gel export
+    - opens from a dedicated arrangement-ready starter project where the
+      deterministic single-insert Gibson result and stored three-lane
+      arrangement are already present, then walks through singleton output
+      containers, arrangement inspection, and arrangement-level gel export
   - generated tutorial-project baseline:
     - `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
     - preloads stable `gibson_destination_pgex` and `gibson_insert_demo`
@@ -2971,11 +2972,12 @@ Tutorial projects:
     - `Gibson Specialist Starter Project (offline)` also opens the matching
       Help/Tutorial guide automatically
     - `docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`
-    - reuses the same stable `gibson_destination_pgex` and
-      `gibson_insert_demo` baseline, but opens the arrangement tutorial guide
-      directly
-    - `Gibson Arrangements Starter Project (offline)` lands on the arrangement
-      walkthrough without changing the underlying biological setup
+    - prebuilds the deterministic `gibson_destination_pgex` +
+      `gibson_insert_demo` starter through the canonical single-insert Gibson
+      apply so the assembled product and stored arrangement already exist
+    - `Gibson Arrangements Starter Project (offline)` now lands on the
+      arrangement walkthrough with a distinct arrangement-ready state instead
+      of reusing the chapter-15 pre-apply baseline
   - `docs/tutorial/two_sequence_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).

@@ -49,11 +49,11 @@ reusable gel lane set from it:
 - fastest setup path:
   [`docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`](./generated/chapters/16_gibson_arrangements_baseline.md)
   - in the app, `File -> Open Tutorial Project...` -> `Gibson Arrangements Starter Project (offline)`
-    now opens the same stable Gibson starter state but lands directly on the
-    arrangement guide in Help/Tutorial
-- this starts from the same offline Gibson starter project, then continues into
-  `Containers`, `Arrangements`, graph inspection, and arrangement-level gel
-  export
+    now opens a distinct arrangement-ready Gibson result and lands directly on
+    the arrangement guide in Help/Tutorial
+- this starts from the deterministic cloned result plus stored arrangement, then
+  continues into `Containers`, `Arrangements`, graph inspection, and
+  arrangement-level gel export
 
 If you want a sequence-analysis example with screenshots:
 
@@ -157,9 +157,10 @@ Use the labels above as trust/maintenance signals:
 
 1. Read [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md)
 2. Optionally begin from [`docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`](./generated/chapters/16_gibson_arrangements_baseline.md)
-3. Apply one single-insert Gibson plan
-4. Inspect the resulting singleton output containers and reusable arrangement
-5. Export one arrangement-level gel with ladders flanking the sample lanes
+3. Inspect the prebuilt singleton output containers and reusable arrangement
+4. Export one arrangement-level gel with ladders flanking the sample lanes
+5. Use the Gibson specialist tutorial separately if you also want to replay the
+   cloning step itself
 
 ### Path E: Sequence-analysis and visualization
 
