@@ -1788,7 +1788,7 @@
             "gui-shell"
          ],
          "path": "seq-primer suggest",
-         "summary": "Suggest sequencing-primer overlay spans on the expected construct and optionally annotate coverage against a persisted sequencing-confirmation report.",
+         "summary": "Suggest sequencing-primer overlay spans on the expected construct, annotate saved-report coverage, and rank the best existing primer hit for each unresolved locus.",
          "usage": "seq-primer suggest EXPECTED_SEQ_ID --primers ID[,ID...] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
       },
       {

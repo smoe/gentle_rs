@@ -22,6 +22,8 @@ Current implementation snapshot:
     variant-focused chromatogram inspection in the same window
   - sequencing-primer overlay suggestions through the same shared engine/shell
     path plus the GUI specialist
+  - unresolved-locus guidance rows now rank the best existing primer hit for
+    each non-confirmed target or problem variant
 - still pending from this plan:
   - lineage/artifact projection for confirmation reports
 

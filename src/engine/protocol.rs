@@ -35,8 +35,9 @@ pub use gentle_protocol::{
     SequenceFeatureQuery, SequenceFeatureQueryResult, SequenceFeatureQueryRow,
     SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
     SequencingPrimerOrientation, SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-    SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
-    SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
+    SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingTraceChannelData,
+    SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
+    SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
 };
 use serde::{Deserialize, Serialize};
 

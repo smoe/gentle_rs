@@ -422,6 +422,91 @@ impl GentleEngine {
         left_start < right_end_exclusive && right_start < left_end_exclusive
     }
 
+    fn sequencing_primer_problem_center(
+        locus_start_0based: usize,
+        locus_end_0based_exclusive: usize,
+    ) -> usize {
+        if locus_end_0based_exclusive > locus_start_0based {
+            locus_start_0based + ((locus_end_0based_exclusive - locus_start_0based) / 2)
+        } else {
+            locus_start_0based
+        }
+    }
+
+    fn sequencing_primer_three_prime_distance_bp(
+        suggestion: &SequencingPrimerOverlaySuggestion,
+        locus_center_0based: usize,
+    ) -> (bool, usize) {
+        match suggestion.orientation {
+            SequencingPrimerOrientation::ForwardRead => (
+                locus_center_0based >= suggestion.three_prime_position_0based,
+                locus_center_0based.abs_diff(suggestion.three_prime_position_0based),
+            ),
+            SequencingPrimerOrientation::ReverseRead => (
+                locus_center_0based <= suggestion.three_prime_position_0based,
+                locus_center_0based.abs_diff(suggestion.three_prime_position_0based),
+            ),
+        }
+    }
+
+    fn sequencing_primer_guidance_penalty(
+        in_read_direction: bool,
+        three_prime_distance_bp: usize,
+    ) -> usize {
+        const MIN_PREFERRED_DISTANCE_BP: usize = 40;
+        const MAX_PREFERRED_DISTANCE_BP: usize = 500;
+        let direction_penalty = if in_read_direction { 0 } else { 1000 };
+        let distance_penalty = if three_prime_distance_bp < MIN_PREFERRED_DISTANCE_BP {
+            MIN_PREFERRED_DISTANCE_BP - three_prime_distance_bp
+        } else if three_prime_distance_bp > MAX_PREFERRED_DISTANCE_BP {
+            three_prime_distance_bp - MAX_PREFERRED_DISTANCE_BP
+        } else {
+            0
+        };
+        direction_penalty + distance_penalty
+    }
+
+    fn sequencing_primer_guidance_reason(
+        candidate_count: usize,
+        in_read_direction: bool,
+        three_prime_distance_bp: usize,
+        problem_target_count: usize,
+        problem_variant_count: usize,
+    ) -> String {
+        let total_problem_count = problem_target_count + problem_variant_count;
+        let coverage_text = if total_problem_count > 1 {
+            format!(
+                " The same predicted read span also covers {} unresolved loci in total.",
+                total_problem_count
+            )
+        } else {
+            String::new()
+        };
+        if in_read_direction {
+            if candidate_count > 1 {
+                format!(
+                    "Ranked best among {candidate_count} covering primer hits because the locus sits {} bp from the primer 3' end.{}",
+                    three_prime_distance_bp, coverage_text
+                )
+            } else {
+                format!(
+                    "Only covering primer hit; the locus sits {} bp from the primer 3' end.{}",
+                    three_prime_distance_bp, coverage_text
+                )
+            }
+        } else if candidate_count > 1 {
+            format!(
+                "Ranks best among {candidate_count} covering primer hits, but the locus is not downstream of the primer 3' end in read direction (distance {} bp).{}",
+                three_prime_distance_bp, coverage_text
+            )
+        } else {
+            format!(
+                "Only covering primer hit, but the locus is not downstream of the primer 3' end in read direction (distance {} bp).{}",
+                three_prime_distance_bp, coverage_text
+            )
+        }
+    }
+
     pub fn suggest_sequencing_primers(
         &self,
         expected_seq_id: &str,
@@ -665,6 +750,234 @@ impl GentleEngine {
                         .cmp(&right.predicted_read_span_start_0based),
                 )
         });
+        let mut problem_guidance = Vec::new();
+        if let Some(report) = confirmation_report.as_ref() {
+            for target in &report.targets {
+                if target.status == SequencingConfirmationStatus::Confirmed {
+                    continue;
+                }
+                let locus_center_0based = Self::sequencing_primer_problem_center(
+                    target.start_0based,
+                    target.end_0based_exclusive,
+                );
+                let mut covering_candidates = suggestions
+                    .iter()
+                    .filter(|row| {
+                        row.covered_problem_target_ids
+                            .iter()
+                            .any(|id| id.eq_ignore_ascii_case(&target.target_id))
+                    })
+                    .collect::<Vec<_>>();
+                let candidate_count = covering_candidates.len();
+                let recommendation = if covering_candidates.is_empty() {
+                    SequencingPrimerProblemGuidanceRow {
+                        problem_id: target.target_id.clone(),
+                        problem_kind: SequencingPrimerProblemKind::Target,
+                        problem_label: target.label.clone(),
+                        problem_summary: target.status.as_str().to_string(),
+                        recommended_primer_seq_id: None,
+                        recommended_primer_label: None,
+                        recommended_orientation: None,
+                        recommended_read_span_start_0based: None,
+                        recommended_read_span_end_0based_exclusive: None,
+                        recommended_three_prime_distance_bp: None,
+                        recommended_in_read_direction: None,
+                        recommended_problem_target_count: 0,
+                        recommended_problem_variant_count: 0,
+                        candidate_count,
+                        reason:
+                            "No existing primer overlay covered this unresolved confirmation target."
+                                .to_string(),
+                    }
+                } else {
+                    covering_candidates.sort_by(|left, right| {
+                        let (left_in_direction, left_distance) =
+                            Self::sequencing_primer_three_prime_distance_bp(
+                                left,
+                                locus_center_0based,
+                            );
+                        let (right_in_direction, right_distance) =
+                            Self::sequencing_primer_three_prime_distance_bp(
+                                right,
+                                locus_center_0based,
+                            );
+                        Self::sequencing_primer_guidance_penalty(left_in_direction, left_distance)
+                            .cmp(&Self::sequencing_primer_guidance_penalty(
+                                right_in_direction,
+                                right_distance,
+                            ))
+                            .then(
+                                (right.covered_problem_target_ids.len()
+                                    + right.covered_problem_variant_ids.len())
+                                .cmp(
+                                    &(left.covered_problem_target_ids.len()
+                                        + left.covered_problem_variant_ids.len()),
+                                ),
+                            )
+                            .then(left_distance.cmp(&right_distance))
+                            .then(
+                                left.primer_seq_id
+                                    .to_ascii_lowercase()
+                                    .cmp(&right.primer_seq_id.to_ascii_lowercase()),
+                            )
+                            .then(left.orientation.as_str().cmp(right.orientation.as_str()))
+                            .then(left.anneal_start_0based.cmp(&right.anneal_start_0based))
+                    });
+                    let recommended = covering_candidates[0];
+                    let (in_read_direction, three_prime_distance_bp) =
+                        Self::sequencing_primer_three_prime_distance_bp(
+                            recommended,
+                            locus_center_0based,
+                        );
+                    SequencingPrimerProblemGuidanceRow {
+                        problem_id: target.target_id.clone(),
+                        problem_kind: SequencingPrimerProblemKind::Target,
+                        problem_label: target.label.clone(),
+                        problem_summary: target.status.as_str().to_string(),
+                        recommended_primer_seq_id: Some(recommended.primer_seq_id.clone()),
+                        recommended_primer_label: Some(recommended.primer_label.clone()),
+                        recommended_orientation: Some(recommended.orientation),
+                        recommended_read_span_start_0based: Some(
+                            recommended.predicted_read_span_start_0based,
+                        ),
+                        recommended_read_span_end_0based_exclusive: Some(
+                            recommended.predicted_read_span_end_0based_exclusive,
+                        ),
+                        recommended_three_prime_distance_bp: Some(three_prime_distance_bp),
+                        recommended_in_read_direction: Some(in_read_direction),
+                        recommended_problem_target_count: recommended
+                            .covered_problem_target_ids
+                            .len(),
+                        recommended_problem_variant_count: recommended
+                            .covered_problem_variant_ids
+                            .len(),
+                        candidate_count,
+                        reason: Self::sequencing_primer_guidance_reason(
+                            candidate_count,
+                            in_read_direction,
+                            three_prime_distance_bp,
+                            recommended.covered_problem_target_ids.len(),
+                            recommended.covered_problem_variant_ids.len(),
+                        ),
+                    }
+                };
+                problem_guidance.push(recommendation);
+            }
+            for variant in &report.variants {
+                if matches!(
+                    variant.classification,
+                    SequencingConfirmationVariantClassification::ExpectedMatch
+                        | SequencingConfirmationVariantClassification::IntendedEditConfirmed
+                ) {
+                    continue;
+                }
+                let locus_center_0based = Self::sequencing_primer_problem_center(
+                    variant.start_0based,
+                    variant.end_0based_exclusive,
+                );
+                let mut covering_candidates = suggestions
+                    .iter()
+                    .filter(|row| {
+                        row.covered_problem_variant_ids
+                            .iter()
+                            .any(|id| id.eq_ignore_ascii_case(&variant.variant_id))
+                    })
+                    .collect::<Vec<_>>();
+                let candidate_count = covering_candidates.len();
+                let recommendation = if covering_candidates.is_empty() {
+                    SequencingPrimerProblemGuidanceRow {
+                        problem_id: variant.variant_id.clone(),
+                        problem_kind: SequencingPrimerProblemKind::Variant,
+                        problem_label: variant.label.clone(),
+                        problem_summary: variant.classification.as_str().to_string(),
+                        recommended_primer_seq_id: None,
+                        recommended_primer_label: None,
+                        recommended_orientation: None,
+                        recommended_read_span_start_0based: None,
+                        recommended_read_span_end_0based_exclusive: None,
+                        recommended_three_prime_distance_bp: None,
+                        recommended_in_read_direction: None,
+                        recommended_problem_target_count: 0,
+                        recommended_problem_variant_count: 0,
+                        candidate_count,
+                        reason: "No existing primer overlay covered this unresolved variant locus."
+                            .to_string(),
+                    }
+                } else {
+                    covering_candidates.sort_by(|left, right| {
+                        let (left_in_direction, left_distance) =
+                            Self::sequencing_primer_three_prime_distance_bp(
+                                left,
+                                locus_center_0based,
+                            );
+                        let (right_in_direction, right_distance) =
+                            Self::sequencing_primer_three_prime_distance_bp(
+                                right,
+                                locus_center_0based,
+                            );
+                        Self::sequencing_primer_guidance_penalty(left_in_direction, left_distance)
+                            .cmp(&Self::sequencing_primer_guidance_penalty(
+                                right_in_direction,
+                                right_distance,
+                            ))
+                            .then(
+                                (right.covered_problem_target_ids.len()
+                                    + right.covered_problem_variant_ids.len())
+                                .cmp(
+                                    &(left.covered_problem_target_ids.len()
+                                        + left.covered_problem_variant_ids.len()),
+                                ),
+                            )
+                            .then(left_distance.cmp(&right_distance))
+                            .then(
+                                left.primer_seq_id
+                                    .to_ascii_lowercase()
+                                    .cmp(&right.primer_seq_id.to_ascii_lowercase()),
+                            )
+                            .then(left.orientation.as_str().cmp(right.orientation.as_str()))
+                            .then(left.anneal_start_0based.cmp(&right.anneal_start_0based))
+                    });
+                    let recommended = covering_candidates[0];
+                    let (in_read_direction, three_prime_distance_bp) =
+                        Self::sequencing_primer_three_prime_distance_bp(
+                            recommended,
+                            locus_center_0based,
+                        );
+                    SequencingPrimerProblemGuidanceRow {
+                        problem_id: variant.variant_id.clone(),
+                        problem_kind: SequencingPrimerProblemKind::Variant,
+                        problem_label: variant.label.clone(),
+                        problem_summary: variant.classification.as_str().to_string(),
+                        recommended_primer_seq_id: Some(recommended.primer_seq_id.clone()),
+                        recommended_primer_label: Some(recommended.primer_label.clone()),
+                        recommended_orientation: Some(recommended.orientation),
+                        recommended_read_span_start_0based: Some(
+                            recommended.predicted_read_span_start_0based,
+                        ),
+                        recommended_read_span_end_0based_exclusive: Some(
+                            recommended.predicted_read_span_end_0based_exclusive,
+                        ),
+                        recommended_three_prime_distance_bp: Some(three_prime_distance_bp),
+                        recommended_in_read_direction: Some(in_read_direction),
+                        recommended_problem_target_count: recommended
+                            .covered_problem_target_ids
+                            .len(),
+                        recommended_problem_variant_count: recommended
+                            .covered_problem_variant_ids
+                            .len(),
+                        candidate_count,
+                        reason: Self::sequencing_primer_guidance_reason(
+                            candidate_count,
+                            in_read_direction,
+                            three_prime_distance_bp,
+                            recommended.covered_problem_target_ids.len(),
+                            recommended.covered_problem_variant_ids.len(),
+                        ),
+                    }
+                };
+                problem_guidance.push(recommendation);
+            }
+        }
         Ok(SequencingPrimerOverlayReport {
             schema: SEQUENCING_PRIMER_OVERLAY_REPORT_SCHEMA.to_string(),
             expected_seq_id: expected_seq_id.to_string(),
@@ -679,6 +992,8 @@ impl GentleEngine {
                 .collect(),
             suggestion_count: suggestions.len(),
             suggestions,
+            problem_guidance_count: problem_guidance.len(),
+            problem_guidance,
         })
     }
 

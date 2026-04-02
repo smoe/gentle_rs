@@ -2586,6 +2586,9 @@ Repeated multi-tool gaps to prioritize:
          report without adding a second logic path
        - GUI specialist can suggest overlays from already-loaded primer
          sequence ids and annotate coverage against the selected saved report
+       - unresolved targets and problem-variant loci now receive shared
+         recommendation rows naming the best existing primer hit to clarify
+         them next
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack
@@ -2603,6 +2606,8 @@ Repeated multi-tool gaps to prioritize:
        - shipped through engine/shell/CLI/GUI
      - sequencing-primer suggestion overlays fifth
        - shipped through engine/shell/CLI/GUI
+       - existing-primer ranking for unresolved loci shipped as part of the
+         same report path
      - next follow-up:
        - fuller whole-trace browsing remains optional future polish, not a
          release blocker for confirmation itself

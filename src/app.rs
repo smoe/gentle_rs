@@ -37061,7 +37061,10 @@ mod tests {
 
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new(title)
-            .id(egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())))
+            .id(egui::Id::new((
+                "hosted_help_window",
+                GENtleApp::help_viewport_id(),
+            )))
             .show(&ctx, |ui| {
                 ui.label("stable hosted help window");
             });
@@ -37157,15 +37160,14 @@ mod tests {
             app.help_tutorial_title
                 .contains("Gibson Arrangements Tutorial")
         );
-        assert!(
-            app.help_tutorial_markdown
-                .contains("serial arrangement")
-        );
+        assert!(app.help_tutorial_markdown.contains("serial arrangement"));
         let engine = app.engine.read().unwrap();
-        assert!(engine
-            .state()
-            .sequences
-            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+        assert!(
+            engine
+                .state()
+                .sequences
+                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
+        );
         assert_eq!(engine.state().container_state.arrangements.len(), 1);
     }
 

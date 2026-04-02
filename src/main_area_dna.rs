@@ -27953,6 +27953,8 @@ impl MainAreaDna {
                         ui.separator();
                         ui.small(format!("suggestions={}", report.suggestion_count));
                         ui.separator();
+                        ui.small(format!("guidance={}", report.problem_guidance_count));
+                        ui.separator();
                         ui.small(format!(
                             "min_3prime_anneal_bp={}",
                             report.min_3prime_anneal_bp
@@ -27968,6 +27970,48 @@ impl MainAreaDna {
                             report.confirmation_report_id.as_deref().unwrap_or("-")
                         ));
                     });
+                    if !report.problem_guidance.is_empty() {
+                        ui.separator();
+                        ui.label(egui::RichText::new("Recommended Next Primers").strong());
+                        egui::Grid::new((
+                            "seq_confirm_primer_guidance_grid",
+                            self.panel_scope_key(),
+                        ))
+                        .num_columns(7)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Problem");
+                            ui.strong("Kind");
+                            ui.strong("State");
+                            ui.strong("Recommended primer");
+                            ui.strong("Orientation");
+                            ui.strong("3' dist");
+                            ui.strong("Reason");
+                            ui.end_row();
+                            for row in &report.problem_guidance {
+                                ui.label(&row.problem_label);
+                                ui.small(row.problem_kind.as_str());
+                                ui.small(&row.problem_summary);
+                                ui.small(
+                                    row.recommended_primer_seq_id
+                                        .as_deref()
+                                        .unwrap_or("-"),
+                                );
+                                ui.small(
+                                    row.recommended_orientation
+                                        .map(|value| value.as_str())
+                                        .unwrap_or("-"),
+                                );
+                                ui.small(
+                                    row.recommended_three_prime_distance_bp
+                                        .map(|value| value.to_string())
+                                        .unwrap_or_else(|| "-".to_string()),
+                                );
+                                ui.small(&row.reason);
+                                ui.end_row();
+                            }
+                        });
+                    }
                     if report.suggestions.is_empty() {
                         ui.small(
                             "No primer overlays matched the current expected construct with the requested exact 3' anneal length.",
