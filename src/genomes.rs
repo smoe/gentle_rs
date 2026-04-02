@@ -7270,6 +7270,21 @@ fn chromosome_lookup_candidates(raw: &str) -> Vec<String> {
     candidates.into_iter().collect()
 }
 
+fn chromosome_match_tokens(raw: &str) -> BTreeSet<String> {
+    let mut tokens = BTreeSet::new();
+    let normalized = normalize_chromosome_token(raw);
+    if !normalized.is_empty() {
+        tokens.insert(normalized);
+    }
+    if let Some(alias) = accession_style_chromosome_alias(raw) {
+        let alias_normalized = normalize_chromosome_token(&alias);
+        if !alias_normalized.is_empty() {
+            tokens.insert(alias_normalized);
+        }
+    }
+    tokens
+}
+
 fn accession_style_chromosome_alias(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -7297,20 +7312,11 @@ fn chromosome_names_match(expected: &str, actual: &str) -> bool {
     if expected.eq_ignore_ascii_case(actual) {
         return true;
     }
-    let expected_normalized = normalize_chromosome_token(expected);
-    let actual_normalized = normalize_chromosome_token(actual);
-    if expected_normalized == actual_normalized {
-        return true;
-    }
-    accession_style_chromosome_alias(expected)
-        .into_iter()
-        .map(|alias| normalize_chromosome_token(&alias))
-        .chain(
-            accession_style_chromosome_alias(actual)
-                .into_iter()
-                .map(|alias| normalize_chromosome_token(&alias)),
-        )
-        .any(|alias| alias == expected_normalized || alias == actual_normalized)
+    let expected_tokens = chromosome_match_tokens(expected);
+    let actual_tokens = chromosome_match_tokens(actual);
+    expected_tokens
+        .iter()
+        .any(|token| actual_tokens.contains(token))
 }
 
 fn pick_gene_name(attrs: &HashMap<String, String>) -> Option<String> {
@@ -8236,6 +8242,7 @@ mod tests {
         assert!(chromosome_names_match("17", "NC_000017.11"));
         assert!(chromosome_names_match("chr17", "NC_000017.11"));
         assert!(!chromosome_names_match("17", "NC_000018.11"));
+        assert!(!chromosome_names_match("1", "NC_000016.10"));
     }
 
     #[test]

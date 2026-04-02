@@ -7115,22 +7115,30 @@ impl GentleEngine {
         })
     }
 
+    fn genome_chromosome_match_tokens(raw: &str) -> std::collections::BTreeSet<String> {
+        let mut tokens = std::collections::BTreeSet::new();
+        let normalized = Self::normalize_genome_chromosome_token(raw);
+        if !normalized.is_empty() {
+            tokens.insert(normalized);
+        }
+        if let Some(alias) = Self::genome_accession_chromosome_alias(raw) {
+            let alias_normalized = Self::normalize_genome_chromosome_token(&alias);
+            if !alias_normalized.is_empty() {
+                tokens.insert(alias_normalized);
+            }
+        }
+        tokens
+    }
+
     fn genome_chromosome_matches(left: &str, right: &str) -> bool {
         let left_trimmed = left.trim();
         let right_trimmed = right.trim();
         if left_trimmed.eq_ignore_ascii_case(right_trimmed) {
             return true;
         }
-        let left_normalized = Self::normalize_genome_chromosome_token(left_trimmed);
-        let right_normalized = Self::normalize_genome_chromosome_token(right_trimmed);
-        if left_normalized == right_normalized {
-            return true;
-        }
-        Self::genome_accession_chromosome_alias(left_trimmed)
-            .into_iter()
-            .chain(Self::genome_accession_chromosome_alias(right_trimmed))
-            .map(|alias| Self::normalize_genome_chromosome_token(&alias))
-            .any(|alias| alias == left_normalized || alias == right_normalized)
+        let left_tokens = Self::genome_chromosome_match_tokens(left_trimmed);
+        let right_tokens = Self::genome_chromosome_match_tokens(right_trimmed);
+        left_tokens.iter().any(|token| right_tokens.contains(token))
     }
 
     fn resolve_extract_region_annotation_scope(

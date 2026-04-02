@@ -4109,6 +4109,10 @@ fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_con
         "chrM",
         "NC_012920.1"
     ));
+    assert!(!GentleEngine::genome_chromosome_matches(
+        "1",
+        "NC_000016.10"
+    ));
 }
 
 #[test]
