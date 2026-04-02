@@ -1934,6 +1934,7 @@ Operation progress/cancellation semantics:
   - `Tfbs`
   - `GenomePrepare`
   - `GenomeTrackImport`
+  - `DbSnpFetch`
   - `RnaReadInterpret`
 - Current cancellation support:
   - genome preparation supports cooperative cancellation plus optional
@@ -1941,6 +1942,10 @@ Operation progress/cancellation semantics:
     outcomes.
   - genome-track imports support cooperative cancellation and return partial
     import warnings.
+  - dbSNP fetch currently emits staged progress events (`validate_input`,
+    `inspect_prepared_genome`, `contact_server`, `wait_response`,
+    `parse_response`, `resolve_placement`, `extract_region`,
+    `attach_variant_marker`) but does not yet expose cooperative cancellation.
   - RNA-read interpretation uses cooperative callback checks while emitting
     periodic progress snapshots (including seed-confirmation histogram bins).
 

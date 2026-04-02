@@ -64,14 +64,15 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
-        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DisplaySettings, DisplayTarget, Engine, EngineError,
-        ErrorCode, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine,
-        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, OpResult, Operation,
-        OperationProgress, PlanningObjective, PlanningProfile, PlanningProfileScope,
-        PlanningSuggestionStatus, ProjectState, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
+        DisplayTarget, Engine, EngineError, ErrorCode, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
+        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RestrictionEnzymeDisplayMode,
+        RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
@@ -157,6 +158,7 @@ const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catal
 const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
+const DEFAULT_DBSNP_TUTORIAL_RS_ID: &str = "rs9923231";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
@@ -829,6 +831,7 @@ pub struct GENtleApp {
     dbsnp_flank_bp: String,
     dbsnp_output_id: String,
     dbsnp_status: String,
+    dbsnp_fetch_task: Option<DbSnpFetchTask>,
     genome_blast_source_mode: GenomeBlastSourceMode,
     genome_blast_query_manual: String,
     genome_blast_query_seq_id: String,
@@ -1506,6 +1509,16 @@ enum GenomeTrackImportTaskMessage {
         job_id: u64,
         result: Result<OpResult, EngineError>,
     },
+}
+
+struct DbSnpFetchTask {
+    started: Instant,
+    receiver: mpsc::Receiver<DbSnpFetchTaskMessage>,
+}
+
+enum DbSnpFetchTaskMessage {
+    Progress(DbSnpFetchProgress),
+    Done(Result<OpResult, EngineError>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2214,11 +2227,12 @@ impl Default for GENtleApp {
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
             genbank_status: String::new(),
-            dbsnp_rs_id: String::new(),
+            dbsnp_rs_id: DEFAULT_DBSNP_TUTORIAL_RS_ID.to_string(),
             dbsnp_genome_id: "Human GRCh38 Ensembl 113".to_string(),
             dbsnp_flank_bp: "3000".to_string(),
             dbsnp_output_id: String::new(),
             dbsnp_status: String::new(),
+            dbsnp_fetch_task: None,
             genome_blast_source_mode: GenomeBlastSourceMode::Manual,
             genome_blast_query_manual: String::new(),
             genome_blast_query_seq_id: String::new(),
@@ -7456,6 +7470,9 @@ Error: `{err}`"
     }
 
     fn seed_dbsnp_defaults_if_needed(&mut self) {
+        if self.dbsnp_rs_id.trim().is_empty() {
+            self.dbsnp_rs_id = DEFAULT_DBSNP_TUTORIAL_RS_ID.to_string();
+        }
         if self.dbsnp_genome_id.trim().is_empty() {
             if self.genome_id.trim().is_empty() {
                 self.dbsnp_genome_id = "Human GRCh38 Ensembl 113".to_string();
@@ -9585,6 +9602,74 @@ Error: `{err}`"
 
     fn format_dbsnp_fetch_status(result: &OpResult) -> String {
         Self::format_extract_region_like_status("dbSNP fetch: ok", result)
+    }
+
+    fn format_dbsnp_progress_status(progress: &DbSnpFetchProgress) -> String {
+        match progress.stage {
+            DbSnpFetchStage::ValidateInput => progress.detail.clone(),
+            DbSnpFetchStage::InspectPreparedGenome => progress.detail.clone(),
+            DbSnpFetchStage::ContactServer => progress.detail.clone(),
+            DbSnpFetchStage::WaitResponse => progress.detail.clone(),
+            DbSnpFetchStage::ParseResponse => progress.detail.clone(),
+            DbSnpFetchStage::ResolvePlacement => progress.detail.clone(),
+            DbSnpFetchStage::ExtractRegion => progress.detail.clone(),
+            DbSnpFetchStage::AttachVariantMarker => progress.detail.clone(),
+        }
+    }
+
+    fn poll_dbsnp_fetch_task(&mut self, ctx: &egui::Context) {
+        if self.dbsnp_fetch_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<Result<OpResult, EngineError>> = None;
+        if let Some(task) = &self.dbsnp_fetch_task {
+            const MAX_MESSAGES_PER_TICK: usize = 64;
+            for _ in 0..MAX_MESSAGES_PER_TICK {
+                match task.receiver.try_recv() {
+                    Ok(DbSnpFetchTaskMessage::Progress(progress)) => {
+                        self.dbsnp_status = Self::format_dbsnp_progress_status(&progress);
+                    }
+                    Ok(DbSnpFetchTaskMessage::Done(result)) => {
+                        done = Some(result);
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        done = Some(Err(EngineError {
+                            code: ErrorCode::Io,
+                            message: "dbSNP fetch worker disconnected".to_string(),
+                        }));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(result) = done {
+            let elapsed = self
+                .dbsnp_fetch_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            self.dbsnp_fetch_task = None;
+            match result {
+                Ok(result) => {
+                    for seq_id in &result.created_seq_ids {
+                        self.open_sequence_window(seq_id);
+                    }
+                    self.dbsnp_status = format!(
+                        "{}\ncompleted in {:.1}s",
+                        Self::format_dbsnp_fetch_status(&result),
+                        elapsed
+                    );
+                }
+                Err(err) => {
+                    self.dbsnp_status =
+                        format!("dbSNP fetch failed after {:.1}s: {}", elapsed, err.message);
+                }
+            }
+        }
     }
 
     fn collect_prepared_genome_inspections(
@@ -12141,7 +12226,10 @@ Error: `{err}`"
     }
 
     fn fetch_dbsnp_region_from_dialog(&mut self) {
-        self.seed_dbsnp_defaults_if_needed();
+        if self.dbsnp_fetch_task.is_some() {
+            self.dbsnp_status = "A dbSNP fetch is already running".to_string();
+            return;
+        }
         let rs_id = self.dbsnp_rs_id.trim().to_string();
         if rs_id.is_empty() {
             self.dbsnp_status = "dbSNP rs_id cannot be empty".to_string();
@@ -12165,8 +12253,8 @@ Error: `{err}`"
             }
         };
         let op = Operation::FetchDbSnpRegion {
-            rs_id,
-            genome_id,
+            rs_id: rs_id.clone(),
+            genome_id: genome_id.clone(),
             flank_bp: Some(flank_bp),
             output_id: Self::uniprot_optional_trimmed(&self.dbsnp_output_id),
             annotation_scope: Some(GenomeAnnotationScope::Full),
@@ -12174,18 +12262,29 @@ Error: `{err}`"
             catalog_path: self.dbsnp_catalog_path_opt(),
             cache_dir: self.dbsnp_cache_dir_opt(),
         };
-        let result = { self.engine.write().unwrap().apply(op) };
-        match result {
-            Ok(result) => {
-                for seq_id in &result.created_seq_ids {
-                    self.open_sequence_window(seq_id);
-                }
-                self.dbsnp_status = Self::format_dbsnp_fetch_status(&result);
-            }
-            Err(err) => {
-                self.dbsnp_status = format!("dbSNP fetch failed: {}", err.message);
-            }
-        }
+        let (tx, rx) = mpsc::channel::<DbSnpFetchTaskMessage>();
+        let engine = self.engine.clone();
+        self.dbsnp_status = format!(
+            "Starting dbSNP fetch for '{}' against '{}'",
+            rs_id, genome_id
+        );
+        self.dbsnp_fetch_task = Some(DbSnpFetchTask {
+            started: Instant::now(),
+            receiver: rx,
+        });
+        std::thread::spawn(move || {
+            let tx_progress = tx.clone();
+            let result = {
+                let mut guard = engine.write().expect("Engine lock poisoned");
+                guard.apply_with_progress(op, move |progress| {
+                    if let OperationProgress::DbSnpFetch(progress) = progress {
+                        let _ = tx_progress.send(DbSnpFetchTaskMessage::Progress(progress));
+                    }
+                    true
+                })
+            };
+            let _ = tx.send(DbSnpFetchTaskMessage::Done(result));
+        });
     }
 
     fn sort_uniprot_entries_recent(mut rows: Vec<UniprotEntrySummary>) -> Vec<UniprotEntrySummary> {
@@ -12398,49 +12497,62 @@ Error: `{err}`"
                 ui.small(
                     "Resolve one rsID through NCBI Variation, then extract +/- flank bp with full feature annotation from the selected prepared reference genome.",
                 );
-                ui.horizontal(|ui| {
-                    ui.label("rs_id");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.dbsnp_rs_id)
-                            .hint_text("rs9923231"),
-                    )
-                    .on_hover_text("dbSNP identifier such as rs9923231");
-                    ui.label("genome");
-                    ui.text_edit_singleline(&mut self.dbsnp_genome_id)
-                        .on_hover_text(
-                            "Prepared reference genome ID from the reference genome catalog",
-                        );
-                    if ui
-                        .button("Fetch Region")
-                        .on_hover_text(
-                            "Resolve the rsID and extract the annotated genomic interval",
+                let dbsnp_fetch_running = self.dbsnp_fetch_task.is_some();
+                ui.add_enabled_ui(!dbsnp_fetch_running, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("rs_id");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.dbsnp_rs_id)
+                                .hint_text(DEFAULT_DBSNP_TUTORIAL_RS_ID),
                         )
-                        .clicked()
-                    {
-                        self.fetch_dbsnp_region_from_dialog();
-                    }
+                        .on_hover_text("dbSNP identifier such as rs9923231");
+                        ui.label("genome");
+                        ui.text_edit_singleline(&mut self.dbsnp_genome_id)
+                            .on_hover_text(
+                                "Prepared reference genome ID from the reference genome catalog",
+                            );
+                        if ui
+                            .button("Fetch Region")
+                            .on_hover_text(
+                                "Resolve the rsID and extract the annotated genomic interval",
+                            )
+                            .clicked()
+                        {
+                            self.fetch_dbsnp_region_from_dialog();
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("flank_bp");
+                        ui.text_edit_singleline(&mut self.dbsnp_flank_bp).on_hover_text(
+                            "Bases to include on each side of the SNP (default 3000)",
+                        );
+                        ui.label("output_id");
+                        ui.text_edit_singleline(&mut self.dbsnp_output_id).on_hover_text(
+                            "Optional project sequence id override (auto-generated when empty)",
+                        );
+                    });
                 });
-                ui.small("Quick try: rs9923231 (VKORC1 warfarin-sensitivity locus)");
-                ui.horizontal(|ui| {
-                    ui.label("flank_bp");
-                    ui.text_edit_singleline(&mut self.dbsnp_flank_bp)
-                        .on_hover_text("Bases to include on each side of the SNP (default 3000)");
-                    ui.label("output_id");
-                    ui.text_edit_singleline(&mut self.dbsnp_output_id).on_hover_text(
-                        "Optional project sequence id override (auto-generated when empty)",
-                    );
-                });
+                ui.small(format!(
+                    "Quick try: {} (VKORC1 warfarin-sensitivity locus)",
+                    DEFAULT_DBSNP_TUTORIAL_RS_ID
+                ));
                 let catalog_label = self
                     .dbsnp_catalog_path_opt()
                     .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
                 let cache_label = self
                     .dbsnp_cache_dir_opt()
                     .unwrap_or_else(|| DEFAULT_GENOME_CACHE_DIR.to_string());
-                ui.small("Examples: rs9923231, rs334");
+                ui.small(format!("Examples: {}, rs334", DEFAULT_DBSNP_TUTORIAL_RS_ID));
                 ui.small(format!(
                     "Uses reference genome catalog '{}' and cache '{}'.",
                     catalog_label, cache_label
                 ));
+                if dbsnp_fetch_running {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        ui.label("dbSNP fetch in progress...");
+                    });
+                }
                 if !self.dbsnp_status.trim().is_empty() {
                     ui.separator();
                     ui.monospace(self.dbsnp_status.clone());
@@ -32657,6 +32769,7 @@ impl GENtleApp {
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
+            self.poll_dbsnp_fetch_task(ctx);
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
@@ -32767,7 +32880,8 @@ mod tests {
         APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
         BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
         CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
-        DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH, EngineError,
+        DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DbSnpFetchTask, DbSnpFetchTaskMessage, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage,
         GenomeTrackImportTask, GenomeTrackImportTaskMessage, GibsonUiInsertOrientation,
@@ -32784,12 +32898,13 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, DotplotMode, Engine,
-            FlexibilityModel, GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode,
-            GentleEngine, LineageEdge, LineageNode, LinearSequenceLetterLayoutMode, OpResult,
-            Operation, ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
-            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
-            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
+            BlastHitFeatureInput, BlastInvocationProvenance, DbSnpFetchProgress, DbSnpFetchStage,
+            DisplaySettings, DotplotMode, Engine, FlexibilityModel,
+            GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
+            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
+            RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
+            SequenceOrigin,
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
@@ -37197,6 +37312,46 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn open_genbank_dialog_seeds_dbsnp_tutorial_defaults() {
+        let mut app = GENtleApp::default();
+        app.dbsnp_rs_id.clear();
+        app.dbsnp_genome_id.clear();
+        app.dbsnp_flank_bp.clear();
+
+        app.open_genbank_dialog();
+
+        assert_eq!(app.dbsnp_rs_id, DEFAULT_DBSNP_TUTORIAL_RS_ID);
+        assert_eq!(app.dbsnp_genome_id, "Human GRCh38 Ensembl 113");
+        assert_eq!(app.dbsnp_flank_bp, "3000");
+    }
+
+    #[test]
+    fn poll_dbsnp_fetch_task_updates_runtime_status_from_worker_messages() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<DbSnpFetchTaskMessage>();
+        app.dbsnp_fetch_task = Some(DbSnpFetchTask {
+            started: Instant::now(),
+            receiver: rx,
+        });
+        tx.send(DbSnpFetchTaskMessage::Progress(DbSnpFetchProgress {
+            rs_id: "rs123".to_string(),
+            genome_id: "ToyGenome".to_string(),
+            stage: DbSnpFetchStage::WaitResponse,
+            detail: "Waiting for dbSNP response from 'file:///tmp/mock/123.json'".to_string(),
+        }))
+        .expect("send dbsnp progress");
+
+        app.poll_dbsnp_fetch_task(&egui::Context::default());
+
+        assert!(
+            app.dbsnp_status.contains("Waiting for dbSNP response"),
+            "status was: {}",
+            app.dbsnp_status
+        );
+        assert!(app.dbsnp_fetch_task.is_some());
+    }
+
+    #[test]
     fn dbsnp_dialog_fetch_extracts_region_and_opens_window() {
         let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
         let mut app = GENtleApp::default();
@@ -37277,6 +37432,19 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         app.dbsnp_flank_bp = "2".to_string();
         app.dbsnp_output_id = "rs123_gui_fetch".to_string();
         app.fetch_dbsnp_region_from_dialog();
+        assert!(
+            app.dbsnp_status.contains("Starting dbSNP fetch"),
+            "status was: {}",
+            app.dbsnp_status
+        );
+        for _ in 0..40 {
+            if app.dbsnp_fetch_task.is_none() {
+                break;
+            }
+            app.poll_dbsnp_fetch_task(&egui::Context::default());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(app.dbsnp_fetch_task.is_none(), "dbSNP task did not finish");
 
         let state = app.engine.read().unwrap().state().clone();
         let extracted = state

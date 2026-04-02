@@ -216,7 +216,7 @@ impl RenderDnaCircular {
     fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
         self.restriction_enzyme_sites
             .iter()
-            .find(|rep| rep.area.contains(pos))
+            .find(|rep| rep.contains(pos))
             .cloned()
     }
 
@@ -1317,10 +1317,10 @@ impl RenderDnaCircular {
             }
             last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
             self.restriction_enzyme_sites
-                .push(RestrictionEnzymePosition {
-                    area: last_rect.to_owned(),
-                    key: restriction_enzyme_key.to_owned(),
-                });
+                .push(RestrictionEnzymePosition::new(
+                    last_rect.to_owned(),
+                    restriction_enzyme_key.to_owned(),
+                ));
         }
     }
 

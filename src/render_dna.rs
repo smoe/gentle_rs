@@ -20,15 +20,40 @@ use std::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct RestrictionEnzymePosition {
     pub area: Rect,
+    pub hit_areas: Vec<Rect>,
     pub key: RestrictionEnzymeKey,
 }
 
 impl RestrictionEnzymePosition {
+    pub fn new(area: Rect, key: RestrictionEnzymeKey) -> Self {
+        Self {
+            area,
+            hit_areas: vec![area],
+            key,
+        }
+    }
+
+    pub fn with_hit_areas(area: Rect, key: RestrictionEnzymeKey, hit_areas: Vec<Rect>) -> Self {
+        let hit_areas = if hit_areas.is_empty() {
+            vec![area]
+        } else {
+            hit_areas
+        };
+        Self {
+            area,
+            hit_areas,
+            key,
+        }
+    }
+
     pub fn key(&self) -> &RestrictionEnzymeKey {
         &self.key
     }
     pub fn area(&self) -> Rect {
         self.area
+    }
+    pub fn contains(&self, pos: egui::Pos2) -> bool {
+        self.hit_areas.iter().any(|rect| rect.contains(pos))
     }
 }
 

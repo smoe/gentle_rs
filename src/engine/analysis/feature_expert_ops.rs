@@ -53,7 +53,7 @@ impl GentleEngine {
         Ok((format!("rs{numeric}"), numeric.to_string()))
     }
 
-    fn dbsnp_refsnp_url(refsnp_id: &str) -> String {
+    pub(super) fn dbsnp_refsnp_url(refsnp_id: &str) -> String {
         let template = std::env::var(DBSNP_REFSNP_ENV_VAR)
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -164,9 +164,9 @@ impl GentleEngine {
         symbols.into_iter().collect()
     }
 
-    pub(super) fn fetch_dbsnp_refsnp_json(
+    pub(super) fn fetch_dbsnp_refsnp_text(
         refsnp_id: &str,
-    ) -> Result<(String, serde_json::Value), EngineError> {
+    ) -> Result<(String, String), EngineError> {
         let source_url = Self::dbsnp_refsnp_url(refsnp_id);
         let text = if let Some(path) = source_url.strip_prefix("file://") {
             std::fs::read_to_string(path).map_err(|e| EngineError {
@@ -217,6 +217,13 @@ impl GentleEngine {
                 ),
             })?
         };
+        Ok((source_url, text))
+    }
+
+    pub(super) fn parse_dbsnp_refsnp_json(
+        refsnp_id: &str,
+        text: &str,
+    ) -> Result<serde_json::Value, EngineError> {
         let document =
             serde_json::from_str::<serde_json::Value>(&text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
@@ -243,7 +250,7 @@ impl GentleEngine {
                 ),
             });
         }
-        Ok((source_url, document))
+        Ok(document)
     }
 
     pub(super) fn resolve_dbsnp_primary_placement(

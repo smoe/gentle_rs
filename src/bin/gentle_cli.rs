@@ -3,9 +3,9 @@
 use gentle::{
     about,
     engine::{
-        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress, ProjectState,
-        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
+        DbSnpFetchProgress, Engine, EngineStateSummary, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
+        OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -800,6 +800,7 @@ struct ProgressPrinter {
     last_genome_phase: Option<String>,
     last_genome_percent_tenths: Option<i64>,
     last_genome_bytes_bucket: Option<u64>,
+    last_dbsnp_stage: Option<String>,
 }
 
 impl ProgressPrinter {
@@ -811,6 +812,7 @@ impl ProgressPrinter {
             last_genome_phase: None,
             last_genome_percent_tenths: None,
             last_genome_bytes_bucket: None,
+            last_dbsnp_stage: None,
         }
     }
 
@@ -928,11 +930,23 @@ impl ProgressPrinter {
         }
     }
 
+    fn on_dbsnp_fetch_progress(&mut self, p: DbSnpFetchProgress) {
+        let stage = p.stage.as_str().to_string();
+        if self.last_dbsnp_stage.as_deref() != Some(stage.as_str()) {
+            self.last_dbsnp_stage = Some(stage.clone());
+            self.print_line(&format!(
+                "progress dbsnp rs_id={} genome={} stage={} detail={}",
+                p.rs_id, p.genome_id, stage, p.detail
+            ));
+        }
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
+            OperationProgress::DbSnpFetch(p) => self.on_dbsnp_fetch_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
         }
     }

@@ -3482,6 +3482,21 @@ impl GentleEngine {
                     });
                 }
                 let (display_rs_id, refsnp_id) = Self::normalize_dbsnp_rs_id(&rs_id)?;
+                let mut emit_progress = |stage: DbSnpFetchStage, detail: String| {
+                    let _ = on_progress(OperationProgress::DbSnpFetch(DbSnpFetchProgress {
+                        rs_id: display_rs_id.clone(),
+                        genome_id: genome_id.clone(),
+                        stage,
+                        detail,
+                    }));
+                };
+                emit_progress(
+                    DbSnpFetchStage::ValidateInput,
+                    format!(
+                        "Validated dbSNP request '{}' for prepared genome '{}'",
+                        display_rs_id, genome_id
+                    ),
+                );
                 let resolved_catalog_path =
                     catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
                 let catalog =
@@ -3494,6 +3509,13 @@ impl GentleEngine {
                             ),
                         }
                     })?;
+                emit_progress(
+                    DbSnpFetchStage::InspectPreparedGenome,
+                    format!(
+                        "Inspecting prepared genome '{}' via catalog '{}'",
+                        genome_id, resolved_catalog_path
+                    ),
+                );
                 let compatibility = catalog
                     .inspect_prepared_genome_compatibility(&genome_id, cache_dir.as_deref())
                     .map_err(|e| EngineError {
@@ -3503,7 +3525,32 @@ impl GentleEngine {
                             genome_id, e
                         ),
                     })?;
-                let (source_url, document) = Self::fetch_dbsnp_refsnp_json(&refsnp_id)?;
+                let source_url = Self::dbsnp_refsnp_url(&refsnp_id);
+                emit_progress(
+                    DbSnpFetchStage::ContactServer,
+                    format!(
+                        "Contacting NCBI Variation refSNP service at '{}' for '{}'",
+                        source_url, display_rs_id
+                    ),
+                );
+                emit_progress(
+                    DbSnpFetchStage::WaitResponse,
+                    format!("Waiting for dbSNP response from '{}'", source_url),
+                );
+                let (_source_url_from_fetch, raw_document) =
+                    Self::fetch_dbsnp_refsnp_text(&refsnp_id)?;
+                emit_progress(
+                    DbSnpFetchStage::ParseResponse,
+                    format!("Parsing dbSNP response for '{}'", display_rs_id),
+                );
+                let document = Self::parse_dbsnp_refsnp_json(&refsnp_id, &raw_document)?;
+                emit_progress(
+                    DbSnpFetchStage::ResolvePlacement,
+                    format!(
+                        "Resolving genomic placement for '{}' against genome '{}'",
+                        display_rs_id, genome_id
+                    ),
+                );
                 let placement = Self::resolve_dbsnp_primary_placement(
                     &document,
                     &display_rs_id,
@@ -3554,6 +3601,13 @@ impl GentleEngine {
                 } else {
                     format!(" [genes={}]", placement.gene_symbols.join(", "))
                 };
+                emit_progress(
+                    DbSnpFetchStage::ExtractRegion,
+                    format!(
+                        "Extracting annotated slice {}:{}-{} from '{}'",
+                        chromosome_message_label, start_1based, end_1based, genome_id
+                    ),
+                );
                 result.messages.push(format!(
                     "Resolved dbSNP '{}' from '{}' to {}:{} (assembly={}) and extracted +/-{} bp on '{}'{}",
                     placement.rs_id,
@@ -3582,6 +3636,14 @@ impl GentleEngine {
                 let local_start_0based = placement.position_1based.saturating_sub(start_1based);
                 if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
                     if local_start_0based < dna.len() {
+                        emit_progress(
+                            DbSnpFetchStage::AttachVariantMarker,
+                            format!(
+                                "Attaching local rs marker '{}' at sequence position {}",
+                                display_rs_id,
+                                local_start_0based.saturating_add(1)
+                            ),
+                        );
                         dna.features_mut()
                             .push(Self::build_dbsnp_variant_marker_feature(
                                 &display_rs_id,

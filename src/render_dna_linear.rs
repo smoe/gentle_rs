@@ -1268,7 +1268,7 @@ impl RenderDnaLinear {
     fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
         self.restriction_enzyme_sites
             .iter()
-            .find(|site| site.area.contains(pos))
+            .find(|site| site.contains(pos))
             .cloned()
     }
 
@@ -2578,7 +2578,7 @@ impl RenderDnaLinear {
                 Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),
                 Pos2::new(top_x.max(bottom_x) + 3.0, y + 9.0),
             );
-            let area = if detail.show_restriction_labels {
+            let (area, hit_areas) = if detail.show_restriction_labels {
                 let label = names.join(",");
                 let label_width = Self::estimate_label_width(&label);
                 let label_left = center_x - label_width / 2.0;
@@ -2609,15 +2609,17 @@ impl RenderDnaLinear {
                     },
                     label_color,
                 );
-                text_rect.expand(2.0).union(tick_rect)
+                let label_rect = text_rect.expand(2.0);
+                (label_rect.union(tick_rect), vec![tick_rect, label_rect])
             } else {
-                tick_rect
+                (tick_rect, vec![tick_rect])
             };
             self.restriction_enzyme_sites
-                .push(RestrictionEnzymePosition {
+                .push(RestrictionEnzymePosition::with_hit_areas(
                     area,
-                    key: key.clone(),
-                });
+                    key.clone(),
+                    hit_areas,
+                ));
         }
     }
 
@@ -2652,6 +2654,7 @@ impl RenderDnaLinear {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::enzymes::active_restriction_enzymes;
     use gb_io::seq::Location;
 
     fn make_test_feature(location: Location) -> Feature {
@@ -2684,6 +2687,18 @@ mod tests {
         let dna = Arc::new(RwLock::new(
             DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA"),
         ));
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        let mut renderer = RenderDnaLinear::new(dna, display);
+        renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
+        renderer
+    }
+
+    fn restriction_ready_renderer(sequence: &str) -> RenderDnaLinear {
+        let mut dna = DNAsequence::from_sequence(sequence).expect("valid DNA");
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        dna.set_max_restriction_enzyme_sites(None);
+        dna.update_computed_features();
+        let dna = Arc::new(RwLock::new(dna));
         let display = Arc::new(RwLock::new(DnaDisplay::default()));
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
@@ -3073,6 +3088,38 @@ mod tests {
         assert!(feature.rect.width() >= VARIATION_MIN_WIDTH_PX - 0.25);
         let expected_x = renderer.bp_to_x(3_000, viewport);
         assert!((feature.rect.center().x - expected_x).abs() <= VARIATION_MIN_WIDTH_PX);
+    }
+
+    #[test]
+    fn restriction_label_hover_hit_area_excludes_gap_between_label_and_tick() {
+        let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTT");
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+            renderer.render(ui, renderer.area);
+        });
+        let _ = ctx.end_pass();
+
+        let site = renderer
+            .restriction_enzyme_sites
+            .first()
+            .expect("restriction site")
+            .clone();
+        assert_eq!(site.hit_areas.len(), 2);
+        let mut hit_areas = site.hit_areas.clone();
+        hit_areas.sort_by(|left, right| left.center().y.total_cmp(&right.center().y));
+        let top = hit_areas[0];
+        let bottom = hit_areas[1];
+        assert!(top.bottom() < bottom.top(), "expected a vertical gap");
+        let gap_point = Pos2::new(top.center().x, (top.bottom() + bottom.top()) * 0.5);
+        assert!(
+            site.area.contains(gap_point),
+            "legacy union area should span the gap"
+        );
+        assert!(
+            !site.contains(gap_point),
+            "separate restriction hit areas should not treat the inter-label gap as hovered"
+        );
     }
 
     #[test]

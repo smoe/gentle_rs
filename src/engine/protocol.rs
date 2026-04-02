@@ -439,11 +439,49 @@ pub struct GenomeAnnotationProjectionTelemetry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DbSnpFetchStage {
+    ValidateInput,
+    InspectPreparedGenome,
+    ContactServer,
+    WaitResponse,
+    ParseResponse,
+    ResolvePlacement,
+    ExtractRegion,
+    AttachVariantMarker,
+}
+
+impl DbSnpFetchStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ValidateInput => "validate_input",
+            Self::InspectPreparedGenome => "inspect_prepared_genome",
+            Self::ContactServer => "contact_server",
+            Self::WaitResponse => "wait_response",
+            Self::ParseResponse => "parse_response",
+            Self::ResolvePlacement => "resolve_placement",
+            Self::ExtractRegion => "extract_region",
+            Self::AttachVariantMarker => "attach_variant_marker",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Progress snapshot for shared dbSNP locus resolution and extraction.
+pub struct DbSnpFetchProgress {
+    pub rs_id: String,
+    pub genome_id: String,
+    pub stage: DbSnpFetchStage,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
     GenomeTrackImport(GenomeTrackImportProgress),
+    DbSnpFetch(DbSnpFetchProgress),
     RnaReadInterpret(RnaReadInterpretProgress),
 }
 

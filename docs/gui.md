@@ -3014,8 +3014,13 @@ NCBI retrieval behavior:
   settings and defaults to full annotation transfer (`annotation_scope=full`,
   `max_annotation_features=0`) so tutorial/reporter workflows can start from a
   fully annotated local locus slice.
-- The rsID entry shows `rs9923231` as a quick-start example for the
-  VKORC1/warfarin tutorial path.
+- The rsID entry is prefilled with `rs9923231` as a quick-start default for
+  the VKORC1/warfarin tutorial path, so opening the dialog and pressing
+  `Fetch Region` immediately exercises a real end-to-end tutorial example.
+- dbSNP fetch now runs asynchronously in the dialog and streams staged status
+  text while it works, including contacting the NCBI Variation refSNP service,
+  waiting for the response, parsing the returned JSON, resolving the assembly
+  placement, and extracting the annotated slice from the prepared genome.
 - Extracted dbSNP regions now also include a one-base `variation` feature
   labeled with the rsID at the resolved SNP position so the focal variant stays
   visible in the sequence view, including overview-scale linear maps.

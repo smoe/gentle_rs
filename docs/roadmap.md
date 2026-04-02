@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -356,6 +356,9 @@ order. Durable architecture constraints and decisions remain in
   sticky cutters keep both strand cut positions instead of collapsing to one
   blunt-like marker, and marker color now distinguishes blunt vs `5'` vs `3'`
   overhang geometry.
+- Linear restriction-site hover hit-testing now uses discrete label/tick hit
+  regions instead of one tall union rectangle, so moving through the vertical
+  gap near other annotations no longer spuriously activates enzyme hover UI.
 - New strict policy switch is available:
   `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
   verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).
@@ -1139,6 +1142,10 @@ order. Durable architecture constraints and decisions remain in
   workflow, including a visible one-base rsID marker feature at the resolved
   SNP position and RefSeq-style chromosome alias matching for dbSNP placements
   like `NC_000016.10`.
+- The dbSNP specialist path now pre-populates the tutorial rsID
+  `rs9923231`, starts fetches asynchronously instead of blocking the dialog,
+  and streams staged footer status text for contact/wait/parse/placement/
+  extraction progress so user bug reports can quote the exact retrieval phase.
 - `File -> Open Sequence...` now supports multi-file selection and imports the
   chosen files sequentially through the same per-file `LoadFile` path, opening
   one sequence window per successful import.

@@ -4096,6 +4096,125 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 }
 
 #[test]
+fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
+    let td = tempdir().expect("tempdir");
+    let cache_dir = td.path().join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    let cache_dir_str = cache_dir.to_string_lossy().to_string();
+    let catalog_path = td.path().join("catalog.json");
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy dbsnp genome",
+    "sequence_local": "{root}/toy.fa",
+    "annotations_local": "{root}/toy.gtf",
+    "cache_dir": "{root}/cache"
+  }}
+}}"#,
+            root = td.path().display()
+        ),
+    )
+    .expect("catalog");
+    fs::write(
+        td.path().join("toy.fa"),
+        ">1\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n",
+    )
+    .expect("toy fasta");
+    fs::write(
+        td.path().join("toy.gtf"),
+        "1\ttoy\tgene\t10\t60\t.\t+\t.\tgene_id \"tagA\"; gene_name \"tagA\";\n",
+    )
+    .expect("toy gtf");
+    let mock_dir = td.path().join("mock_dbsnp");
+    fs::create_dir_all(&mock_dir).expect("mock dir");
+    fs::write(
+        mock_dir.join("123.json"),
+        r#"{
+  "refsnp_id": "123",
+  "primary_snapshot_data": {
+    "placements_with_allele": [
+      {
+        "seq_id": "NC_000001.11",
+        "is_ptlp": true,
+        "placement_annot": {
+          "seq_id_traits_by_assembly": [
+            {
+              "assembly_name": "ToyGenome.1",
+              "is_top_level": true,
+              "is_alt": false,
+              "is_patch": false,
+              "is_chromosome": true
+            }
+          ]
+        },
+        "alleles": [
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "A",
+                "inserted_sequence": "G"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+"#,
+    )
+    .expect("mock dbsnp json");
+    let refsnp_template = format!("file://{}/{{refsnp_id}}.json", mock_dir.display());
+    let _dbsnp_env = EnvVarGuard::set("GENTLE_NCBI_DBSNP_REFSNP_URL", &refsnp_template);
+
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: Some(cache_dir_str.clone()),
+            timeout_seconds: None,
+        })
+        .expect("prepare ToyGenome");
+
+    let mut stages: Vec<String> = vec![];
+    engine
+        .apply_with_progress(
+            Operation::FetchDbSnpRegion {
+                rs_id: "rs123".to_string(),
+                genome_id: "ToyGenome".to_string(),
+                flank_bp: Some(20),
+                output_id: Some("rs123_progress".to_string()),
+                annotation_scope: Some(GenomeAnnotationScope::Full),
+                max_annotation_features: Some(0),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: Some(cache_dir_str),
+            },
+            |progress| {
+                if let OperationProgress::DbSnpFetch(progress) = progress {
+                    stages.push(progress.stage.as_str().to_string());
+                }
+                true
+            },
+        )
+        .expect("fetch dbsnp region with progress");
+
+    assert!(stages.contains(&"validate_input".to_string()));
+    assert!(stages.contains(&"inspect_prepared_genome".to_string()));
+    assert!(stages.contains(&"contact_server".to_string()));
+    assert!(stages.contains(&"wait_response".to_string()));
+    assert!(stages.contains(&"parse_response".to_string()));
+    assert!(stages.contains(&"resolve_placement".to_string()));
+    assert!(stages.contains(&"extract_region".to_string()));
+    assert!(stages.contains(&"attach_variant_marker".to_string()));
+}
+
+#[test]
 fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_contigs() {
     assert!(GentleEngine::genome_chromosome_matches(
         "chrX",
