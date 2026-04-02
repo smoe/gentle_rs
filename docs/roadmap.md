@@ -256,6 +256,12 @@ order. Durable architecture constraints and decisions remain in
     window instead of being privileged root content
   - hosted DNA windows now render through embedded/window-local panel paths
     with per-instance scope ids so multiple hosted windows no longer share
+  - hosted Help/Tutorial now renders directly into the embedded child surface;
+    stale legacy help-window layers are reset both in the help viewport and in
+    the root workspace so detached title bars self-heal instead of persisting
+  - the hosted help body now claims the remaining viewport height before
+    opening its vertical scroll area so wheel scrolling stays inside the help
+    content instead of falling through to the background workspace
     root-level panel identities
   - hosted workspace windows are now constrained to an inset-safe root rect to
     reduce accidental macOS menu-bar/Dock activation while moving or resizing

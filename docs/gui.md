@@ -81,10 +81,14 @@ macOS auxiliary-window stability note:
 - Hosted project and sequence windows also clamp their initial size to that
   inset-safe workspace so resize handles remain reachable and large panes such
   as arrangements and feature details are not born partly off-screen.
-- The Help/Tutorial viewport now uses a stable hosted child-window id on macOS
-  and resets stale local help-window area state on first reopen, so broken old
-  resize/title-bar geometry from earlier builds self-heals instead of
-  persisting across restarts or topic switches.
+- The Help/Tutorial viewport now renders directly into the hosted child
+  surface on macOS instead of spawning an extra nested help window inside it.
+- When older legacy help-window layers are still visible, GENtle now resets
+  those stale area states both in the hosted help viewport and in the main/root
+  workspace so stray detached help title bars self-heal on reopen.
+- The help body now claims the full remaining hosted surface before creating
+  its vertical scroll area, so mouse-wheel scrolling stays with the help
+  content instead of falling through to the background workspace.
 - While this hosted-window workaround is active, native macOS `Main` / `Windows`
   menu behavior can be imperfect because those menus still assume native child
   windows. The menu path is intentionally not being deepened further; the

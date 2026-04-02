@@ -2376,8 +2376,27 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Help Viewport")
     }
 
-    fn hosted_help_window_id() -> egui::Id {
-        egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
+    fn legacy_hosted_help_layer_ids(title: &str) -> [egui::LayerId; 2] {
+        [
+            egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(("hosted_help_window", Self::help_viewport_id())),
+            ),
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string())),
+        ]
+    }
+
+    fn reset_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
+        let stale_hosted_help_layers = Self::legacy_hosted_help_layer_ids(title);
+        if stale_hosted_help_layers
+            .iter()
+            .any(|layer_id| ctx.memory(|mem| mem.areas().is_visible(layer_id)))
+        {
+            ctx.memory_mut(|mem| mem.reset_areas());
+            true
+        } else {
+            false
+        }
     }
 
     fn prepare_genome_viewport_id() -> ViewportId {
@@ -31323,48 +31342,31 @@ Error: `{err}`"
                 if self
                     .pending_window_open_timestamps
                     .contains_key(&viewport_id)
+                    || Self::reset_help_areas_if_legacy_layers_visible(ctx, title.as_str())
                 {
-                    // Older macOS-hosted help windows used a nested egui::Window.
-                    // If that saved hosted-area geometry became invalid, the broken
-                    // rect persisted across restarts. Reset the help viewport's
-                    // local area state on first reopen so the hosted help surface
-                    // can self-heal without wiping unrelated viewport memory.
+                    // Help used to render as a nested egui::Window inside the hosted
+                    // viewport. Older saved area state from that path can leave a
+                    // stray title bar or broken resize shell behind. Reset the local
+                    // help viewport areas when reopening or when a legacy nested help
+                    // layer is still visible so the hosted help surface self-heals.
                     ctx.memory_mut(|mem| mem.reset_areas());
                 }
                 let render_started = Instant::now();
-                let mut open = self.show_help_dialog;
-                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
-                let min_size = Vec2::new(420.0, 320.0);
-                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
-                    Vec2::new(860.0, 680.0),
-                    constrain_rect,
-                    min_size,
-                );
-                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                    None,
-                    constrain_rect,
-                    default_size,
-                );
-                egui::Window::new(title.clone())
-                    .id(Self::hosted_help_window_id())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_pos(default_pos)
-                    .default_size(default_size)
-                    .min_size(min_size)
-                    .max_size(constrain_rect.size())
-                    .constrain_to(constrain_rect)
-                    .frame(egui::Frame::window(&ctx.style()))
-                    .show(ctx, |ui| {
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default().frame(egui::Frame::NONE),
+                    |ui| {
                         self.render_help_contents(ui);
-                    });
+                    },
+                );
                 self.note_slow_open_phase(
                     viewport_id,
                     "Help first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                self.show_help_dialog = open;
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    self.show_help_dialog = false;
+                }
                 return;
             }
 
@@ -31630,55 +31632,68 @@ Error: `{err}`"
             }
 
             ui.separator();
-            egui::ScrollArea::vertical()
-                .auto_shrink([true, false])
-                .show(ui, |ui| {
-                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                        ui,
-                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                    );
-                    let content_width = ui.available_width().max(120.0);
-                    if Self::help_content_width_requires_relayout(
-                        self.help_last_content_width,
-                        content_width,
-                    ) {
-                        self.help_markdown_cache = CommonMarkCache::default();
-                    }
-                    self.help_last_content_width = content_width;
-                    let max_image_width = Self::help_markdown_max_image_width(content_width);
-                    let active_doc = self.help_doc;
-                    let raw_markdown = self
-                        .help_selectable_text_mode
-                        .then(|| self.help_source_markdown(active_doc).to_string());
-                    let rendered_markdown = (!self.help_selectable_text_mode)
-                        .then(|| self.rendered_help_markdown_for(active_doc));
-                    ui.set_width(content_width);
-                    ui.set_max_width(content_width);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(content_width, 0.0),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            if self.help_selectable_text_mode {
-                                let mut copyable_text = raw_markdown.clone().unwrap_or_default();
-                                ui.add_sized(
-                                    [content_width, ui.available_height().max(320.0)],
-                                    egui::TextEdit::multiline(&mut copyable_text)
-                                        .font(egui::TextStyle::Monospace)
-                                        .desired_width(content_width)
-                                        .lock_focus(true),
-                                );
-                            } else {
-                                CommonMarkViewer::new()
-                                    .max_image_width(Some(max_image_width))
-                                    .show(
-                                        ui,
-                                        &mut self.help_markdown_cache,
-                                        rendered_markdown.as_deref().unwrap_or_default(),
-                                    );
+            let help_body_size = ui.available_size_before_wrap();
+            ui.allocate_ui_with_layout(
+                Vec2::new(help_body_size.x.max(120.0), help_body_size.y.max(180.0)),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    let help_body_height = ui.available_height().max(180.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("help_body_scroll")
+                        .auto_shrink([false, false])
+                        .max_height(help_body_height)
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            let content_width = ui.available_width().max(120.0);
+                            if Self::help_content_width_requires_relayout(
+                                self.help_last_content_width,
+                                content_width,
+                            ) {
+                                self.help_markdown_cache = CommonMarkCache::default();
                             }
-                        },
-                    );
-                });
+                            self.help_last_content_width = content_width;
+                            let max_image_width =
+                                Self::help_markdown_max_image_width(content_width);
+                            let active_doc = self.help_doc;
+                            let raw_markdown = self
+                                .help_selectable_text_mode
+                                .then(|| self.help_source_markdown(active_doc).to_string());
+                            let rendered_markdown = (!self.help_selectable_text_mode)
+                                .then(|| self.rendered_help_markdown_for(active_doc));
+                            ui.set_width(content_width);
+                            ui.set_max_width(content_width);
+                            ui.set_min_height(help_body_height);
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(content_width, help_body_height.max(320.0)),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    if self.help_selectable_text_mode {
+                                        let mut copyable_text =
+                                            raw_markdown.clone().unwrap_or_default();
+                                        ui.add_sized(
+                                            [content_width, ui.available_height().max(320.0)],
+                                            egui::TextEdit::multiline(&mut copyable_text)
+                                                .font(egui::TextStyle::Monospace)
+                                                .desired_width(content_width)
+                                                .lock_focus(true),
+                                        );
+                                    } else {
+                                        CommonMarkViewer::new()
+                                            .max_image_width(Some(max_image_width))
+                                            .show(
+                                                ui,
+                                                &mut self.help_markdown_cache,
+                                                rendered_markdown.as_deref().unwrap_or_default(),
+                                            );
+                                    }
+                                },
+                            );
+                        });
+                },
+            );
         });
     }
 
@@ -32567,6 +32582,13 @@ impl GENtleApp {
             self.poll_agent_model_discovery_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
+
+            if self.show_help_dialog {
+                Self::reset_help_areas_if_legacy_layers_visible(
+                    ctx,
+                    format!("Help - {}", self.active_help_title()).as_str(),
+                );
+            }
 
             // Show menu bar
             crate::egui_compat::show_top_panel(
@@ -36774,15 +36796,38 @@ mod tests {
         let mut app = GENtleApp::default();
         app.show_help_dialog = true;
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
-        let stale_help_layer_id =
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new("Help - GUI Manual"));
-        let hosted_help_layer_id =
-            egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
+        let stale_help_layer_ids = GENtleApp::legacy_hosted_help_layer_ids("Help - GUI Manual");
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
-        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_help_layer_id)));
-        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
+        for layer_id in stale_help_layer_ids {
+            assert!(!ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
+        }
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn stale_help_window_area_in_root_context_is_reset_when_detected() {
+        let ctx = egui::Context::default();
+        let title = "Help - Gibson Arrangements Tutorial";
+        let stale_help_layer_ids = GENtleApp::legacy_hosted_help_layer_ids(title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title).show(&ctx, |ui| {
+            ui.label("legacy nested help shell");
+        });
+        assert!(
+            stale_help_layer_ids
+                .iter()
+                .any(|layer_id| ctx.memory(|mem| mem.areas().is_visible(layer_id)))
+        );
+
+        assert!(GENtleApp::reset_help_areas_if_legacy_layers_visible(
+            &ctx, title
+        ));
+        for layer_id in stale_help_layer_ids {
+            assert!(!ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
+        }
         let _ = ctx.end_pass();
     }
 
