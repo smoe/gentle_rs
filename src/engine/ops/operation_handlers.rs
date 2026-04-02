@@ -7522,11 +7522,8 @@ impl GentleEngine {
                 trace_id,
                 seq_id,
             } => {
-                let report = self.import_sequencing_trace(
-                    &path,
-                    trace_id.as_deref(),
-                    seq_id.as_deref(),
-                )?;
+                let report =
+                    self.import_sequencing_trace(&path, trace_id.as_deref(), seq_id.as_deref())?;
                 let record = self.get_sequencing_trace(&report.trace_id)?;
                 result.sequencing_trace_import_report = Some(report.clone());
                 result.sequencing_trace_record = Some(record.clone());

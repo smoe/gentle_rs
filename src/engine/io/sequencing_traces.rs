@@ -211,7 +211,10 @@ impl GentleEngine {
         Ok(import_report_from_trace_record(&record, parsed.warnings))
     }
 
-    pub fn list_sequencing_traces(&self, seq_id_filter: Option<&str>) -> Vec<SequencingTraceSummary> {
+    pub fn list_sequencing_traces(
+        &self,
+        seq_id_filter: Option<&str>,
+    ) -> Vec<SequencingTraceSummary> {
         let filter = seq_id_filter
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -273,9 +276,7 @@ impl GentleEngine {
         )
     }
 
-    pub(crate) fn format_sequencing_trace_detail_summary(
-        record: &SequencingTraceRecord,
-    ) -> String {
+    pub(crate) fn format_sequencing_trace_detail_summary(record: &SequencingTraceRecord) -> String {
         format!(
             "{} format={} seq={} bases={} confidences={} peaks={} channels={} source={}",
             record.trace_id,
@@ -369,9 +370,8 @@ fn detect_sequencing_trace_format(bytes: &[u8]) -> Result<SequencingTraceFormat,
     }
     Err(EngineError {
         code: ErrorCode::InvalidInput,
-        message:
-            "Unsupported sequencing trace format (expected ABIF/AB1 or SCF magic bytes)"
-                .to_string(),
+        message: "Unsupported sequencing trace format (expected ABIF/AB1 or SCF magic bytes)"
+            .to_string(),
     })
 }
 
@@ -464,8 +464,7 @@ fn parse_abi_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
 fn parse_scf_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, EngineError> {
     let header = parse_scf_header(bytes)?;
     validate_scf_offsets(path, bytes, &header)?;
-    let (called_bases, peak_locations, confidence_values) =
-        parse_scf_base_section(bytes, &header)?;
+    let (called_bases, peak_locations, confidence_values) = parse_scf_base_section(bytes, &header)?;
     let channel_summaries = vec![
         SequencingTraceChannelSummary {
             channel: "A".to_string(),
@@ -689,7 +688,10 @@ fn decode_abif_text(entry: &AbifDirectoryEntry, bytes: &[u8]) -> Result<String, 
             }
         }
         19 => {
-            let end = raw.iter().position(|value| *value == 0).unwrap_or(raw.len());
+            let end = raw
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(raw.len());
             &raw[..end]
         }
         _ => raw,
@@ -714,7 +716,9 @@ fn decode_abif_peak_locations(
                     code: ErrorCode::InvalidInput,
                     message: format!(
                         "ABIF peak-location tag '{}{}' has odd byte length {} for 2-byte values",
-                        entry.tag_name, entry.tag_number, raw.len()
+                        entry.tag_name,
+                        entry.tag_number,
+                        raw.len()
                     ),
                 });
             }
@@ -729,7 +733,9 @@ fn decode_abif_peak_locations(
                     code: ErrorCode::InvalidInput,
                     message: format!(
                         "ABIF peak-location tag '{}{}' has byte length {} not divisible by 4",
-                        entry.tag_name, entry.tag_number, raw.len()
+                        entry.tag_name,
+                        entry.tag_number,
+                        raw.len()
                     ),
                 });
             }
@@ -873,8 +879,13 @@ fn parse_scf_base_section(
         let prob_c = slice_range(bytes, prob_c_offset, prob_c_offset + bases, "SCF", "prob_C")?;
         let prob_g = slice_range(bytes, prob_g_offset, prob_g_offset + bases, "SCF", "prob_G")?;
         let prob_t = slice_range(bytes, prob_t_offset, prob_t_offset + bases, "SCF", "prob_T")?;
-        let base_chars =
-            slice_range(bytes, bases_offset, bases_offset + bases, "SCF", "called bases")?;
+        let base_chars = slice_range(
+            bytes,
+            bases_offset,
+            bases_offset + bases,
+            "SCF",
+            "called bases",
+        )?;
         let _ = slice_range(
             bytes,
             spare_offset,
@@ -888,7 +899,15 @@ fn parse_scf_base_section(
             .collect::<Vec<_>>();
         let called_bases = String::from_utf8_lossy(base_chars).to_string();
         let confidence_values = (0..bases)
-            .map(|idx| scf_called_base_confidence(base_chars[idx], prob_a[idx], prob_c[idx], prob_g[idx], prob_t[idx]))
+            .map(|idx| {
+                scf_called_base_confidence(
+                    base_chars[idx],
+                    prob_a[idx],
+                    prob_c[idx],
+                    prob_g[idx],
+                    prob_t[idx],
+                )
+            })
             .collect::<Vec<_>>();
         Ok((called_bases, peak_locations, confidence_values))
     } else {
@@ -1081,10 +1100,18 @@ mod tests {
 
         let mut engine = GentleEngine::default();
         let first = engine
-            .import_sequencing_trace(trace_path.to_str().expect("utf-8 path"), Some("trace_a"), None)
+            .import_sequencing_trace(
+                trace_path.to_str().expect("utf-8 path"),
+                Some("trace_a"),
+                None,
+            )
             .expect("first import");
         let second = engine
-            .import_sequencing_trace(trace_path.to_str().expect("utf-8 path"), Some("trace_a"), None)
+            .import_sequencing_trace(
+                trace_path.to_str().expect("utf-8 path"),
+                Some("trace_a"),
+                None,
+            )
             .expect("second import");
 
         assert_eq!(first.trace_id, "trace_a");

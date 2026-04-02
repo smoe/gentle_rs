@@ -2708,9 +2708,7 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
 
 pub(super) fn parse_seq_trace_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err(
-            "seq-trace requires a subcommand: import, list, show".to_string(),
-        );
+        return Err("seq-trace requires a subcommand: import, list, show".to_string());
     }
     match tokens[1].as_str() {
         "import" => {

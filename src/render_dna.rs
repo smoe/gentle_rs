@@ -217,6 +217,10 @@ impl RenderDna {
         )
     }
 
+    pub fn is_variation_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+    }
+
     pub fn feature_color(feature: &Feature) -> Color32 {
         if Self::is_vcf_track_feature(feature) {
             let class = Self::vcf_variant_class(feature)
@@ -1024,5 +1028,11 @@ mod tests {
             RenderDna::feature_color(&feature),
             Color32::from_rgb(225, 127, 15)
         );
+    }
+
+    #[test]
+    fn variation_feature_detection_is_kind_based() {
+        let feature = make_feature("variation", &[("label", "rs9923231")]);
+        assert!(RenderDna::is_variation_feature(&feature));
     }
 }

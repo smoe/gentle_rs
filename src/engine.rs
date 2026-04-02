@@ -117,8 +117,7 @@ const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
 const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
 pub const SEQUENCING_TRACE_RECORD_SCHEMA: &str = "gentle.sequencing_trace_record.v1";
-pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str =
-    "gentle.sequencing_trace_import_report.v1";
+pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace_import_report.v1";
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
@@ -237,8 +236,6 @@ mod feature_expert_ops;
 mod genome_tracks;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
-#[path = "engine/io/sequencing_traces.rs"]
-mod sequencing_traces;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
 #[path = "engine/ops/operation_handlers.rs"]
@@ -249,6 +246,8 @@ mod rna_reads;
 mod sequence_ops;
 #[path = "engine/analysis/sequencing_confirmation.rs"]
 mod sequencing_confirmation;
+#[path = "engine/io/sequencing_traces.rs"]
+mod sequencing_traces;
 
 #[path = "engine/protocol.rs"]
 mod protocol;

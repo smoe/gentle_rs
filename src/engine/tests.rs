@@ -12422,20 +12422,19 @@ fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
     assert_eq!(record.format, SequencingTraceFormat::AbiAb1);
     assert_eq!(record.seq_id.as_deref(), Some("construct"));
     assert!(!record.called_bases.is_empty());
-    assert_eq!(
-        import_report.called_base_count,
-        record.called_bases.len()
-    );
+    assert_eq!(import_report.called_base_count, record.called_bases.len());
     assert_eq!(
         record.called_base_confidence_values.len(),
         record.called_bases.len()
     );
     assert_eq!(record.peak_locations.len(), record.called_bases.len());
     assert_eq!(record.channel_summaries.len(), 4);
-    assert!(record
-        .sample_name
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty()));
+    assert!(
+        record
+            .sample_name
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    );
 
     let listed = engine.list_sequencing_traces(Some("construct"));
     assert_eq!(listed.len(), 1);
@@ -12532,8 +12531,7 @@ fn test_import_sequencing_trace_rejects_malformed_abi_fixture() {
         .expect_err("malformed ABI should fail");
     assert_eq!(err.code, ErrorCode::InvalidInput);
     assert!(
-        err.message.contains("Unsupported sequencing trace format")
-            || err.message.contains("ABIF"),
+        err.message.contains("Unsupported sequencing trace format") || err.message.contains("ABIF"),
         "unexpected error: {}",
         err.message
     );

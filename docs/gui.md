@@ -3009,9 +3009,11 @@ NCBI retrieval behavior:
   settings and defaults to full annotation transfer (`annotation_scope=full`,
   `max_annotation_features=0`) so tutorial/reporter workflows can start from a
   fully annotated local locus slice.
+- The rsID entry shows `rs9923231` as a quick-start example for the
+  VKORC1/warfarin tutorial path.
 - Extracted dbSNP regions now also include a one-base `variation` feature
   labeled with the rsID at the resolved SNP position so the focal variant stays
-  visible in the sequence view.
+  visible in the sequence view, including overview-scale linear maps.
 - RefSeq-style dbSNP chromosome accessions such as `NC_000016.10` are matched
   against prepared contig aliases during extraction and annotation transfer, so
   human `chr16`/`16` installs still attach the expected local feature context.

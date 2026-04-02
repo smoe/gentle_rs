@@ -419,10 +419,9 @@ fn parse_seq_confirm_run_command() {
 
 #[test]
 fn parse_seq_trace_import_and_list_commands() {
-    let import = parse_shell_line(
-        "seq-trace import /tmp/demo.ab1 --trace-id abi_trace --seq-id construct",
-    )
-    .expect("parse seq-trace import");
+    let import =
+        parse_shell_line("seq-trace import /tmp/demo.ab1 --trace-id abi_trace --seq-id construct")
+            .expect("parse seq-trace import");
     match import {
         ShellCommand::SeqTraceImport {
             path,
@@ -477,10 +476,7 @@ fn execute_seq_trace_import_list_and_show_round_trip() {
         imported.output["import_report"]["trace_id"].as_str(),
         Some("abi_trace")
     );
-    assert_eq!(
-        imported.output["trace"]["format"].as_str(),
-        Some("abi_ab1")
-    );
+    assert_eq!(imported.output["trace"]["format"].as_str(), Some("abi_ab1"));
 
     let listed = execute_shell_command(
         &mut engine,
@@ -502,7 +498,10 @@ fn execute_seq_trace_import_list_and_show_round_trip() {
         },
     )
     .expect("execute seq-trace show");
-    assert_eq!(shown.output["trace"]["trace_id"].as_str(), Some("abi_trace"));
+    assert_eq!(
+        shown.output["trace"]["trace_id"].as_str(),
+        Some("abi_trace")
+    );
     assert!(
         shown.output["trace"]["called_bases"]
             .as_str()

@@ -74,6 +74,9 @@ const MCS_INLINE_LABEL_FONT_SIZE: f32 = 11.0;
 const MCS_EXTERNAL_LABEL_EXTRA_FONT_SIZE: f32 = 1.0;
 const MCS_INLINE_BADGE_PAD_X: f32 = 10.0;
 const MCS_INLINE_BADGE_PAD_Y: f32 = 3.0;
+const VARIATION_MIN_WIDTH_PX: f32 = 7.0;
+const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
+const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -101,6 +104,7 @@ struct FeaturePosition {
     color: Color32,
     is_regulatory: bool,
     is_mcs: bool,
+    is_variation: bool,
     is_pointy: bool,
     is_reverse: bool,
     rect: Rect,
@@ -724,6 +728,7 @@ impl RenderDnaLinear {
             is_reverse: bool,
             is_regulatory: bool,
             is_mcs: bool,
+            is_variation: bool,
         }
 
         #[derive(Clone)]
@@ -834,6 +839,7 @@ impl RenderDnaLinear {
 
             let label = RenderDna::feature_name(feature);
             let is_mcs = RenderDna::is_mcs_feature(feature);
+            let is_variation = RenderDna::is_variation_feature(feature);
             let mut exon_ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
             if exon_ranges.is_empty() {
@@ -905,12 +911,12 @@ impl RenderDnaLinear {
                 continue;
             }
 
-            let x1 = exon_segments
+            let mut x1 = exon_segments
                 .iter()
                 .map(|(sx1, _)| *sx1)
                 .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
                 .fold(f32::INFINITY, f32::min);
-            let x2 = exon_segments
+            let mut x2 = exon_segments
                 .iter()
                 .map(|(_, sx2)| *sx2)
                 .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
@@ -918,9 +924,20 @@ impl RenderDnaLinear {
             if !x1.is_finite() || !x2.is_finite() {
                 continue;
             }
+            if is_variation && connector_segments.is_empty() && !exon_segments.is_empty() {
+                let center_x = (x1 + x2) * 0.5;
+                let half_width = (VARIATION_MIN_WIDTH_PX * 0.5).max((x2 - x1) * 0.5);
+                let expanded_left = (center_x - half_width).max(self.area.left());
+                let expanded_right = (center_x + half_width).min(self.area.right());
+                if let Some(first_segment) = exon_segments.first_mut() {
+                    *first_segment = (expanded_left, expanded_right.max(expanded_left + 1.0));
+                }
+                x1 = expanded_left;
+                x2 = expanded_right.max(expanded_left + 1.0);
+            }
             let kind = feature.kind.to_string().to_ascii_uppercase();
             let is_high_priority_feature =
-                is_mcs || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+                is_mcs || is_variation || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
             if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }
@@ -940,6 +957,7 @@ impl RenderDnaLinear {
                 is_reverse: feature_is_reverse(feature),
                 is_regulatory: RenderDna::is_regulatory_feature(feature),
                 is_mcs,
+                is_variation,
             });
         }
 
@@ -1237,6 +1255,7 @@ impl RenderDnaLinear {
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
                 is_mcs: seed.is_mcs,
+                is_variation: seed.is_variation,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
                 rect,
@@ -2174,6 +2193,21 @@ impl RenderDnaLinear {
                     Stroke::NONE,
                 ));
             }
+            if feature.is_variation {
+                let x = feature.rect.center().x;
+                let marker_top = feature.rect.top() - VARIATION_MARKER_OVERSHOOT_PX;
+                let marker_bottom = feature.rect.bottom() + VARIATION_MARKER_OVERSHOOT_PX;
+                painter.line_segment(
+                    [Pos2::new(x, marker_top), Pos2::new(x, marker_bottom)],
+                    Stroke::new(VARIATION_MARKER_STROKE_WIDTH, feature.color),
+                );
+                painter.circle_filled(Pos2::new(x, feature.rect.center().y), 2.5, Color32::WHITE);
+                painter.circle_stroke(
+                    Pos2::new(x, feature.rect.center().y),
+                    2.5,
+                    Stroke::new(1.5, feature.color),
+                );
+            }
             for connector in &feature.intron_connectors {
                 painter.line_segment(
                     [connector[0], connector[1]],
@@ -3020,6 +3054,25 @@ mod tests {
         let feature = &renderer.features[0];
         assert!(feature.is_mcs);
         assert_eq!(feature.label, "MCS (pUC19)");
+    }
+
+    #[test]
+    fn single_base_variation_gets_visible_minimum_width_in_overview() {
+        let viewport = LinearViewport {
+            start: 0,
+            end: 6_001,
+            span: 6_001,
+        };
+        let feature =
+            make_test_feature_with_kind("variation", Location::simple_range(3_000, 3_001));
+        let mut renderer = test_renderer_with_feature(feature, 6_001);
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        let feature = &renderer.features[0];
+        assert!(feature.is_variation);
+        assert!(feature.rect.width() >= VARIATION_MIN_WIDTH_PX - 0.25);
+        let expected_x = renderer.bp_to_x(3_000, viewport);
+        assert!((feature.rect.center().x - expected_x).abs() <= VARIATION_MIN_WIDTH_PX);
     }
 
     #[test]

@@ -12382,8 +12382,11 @@ Error: `{err}`"
                 );
                 ui.horizontal(|ui| {
                     ui.label("rs_id");
-                    ui.text_edit_singleline(&mut self.dbsnp_rs_id)
-                        .on_hover_text("dbSNP identifier such as rs9923231");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.dbsnp_rs_id)
+                            .hint_text("rs9923231"),
+                    )
+                    .on_hover_text("dbSNP identifier such as rs9923231");
                     ui.label("genome");
                     ui.text_edit_singleline(&mut self.dbsnp_genome_id)
                         .on_hover_text(
@@ -12399,6 +12402,7 @@ Error: `{err}`"
                         self.fetch_dbsnp_region_from_dialog();
                     }
                 });
+                ui.small("Quick try: rs9923231 (VKORC1 warfarin-sensitivity locus)");
                 ui.horizontal(|ui| {
                     ui.label("flank_bp");
                     ui.text_edit_singleline(&mut self.dbsnp_flank_bp)
