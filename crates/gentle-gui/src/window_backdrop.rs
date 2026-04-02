@@ -646,7 +646,8 @@ pub fn paint_window_backdrop(
 }
 
 pub fn with_window_content_inset<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
-    let outer_rect = ui.max_rect();
+    let outer_rect =
+        resolve_window_content_outer_rect(ui.available_rect_before_wrap(), ui.max_rect());
     let inset_limit = (outer_rect.width().min(outer_rect.height()) * 0.25).max(0.0);
     let inset = WINDOW_CONTENT_INSET_PX.min(inset_limit);
     let inner_rect = outer_rect.shrink2(Vec2::splat(inset));
@@ -662,15 +663,29 @@ pub fn with_window_content_inset<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut 
     add_contents(&mut child)
 }
 
+fn resolve_window_content_outer_rect(
+    available_rect: egui::Rect,
+    max_rect: egui::Rect,
+) -> egui::Rect {
+    let overlap = available_rect.intersect(max_rect);
+    if overlap.width() >= 1.0 && overlap.height() >= 1.0 {
+        overlap
+    } else if available_rect.width() >= 1.0 && available_rect.height() >= 1.0 {
+        available_rect
+    } else {
+        max_rect
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         DEFAULT_SEQUENCE_IMAGE_PATH, DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind,
         WindowBackdropSettings, cover_uv_rect, default_tint_rgb_for_kind,
         kind_content_veil_opacity, kind_image_opacity_scale, kind_tint_opacity_scale,
-        resolve_runtime_asset_uri,
+        resolve_runtime_asset_uri, resolve_window_content_outer_rect,
     };
-    use egui::Vec2;
+    use egui::{Rect, Vec2, pos2};
 
     #[test]
     fn resolve_runtime_asset_uri_preserves_supported_uri_schemes() {
@@ -797,5 +812,25 @@ mod tests {
         assert!(kind_image_opacity_scale(WindowBackdropKind::Sequence) >= 0.50);
         assert!(kind_tint_opacity_scale(WindowBackdropKind::Sequence) >= 0.45);
         assert!(kind_content_veil_opacity(WindowBackdropKind::Sequence) <= 0.42);
+    }
+
+    #[test]
+    fn resolve_window_content_outer_rect_prefers_available_rect_inside_window() {
+        let max_rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1000.0, 800.0));
+        let available_rect = Rect::from_min_max(pos2(40.0, 60.0), pos2(620.0, 520.0));
+        assert_eq!(
+            resolve_window_content_outer_rect(available_rect, max_rect),
+            available_rect
+        );
+    }
+
+    #[test]
+    fn resolve_window_content_outer_rect_falls_back_to_max_rect_when_available_is_invalid() {
+        let max_rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1000.0, 800.0));
+        let available_rect = Rect::from_min_max(pos2(40.0, 60.0), pos2(40.0, 60.0));
+        assert_eq!(
+            resolve_window_content_outer_rect(available_rect, max_rect),
+            max_rect
+        );
     }
 }
