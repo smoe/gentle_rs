@@ -252,7 +252,7 @@ mod sequencing_confirmation;
 mod sequencing_traces;
 
 #[path = "engine/protocol.rs"]
-mod protocol;
+pub mod protocol;
 pub use feature_coordinate_formulas::{
     parse_feature_coordinate_term_on_sequence, parse_required_usize_or_formula_text_on_sequence,
     resolve_formula_roi_range_inputs_0based_on_sequence,

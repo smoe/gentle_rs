@@ -1,0 +1,42 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "vkorc1_rs9923231_context_map_online",
+  "title": "Prepare GRCh38, resolve rs9923231, and extract annotated VKORC1 context (online)",
+  "summary": "Prepares Human GRCh38 Ensembl 116, resolves dbSNP rs9923231, and extracts a +/-3000 bp VKORC1 locus slice with full annotation and a visible rs marker.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "genome",
+    "dbsnp",
+    "pharmacogenomics",
+    "warfarin",
+    "vkorc1",
+    "online",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_vkorc1_rs9923231_context_map_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "FetchDbSnpRegion": {
+          "rs_id": "rs9923231",
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "flank_bp": 3000,
+          "output_id": "vkorc1_rs9923231_context",
+          "annotation_scope": "full",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      }
+    ]
+  }
+}
