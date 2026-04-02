@@ -266,8 +266,8 @@ order. Durable architecture constraints and decisions remain in
   - the hosted help body now reserves the remaining viewport height before
     opening its vertical scroll area so wheel scrolling stays inside the help
     content instead of falling through to the background workspace
-  - the shared hosted content-inset helper now uses the actual available
-    content rect inside embedded windows instead of the larger layer max rect,
+  - the shared hosted content-inset helper now uses a simple inner-margin
+    frame inside embedded windows instead of manual child-rect synthesis,
     fixing project/help content that had been painting outside their visible
     hosted shells
     root-level panel identities
