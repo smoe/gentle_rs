@@ -707,10 +707,15 @@ order. Durable architecture constraints and decisions remain in
         detail GENtle can make explicit and reproducible
       - existing promoter/luciferase workflow scaffolding in this repository is
         close enough to adapt without inventing a new engine family
+      - first implemented artifact on this track is now the shared-engine
+        genomic context path:
+        `docs/examples/workflows/vkorc1_rs9923231_context_map_online.json`
+        plus `docs/figures/vkorc1_rs9923231_context_map.workflow.json`
+        / `docs/figures/vkorc1_rs9923231_context_map.svg`
     - planned exact workflow skeleton:
       1. retrieve `VKORC1` from prepared `Human GRCh38 Ensembl 116`
       2. extend the anchored view far enough to include `rs9923231` plus local
-         neighboring annotation
+        neighboring annotation
       3. define one promoter window anchored on the reverse-strand gene start
          and ensure the SNP falls inside the candidate fragment
       4. duplicate that fragment into reference-allele and variant-allele

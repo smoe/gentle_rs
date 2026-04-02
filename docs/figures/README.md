@@ -196,6 +196,39 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+`vkorc1_rs9923231_context_map.workflow.json` is the first concrete
+ClawBio-facing genomic-context asset. It resolves dbSNP `rs9923231` against
+prepared `Human GRCh38 Ensembl 116`, extracts `+/- 3000 bp`, keeps full locus
+annotation, hides non-context tracks such as restriction enzymes/GC/ORFs, and
+writes the map-first SVG `vkorc1_rs9923231_context_map.svg`.
+
+Preflight the target GENtle instance first so the workflow uses the exact
+catalog/cache you intend:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  genomes status "Human GRCh38 Ensembl 116" \
+  --catalog assets/genomes.json \
+  --cache-dir data/genomes
+```
+
+If `prepared` is `false`, prepare the selected cache first:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  genomes prepare "Human GRCh38 Ensembl 116" \
+  --catalog assets/genomes.json \
+  --cache-dir data/genomes
+```
+
+Then regenerate the context-map asset from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/vkorc1_rs9923231_context.state.json \
+  workflow @docs/figures/vkorc1_rs9923231_context_map.workflow.json
+```
+
 ## Planned VKORC1/rs9923231 PGx-Alert-to-Construct Showcase
 
 The next README/community-facing showcase should be a
@@ -220,8 +253,10 @@ The intended asset set is:
    - should carry the actual alert semantics:
      drug, genotype call, `VKORC1`, and `rs9923231`
 2. `vkorc1_rs9923231_context_map.*`
-   - planned GENtle figure showing the local `rs9923231` / `VKORC1` /
-     `LOC124903680` neighborhood
+   - first concrete GENtle-side asset is now implemented as
+     `docs/figures/vkorc1_rs9923231_context_map.workflow.json` plus
+     `docs/figures/vkorc1_rs9923231_context_map.svg`
+   - shows the local `rs9923231` / `VKORC1` / `LOC124903680` neighborhood
    - should make the assembly/build and reverse-strand promoter orientation
      explicit
 3. `vkorc1_rs9923231_promoter_fragments.*`
@@ -271,6 +306,13 @@ Recommended execution order for implementing the full showcase:
 4. Add one ClawBio-wrapper demo/report snapshot tying the whole run back to the
    pharmacogenomics story and reproducibility bundle.
 
-Current status: the repository already contains promoter/luciferase workflow
-scaffolding, but this specific `VKORC1` / `rs9923231` showcase is still a
-deliberate implementation target rather than a completed asset set.
+Current status:
+
+- the first shared-engine handoff artifact now exists:
+  `docs/examples/workflows/vkorc1_rs9923231_context_map_online.json`
+- the first figure-workflow asset now exists:
+  `docs/figures/vkorc1_rs9923231_context_map.workflow.json`
+- the corresponding genomic-context SVG is now part of the repository:
+  `docs/figures/vkorc1_rs9923231_context_map.svg`
+- promoter fragments, luciferase construct/cartoon exports, lineage/provenance
+  exports, and the ClawBio bundle panel remain planned

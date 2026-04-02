@@ -1,0 +1,96 @@
+{
+  "run_id": "figure_vkorc1_rs9923231_context_map",
+  "ops": [
+    {
+      "PrepareGenome": {
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "catalog_path": "assets/genomes.json",
+        "cache_dir": "data/genomes"
+      }
+    },
+    {
+      "FetchDbSnpRegion": {
+        "rs_id": "rs9923231",
+        "genome_id": "Human GRCh38 Ensembl 116",
+        "flank_bp": 3000,
+        "output_id": "vkorc1_rs9923231_context",
+        "annotation_scope": "full",
+        "catalog_path": "assets/genomes.json",
+        "cache_dir": "data/genomes"
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "SequencePanel",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "MapPanel",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "Features",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "GeneFeatures",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "MrnaFeatures",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "CdsFeatures",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "Tfbs",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "RestrictionEnzymes",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "GcContents",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "OpenReadingFrames",
+        "visible": false
+      }
+    },
+    {
+      "SetLinearViewport": {
+        "start_bp": 1,
+        "span_bp": 6001
+      }
+    },
+    {
+      "RenderSequenceSvg": {
+        "seq_id": "vkorc1_rs9923231_context",
+        "mode": "Linear",
+        "path": "docs/figures/vkorc1_rs9923231_context_map.svg"
+      }
+    }
+  ]
+}
