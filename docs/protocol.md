@@ -768,8 +768,9 @@ Sequencing-trace evidence notes:
   - non-mutating helper for sequencing-confirmation review and primer coverage
     planning
   - returns `SequencingPrimerOverlayReport` with per-hit orientation, anneal
-    span, predicted read span, and optional coverage annotations against a
-    persisted sequencing-confirmation report
+    span, predicted read span, optional coverage annotations against a
+    persisted sequencing-confirmation report, and per-problem guidance rows
+    naming the best existing primer hit for unresolved targets or variant loci
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,

@@ -1107,6 +1107,55 @@ pub struct SequencingPrimerOverlaySuggestion {
     pub covered_problem_variant_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// One unresolved confirmation locus category that can receive primer guidance.
+pub enum SequencingPrimerProblemKind {
+    #[default]
+    Target,
+    Variant,
+}
+
+impl SequencingPrimerProblemKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Target => "target",
+            Self::Variant => "variant",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Guidance row recommending the best existing primer hit for one unresolved locus.
+pub struct SequencingPrimerProblemGuidanceRow {
+    pub problem_id: String,
+    pub problem_kind: SequencingPrimerProblemKind,
+    pub problem_label: String,
+    pub problem_summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_primer_seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_primer_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_orientation: Option<SequencingPrimerOrientation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_read_span_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_read_span_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_three_prime_distance_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_in_read_direction: Option<bool>,
+    #[serde(default)]
+    pub recommended_problem_target_count: usize,
+    #[serde(default)]
+    pub recommended_problem_variant_count: usize,
+    #[serde(default)]
+    pub candidate_count: usize,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Transient machine-readable report for sequencing-primer coverage hints.
@@ -1122,6 +1171,10 @@ pub struct SequencingPrimerOverlayReport {
     pub suggestion_count: usize,
     #[serde(default)]
     pub suggestions: Vec<SequencingPrimerOverlaySuggestion>,
+    #[serde(default)]
+    pub problem_guidance_count: usize,
+    #[serde(default)]
+    pub problem_guidance: Vec<SequencingPrimerProblemGuidanceRow>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

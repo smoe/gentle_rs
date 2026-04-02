@@ -13230,6 +13230,157 @@ fn test_suggest_sequencing_primers_annotates_confirmation_report_coverage() {
 }
 
 #[test]
+fn test_suggest_sequencing_primers_recommends_best_existing_primer_for_unresolved_target() {
+    let mut state = ProjectState::default();
+    let construct_text = format!(
+        "{}ACCGTA{}TTGCAA{}",
+        "G".repeat(20),
+        "C".repeat(70),
+        "A".repeat(120)
+    );
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence(&construct_text).expect("construct"),
+    );
+    state.sequences.insert(
+        "read_early".to_string(),
+        DNAsequence::from_sequence("GGGGGGGGGGGG").expect("read"),
+    );
+    state.sequences.insert(
+        "primer_good".to_string(),
+        DNAsequence::from_sequence("TTTACCGTA").expect("primer"),
+    );
+    state.sequences.insert(
+        "primer_near".to_string(),
+        DNAsequence::from_sequence("TTTTTGCAA").expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_early".to_string()],
+            trace_ids: vec![],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "gap_target".to_string(),
+                label: "Gap locus".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 118,
+                end_0based_exclusive: 122,
+                junction_left_end_0based: Some(120),
+                expected_bases: None,
+                baseline_bases: None,
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("unresolved_gap".to_string()),
+        })
+        .expect("persist unresolved report");
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_good".to_string(), "primer_near".to_string()],
+            confirmation_report_id: Some("unresolved_gap".to_string()),
+            min_3prime_anneal_bp: 6,
+            predicted_read_length_bp: 150,
+        })
+        .expect("suggest primers for unresolved target")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(report.problem_guidance_count, 1);
+    assert_eq!(report.problem_guidance[0].problem_id, "gap_target");
+    assert_eq!(
+        report.problem_guidance[0]
+            .recommended_primer_seq_id
+            .as_deref(),
+        Some("primer_good")
+    );
+    assert_eq!(report.problem_guidance[0].candidate_count, 2);
+    assert_eq!(
+        report.problem_guidance[0].recommended_orientation,
+        Some(SequencingPrimerOrientation::ForwardRead)
+    );
+    assert_eq!(
+        report.problem_guidance[0].recommended_three_prime_distance_bp,
+        Some(95)
+    );
+    assert_eq!(
+        report.problem_guidance[0].recommended_in_read_direction,
+        Some(true)
+    );
+}
+
+#[test]
+fn test_suggest_sequencing_primers_marks_unresolved_target_without_covering_primer() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_short".to_string(),
+        DNAsequence::from_sequence("AAAA").expect("read"),
+    );
+    state.sequences.insert(
+        "primer_other".to_string(),
+        DNAsequence::from_sequence("TTTGGGGGG").expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_short".to_string()],
+            trace_ids: vec![],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("uncovered_gap".to_string()),
+        })
+        .expect("persist unresolved report");
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_other".to_string()],
+            confirmation_report_id: Some("uncovered_gap".to_string()),
+            min_3prime_anneal_bp: 6,
+            predicted_read_length_bp: 150,
+        })
+        .expect("suggest primers without coverage")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(report.problem_guidance_count, 1);
+    assert_eq!(report.problem_guidance[0].problem_id, "junction_1");
+    assert_eq!(report.problem_guidance[0].recommended_primer_seq_id, None);
+    assert_eq!(report.problem_guidance[0].candidate_count, 0);
+}
+
+#[test]
 fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
     let td = tempdir().expect("tempdir");
     let fasta_gz = td.path().join("reads.fa.gz");

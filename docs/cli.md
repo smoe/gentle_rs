@@ -328,6 +328,8 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
       from already-loaded primer sequence ids
     - the overlay report can optionally annotate which saved-report targets and
       variant loci fall inside each predicted primer-derived read span
+    - unresolved targets and variant loci now also get one shared
+      recommendation row naming the best existing primer hit to clarify them
     - older traces without stored curve arrays stay usable for confirmation,
       but the GUI asks you to re-import them before chromatogram review
   Not yet included in this phase:
