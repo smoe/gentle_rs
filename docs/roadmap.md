@@ -260,9 +260,10 @@ order. Durable architecture constraints and decisions remain in
   - hosted project/sequence windows now clamp their initial size to that safe
     rect so resize handles remain reachable and arrangement/detail panes are
     not born beyond the hosted workspace
-  - the hosted Help/Tutorial viewport now renders directly into its embedded
-    surface on macOS and resets stale local area state on first reopen, so old
-    broken nested-help geometry does not persist across restarts
+  - the hosted Help/Tutorial viewport now uses a stable hosted child-window id
+    on macOS and resets stale local area state on first reopen, so old broken
+    help geometry from earlier builds does not persist across restarts or topic
+    switches
   - remaining feature-tree split/scroll ids are now keyed by per-window scope
     so sequence-panel show/hide relayouts do not briefly collide across hosted
     windows showing the same sequence

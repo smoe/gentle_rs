@@ -2375,6 +2375,10 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Help Viewport")
     }
 
+    fn hosted_help_window_id() -> egui::Id {
+        egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
+    }
+
     fn prepare_genome_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Prepare Genome Viewport")
     }
@@ -31312,21 +31316,39 @@ Error: `{err}`"
                     ctx.memory_mut(|mem| mem.reset_areas());
                 }
                 let render_started = Instant::now();
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default().frame(egui::Frame::NONE),
-                    |ui| {
-                        self.render_help_contents(ui);
-                    },
+                let mut open = self.show_help_dialog;
+                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+                let min_size = Vec2::new(420.0, 320.0);
+                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                    Vec2::new(860.0, 680.0),
+                    constrain_rect,
+                    min_size,
                 );
+                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                    None,
+                    constrain_rect,
+                    default_size,
+                );
+                egui::Window::new(title.clone())
+                    .id(Self::hosted_help_window_id())
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_pos(default_pos)
+                    .default_size(default_size)
+                    .min_size(min_size)
+                    .max_size(constrain_rect.size())
+                    .constrain_to(constrain_rect)
+                    .frame(egui::Frame::window(&ctx.style()))
+                    .show(ctx, |ui| {
+                        self.render_help_contents(ui);
+                    });
                 self.note_slow_open_phase(
                     viewport_id,
                     "Help first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                if Self::viewport_close_requested_or_shortcut(ctx) {
-                    self.show_help_dialog = false;
-                }
+                self.show_help_dialog = open;
                 return;
             }
 
@@ -36724,10 +36746,13 @@ mod tests {
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
         let stale_help_layer_id =
             egui::LayerId::new(egui::Order::Middle, egui::Id::new("Help - GUI Manual"));
+        let hosted_help_layer_id =
+            egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_help_layer_id)));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
         let _ = ctx.end_pass();
     }
 

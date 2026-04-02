@@ -79,10 +79,10 @@ macOS auxiliary-window stability note:
 - Hosted project and sequence windows also clamp their initial size to that
   inset-safe workspace so resize handles remain reachable and large panes such
   as arrangements and feature details are not born partly off-screen.
-- The Help/Tutorial viewport now renders directly into that hosted embedded
-  surface on macOS instead of nesting an extra `egui::Window`, so stale bad
-  help-window resize state from older builds self-heals on first reopen and
-  duplicate help title bars are avoided.
+- The Help/Tutorial viewport now uses a stable hosted child-window id on macOS
+  and resets stale local help-window area state on first reopen, so broken old
+  resize/title-bar geometry from earlier builds self-heals instead of
+  persisting across restarts or topic switches.
 
 ## Configuration Window
 
