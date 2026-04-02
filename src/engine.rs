@@ -7078,13 +7078,41 @@ impl GentleEngine {
     }
 
     fn normalize_genome_chromosome_token(raw: &str) -> String {
-        let trimmed = raw.trim();
+        let canonical_source =
+            Self::genome_accession_chromosome_alias(raw).unwrap_or_else(|| raw.trim().to_string());
+        let trimmed = canonical_source.trim();
         let without_chr = trimmed
             .strip_prefix("chr")
             .or_else(|| trimmed.strip_prefix("Chr"))
             .or_else(|| trimmed.strip_prefix("CHR"))
             .unwrap_or(trimmed);
-        without_chr.to_ascii_lowercase()
+        match without_chr.to_ascii_lowercase().as_str() {
+            "m" | "mt" => "mt".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn genome_accession_chromosome_alias(raw: &str) -> Option<String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let upper = trimmed.to_ascii_uppercase();
+        let without_version = upper.split('.').next().unwrap_or(&upper);
+        let suffix = without_version
+            .strip_prefix("NC_")
+            .or_else(|| without_version.strip_prefix("CM"))?;
+        if suffix.is_empty() || !suffix.chars().all(|ch| ch.is_ascii_digit()) {
+            return None;
+        }
+        let normalized = suffix.trim_start_matches('0');
+        Some(match normalized {
+            "" => "0".to_string(),
+            "23" => "x".to_string(),
+            "24" => "y".to_string(),
+            "12920" => "mt".to_string(),
+            other => other.to_string(),
+        })
     }
 
     fn genome_chromosome_matches(left: &str, right: &str) -> bool {
@@ -7093,8 +7121,16 @@ impl GentleEngine {
         if left_trimmed.eq_ignore_ascii_case(right_trimmed) {
             return true;
         }
-        Self::normalize_genome_chromosome_token(left_trimmed)
-            == Self::normalize_genome_chromosome_token(right_trimmed)
+        let left_normalized = Self::normalize_genome_chromosome_token(left_trimmed);
+        let right_normalized = Self::normalize_genome_chromosome_token(right_trimmed);
+        if left_normalized == right_normalized {
+            return true;
+        }
+        Self::genome_accession_chromosome_alias(left_trimmed)
+            .into_iter()
+            .chain(Self::genome_accession_chromosome_alias(right_trimmed))
+            .map(|alias| Self::normalize_genome_chromosome_token(&alias))
+            .any(|alias| alias == left_normalized || alias == right_normalized)
     }
 
     fn resolve_extract_region_annotation_scope(

@@ -3001,6 +3001,9 @@ NCBI retrieval behavior:
 - Extracted dbSNP regions now also include a one-base `variation` feature
   labeled with the rsID at the resolved SNP position so the focal variant stays
   visible in the sequence view.
+- RefSeq-style dbSNP chromosome accessions such as `NC_000016.10` are matched
+  against prepared contig aliases during extraction and annotation transfer, so
+  human `chr16`/`16` installs still attach the expected local feature context.
 - Shell parity route:
   - `genbank fetch ACCESSION [--as-id ID]`
   - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
