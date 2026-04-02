@@ -73,9 +73,9 @@ use crate::{
         RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
         SequencingConfirmationDiscrepancy, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SequencingReadOrientation, SnpMutationSpec,
-        SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
-        resolve_formula_roi_range_inputs_0based_on_sequence,
+        SequencingConfirmationTargetSpec, SequencingReadOrientation, SequencingTraceRecord,
+        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
+        TfbsProgress, Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -526,8 +526,10 @@ impl Default for QpcrDesignOpsUiState {
 #[serde(default)]
 struct SequencingConfirmationUiState {
     read_seq_ids_text: String,
+    trace_ids_text: String,
     report_id: String,
     selected_report_id: String,
+    selected_trace_id: String,
     junction_positions_0based: String,
     junction_flank_bp: String,
     include_full_span_target: bool,
@@ -545,8 +547,10 @@ impl Default for SequencingConfirmationUiState {
     fn default() -> Self {
         Self {
             read_seq_ids_text: String::new(),
+            trace_ids_text: String::new(),
             report_id: "seq_confirm_gui".to_string(),
             selected_report_id: String::new(),
+            selected_trace_id: String::new(),
             junction_positions_0based: String::new(),
             junction_flank_bp: "12".to_string(),
             include_full_span_target: true,
@@ -1293,6 +1297,7 @@ mod tests {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
         area.sequencing_confirmation_ui.read_seq_ids_text = "read_a,read_b".to_string();
+        area.sequencing_confirmation_ui.trace_ids_text = "trace_a,trace_b".to_string();
         area.sequencing_confirmation_ui.report_id = String::new();
         area.sequencing_confirmation_ui.include_full_span_target = false;
         area.sequencing_confirmation_ui.junction_positions_0based = "40".to_string();
@@ -1332,7 +1337,10 @@ mod tests {
                     read_seq_ids,
                     vec!["read_a".to_string(), "read_b".to_string()]
                 );
-                assert!(trace_ids.is_empty());
+                assert_eq!(
+                    trace_ids,
+                    vec!["trace_a".to_string(), "trace_b".to_string()]
+                );
                 assert_eq!(targets.len(), 1);
                 assert_eq!(targets[0].junction_left_end_0based, Some(40));
                 assert_eq!(alignment_mode, PairwiseAlignmentMode::Global);
@@ -1344,6 +1352,31 @@ mod tests {
                 assert_eq!(min_target_coverage_fraction, 0.75);
                 assert!(!allow_reverse_complement);
                 assert_eq!(report_id, Some("expected_seq_seq_confirm".to_string()));
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_confirm_construct_reads_operation_allows_trace_only_gui_state() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.read_seq_ids_text.clear();
+        area.sequencing_confirmation_ui.trace_ids_text = "trace_only".to_string();
+        area.sequencing_confirmation_ui.include_full_span_target = true;
+
+        let (_report_id, op) = area
+            .build_confirm_construct_reads_operation()
+            .expect("trace-only GUI operation should build");
+
+        match op {
+            Operation::ConfirmConstructReads {
+                read_seq_ids,
+                trace_ids,
+                ..
+            } => {
+                assert!(read_seq_ids.is_empty());
+                assert_eq!(trace_ids, vec!["trace_only".to_string()]);
             }
             other => panic!("unexpected operation: {other:?}"),
         }
@@ -25639,9 +25672,10 @@ impl MainAreaDna {
             .ok_or_else(|| "No active expected construct sequence".to_string())?;
         let ui = &self.sequencing_confirmation_ui;
         let read_seq_ids = Self::parse_ids(&ui.read_seq_ids_text);
-        if read_seq_ids.is_empty() {
+        let trace_ids = Self::parse_ids(&ui.trace_ids_text);
+        if read_seq_ids.is_empty() && trace_ids.is_empty() {
             return Err(
-                "Provide at least one read sequence ID (comma-separated) before running confirmation"
+                "Provide at least one read sequence ID and/or one imported trace ID before running confirmation"
                     .to_string(),
             );
         }
@@ -25656,7 +25690,7 @@ impl MainAreaDna {
             Operation::ConfirmConstructReads {
                 expected_seq_id,
                 read_seq_ids,
-                trace_ids: vec![],
+                trace_ids,
                 targets,
                 alignment_mode: ui.alignment_mode,
                 match_score: Self::parse_required_i32_text(
@@ -25687,6 +25721,112 @@ impl MainAreaDna {
                 report_id: Some(report_id),
             },
         ))
+    }
+
+    fn sequencing_trace_summaries(&self) -> Vec<SequencingTraceSummary> {
+        let expected_seq_id = self.seq_id.as_deref().unwrap_or("");
+        let Some(engine) = self.engine.as_ref() else {
+            return vec![];
+        };
+        let mut rows = engine
+            .read()
+            .ok()
+            .map(|guard| guard.list_sequencing_traces(None))
+            .unwrap_or_default();
+        rows.sort_by(|left, right| {
+            let left_associated = left.seq_id.as_deref() == Some(expected_seq_id);
+            let right_associated = right.seq_id.as_deref() == Some(expected_seq_id);
+            right_associated
+                .cmp(&left_associated)
+                .then(right.imported_at_unix_ms.cmp(&left.imported_at_unix_ms))
+                .then(
+                    left.trace_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.trace_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    fn sequencing_trace_record(&self, trace_id: &str) -> Option<SequencingTraceRecord> {
+        let trace_id = trace_id.trim();
+        if trace_id.is_empty() {
+            return None;
+        }
+        let engine = self.engine.as_ref()?;
+        engine
+            .read()
+            .ok()
+            .and_then(|guard| guard.get_sequencing_trace(trace_id).ok())
+    }
+
+    fn sequencing_trace_called_base_preview(
+        text: &str,
+        line_bp: usize,
+        max_lines: usize,
+    ) -> String {
+        if text.is_empty() || line_bp == 0 || max_lines == 0 {
+            return "<no called bases>".to_string();
+        }
+        let chars = text.chars().collect::<Vec<_>>();
+        let mut out = String::new();
+        let max_bp = line_bp.saturating_mul(max_lines);
+        for (line_idx, chunk) in chars.chunks(line_bp).take(max_lines).enumerate() {
+            if line_idx > 0 {
+                out.push('\n');
+            }
+            for ch in chunk {
+                out.push(*ch);
+            }
+        }
+        if chars.len() > max_bp {
+            out.push_str("\n...");
+        }
+        out
+    }
+
+    fn sequencing_trace_confidence_summary(values: &[u8]) -> String {
+        if values.is_empty() {
+            return "confidences: none".to_string();
+        }
+        let mut min_value = u8::MAX;
+        let mut max_value = u8::MIN;
+        let mut sum = 0u64;
+        for value in values {
+            min_value = min_value.min(*value);
+            max_value = max_value.max(*value);
+            sum += *value as u64;
+        }
+        let mean = sum as f64 / values.len() as f64;
+        format!(
+            "confidences: n={} min={} mean={:.1} max={}",
+            values.len(),
+            min_value,
+            mean,
+            max_value
+        )
+    }
+
+    fn sequencing_trace_peak_summary(values: &[u32]) -> String {
+        if values.is_empty() {
+            return "peaks: none".to_string();
+        }
+        let preview = values
+            .iter()
+            .take(8)
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>();
+        let suffix = if values.len() > preview.len() {
+            ", ..."
+        } else {
+            ""
+        };
+        format!(
+            "peaks: n={} [{}{}]",
+            values.len(),
+            preview.join(", "),
+            suffix
+        )
     }
 
     fn sequencing_confirmation_report_summaries(&self) -> Vec<SequencingConfirmationReportSummary> {
@@ -25782,10 +25922,12 @@ impl MainAreaDna {
             .filter(|row| row.status == SequencingConfirmationStatus::InsufficientEvidence)
             .count();
         self.op_status = format!(
-            "Sequencing-confirmation report '{}' expected='{}' status={} reads={} targets={} (confirmed={}, contradicted={}, insufficient={})",
+            "Sequencing-confirmation report '{}' expected='{}' status={} reads={} traces={} evidence={} targets={} (confirmed={}, contradicted={}, insufficient={})",
             report.report_id,
             report.expected_seq_id,
             report.overall_status.as_str(),
+            report.read_seq_ids.len(),
+            report.trace_ids.len(),
             report.reads.len(),
             report.targets.len(),
             confirmed,
@@ -26929,12 +27071,35 @@ impl MainAreaDna {
                         .ok()
                 })
         };
+        let trace_summaries = self.sequencing_trace_summaries();
+        let selected_trace_id_missing = self
+            .sequencing_confirmation_ui
+            .selected_trace_id
+            .trim()
+            .is_empty()
+            || !trace_summaries.iter().any(|row| {
+                row.trace_id
+                    .eq_ignore_ascii_case(self.sequencing_confirmation_ui.selected_trace_id.trim())
+            });
+        if selected_trace_id_missing {
+            if let Some(trace_id) = selected_report
+                .as_ref()
+                .and_then(|report| report.trace_ids.first())
+                .cloned()
+            {
+                self.sequencing_confirmation_ui.selected_trace_id = trace_id;
+            } else if let Some(row) = trace_summaries.first() {
+                self.sequencing_confirmation_ui.selected_trace_id = row.trace_id.clone();
+            }
+        }
+        let selected_trace =
+            self.sequencing_trace_record(self.sequencing_confirmation_ui.selected_trace_id.trim());
 
         ui.label(
-            "Construct-confirmation specialist for called sequencing reads. Target entry uses the same engine contract as `seq-confirm run`.",
+            "Construct-confirmation specialist for already-loaded sequencing reads and imported trace evidence. Target entry uses the same shared engine contract as `seq-confirm run`.",
         );
         ui.small(
-            "V1 scope is called reads only: confirm full-span and explicit junction checkpoints now; raw ABI/AB1/SCF traces come later.",
+            "Current GUI scope covers called reads plus imported ABI/AB1/SCF trace IDs through the same shared report store. Full chromatogram curve inspection remains a later follow-up.",
         );
         ui.separator();
         ui.columns(2, |columns| {
@@ -26957,6 +27122,21 @@ impl MainAreaDna {
             if read_ids_changed {
                 self.save_engine_ops_state();
             }
+            columns[0].label("Imported trace IDs");
+            let trace_ids_changed = columns[0]
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.sequencing_confirmation_ui.trace_ids_text,
+                    )
+                    .desired_width(320.0),
+                )
+                .on_hover_text(
+                    "Comma-separated imported sequencing-trace IDs already present in the project evidence store.",
+                )
+                .changed();
+            if trace_ids_changed {
+                self.save_engine_ops_state();
+            }
             let alternate_ids = project_sequence_ids
                 .iter()
                 .filter(|seq_id| *seq_id != &expected_seq_id)
@@ -26972,6 +27152,28 @@ impl MainAreaDna {
                     } else {
                         ""
                     }
+                ));
+            }
+            if trace_summaries.is_empty() {
+                columns[0].small(
+                    "No imported sequencing traces are stored yet. Import them through CLI/shared shell first with `seq-trace import ...`, then select them here by trace ID.",
+                );
+            } else {
+                let preview_ids = trace_summaries
+                    .iter()
+                    .take(8)
+                    .map(|row| row.trace_id.clone())
+                    .collect::<Vec<_>>();
+                let suffix = if trace_summaries.len() > preview_ids.len() {
+                    ", ..."
+                } else {
+                    ""
+                };
+                columns[0].small(format!(
+                    "Imported traces available: {} total [{}{}]",
+                    trace_summaries.len(),
+                    preview_ids.join(", "),
+                    suffix
                 ));
             }
             columns[0].separator();
@@ -27202,7 +27404,7 @@ impl MainAreaDna {
                 if ui
                     .button("Run confirmation")
                     .on_hover_text(
-                        "Run ConfirmConstructReads with the current GUI inputs and refresh the selected report.",
+                        "Run ConfirmConstructReads with the current read/trace inputs and refresh the selected report.",
                     )
                     .clicked()
                 {
@@ -27242,6 +27444,164 @@ impl MainAreaDna {
                 }
             });
 
+            columns[1].heading("Imported Trace Review");
+            if trace_summaries.is_empty() {
+                columns[1].small(
+                    "No imported sequencing traces are stored in this project yet.",
+                );
+            } else {
+                columns[1].horizontal_wrapped(|ui| {
+                    ui.label("Selected trace");
+                    let mut trace_selection_changed = false;
+                    egui::ComboBox::from_id_salt((
+                        "seq_confirm_selected_trace",
+                        self.panel_scope_key(),
+                    ))
+                    .selected_text(
+                        trace_summaries
+                            .iter()
+                            .find(|row| {
+                                row.trace_id.eq_ignore_ascii_case(
+                                    self.sequencing_confirmation_ui.selected_trace_id.trim(),
+                                )
+                            })
+                            .map(|row| {
+                                format!(
+                                    "{} | {} | bases={} | seq={}",
+                                    row.trace_id,
+                                    row.format.as_str(),
+                                    row.called_base_count,
+                                    row.seq_id.as_deref().unwrap_or("-")
+                                )
+                            })
+                            .unwrap_or_else(|| "<select trace>".to_string()),
+                    )
+                    .show_ui(ui, |ui| {
+                        for row in &trace_summaries {
+                            trace_selection_changed |= ui
+                                .selectable_value(
+                                    &mut self.sequencing_confirmation_ui.selected_trace_id,
+                                    row.trace_id.clone(),
+                                    format!(
+                                        "{} | {} | bases={} | seq={}",
+                                        row.trace_id,
+                                        row.format.as_str(),
+                                        row.called_base_count,
+                                        row.seq_id.as_deref().unwrap_or("-")
+                                    ),
+                                )
+                                .changed();
+                        }
+                    });
+                    if trace_selection_changed {
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button("Add selected trace to run")
+                        .on_hover_text(
+                            "Append the selected imported trace ID to the current confirmation input list.",
+                        )
+                        .clicked()
+                    {
+                        Self::append_unique_csv_token(
+                            &mut self.sequencing_confirmation_ui.trace_ids_text,
+                            self.sequencing_confirmation_ui.selected_trace_id.clone(),
+                        );
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button("Use selected only")
+                        .on_hover_text(
+                            "Replace the current imported trace input list with the selected trace ID.",
+                        )
+                        .clicked()
+                    {
+                        self.sequencing_confirmation_ui.trace_ids_text = self
+                            .sequencing_confirmation_ui
+                            .selected_trace_id
+                            .trim()
+                            .to_string();
+                        self.save_engine_ops_state();
+                    }
+                });
+                if let Some(trace) = selected_trace.as_ref() {
+                    columns[1].group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(egui::RichText::new(&trace.trace_id).strong());
+                            ui.separator();
+                            ui.small(trace.format.as_str());
+                            ui.separator();
+                            ui.small(format!(
+                                "seq={}",
+                                trace.seq_id.as_deref().unwrap_or("-")
+                            ));
+                            ui.separator();
+                            ui.small(format!("bases={}", trace.called_bases.len()));
+                            ui.separator();
+                            ui.small(format!(
+                                "confidences={}",
+                                trace.called_base_confidence_values.len()
+                            ));
+                            ui.separator();
+                            ui.small(format!("peaks={}", trace.peak_locations.len()));
+                            ui.separator();
+                            ui.small(format!("channels={}", trace.channel_summaries.len()));
+                        });
+                        ui.small(format!("source={}", trace.source_path));
+                        ui.small(format!("imported_at_unix_ms={}", trace.imported_at_unix_ms));
+                        ui.small(format!(
+                            "sample={} well={} run={} machine={} ({})",
+                            trace.sample_name.as_deref().unwrap_or("-"),
+                            trace.sample_well.as_deref().unwrap_or("-"),
+                            trace.run_name.as_deref().unwrap_or("-"),
+                            trace.machine_name.as_deref().unwrap_or("-"),
+                            trace.machine_model.as_deref().unwrap_or("-")
+                        ));
+                        if !trace.channel_summaries.is_empty() {
+                            let channel_text = trace
+                                .channel_summaries
+                                .iter()
+                                .map(|row| {
+                                    format!(
+                                        "{}:{}:{}",
+                                        row.trace_set, row.channel, row.point_count
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            ui.small(format!("channels: {channel_text}"));
+                        }
+                        ui.small(Self::sequencing_trace_confidence_summary(
+                            &trace.called_base_confidence_values,
+                        ));
+                        ui.small(Self::sequencing_trace_peak_summary(&trace.peak_locations));
+                        ui.label("Called bases preview");
+                        let mut preview = Self::sequencing_trace_called_base_preview(
+                            &trace.called_bases,
+                            48,
+                            4,
+                        );
+                        ui.add_enabled(
+                            false,
+                            egui::TextEdit::multiline(&mut preview)
+                                .desired_rows(4)
+                                .desired_width(f32::INFINITY),
+                        );
+                        if let Some(comments) = trace.comments_text.as_deref() {
+                            ui.collapsing("Trace comments", |ui| {
+                                let mut comments_text = comments.to_string();
+                                ui.add_enabled(
+                                    false,
+                                    egui::TextEdit::multiline(&mut comments_text)
+                                        .desired_rows(4)
+                                        .desired_width(f32::INFINITY),
+                                );
+                            });
+                        }
+                    });
+                }
+            }
+            columns[1].separator();
             columns[1].heading("Saved Reports + Evidence");
             if report_summaries.is_empty() {
                 columns[1].small(
@@ -27331,7 +27691,12 @@ impl MainAreaDna {
                         ui.separator();
                         ui.small(format!("report_id={}", report.report_id));
                         ui.separator();
-                        ui.small(format!("reads={}", report.reads.len()));
+                        ui.small(format!(
+                            "reads={} traces={} evidence={}",
+                            report.read_seq_ids.len(),
+                            report.trace_ids.len(),
+                            report.reads.len()
+                        ));
                         ui.separator();
                         ui.small(format!("targets={}", report.targets.len()));
                         if !report.warnings.is_empty() {
@@ -27402,19 +27767,28 @@ impl MainAreaDna {
                         .max_height(280.0)
                         .show(&mut columns[1], |ui| {
                         egui::Grid::new(("seq_confirm_reads_grid", self.panel_scope_key()))
-                            .num_columns(7)
+                            .num_columns(9)
                             .striped(true)
                             .show(ui, |ui| {
-                                ui.strong("Read");
+                                ui.strong("Evidence");
+                                ui.strong("Kind");
+                                ui.strong("Linked seq");
                                 ui.strong("Orientation");
                                 ui.strong("Usable");
                                 ui.strong("Identity");
                                 ui.strong("Coverage");
                                 ui.strong("Targets");
                                 ui.strong("Discrepancies");
+                                ui.strong("Review");
                                 ui.end_row();
                                 for read in &report.reads {
-                                    ui.label(&read.read_seq_id);
+                                    ui.label(&read.evidence_id);
+                                    ui.small(read.evidence_kind.as_str());
+                                    ui.small(
+                                        read.linked_seq_id
+                                            .as_deref()
+                                            .unwrap_or(read.read_seq_id.as_str()),
+                                    );
                                     ui.small(match read.orientation {
                                         SequencingReadOrientation::Forward => "forward",
                                         SequencingReadOrientation::ReverseComplement => "reverse_complement",
@@ -27432,14 +27806,38 @@ impl MainAreaDna {
                                         read.contradicted_target_ids.len()
                                     ));
                                     ui.small(format!("{}", read.discrepancies.len()));
+                                    if let Some(trace_id) = read.trace_id.as_deref() {
+                                        if ui
+                                            .small_button("Inspect trace")
+                                            .on_hover_text(
+                                                "Load the imported trace record behind this evidence row into the trace review pane.",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.sequencing_confirmation_ui.selected_trace_id =
+                                                trace_id.to_string();
+                                            self.save_engine_ops_state();
+                                        }
+                                    } else {
+                                        ui.small("-");
+                                    }
                                     ui.end_row();
                                 }
                             });
                         });
                     if let Some(best_read) = report.reads.first() {
                         columns[1].separator();
-                        columns[1].collapsing("First read alignment snapshot", |ui| {
+                        columns[1].collapsing("First evidence alignment snapshot", |ui| {
                         let alignment: &SequenceAlignmentReport = &best_read.best_alignment;
+                        ui.small(format!(
+                            "evidence={} kind={} linked_seq={}",
+                            best_read.evidence_id,
+                            best_read.evidence_kind.as_str(),
+                            best_read
+                                .linked_seq_id
+                                .as_deref()
+                                .unwrap_or(best_read.read_seq_id.as_str())
+                        ));
                         ui.small(format!(
                             "{} -> {} | mode={} score={} cigar={}",
                             alignment.query_seq_id,
@@ -27462,6 +27860,19 @@ impl MainAreaDna {
                             alignment.aligned_target_start_0based,
                             alignment.aligned_target_end_0based_exclusive
                         ));
+                        if let Some(trace_id) = best_read.trace_id.as_deref() {
+                            if ui
+                                .small_button("Inspect this trace")
+                                .on_hover_text(
+                                    "Load the imported trace record behind the first evidence row into the trace review pane.",
+                                )
+                                .clicked()
+                            {
+                                self.sequencing_confirmation_ui.selected_trace_id =
+                                    trace_id.to_string();
+                                self.save_engine_ops_state();
+                            }
+                        }
                         if !best_read.discrepancies.is_empty() {
                             ui.separator();
                             for discrepancy in best_read

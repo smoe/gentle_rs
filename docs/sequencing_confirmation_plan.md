@@ -1,6 +1,6 @@
 # Sequencing Confirmation Implementation Plan
 
-Status: called-read + raw-trace + trace-aware engine/shell baseline landed (2026-04-02)
+Status: called-read + raw-trace + trace-aware engine/shell baseline plus GUI trace review landed (2026-04-02)
 
 Current implementation snapshot:
 
@@ -14,8 +14,10 @@ Current implementation snapshot:
   - raw ABI/AB1/SCF trace import plus shared `seq-trace import|list|show`
   - trace-aware confirmation refinement through the same
     `ConfirmConstructReads` contract using imported `trace_ids`
+  - GUI sequencing-confirmation specialist now accepts imported trace ids and
+    includes imported-trace metadata/called-base review in the same window
 - still pending from this plan:
-  - deeper GUI trace review / chromatogram inspection
+  - fuller chromatogram curve inspection
   - lineage/artifact projection for confirmation reports
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for

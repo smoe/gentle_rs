@@ -2559,6 +2559,12 @@ Repeated multi-tool gaps to prioritize:
        - trace-backed evidence rows stay inside the same confirmation report
        - target support and contradiction ids can now reflect imported trace
          evidence directly
+     - the GUI sequencing-confirmation specialist now consumes those imported
+       trace ids too and includes built-in imported-trace review:
+       - trace ids can be added to the same run form as called-read ids
+       - saved report review shows trace-backed evidence rows explicitly
+       - imported trace metadata/called-base previews are inspectable without
+         dropping to shell
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack
@@ -2571,8 +2577,8 @@ Repeated multi-tool gaps to prioritize:
      - ABI/AB1/SCF raw-trace import and inspection second
        - shipped through engine/shell/CLI
      - trace-aware confirmation integration third
-       - shipped through engine/shell/CLI
-     - GUI trace review / chromatogram inspection remains the next follow-up
+       - shipped through engine/shell/CLI and GUI specialist
+     - richer chromatogram curve inspection remains the next follow-up
    - likely legacy code seeds:
      - `gentle-m` `src/ABItype.cpp`
      - `gentle-m` `src/SCFtype.cpp`

@@ -4522,8 +4522,9 @@ Error: `{err}`"
             },
             CommandPaletteEntry {
                 title: "Sequencing Confirmation".to_string(),
-                detail: "Confirm an expected construct from called read sequences".to_string(),
-                keywords: "sequencing confirmation sanger construct reads junction".to_string(),
+                detail: "Confirm an expected construct from reads or imported traces".to_string(),
+                keywords: "sequencing confirmation sanger construct reads trace junction"
+                    .to_string(),
                 action: CommandPaletteAction::OpenSequencingConfirmation,
             },
             CommandPaletteEntry {
@@ -18448,7 +18449,7 @@ Error: `{err}`"
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
         }
-        ui.label("Called-read construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence.");
+        ui.label("Construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence using called reads and/or imported sequencing traces.");
         if self.sequencing_confirmation_seq_id.trim().is_empty() {
             let target = self
                 .active_dna_window_context()

@@ -25,8 +25,8 @@ this as a confidence map for the current GUI surface.
   defined destination opening; `existing_termini` remains the single-fragment
   handoff path.
 - Sequencing confirmation now has a dedicated called-read specialist, but v1
-  is still limited to already-loaded read sequences plus full-span/junction
-  checkpoints; raw ABI/AB1/SCF trace import is still pending.
+  now also accepts imported trace IDs plus built-in trace review in the same
+  specialist; full chromatogram curve inspection is still pending.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
@@ -1199,24 +1199,31 @@ Patterns menu:
     active/opened expected construct sequence.
   - the same entry is also available from the command palette as
     `Sequencing Confirmation`.
-  - current v1 scope mirrors shared-shell `seq-confirm run`:
+  - current scope mirrors shared-shell `seq-confirm run`:
     - choose one expected construct sequence
-    - enter one or more already-loaded read sequence IDs
+    - enter one or more already-loaded read sequence IDs and/or imported
+      sequencing-trace IDs
     - keep the default full-span target and/or add explicit junction
       breakpoints (`0-based` left-end positions plus flank bp)
     - run confirmation through the same shared `ConfirmConstructReads`
       operation used by CLI/shell
+  - imported trace review is built in:
+    - browse imported ABI/AB1/SCF trace records already stored in the project
+    - inspect called-base previews, confidence/peak summaries, source path,
+      and sample/run metadata
+    - append the selected trace directly to the current confirmation inputs
   - saved-report review is built in:
     - choose a persisted report for the current expected construct
-    - inspect overall status, target-level outcomes, read-level outcomes, and
-      a first-read alignment snapshot
+    - inspect overall status, target-level outcomes, evidence-level outcomes,
+      and a first-evidence alignment snapshot
     - export the selected report as JSON or support TSV
   - selection convenience:
     - the active sequence selection can append its `start`, `midpoint`, or
       `end` as explicit junction breakpoints
   - current limitation:
-    - this specialist is for called reads only; raw ABI/AB1/SCF trace import
-      and richer trace-aware review are still future work
+    - raw trace import itself still comes through CLI/shared shell
+      (`seq-trace import ...`)
+    - full chromatogram curve inspection is still future work
   - shared UI-intent parity:
     - `ui open sequencing-confirmation`
     - `ui focus sequencing-confirmation`
@@ -2290,12 +2297,13 @@ Heuristic guidance surfaced in reports/warnings:
 ## Sequencing Confirmation
 
 The dedicated `Patterns -> Sequencing Confirmation...` window is the GUI front
-end for called-read construct verification.
+end for construct verification from called reads and imported sequencing traces.
 
 Current scope:
 
 - expected construct is the active/opened sequence window
 - read evidence is supplied as already-loaded project sequence IDs
+- imported ABI/AB1/SCF evidence is supplied as already-imported trace IDs
 - target coverage can be:
   - the default full construct span
   - one or more explicit junction checkpoints
@@ -2306,6 +2314,8 @@ Key controls:
 
 - `Read sequence IDs`: comma-separated IDs of read sequences already present in
   the project
+- `Imported trace IDs`: comma-separated IDs from the sequencing-trace evidence
+  store
 - `Include full construct span target`
 - `Junction breakpoints (0-based)` plus `flank`
 - alignment scoring knobs:
@@ -2321,18 +2331,25 @@ Actions:
 - `Show selected`
 - `Export JSON...`
 - `Export TSV...`
+- `Add selected trace to run` / `Use selected only` from the imported-trace
+  review pane
 
 Report review surface:
 
 - overall verdict (`confirmed`, `contradicted`, `insufficient_evidence`)
 - per-target table with kind, span, support counts, and reason
-- per-read table with chosen orientation, usability, identity, and coverage
-- first-read alignment snapshot for quick inspection without dropping to shell
+- per-evidence table with sequence-vs-trace kind, chosen orientation,
+  usability, identity, and coverage
+- imported trace review pane with called-base preview plus confidence/peak
+  summaries
+- first-evidence alignment snapshot for quick inspection without dropping to
+  shell
 
 Current limitations:
 
-- no ABI/AB1/SCF raw-trace import yet
-- no chromatogram/trace-aware confirmation yet
+- raw ABI/AB1/SCF import still happens through CLI/shared shell, not directly
+  in this GUI window
+- no full chromatogram curve inspection yet
 - no lineage/artifact projection for confirmation reports yet
 - anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
 - `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line
