@@ -669,6 +669,9 @@ Current draft operations:
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
+  - linear exports honor the current stored linear viewport in `display`
+    (`linear_view_start_bp` / `linear_view_span_bp`) when that viewport is a
+    proper subsequence crop
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports

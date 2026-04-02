@@ -1,8 +1,11 @@
 //! Shared export surfaces (SVG and snapshot pathways).
 
 use crate::{
-    dna_display::DnaDisplay, dna_sequence::DNAsequence, engine::DisplaySettings,
-    feature_location::feature_is_reverse, gc_contents::GcContents,
+    dna_display::DnaDisplay,
+    dna_sequence::DNAsequence,
+    engine::DisplaySettings,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
+    gc_contents::GcContents,
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::Feature;
@@ -24,6 +27,11 @@ const REGULATORY_BLOCK_HEIGHT: f32 = 6.0;
 const REGULATORY_GROUP_GAP: f32 = 5.0;
 const FEATURE_LANE_PADDING: f32 = 5.0;
 const REGULATORY_LANE_PADDING: f32 = 2.0;
+const LINEAR_SVG_HEADER_HEIGHT: f32 = 44.0;
+const LINEAR_SVG_BOTTOM_PADDING: f32 = 28.0;
+const LINEAR_SVG_MIN_HEIGHT: f32 = 180.0;
+const SVG_TEXT_ASCENT: f32 = 10.0;
+const SVG_TEXT_DESCENT: f32 = 4.0;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -35,6 +43,25 @@ struct FeatureVm {
     is_reverse: bool,
     is_pointy: bool,
     is_regulatory: bool,
+}
+
+#[derive(Clone, Debug)]
+struct LinearSvgFeatureLayout {
+    features: Vec<FeatureVm>,
+    lane_top_by_idx: Vec<usize>,
+    lane_bottom_by_idx: Vec<usize>,
+    lane_regulatory_top_by_idx: Vec<usize>,
+    top_regular_extent: f32,
+    regulatory_group_gap: f32,
+    top_extent: f32,
+    bottom_extent: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LinearExportViewport {
+    start_bp: usize,
+    end_bp_exclusive: usize,
+    span_bp: usize,
 }
 
 fn feature_name(feature: &Feature) -> String {
@@ -335,12 +362,115 @@ fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usiz
     }
 }
 
+fn normalize_linear_export_viewport(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+) -> LinearExportViewport {
+    let seq_len = dna.len();
+    if seq_len == 0 || dna.is_circular() {
+        return LinearExportViewport {
+            start_bp: 0,
+            end_bp_exclusive: seq_len,
+            span_bp: seq_len.max(1),
+        };
+    }
+    let requested_span = display.linear_view_span_bp;
+    let span_bp = if requested_span == 0 || requested_span > seq_len {
+        seq_len
+    } else {
+        requested_span
+    };
+    let max_start = seq_len.saturating_sub(span_bp);
+    let start_bp = display.linear_view_start_bp.min(max_start);
+    let end_bp_exclusive = start_bp.saturating_add(span_bp).min(seq_len);
+    LinearExportViewport {
+        start_bp,
+        end_bp_exclusive,
+        span_bp: end_bp_exclusive.saturating_sub(start_bp).max(1),
+    }
+}
+
+fn absolute_bp_to_view_x(
+    absolute_bp: usize,
+    viewport: LinearExportViewport,
+    left: f32,
+    right: f32,
+) -> f32 {
+    let local_bp = absolute_bp.saturating_sub(viewport.start_bp);
+    bp_to_x(local_bp, viewport.span_bp, left, right)
+}
+
+fn clip_linear_bounds_to_viewport(
+    from: usize,
+    to: usize,
+    sequence_length: usize,
+    viewport: LinearExportViewport,
+) -> Option<(usize, usize)> {
+    if sequence_length == 0 || viewport.end_bp_exclusive <= viewport.start_bp {
+        return None;
+    }
+    let mut from = from;
+    let mut to = to;
+    if to < from {
+        std::mem::swap(&mut from, &mut to);
+    }
+    if from >= sequence_length {
+        return None;
+    }
+    let to = to.min(sequence_length.saturating_sub(1));
+    if to < from {
+        return None;
+    }
+    let clip_from = from.max(viewport.start_bp);
+    let clip_to = to.min(viewport.end_bp_exclusive.saturating_sub(1));
+    (clip_to >= clip_from).then_some((clip_from, clip_to))
+}
+
+fn feature_bounds_in_viewport(
+    feature: &Feature,
+    sequence_length: usize,
+    viewport: LinearExportViewport,
+) -> Option<(usize, usize)> {
+    let mut ranges = Vec::new();
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    if ranges.is_empty() {
+        if let Ok((raw_from, raw_to)) = feature.location.find_bounds() {
+            if raw_from >= 0 && raw_to >= 0 {
+                ranges.push((raw_from as usize, raw_to as usize));
+            }
+        }
+    }
+    let mut clipped_start: Option<usize> = None;
+    let mut clipped_end: usize = 0;
+    for (from, to) in ranges {
+        let Some((clip_from, clip_to)) =
+            clip_linear_bounds_to_viewport(from, to, sequence_length, viewport)
+        else {
+            continue;
+        };
+        clipped_start = Some(clipped_start.map_or(clip_from, |value| value.min(clip_from)));
+        clipped_end = clipped_end.max(clip_to);
+    }
+    clipped_start.map(|start| (start, clipped_end))
+}
+
+fn orf_bounds_in_viewport(
+    from: usize,
+    to: usize,
+    sequence_length: usize,
+    viewport: LinearExportViewport,
+) -> Option<(usize, usize)> {
+    clip_linear_bounds_to_viewport(from, to, sequence_length, viewport)
+}
+
 fn collect_features(
     dna: &DNAsequence,
     display: &DisplaySettings,
     view_span_bp: usize,
+    viewport: LinearExportViewport,
 ) -> Vec<FeatureVm> {
     let mut ret = Vec::new();
+    let sequence_length = dna.len();
     for feature in dna.features() {
         if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
             continue;
@@ -371,15 +501,13 @@ fn collect_features(
         if is_vcf_track_feature(feature) && !vcf_feature_passes_display_filter(feature, display) {
             continue;
         }
-        let Ok((from, to)) = feature.location.find_bounds() else {
+        let Some((from, to)) = feature_bounds_in_viewport(feature, sequence_length, viewport)
+        else {
             continue;
         };
-        if from < 0 || to < 0 {
-            continue;
-        }
         ret.push(FeatureVm {
-            from: from as usize,
-            to: to as usize,
+            from,
+            to,
             label: feature_name(feature),
             color: feature_color(feature),
             is_gene: kind == "GENE",
@@ -448,22 +576,297 @@ fn re_color(key: &RestrictionEnzymeKey) -> &'static str {
     }
 }
 
+fn compute_linear_svg_feature_layout(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+    viewport: LinearExportViewport,
+    left: f32,
+    right: f32,
+) -> LinearSvgFeatureLayout {
+    let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
+    let features = collect_features(dna, display, viewport.span_bp, viewport);
+    let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
+    let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
+    let mut lane_regulatory_top_by_idx: Vec<usize> = vec![0; features.len()];
+    let mut top_lane_ends: Vec<f32> = vec![];
+    let mut bottom_lane_ends: Vec<f32> = vec![];
+    let mut regulatory_top_lane_ends: Vec<f32> = vec![];
+
+    let mut top_order: Vec<usize> = features
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, f)| {
+            if !f.is_reverse && !f.is_regulatory {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect();
+    top_order.sort_by(|a, b| {
+        let fa = &features[*a];
+        let fb = &features[*b];
+        let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
+        let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
+        fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
+    });
+    for idx in top_order {
+        let f = &features[idx];
+        let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
+        let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+        lane_top_by_idx[idx] = lane_allocate(&mut top_lane_ends, x1, x2, FEATURE_LANE_PADDING);
+    }
+
+    let mut bottom_order: Vec<usize> = features
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, f)| {
+            if f.is_reverse && !f.is_regulatory {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect();
+    bottom_order.sort_by(|a, b| {
+        let fa = &features[*a];
+        let fb = &features[*b];
+        let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
+        let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
+        fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
+    });
+    for idx in bottom_order {
+        let f = &features[idx];
+        let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
+        let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+        lane_bottom_by_idx[idx] =
+            lane_allocate(&mut bottom_lane_ends, x1, x2, FEATURE_LANE_PADDING);
+    }
+
+    let mut regulatory_top_order: Vec<usize> = features
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, f)| if f.is_regulatory { Some(idx) } else { None })
+        .collect();
+    regulatory_top_order.sort_by(|a, b| {
+        let fa = &features[*a];
+        let fb = &features[*b];
+        let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
+        let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
+        fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
+    });
+    for idx in regulatory_top_order {
+        let f = &features[idx];
+        if regulatory_tracks_near_baseline {
+            lane_regulatory_top_by_idx[idx] = 0;
+        } else {
+            let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
+            let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+            lane_regulatory_top_by_idx[idx] = lane_allocate(
+                &mut regulatory_top_lane_ends,
+                x1,
+                x2,
+                REGULATORY_LANE_PADDING,
+            );
+        }
+    }
+
+    let top_regular_extent = if top_lane_ends.is_empty() {
+        0.0
+    } else {
+        FEATURE_SIDE_MARGIN
+            + (top_lane_ends.len().saturating_sub(1) as f32) * FEATURE_LANE_GAP
+            + FEATURE_BLOCK_HEIGHT * 0.5
+    };
+    let regulatory_group_gap = if !regulatory_tracks_near_baseline
+        && !top_lane_ends.is_empty()
+        && !regulatory_top_lane_ends.is_empty()
+    {
+        REGULATORY_GROUP_GAP
+    } else {
+        0.0
+    };
+    let top_regular_margin = if regulatory_tracks_near_baseline {
+        FEATURE_SIDE_MARGIN.max(
+            REGULATORY_SIDE_MARGIN
+                + REGULATORY_BLOCK_HEIGHT * 0.5
+                + FEATURE_BLOCK_HEIGHT * 0.5
+                + 1.0,
+        )
+    } else {
+        FEATURE_SIDE_MARGIN
+    };
+
+    let mut top_extent = 0.0f32;
+    let mut bottom_extent = 0.0f32;
+    for (idx, f) in features.iter().enumerate() {
+        if f.is_regulatory {
+            let lane = lane_regulatory_top_by_idx[idx] as f32;
+            let center_offset = if regulatory_tracks_near_baseline {
+                REGULATORY_SIDE_MARGIN
+            } else {
+                top_regular_extent
+                    + regulatory_group_gap
+                    + REGULATORY_SIDE_MARGIN
+                    + lane * REGULATORY_LANE_GAP
+            };
+            top_extent = top_extent.max(center_offset + REGULATORY_BLOCK_HEIGHT * 0.5);
+            if !f.label.trim().is_empty() {
+                top_extent = top_extent
+                    .max(center_offset + REGULATORY_BLOCK_HEIGHT * 0.5 + 2.0 + SVG_TEXT_ASCENT);
+            }
+        } else if f.is_reverse {
+            let lane = lane_bottom_by_idx[idx] as f32;
+            let center_offset = FEATURE_SIDE_MARGIN + lane * FEATURE_LANE_GAP;
+            bottom_extent = bottom_extent.max(center_offset + FEATURE_BLOCK_HEIGHT * 0.5);
+            if !f.label.trim().is_empty() && !f.is_gene {
+                bottom_extent = bottom_extent.max(center_offset + 16.0 + SVG_TEXT_DESCENT);
+            }
+        } else {
+            let lane = lane_top_by_idx[idx] as f32;
+            let center_offset = top_regular_margin + lane * FEATURE_LANE_GAP;
+            top_extent = top_extent.max(center_offset + FEATURE_BLOCK_HEIGHT * 0.5);
+            if !f.label.trim().is_empty() && !f.is_gene {
+                top_extent = top_extent.max(center_offset + 10.0 + SVG_TEXT_ASCENT);
+            }
+        }
+    }
+
+    LinearSvgFeatureLayout {
+        features,
+        lane_top_by_idx,
+        lane_bottom_by_idx,
+        lane_regulatory_top_by_idx,
+        top_regular_extent,
+        regulatory_group_gap,
+        top_extent,
+        bottom_extent,
+    }
+}
+
+fn compute_linear_svg_re_label_extents(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+    viewport: LinearExportViewport,
+    left: f32,
+    right: f32,
+) -> (f32, f32) {
+    if !display.show_restriction_enzymes {
+        return (0.0, 0.0);
+    }
+    let mut keys: Vec<RestrictionEnzymeKey> = dna
+        .restriction_enzyme_groups()
+        .iter()
+        .filter_map(|(key, names)| {
+            DnaDisplay::restriction_group_matches_mode(
+                display.restriction_enzyme_display_mode,
+                &display.preferred_restriction_enzymes,
+                key,
+                names,
+            )
+            .then_some(key.clone())
+        })
+        .collect();
+    keys.sort();
+    let mut top_label_lanes: Vec<f32> = vec![];
+    let mut bottom_label_lanes: Vec<f32> = vec![];
+    for (i, key) in keys.iter().enumerate() {
+        let Some(pos) = usize::try_from(key.pos().max(0)).ok() else {
+            continue;
+        };
+        let Some(mate_pos) = usize::try_from(key.mate_pos().max(0)).ok() else {
+            continue;
+        };
+        let in_view = (pos >= viewport.start_bp && pos < viewport.end_bp_exclusive)
+            || (mate_pos >= viewport.start_bp && mate_pos < viewport.end_bp_exclusive);
+        if !in_view {
+            continue;
+        }
+        let x = absolute_bp_to_view_x(pos, viewport, left, right);
+        if let Some(names) = dna.restriction_enzyme_groups().get(key) {
+            let label = names.join(",");
+            let label_width = estimate_text_width(&label);
+            let label_left = x - label_width / 2.0;
+            let label_right = x + label_width / 2.0;
+            if i % 2 == 0 {
+                let _ = lane_allocate(&mut top_label_lanes, label_left, label_right, 6.0);
+            } else {
+                let _ = lane_allocate(&mut bottom_label_lanes, label_left, label_right, 6.0);
+            }
+        }
+    }
+    let top_extent = if top_label_lanes.is_empty() {
+        0.0
+    } else {
+        RE_LABEL_BASE_OFFSET
+            + (top_label_lanes.len().saturating_sub(1) as f32) * RE_LABEL_ROW_HEIGHT
+            + SVG_TEXT_ASCENT
+    };
+    let bottom_extent = if bottom_label_lanes.is_empty() {
+        0.0
+    } else {
+        RE_LABEL_BASE_OFFSET
+            + (bottom_label_lanes.len().saturating_sub(1) as f32) * RE_LABEL_ROW_HEIGHT
+            + SVG_TEXT_DESCENT
+    };
+    (top_extent, bottom_extent)
+}
+
 pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String {
     let len = dna.len();
     let left = 60.0;
     let right = W - 60.0;
-    let baseline = H * 0.5;
+    let viewport = normalize_linear_export_viewport(dna, display);
+    let feature_layout = display
+        .show_features
+        .then(|| compute_linear_svg_feature_layout(dna, display, viewport, left, right));
+    let (re_top_extent, re_bottom_extent) =
+        compute_linear_svg_re_label_extents(dna, display, viewport, left, right);
+    let mut top_extent = 0.0f32;
+    let mut bottom_extent = 0.0f32;
+    if display.show_gc_contents {
+        top_extent = top_extent.max(8.0);
+    }
+    if display.show_methylation_sites {
+        top_extent = top_extent.max(12.0);
+    }
+    if display.show_open_reading_frames {
+        let mut top_orf_extent = 0.0f32;
+        let mut bottom_orf_extent = 0.0f32;
+        for orf in dna.open_reading_frames() {
+            let level = (orf.frame().unsigned_abs()) as f32;
+            let extent = 12.5 + 7.0 * level;
+            if orf.is_reverse() {
+                bottom_orf_extent = bottom_orf_extent.max(extent);
+            } else {
+                top_orf_extent = top_orf_extent.max(extent);
+            }
+        }
+        top_extent = top_extent.max(top_orf_extent);
+        bottom_extent = bottom_extent.max(bottom_orf_extent);
+    }
+    if let Some(layout) = &feature_layout {
+        top_extent = top_extent.max(layout.top_extent);
+        bottom_extent = bottom_extent.max(layout.bottom_extent);
+    }
+    top_extent = top_extent.max(re_top_extent);
+    bottom_extent = bottom_extent.max(re_bottom_extent);
+
+    let baseline = LINEAR_SVG_HEADER_HEIGHT + top_extent;
+    let canvas_height = (baseline + bottom_extent + LINEAR_SVG_BOTTOM_PADDING)
+        .max(LINEAR_SVG_MIN_HEIGHT)
+        .ceil();
 
     let mut doc = Document::new()
-        .set("viewBox", (0, 0, W, H))
+        .set("viewBox", (0, 0, W, canvas_height))
         .set("width", W)
-        .set("height", H)
+        .set("height", canvas_height)
         .add(
             Rectangle::new()
                 .set("x", 0)
                 .set("y", 0)
                 .set("width", W)
-                .set("height", H)
+                .set("height", canvas_height)
                 .set("fill", "#ffffff"),
         );
     let mut labels: Vec<Text> = vec![];
@@ -474,8 +877,13 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             display.gc_content_bin_size_bp,
         );
         for region in gc_contents.regions() {
-            let x1 = bp_to_x(region.from(), len, left, right);
-            let x2 = bp_to_x(region.to(), len, left, right).max(x1 + 1.0);
+            let Some((from, to)) =
+                clip_linear_bounds_to_viewport(region.from(), region.to(), len, viewport)
+            else {
+                continue;
+            };
+            let x1 = absolute_bp_to_view_x(from, viewport, left, right);
+            let x2 = absolute_bp_to_view_x(to, viewport, left, right).max(x1 + 1.0);
             let g = (region.gc() * 255.0).round() as u8;
             let r = 255u8.saturating_sub(g);
             let color = format!("#{:02x}{:02x}00", r, g);
@@ -492,7 +900,10 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
 
     if display.show_methylation_sites {
         for site in dna.methylation_sites().sites() {
-            let x = bp_to_x(*site, len, left, right);
+            if *site < viewport.start_bp || *site >= viewport.end_bp_exclusive {
+                continue;
+            }
+            let x = absolute_bp_to_view_x(*site, viewport, left, right);
             doc = doc.add(
                 Line::new()
                     .set("x1", x)
@@ -519,8 +930,12 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         for orf in dna.open_reading_frames() {
             let start = (orf.from().min(orf.to())).max(0) as usize;
             let end = (orf.from().max(orf.to())).max(0) as usize;
-            let x1 = bp_to_x(start, len, left, right);
-            let x2 = bp_to_x(end, len, left, right).max(x1 + 1.0);
+            let Some((view_start, view_end)) = orf_bounds_in_viewport(start, end, len, viewport)
+            else {
+                continue;
+            };
+            let x1 = absolute_bp_to_view_x(view_start, viewport, left, right);
+            let x2 = absolute_bp_to_view_x(view_end, viewport, left, right).max(x1 + 1.0);
             let level = (orf.frame().unsigned_abs()) as f32;
             let y = if orf.is_reverse() {
                 baseline + 10.0 + 7.0 * level
@@ -560,205 +975,111 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     if display.show_features {
-        let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
-        let features = collect_features(dna, display, len);
-        let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
-        let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
-        let mut lane_regulatory_top_by_idx: Vec<usize> = vec![0; features.len()];
-        let mut top_lane_ends: Vec<f32> = vec![];
-        let mut bottom_lane_ends: Vec<f32> = vec![];
-        let mut regulatory_top_lane_ends: Vec<f32> = vec![];
+        if let Some(layout) = &feature_layout {
+            let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
+            let features = &layout.features;
+            let lane_top_by_idx = &layout.lane_top_by_idx;
+            let lane_bottom_by_idx = &layout.lane_bottom_by_idx;
+            let lane_regulatory_top_by_idx = &layout.lane_regulatory_top_by_idx;
+            let top_regular_extent = layout.top_regular_extent;
+            let regulatory_group_gap = layout.regulatory_group_gap;
 
-        let mut top_order: Vec<usize> = features
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, f)| {
-                if !f.is_reverse && !f.is_regulatory {
-                    Some(idx)
+            for (idx, f) in features.iter().enumerate() {
+                let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
+                let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+                let (y, block_height) = if f.is_regulatory {
+                    let y = if regulatory_tracks_near_baseline {
+                        baseline - REGULATORY_SIDE_MARGIN
+                    } else {
+                        let lane = lane_regulatory_top_by_idx[idx];
+                        baseline
+                            - top_regular_extent
+                            - regulatory_group_gap
+                            - REGULATORY_SIDE_MARGIN
+                            - lane as f32 * REGULATORY_LANE_GAP
+                    };
+                    (y, REGULATORY_BLOCK_HEIGHT)
+                } else if f.is_reverse {
+                    let lane = lane_bottom_by_idx[idx];
+                    let y = baseline + FEATURE_SIDE_MARGIN + lane as f32 * FEATURE_LANE_GAP;
+                    (y, FEATURE_BLOCK_HEIGHT)
                 } else {
-                    None
-                }
-            })
-            .collect();
-        top_order.sort_by(|a, b| {
-            let fa = &features[*a];
-            let fb = &features[*b];
-            let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
-            let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
-        });
-        for idx in top_order {
-            let f = &features[idx];
-            let x1 = bp_to_x(f.from, len, left, right);
-            let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_top_by_idx[idx] = lane_allocate(&mut top_lane_ends, x1, x2, FEATURE_LANE_PADDING);
-        }
-
-        let mut bottom_order: Vec<usize> = features
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, f)| {
-                if f.is_reverse && !f.is_regulatory {
-                    Some(idx)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        bottom_order.sort_by(|a, b| {
-            let fa = &features[*a];
-            let fb = &features[*b];
-            let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
-            let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
-        });
-        for idx in bottom_order {
-            let f = &features[idx];
-            let x1 = bp_to_x(f.from, len, left, right);
-            let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_bottom_by_idx[idx] =
-                lane_allocate(&mut bottom_lane_ends, x1, x2, FEATURE_LANE_PADDING);
-        }
-
-        let mut regulatory_top_order: Vec<usize> = features
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, f)| if f.is_regulatory { Some(idx) } else { None })
-            .collect();
-        regulatory_top_order.sort_by(|a, b| {
-            let fa = &features[*a];
-            let fb = &features[*b];
-            let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
-            let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
-        });
-        for idx in regulatory_top_order {
-            let f = &features[idx];
-            if regulatory_tracks_near_baseline {
-                lane_regulatory_top_by_idx[idx] = 0;
-            } else {
-                let x1 = bp_to_x(f.from, len, left, right);
-                let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-                lane_regulatory_top_by_idx[idx] = lane_allocate(
-                    &mut regulatory_top_lane_ends,
-                    x1,
-                    x2,
-                    REGULATORY_LANE_PADDING,
+                    let lane = lane_top_by_idx[idx];
+                    let required_margin = if regulatory_tracks_near_baseline {
+                        REGULATORY_SIDE_MARGIN
+                            + REGULATORY_BLOCK_HEIGHT * 0.5
+                            + FEATURE_BLOCK_HEIGHT * 0.5
+                            + 1.0
+                    } else {
+                        FEATURE_SIDE_MARGIN
+                    };
+                    let y = baseline
+                        - required_margin.max(FEATURE_SIDE_MARGIN)
+                        - lane as f32 * FEATURE_LANE_GAP;
+                    (y, FEATURE_BLOCK_HEIGHT)
+                };
+                let half_height = block_height * 0.5;
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - half_height)
+                        .set("width", x2 - x1)
+                        .set("height", block_height)
+                        .set("fill", f.color),
                 );
-            }
-        }
 
-        let top_regular_extent = if top_lane_ends.is_empty() {
-            0.0
-        } else {
-            FEATURE_SIDE_MARGIN
-                + (top_lane_ends.len().saturating_sub(1) as f32) * FEATURE_LANE_GAP
-                + FEATURE_BLOCK_HEIGHT * 0.5
-        };
-        let regulatory_group_gap = if !regulatory_tracks_near_baseline
-            && !top_lane_ends.is_empty()
-            && !regulatory_top_lane_ends.is_empty()
-        {
-            REGULATORY_GROUP_GAP
-        } else {
-            0.0
-        };
+                if f.is_pointy {
+                    let arrow_dx = 6.0;
+                    let data = if f.is_reverse {
+                        Data::new()
+                            .move_to((x1, y - half_height))
+                            .line_to((x1 - arrow_dx, y))
+                            .line_to((x1, y + half_height))
+                            .close()
+                    } else {
+                        Data::new()
+                            .move_to((x2, y - half_height))
+                            .line_to((x2 + arrow_dx, y))
+                            .line_to((x2, y + half_height))
+                            .close()
+                    };
+                    doc = doc.add(Path::new().set("d", data).set("fill", f.color));
+                }
 
-        for (idx, f) in features.iter().enumerate() {
-            let x1 = bp_to_x(f.from, len, left, right);
-            let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            let (y, block_height) = if f.is_regulatory {
-                let y = if regulatory_tracks_near_baseline {
-                    baseline - REGULATORY_SIDE_MARGIN
+                if f.label.trim().is_empty() {
+                    continue;
+                }
+                if f.is_gene {
+                    let inline_chars = (((x2 - x1) - 4.0).max(0.0) / 6.5).floor() as usize;
+                    let inline_label = truncate_label_to_chars(f.label.trim(), inline_chars.max(1));
+                    labels.push(
+                        Text::new(inline_label)
+                            .set("x", (x1 + x2) * 0.5)
+                            .set("y", y + 3.0)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 10)
+                            .set("fill", "#f8f8f8"),
+                    );
+                    continue;
+                }
+                let (text_y, anchor) = if f.is_regulatory {
+                    (y - half_height - 2.0, "start")
+                } else if f.is_reverse {
+                    (y + 16.0, "start")
                 } else {
-                    let lane = lane_regulatory_top_by_idx[idx];
-                    baseline
-                        - top_regular_extent
-                        - regulatory_group_gap
-                        - REGULATORY_SIDE_MARGIN
-                        - lane as f32 * REGULATORY_LANE_GAP
+                    (y - 10.0, "start")
                 };
-                (y, REGULATORY_BLOCK_HEIGHT)
-            } else if f.is_reverse {
-                let lane = lane_bottom_by_idx[idx];
-                let y = baseline + FEATURE_SIDE_MARGIN + lane as f32 * FEATURE_LANE_GAP;
-                (y, FEATURE_BLOCK_HEIGHT)
-            } else {
-                let lane = lane_top_by_idx[idx];
-                let required_margin = if regulatory_tracks_near_baseline {
-                    REGULATORY_SIDE_MARGIN
-                        + REGULATORY_BLOCK_HEIGHT * 0.5
-                        + FEATURE_BLOCK_HEIGHT * 0.5
-                        + 1.0
-                } else {
-                    FEATURE_SIDE_MARGIN
-                };
-                let y = baseline
-                    - required_margin.max(FEATURE_SIDE_MARGIN)
-                    - lane as f32 * FEATURE_LANE_GAP;
-                (y, FEATURE_BLOCK_HEIGHT)
-            };
-            let half_height = block_height * 0.5;
-            doc = doc.add(
-                Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - half_height)
-                    .set("width", x2 - x1)
-                    .set("height", block_height)
-                    .set("fill", f.color),
-            );
-
-            if f.is_pointy {
-                let arrow_dx = 6.0;
-                let data = if f.is_reverse {
-                    Data::new()
-                        .move_to((x1, y - half_height))
-                        .line_to((x1 - arrow_dx, y))
-                        .line_to((x1, y + half_height))
-                        .close()
-                } else {
-                    Data::new()
-                        .move_to((x2, y - half_height))
-                        .line_to((x2 + arrow_dx, y))
-                        .line_to((x2, y + half_height))
-                        .close()
-                };
-                doc = doc.add(Path::new().set("d", data).set("fill", f.color));
-            }
-
-            if f.label.trim().is_empty() {
-                continue;
-            }
-            if f.is_gene {
-                let inline_chars = (((x2 - x1) - 4.0).max(0.0) / 6.5).floor() as usize;
-                let inline_label = truncate_label_to_chars(f.label.trim(), inline_chars.max(1));
                 labels.push(
-                    Text::new(inline_label)
-                        .set("x", (x1 + x2) * 0.5)
-                        .set("y", y + 3.0)
-                        .set("text-anchor", "middle")
+                    Text::new(f.label.clone())
+                        .set("x", x1)
+                        .set("y", text_y)
+                        .set("text-anchor", anchor)
                         .set("font-family", "monospace")
                         .set("font-size", 10)
-                        .set("fill", "#f8f8f8"),
+                        .set("fill", "#111111"),
                 );
-                continue;
             }
-            let (text_y, anchor) = if f.is_regulatory {
-                (y - half_height - 2.0, "start")
-            } else if f.is_reverse {
-                (y + 16.0, "start")
-            } else {
-                (y - 10.0, "start")
-            };
-            labels.push(
-                Text::new(f.label.clone())
-                    .set("x", x1)
-                    .set("y", text_y)
-                    .set("text-anchor", anchor)
-                    .set("font-family", "monospace")
-                    .set("font-size", 10)
-                    .set("fill", "#111111"),
-            );
         }
     }
 
@@ -781,7 +1102,18 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         let mut bottom_label_lanes: Vec<f32> = vec![];
 
         for (i, key) in keys.iter().enumerate() {
-            let x = bp_to_x(key.pos().max(0) as usize, len, left, right);
+            let Some(pos) = usize::try_from(key.pos().max(0)).ok() else {
+                continue;
+            };
+            let Some(mate_pos) = usize::try_from(key.mate_pos().max(0)).ok() else {
+                continue;
+            };
+            let in_view = (pos >= viewport.start_bp && pos < viewport.end_bp_exclusive)
+                || (mate_pos >= viewport.start_bp && mate_pos < viewport.end_bp_exclusive);
+            if !in_view {
+                continue;
+            }
+            let x = absolute_bp_to_view_x(pos, viewport, left, right);
             let color = re_color(key);
             doc = doc.add(
                 Line::new()
@@ -834,13 +1166,25 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         .set("fill", "#111111"),
     );
     labels.push(
-        Text::new(format!("{} bp", len))
-            .set("x", W - 12.0)
-            .set("y", 24)
-            .set("text-anchor", "end")
-            .set("font-family", "monospace")
-            .set("font-size", 14)
-            .set("fill", "#444444"),
+        Text::new(
+            if viewport.start_bp == 0 && viewport.end_bp_exclusive >= len {
+                format!("{} bp", len)
+            } else {
+                format!(
+                    "{}..{} ({} bp view of {} bp)",
+                    viewport.start_bp.saturating_add(1),
+                    viewport.end_bp_exclusive,
+                    viewport.span_bp,
+                    len
+                )
+            },
+        )
+        .set("x", W - 12.0)
+        .set("y", 24)
+        .set("text-anchor", "end")
+        .set("font-family", "monospace")
+        .set("font-size", 14)
+        .set("fill", "#444444"),
     );
     for label in labels {
         doc = doc.add(label);
@@ -986,7 +1330,12 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_features {
-        for f in collect_features(dna, display, len) {
+        for f in collect_features(
+            dna,
+            display,
+            len,
+            normalize_linear_export_viewport(dna, display),
+        ) {
             let mid = (f.from + f.to) / 2;
             let span = f.to.saturating_sub(f.from).saturating_add(1);
             let length_fraction = if len == 0 {
@@ -1323,6 +1672,55 @@ mod tests {
         let circular_svg = export_circular_svg(&dna_circular, &display);
         assert!(circular_svg.contains("VCF keep"));
         assert!(!circular_svg.contains("VCF drop"));
+    }
+
+    #[test]
+    fn linear_svg_export_sizes_height_to_content() {
+        let dna = DNAsequence::from_sequence("ATGCATGCATGCATGC").expect("sequence");
+        let svg = export_linear_svg(&dna, &DisplaySettings::default());
+        let height_marker = "height=\"";
+        let height_start =
+            svg.find(height_marker).expect("svg height attribute") + height_marker.len();
+        let height_rest = &svg[height_start..];
+        let height_end = height_rest.find('"').expect("svg height terminator");
+        let height_value = height_rest[..height_end]
+            .parse::<f32>()
+            .expect("svg height parses");
+        assert!(
+            height_value < H,
+            "content-sized linear export should be shorter than fixed 700px canvas, got {height_value}"
+        );
+        assert!(
+            height_value >= LINEAR_SVG_MIN_HEIGHT,
+            "content-sized linear export should respect minimum height, got {height_value}"
+        );
+    }
+
+    #[test]
+    fn linear_svg_export_honors_active_viewport_and_clips_features() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(250)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(390, 420),
+            qualifiers: vec![("label".into(), Some("visible_tx".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(10, 20),
+            qualifiers: vec![("label".into(), Some("hidden_tx".to_string()))],
+        });
+
+        let mut display = DisplaySettings::default();
+        display.show_gene_features = false;
+        display.show_restriction_enzymes = false;
+        display.show_gc_contents = false;
+        display.linear_view_start_bp = 400;
+        display.linear_view_span_bp = 100;
+
+        let svg = export_linear_svg(&dna, &display);
+        assert!(svg.contains("401..500 (100 bp view of 1000 bp)"));
+        assert!(svg.contains("visible_tx"));
+        assert!(!svg.contains("hidden_tx"));
     }
 
     #[test]

@@ -40,7 +40,7 @@
     {
       "SetDisplayVisibility": {
         "target": "GeneFeatures",
-        "visible": true
+        "visible": false
       }
     },
     {
@@ -81,8 +81,8 @@
     },
     {
       "SetLinearViewport": {
-        "start_bp": 1,
-        "span_bp": 6001
+        "start_bp": 2113,
+        "span_bp": 1388
       }
     },
     {

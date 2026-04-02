@@ -1470,6 +1470,8 @@ Controls:
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
 20. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
+   - In linear mode, the SVG now honors the active bp viewport/crop instead of
+     always exporting the full sequence length.
 21. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).

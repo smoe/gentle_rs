@@ -5660,6 +5660,29 @@ fn test_render_sequence_svg_operation() {
 }
 
 #[test]
+fn test_render_sequence_svg_operation_honors_linear_viewport() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), seq(&"ATGC".repeat(40)));
+    state.display.linear_view_start_bp = 40;
+    state.display.linear_view_span_bp = 20;
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("svg");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::RenderSequenceSvg {
+            seq_id: "s".to_string(),
+            mode: RenderSvgMode::Linear,
+            path: path_text.clone(),
+        })
+        .unwrap();
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("41..60 (20 bp view of 160 bp)"));
+}
+
+#[test]
 fn test_render_dotplot_svg_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert(

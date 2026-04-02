@@ -202,6 +202,22 @@ prepared `Human GRCh38 Ensembl 116`, extracts `+/- 3000 bp`, keeps full locus
 annotation, hides non-context tracks such as restriction enzymes/GC/ORFs, and
 writes the map-first SVG `vkorc1_rs9923231_context_map.svg`.
 
+For legibility, the exported figure is an mRNA-focused asymmetric crop of that
+larger retrieval rather than a full 6 kb viewport:
+
+- right edge: `500 bp` to the right of `rs9923231`
+- left edge: `500 bp` into the first gene body encountered on the left side of
+  the SNP in this prepared Ensembl 116 context
+- transcript (`mRNA`) features remain visible, while gene-level lanes are
+  hidden to reduce redundancy in the exported figure
+
+So the retrieval stays tutorial/replay-friendly while the figure itself stays
+focused on the local `VKORC1` regulatory neighborhood.
+
+The shared `RenderSequenceSvg` path now honors that stored linear viewport, so
+the figure workflow's asymmetric crop is applied in the exported SVG itself
+rather than only in the workflow intent.
+
 Preflight the target GENtle instance first so the workflow uses the exact
 catalog/cache you intend:
 

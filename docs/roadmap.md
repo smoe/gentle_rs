@@ -711,6 +711,9 @@ order. Durable architecture constraints and decisions remain in
         `docs/examples/workflows/vkorc1_rs9923231_context_map_online.json`
         plus `docs/figures/vkorc1_rs9923231_context_map.workflow.json`
         / `docs/figures/vkorc1_rs9923231_context_map.svg`
+      - that figure/export path now honors stored linear viewport crops, so
+        asymmetric context-map workflows render the intended local window
+        instead of silently falling back to whole-sequence SVGs
     - planned exact workflow skeleton:
       1. retrieve `VKORC1` from prepared `Human GRCh38 Ensembl 116`
       2. extend the anchored view far enough to include `rs9923231` plus local

@@ -1390,6 +1390,8 @@ Rendering export commands:
 
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
+  - Linear exports honor the current stored linear viewport when one is set,
+    so workflow-driven `SetLinearViewport` crops carry through into the SVG.
 - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
