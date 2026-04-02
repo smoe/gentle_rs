@@ -1066,6 +1066,66 @@ pub struct SequencingTraceImportReport {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Which strand-direction a suggested sequencing primer is expected to read on
+/// the expected construct.
+pub enum SequencingPrimerOrientation {
+    #[default]
+    ForwardRead,
+    ReverseRead,
+}
+
+impl SequencingPrimerOrientation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ForwardRead => "forward_read",
+            Self::ReverseRead => "reverse_read",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One candidate sequencing-primer hit on an expected construct.
+pub struct SequencingPrimerOverlaySuggestion {
+    pub primer_seq_id: SeqId,
+    pub primer_label: String,
+    pub primer_sequence: String,
+    pub orientation: SequencingPrimerOrientation,
+    pub anneal_sequence: String,
+    pub anneal_start_0based: usize,
+    pub anneal_end_0based_exclusive: usize,
+    pub three_prime_position_0based: usize,
+    pub predicted_read_span_start_0based: usize,
+    pub predicted_read_span_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub covered_target_ids: Vec<String>,
+    #[serde(default)]
+    pub covered_problem_target_ids: Vec<String>,
+    #[serde(default)]
+    pub covered_variant_ids: Vec<String>,
+    #[serde(default)]
+    pub covered_problem_variant_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Transient machine-readable report for sequencing-primer coverage hints.
+pub struct SequencingPrimerOverlayReport {
+    pub schema: String,
+    pub expected_seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation_report_id: Option<String>,
+    pub min_3prime_anneal_bp: usize,
+    pub predicted_read_length_bp: usize,
+    #[serde(default)]
+    pub primer_seq_ids: Vec<SeqId>,
+    pub suggestion_count: usize,
+    #[serde(default)]
+    pub suggestions: Vec<SequencingPrimerOverlaySuggestion>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum SequenceFeatureRangeRelation {
     #[default]
     Overlap,

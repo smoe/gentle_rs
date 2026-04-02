@@ -3098,6 +3098,118 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
     }
 }
 
+pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("seq-primer requires a subcommand: suggest".to_string());
+    }
+    match tokens[1].as_str() {
+        "suggest" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "seq-primer suggest requires EXPECTED_SEQ_ID plus at least one --primers/--primer value [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
+                        .to_string(),
+                );
+            }
+            let expected_seq_id = tokens[2].trim().to_string();
+            if expected_seq_id.is_empty() {
+                return Err("seq-primer suggest EXPECTED_SEQ_ID must not be empty".to_string());
+            }
+            let mut primer_seq_ids: Vec<String> = vec![];
+            let mut confirmation_report_id: Option<String> = None;
+            let mut min_3prime_anneal_bp = 18usize;
+            let mut predicted_read_length_bp = 800usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--primers" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--primers", "seq-primer suggest")?;
+                        let parsed = raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|value| value.to_string())
+                            .collect::<Vec<_>>();
+                        if parsed.is_empty() {
+                            return Err(
+                                "--primers for seq-primer suggest must include at least one ID"
+                                    .to_string(),
+                            );
+                        }
+                        primer_seq_ids.extend(parsed);
+                    }
+                    "--primer" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--primer", "seq-primer suggest")?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "--primer for seq-primer suggest must not be empty".to_string()
+                            );
+                        }
+                        primer_seq_ids.push(trimmed.to_string());
+                    }
+                    "--confirmation-report" | "--report-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "seq-primer suggest")?;
+                        let trimmed = raw.trim();
+                        confirmation_report_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    "--min-3prime-anneal-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-3prime-anneal-bp",
+                            "seq-primer suggest",
+                        )?;
+                        min_3prime_anneal_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --min-3prime-anneal-bp value '{raw}' for seq-primer suggest: {e}"
+                            )
+                        })?;
+                    }
+                    "--predicted-read-length-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--predicted-read-length-bp",
+                            "seq-primer suggest",
+                        )?;
+                        predicted_read_length_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --predicted-read-length-bp value '{raw}' for seq-primer suggest: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for seq-primer suggest"));
+                    }
+                }
+            }
+            if primer_seq_ids.is_empty() {
+                return Err(
+                    "seq-primer suggest requires at least one primer via --primers/--primer"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::SeqPrimerSuggest {
+                expected_seq_id,
+                primer_seq_ids,
+                confirmation_report_id,
+                min_3prime_anneal_bp,
+                predicted_read_length_bp,
+            })
+        }
+        other => Err(format!(
+            "Unknown seq-primer subcommand '{other}' (expected suggest)"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(

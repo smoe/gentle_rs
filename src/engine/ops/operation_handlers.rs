@@ -2734,6 +2734,7 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             sequencing_confirmation_report: None,
+            sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
@@ -7578,6 +7579,50 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "  ... {} additional target row(s) omitted",
                         report.targets.len() - 8
+                    ));
+                }
+            }
+            Operation::SuggestSequencingPrimers {
+                expected_seq_id,
+                primer_seq_ids,
+                confirmation_report_id,
+                min_3prime_anneal_bp,
+                predicted_read_length_bp,
+            } => {
+                let report = self.suggest_sequencing_primers(
+                    &expected_seq_id,
+                    &primer_seq_ids,
+                    confirmation_report_id.as_deref(),
+                    min_3prime_anneal_bp,
+                    predicted_read_length_bp,
+                )?;
+                result.sequencing_primer_overlay_report = Some(report.clone());
+                result.messages.push(format!(
+                    "Sequencing-primer overlay report for '{}' (primers={}, suggestions={}, min_3prime_anneal_bp={}, predicted_read_length_bp={})",
+                    report.expected_seq_id,
+                    report.primer_seq_ids.len(),
+                    report.suggestion_count,
+                    report.min_3prime_anneal_bp,
+                    report.predicted_read_length_bp
+                ));
+                for row in report.suggestions.iter().take(8) {
+                    result.messages.push(format!(
+                        "  - {} [{}] {} {}..{} read_span={}..{} flagged_targets={} flagged_variants={}",
+                        row.primer_label,
+                        row.primer_seq_id,
+                        row.orientation.as_str(),
+                        row.anneal_start_0based,
+                        row.anneal_end_0based_exclusive,
+                        row.predicted_read_span_start_0based,
+                        row.predicted_read_span_end_0based_exclusive,
+                        row.covered_problem_target_ids.len(),
+                        row.covered_problem_variant_ids.len()
+                    ));
+                }
+                if report.suggestions.len() > 8 {
+                    result.messages.push(format!(
+                        "  ... {} additional sequencing-primer suggestion row(s) omitted",
+                        report.suggestions.len() - 8
                     ));
                 }
             }

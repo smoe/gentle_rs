@@ -1223,6 +1223,12 @@ Patterns menu:
     - inspect overall status, target-level outcomes, evidence-level outcomes,
       per-variant rows, and a first-evidence alignment snapshot
     - export the selected report as JSON or support TSV
+  - sequencing-primer overlays are built in:
+    - enter already-loaded primer sequence ids in the same specialist
+    - suggest predicted read spans from exact 3' anneal hits on the expected
+      construct
+    - optionally annotate which saved-report targets or variant loci each
+      primer-derived span would cover
   - selection convenience:
     - the active sequence selection can append its `start`, `midpoint`, or
       `end` as explicit junction breakpoints

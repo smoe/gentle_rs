@@ -2578,6 +2578,14 @@ Repeated multi-tool gaps to prioritize:
        - selected trace-backed variant rows now render their chromatogram curves
          in-window with intended-edit / reversion / unexpected-difference /
          low-confidence badges
+     - sequencing-primer overlays are now available through the same shared
+       engine/shell path and exposed in the GUI specialist:
+       - `SuggestSequencingPrimers` suggests exact-3'-anneal primer hits on the
+         expected construct
+       - shell/CLI route `seq-primer suggest ...` exposes the same overlay
+         report without adding a second logic path
+       - GUI specialist can suggest overlays from already-loaded primer
+         sequence ids and annotate coverage against the selected saved report
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack
@@ -2593,8 +2601,9 @@ Repeated multi-tool gaps to prioritize:
        - shipped through engine/shell/CLI and GUI specialist
      - variant-focused chromatogram curve inspection fourth
        - shipped through engine/shell/CLI/GUI
+     - sequencing-primer suggestion overlays fifth
+       - shipped through engine/shell/CLI/GUI
      - next follow-up:
-       - sequencing-primer suggestion overlays
        - fuller whole-trace browsing remains optional future polish, not a
          release blocker for confirmation itself
    - likely legacy code seeds:

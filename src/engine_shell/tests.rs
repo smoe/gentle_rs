@@ -455,6 +455,30 @@ fn parse_seq_trace_import_and_list_commands() {
 }
 
 #[test]
+fn parse_seq_primer_suggest_command() {
+    let cmd = parse_shell_line(
+        "seq-primer suggest construct --primers primer_a,primer_b --confirmation-report construct_report --min-3prime-anneal-bp 20 --predicted-read-length-bp 650",
+    )
+    .expect("parse seq-primer suggest");
+    match cmd {
+        ShellCommand::SeqPrimerSuggest {
+            expected_seq_id,
+            primer_seq_ids,
+            confirmation_report_id,
+            min_3prime_anneal_bp,
+            predicted_read_length_bp,
+        } => {
+            assert_eq!(expected_seq_id, "construct");
+            assert_eq!(primer_seq_ids, vec!["primer_a", "primer_b"]);
+            assert_eq!(confirmation_report_id.as_deref(), Some("construct_report"));
+            assert_eq!(min_3prime_anneal_bp, 20);
+            assert_eq!(predicted_read_length_bp, 650);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_seq_trace_import_list_and_show_round_trip() {
     let fixture = sequencing_confirmation_fixture_path("3100.ab1");
     let mut state = ProjectState::default();
@@ -712,6 +736,91 @@ fn execute_seq_confirm_run_with_baseline_exposes_variant_rows() {
     assert_eq!(
         run.output["report"]["variants"][0]["classification"].as_str(),
         Some("intended_edit_confirmed")
+    );
+}
+
+#[test]
+fn execute_seq_primer_suggest_returns_overlay_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_junction".to_string(),
+        DNAsequence::from_sequence("CCGTAACC").expect("read"),
+    );
+    state.sequences.insert(
+        "primer_fwd".to_string(),
+        DNAsequence::from_sequence("TTTACCGT").expect("primer"),
+    );
+    state.sequences.insert(
+        "primer_rev".to_string(),
+        DNAsequence::from_sequence("TTTGGTT").expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmRun {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_junction".to_string()],
+            trace_ids: vec![],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 4,
+                end_0based_exclusive: 12,
+                junction_left_end_0based: Some(8),
+                expected_bases: None,
+                baseline_bases: None,
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_check".to_string()),
+        },
+    )
+    .expect("persist confirmation report");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqPrimerSuggest {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_fwd".to_string(), "primer_rev".to_string()],
+            confirmation_report_id: Some("construct_check".to_string()),
+            min_3prime_anneal_bp: 4,
+            predicted_read_length_bp: 10,
+        },
+    )
+    .expect("execute seq-primer suggest");
+
+    assert!(!run.state_changed);
+    assert!(
+        run.output["suggestion_count"]
+            .as_u64()
+            .is_some_and(|value| value >= 2)
+    );
+    assert_eq!(
+        run.output["report"]["confirmation_report_id"].as_str(),
+        Some("construct_check")
+    );
+    assert!(
+        run.output["report"]["suggestions"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| row["covered_target_ids"]
+                .as_array()
+                .is_some_and(|targets| targets
+                    .iter()
+                    .any(|value| value.as_str() == Some("junction_1")))))
     );
 }
 

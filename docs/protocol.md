@@ -764,6 +764,12 @@ Sequencing-trace evidence notes:
     - `variants[]` rows with observed allele, evidence id, confidence summary,
       peak center, and classification:
       `expected_match|intended_edit_confirmed|reference_reversion|unexpected_difference|low_confidence_or_ambiguous|insufficient_evidence`
+- `SuggestSequencingPrimers { expected_seq_id, primer_seq_ids[], confirmation_report_id?, min_3prime_anneal_bp, predicted_read_length_bp }`
+  - non-mutating helper for sequencing-confirmation review and primer coverage
+    planning
+  - returns `SequencingPrimerOverlayReport` with per-hit orientation, anneal
+    span, predicted read span, and optional coverage annotations against a
+    persisted sequencing-confirmation report
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,

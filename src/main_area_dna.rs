@@ -74,9 +74,10 @@ use crate::{
         SequencingConfirmationDiscrepancy, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SequencingConfirmationVariantClassification,
-        SequencingConfirmationVariantRow, SequencingReadOrientation, SequencingTraceRecord,
-        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsProgress, Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
+        SequencingConfirmationVariantRow, SequencingPrimerOverlayReport, SequencingReadOrientation,
+        SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
+        TfThresholdOverride, TfbsProgress, Workflow,
+        resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -533,6 +534,11 @@ struct SequencingConfirmationUiState {
     selected_report_id: String,
     selected_trace_id: String,
     selected_variant_id: String,
+    primer_seq_ids_text: String,
+    primer_min_3prime_anneal_bp: String,
+    primer_predicted_read_length_bp: String,
+    #[serde(skip)]
+    primer_overlay_report: Option<SequencingPrimerOverlayReport>,
     chromatogram_window_bp: String,
     junction_positions_0based: String,
     junction_flank_bp: String,
@@ -557,6 +563,10 @@ impl Default for SequencingConfirmationUiState {
             selected_report_id: String::new(),
             selected_trace_id: String::new(),
             selected_variant_id: String::new(),
+            primer_seq_ids_text: String::new(),
+            primer_min_3prime_anneal_bp: "18".to_string(),
+            primer_predicted_read_length_bp: "800".to_string(),
+            primer_overlay_report: None,
             chromatogram_window_bp: "24".to_string(),
             junction_positions_0based: String::new(),
             junction_flank_bp: "12".to_string(),
@@ -1390,6 +1400,41 @@ mod tests {
                 assert_eq!(baseline_seq_id, None);
                 assert!(read_seq_ids.is_empty());
                 assert_eq!(trace_ids, vec!["trace_only".to_string()]);
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_suggest_sequencing_primers_operation_uses_gui_state() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.primer_seq_ids_text = "primer_a,primer_b".to_string();
+        area.sequencing_confirmation_ui.selected_report_id = "confirm_report".to_string();
+        area.sequencing_confirmation_ui.primer_min_3prime_anneal_bp = "20".to_string();
+        area.sequencing_confirmation_ui
+            .primer_predicted_read_length_bp = "650".to_string();
+
+        let op = area
+            .build_suggest_sequencing_primers_operation()
+            .expect("sequencing-primer overlay operation should build");
+
+        match op {
+            Operation::SuggestSequencingPrimers {
+                expected_seq_id,
+                primer_seq_ids,
+                confirmation_report_id,
+                min_3prime_anneal_bp,
+                predicted_read_length_bp,
+            } => {
+                assert_eq!(expected_seq_id, "expected_seq");
+                assert_eq!(
+                    primer_seq_ids,
+                    vec!["primer_a".to_string(), "primer_b".to_string()]
+                );
+                assert_eq!(confirmation_report_id, Some("confirm_report".to_string()));
+                assert_eq!(min_3prime_anneal_bp, 20);
+                assert_eq!(predicted_read_length_bp, 650);
             }
             other => panic!("unexpected operation: {other:?}"),
         }
@@ -2432,6 +2477,7 @@ mod tests {
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 sequencing_confirmation_report: None,
+                sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
@@ -25778,6 +25824,41 @@ impl MainAreaDna {
         ))
     }
 
+    fn build_suggest_sequencing_primers_operation(&self) -> Result<Operation, String> {
+        let expected_seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active expected construct sequence".to_string())?;
+        let ui = &self.sequencing_confirmation_ui;
+        let primer_seq_ids = Self::parse_ids(&ui.primer_seq_ids_text);
+        if primer_seq_ids.is_empty() {
+            return Err(
+                "Provide at least one primer sequence ID before suggesting sequencing-primer overlays"
+                    .to_string(),
+            );
+        }
+        Ok(Operation::SuggestSequencingPrimers {
+            expected_seq_id,
+            primer_seq_ids,
+            confirmation_report_id: {
+                let trimmed = ui.selected_report_id.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            },
+            min_3prime_anneal_bp: Self::parse_positive_usize_text(
+                &ui.primer_min_3prime_anneal_bp,
+                "sequencing_confirmation.primer_min_3prime_anneal_bp",
+            )?,
+            predicted_read_length_bp: Self::parse_positive_usize_text(
+                &ui.primer_predicted_read_length_bp,
+                "sequencing_confirmation.primer_predicted_read_length_bp",
+            )?,
+        })
+    }
+
     fn sequencing_trace_summaries(&self) -> Vec<SequencingTraceSummary> {
         let expected_seq_id = self.seq_id.as_deref().unwrap_or("");
         let Some(engine) = self.engine.as_ref() else {
@@ -27773,6 +27854,184 @@ impl MainAreaDna {
                     self.show_sequencing_confirmation_report(&report_id);
                 }
             });
+            columns[0].separator();
+            columns[0].heading("Sequencing-Primer Overlays");
+            columns[0].small(
+                "Suggest read-coverage overlays from already-loaded primer sequences. This stays on the shared engine path and optionally annotates coverage against the selected sequencing-confirmation report.",
+            );
+            columns[0].label("Primer sequence IDs");
+            if columns[0]
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.sequencing_confirmation_ui.primer_seq_ids_text,
+                    )
+                    .desired_width(320.0),
+                )
+                .on_hover_text(
+                    "Comma-separated primer sequence IDs already loaded in the current project state.",
+                )
+                .changed()
+            {
+                self.save_engine_ops_state();
+            }
+            columns[0].horizontal_wrapped(|ui| {
+                ui.label("min 3' anneal bp");
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(
+                            &mut self.sequencing_confirmation_ui.primer_min_3prime_anneal_bp,
+                        )
+                        .desired_width(56.0),
+                    )
+                    .changed()
+                {
+                    self.save_engine_ops_state();
+                }
+                ui.label("predicted read length bp");
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(
+                            &mut self.sequencing_confirmation_ui.primer_predicted_read_length_bp,
+                        )
+                        .desired_width(72.0),
+                    )
+                    .changed()
+                {
+                    self.save_engine_ops_state();
+                }
+            });
+            columns[0].small(format!(
+                "Coverage annotation source: {}",
+                selected_report
+                    .as_ref()
+                    .map(|report| report.report_id.as_str())
+                    .or_else(|| {
+                        let trimmed = self.sequencing_confirmation_ui.selected_report_id.trim();
+                        (!trimmed.is_empty()).then_some(trimmed)
+                    })
+                    .unwrap_or("<none>")
+            ));
+            columns[0].horizontal_wrapped(|ui| {
+                if ui
+                    .button("Suggest primers")
+                    .on_hover_text(
+                        "Run SuggestSequencingPrimers for the active expected construct and annotate coverage against the selected saved report when available.",
+                    )
+                    .clicked()
+                {
+                    match self.build_suggest_sequencing_primers_operation() {
+                        Ok(op) => match self.apply_operation_with_feedback_and_result(op) {
+                            Some(result) => {
+                                self.sequencing_confirmation_ui.primer_overlay_report =
+                                    result.sequencing_primer_overlay_report.clone();
+                            }
+                            None => {
+                                self.sequencing_confirmation_ui.primer_overlay_report = None;
+                            }
+                        },
+                        Err(err) => {
+                            self.op_status = err;
+                        }
+                    }
+                }
+                if ui
+                    .button("Clear overlay")
+                    .on_hover_text(
+                        "Discard the currently displayed primer-overlay suggestion report from this window.",
+                    )
+                    .clicked()
+                {
+                    self.sequencing_confirmation_ui.primer_overlay_report = None;
+                }
+            });
+            if let Some(report) = self.sequencing_confirmation_ui.primer_overlay_report.as_ref() {
+                columns[0].group(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(egui::RichText::new("Current overlay report").strong());
+                        ui.separator();
+                        ui.small(format!("primers={}", report.primer_seq_ids.len()));
+                        ui.separator();
+                        ui.small(format!("suggestions={}", report.suggestion_count));
+                        ui.separator();
+                        ui.small(format!(
+                            "min_3prime_anneal_bp={}",
+                            report.min_3prime_anneal_bp
+                        ));
+                        ui.separator();
+                        ui.small(format!(
+                            "predicted_read_length_bp={}",
+                            report.predicted_read_length_bp
+                        ));
+                        ui.separator();
+                        ui.small(format!(
+                            "report={}",
+                            report.confirmation_report_id.as_deref().unwrap_or("-")
+                        ));
+                    });
+                    if report.suggestions.is_empty() {
+                        ui.small(
+                            "No primer overlays matched the current expected construct with the requested exact 3' anneal length.",
+                        );
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .id_salt(("seq_confirm_primer_overlay_scroll", self.panel_scope_key()))
+                            .max_height(220.0)
+                            .show(ui, |ui| {
+                                egui::Grid::new((
+                                    "seq_confirm_primer_overlay_grid",
+                                    self.panel_scope_key(),
+                                ))
+                                .num_columns(8)
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("Primer");
+                                    ui.strong("Orientation");
+                                    ui.strong("Anneal");
+                                    ui.strong("Read span");
+                                    ui.strong("Targets");
+                                    ui.strong("Problem targets");
+                                    ui.strong("Variants");
+                                    ui.strong("Problem variants");
+                                    ui.end_row();
+                                    for row in &report.suggestions {
+                                        ui.label(&row.primer_seq_id);
+                                        ui.small(row.orientation.as_str());
+                                        ui.small(format!(
+                                            "{}..{}",
+                                            row.anneal_start_0based, row.anneal_end_0based_exclusive
+                                        ));
+                                        ui.small(format!(
+                                            "{}..{}",
+                                            row.predicted_read_span_start_0based,
+                                            row.predicted_read_span_end_0based_exclusive
+                                        ));
+                                        ui.small(if row.covered_target_ids.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            row.covered_target_ids.join(", ")
+                                        });
+                                        ui.small(if row.covered_problem_target_ids.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            row.covered_problem_target_ids.join(", ")
+                                        });
+                                        ui.small(if row.covered_variant_ids.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            row.covered_variant_ids.join(", ")
+                                        });
+                                        ui.small(if row.covered_problem_variant_ids.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            row.covered_problem_variant_ids.join(", ")
+                                        });
+                                        ui.end_row();
+                                    }
+                                });
+                            });
+                    }
+                });
+            }
 
             columns[1].heading("Imported Trace Review");
             if trace_summaries.is_empty() {

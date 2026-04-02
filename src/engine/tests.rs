@@ -13119,6 +13119,117 @@ fn test_confirm_construct_reads_low_confidence_trace_softens_reversion_to_insuff
 }
 
 #[test]
+fn test_suggest_sequencing_primers_reports_forward_and_reverse_overlay_hits() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "primer_fwd".to_string(),
+        DNAsequence::from_sequence("TTTACCGT").expect("primer"),
+    );
+    state.sequences.insert(
+        "primer_rev".to_string(),
+        DNAsequence::from_sequence("TTTGGTT").expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_fwd".to_string(), "primer_rev".to_string()],
+            confirmation_report_id: None,
+            min_3prime_anneal_bp: 4,
+            predicted_read_length_bp: 10,
+        })
+        .expect("suggest primers")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(report.expected_seq_id, "construct");
+    assert!(report.suggestion_count >= 2);
+    assert!(report.suggestions.iter().any(|row| row.orientation
+        == SequencingPrimerOrientation::ForwardRead
+        && row.primer_seq_id == "primer_fwd"
+        && row.predicted_read_span_start_0based == 4
+        && row.predicted_read_span_end_0based_exclusive == 14));
+    assert!(report.suggestions.iter().any(|row| row.orientation
+        == SequencingPrimerOrientation::ReverseRead
+        && row.primer_seq_id == "primer_rev"
+        && row.predicted_read_span_start_0based == 2
+        && row.predicted_read_span_end_0based_exclusive == 12));
+}
+
+#[test]
+fn test_suggest_sequencing_primers_annotates_confirmation_report_coverage() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.sequences.insert(
+        "read_junction".to_string(),
+        DNAsequence::from_sequence("CCGTAACC").expect("read"),
+    );
+    state.sequences.insert(
+        "primer_fwd".to_string(),
+        DNAsequence::from_sequence("TTTACCGT").expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_junction".to_string()],
+            trace_ids: vec![],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("construct_confirm".to_string()),
+        })
+        .expect("persist sequencing confirmation report");
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_fwd".to_string()],
+            confirmation_report_id: Some("construct_confirm".to_string()),
+            min_3prime_anneal_bp: 4,
+            predicted_read_length_bp: 10,
+        })
+        .expect("suggest primers with report coverage")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(
+        report.confirmation_report_id.as_deref(),
+        Some("construct_confirm")
+    );
+    assert!(report.suggestion_count >= 1);
+    assert!(report.suggestions.iter().any(|row| {
+        row.primer_seq_id == "primer_fwd"
+            && row.covered_target_ids == vec!["junction_1"]
+            && row.covered_problem_target_ids.is_empty()
+            && row.covered_variant_ids.is_empty()
+            && row.covered_problem_variant_ids.is_empty()
+    }));
+}
+
+#[test]
 fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
     let td = tempdir().expect("tempdir");
     let fasta_gz = td.path().join("reads.fa.gz");

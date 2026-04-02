@@ -34,6 +34,7 @@ pub use gentle_protocol::{
     RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceFeatureQualifierFilter,
     SequenceFeatureQuery, SequenceFeatureQueryResult, SequenceFeatureQueryRow,
     SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
+    SequencingPrimerOrientation, SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
 };
@@ -405,6 +406,8 @@ pub struct OpResult {
     pub sequencing_trace_record: Option<SequencingTraceRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_trace_summaries: Option<Vec<SequencingTraceSummary>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequencing_primer_overlay_report: Option<SequencingPrimerOverlayReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
 }

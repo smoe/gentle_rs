@@ -282,11 +282,13 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
   - `seq-confirm show-report REPORT_ID`
   - `seq-confirm export-report REPORT_ID OUTPUT.json`
   - `seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv`
+  - `seq-primer suggest EXPECTED_SEQ_ID --primers ID[,ID...] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]`
   raw-trace intake is backed by `ImportSequencingTrace`,
   `ListSequencingTraces`, and `ShowSequencingTrace`.
   backed by `ConfirmConstructReads`, `ListSequencingConfirmationReports`,
   `ShowSequencingConfirmationReport`, `ExportSequencingConfirmationReport`, and
-  `ExportSequencingConfirmationSupportTsv`.
+  `ExportSequencingConfirmationSupportTsv`. Sequencing-primer overlays are
+  backed by `SuggestSequencingPrimers`.
   Current scope:
   - expected construct plus already-loaded read sequences
   - imported ABI/AB1/SCF traces can now participate directly in
@@ -322,6 +324,10 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
     - optional baseline sequence input is available in the run form
     - the review pane now includes a variant list and chromatogram curve view
       for trace-backed loci
+    - sequencing-primer overlays can now be suggested in the same specialist
+      from already-loaded primer sequence ids
+    - the overlay report can optionally annotate which saved-report targets and
+      variant loci fall inside each predicted primer-derived read span
     - older traces without stored curve arrays stay usable for confirmation,
       but the GUI asks you to re-import them before chromatogram review
   Not yet included in this phase:

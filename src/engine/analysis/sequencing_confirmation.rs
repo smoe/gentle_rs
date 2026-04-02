@@ -407,6 +407,281 @@ impl GentleEngine {
             .collect()
     }
 
+    fn sequencing_primer_spans_overlap(
+        left_start: usize,
+        left_end_exclusive: usize,
+        right_start: usize,
+        right_end_exclusive: usize,
+    ) -> bool {
+        if left_start == left_end_exclusive {
+            return left_start >= right_start && left_start < right_end_exclusive;
+        }
+        if right_start == right_end_exclusive {
+            return right_start >= left_start && right_start < left_end_exclusive;
+        }
+        left_start < right_end_exclusive && right_start < left_end_exclusive
+    }
+
+    pub fn suggest_sequencing_primers(
+        &self,
+        expected_seq_id: &str,
+        primer_seq_ids: &[String],
+        confirmation_report_id: Option<&str>,
+        min_3prime_anneal_bp: usize,
+        predicted_read_length_bp: usize,
+    ) -> Result<SequencingPrimerOverlayReport, EngineError> {
+        if primer_seq_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SuggestSequencingPrimers requires at least one primer sequence id"
+                    .to_string(),
+            });
+        }
+        if min_3prime_anneal_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SuggestSequencingPrimers requires min_3prime_anneal_bp >= 1".to_string(),
+            });
+        }
+        if predicted_read_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SuggestSequencingPrimers requires predicted_read_length_bp >= 1"
+                    .to_string(),
+            });
+        }
+        let expected_seq_id = expected_seq_id.trim();
+        let expected = self
+            .state
+            .sequences
+            .get(expected_seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Expected sequence '{}' not found", expected_seq_id),
+            })?;
+        let expected_text = expected.get_forward_string().to_ascii_uppercase();
+        if expected_text.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "SuggestSequencingPrimers cannot scan empty expected sequence '{}'",
+                    expected_seq_id
+                ),
+            });
+        }
+        let confirmation_report = if let Some(report_id) = confirmation_report_id {
+            let report = self.get_sequencing_confirmation_report(report_id)?;
+            if !report.expected_seq_id.eq_ignore_ascii_case(expected_seq_id) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Sequencing-confirmation report '{}' belongs to expected sequence '{}' rather than '{}'",
+                        report.report_id, report.expected_seq_id, expected_seq_id
+                    ),
+                });
+            }
+            Some(report)
+        } else {
+            None
+        };
+        let template = expected_text.as_bytes();
+        let mut suggestions = Vec::new();
+        for primer_seq_id in primer_seq_ids {
+            let primer_seq_id = primer_seq_id.trim();
+            let primer = self
+                .state
+                .sequences
+                .get(primer_seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Primer sequence '{}' not found", primer_seq_id),
+                })?;
+            let primer_sequence = primer.get_forward_string().to_ascii_uppercase();
+            if primer_sequence.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer sequence '{}' is empty and cannot be scanned",
+                        primer_seq_id
+                    ),
+                });
+            }
+            if primer_sequence.len() < min_3prime_anneal_bp {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer sequence '{}' is shorter than min_3prime_anneal_bp={}",
+                        primer_seq_id, min_3prime_anneal_bp
+                    ),
+                });
+            }
+            let primer_label = primer
+                .name()
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| primer_seq_id.to_string());
+            let anneal_sequence =
+                primer_sequence[primer_sequence.len() - min_3prime_anneal_bp..].to_string();
+            let forward_hits = Self::find_anneal_sites(
+                template,
+                anneal_sequence.as_bytes(),
+                0,
+                min_3prime_anneal_bp,
+                true,
+            );
+            for anneal_start_0based in forward_hits {
+                let anneal_end_0based_exclusive = anneal_start_0based + min_3prime_anneal_bp;
+                let predicted_read_span_start_0based = anneal_start_0based;
+                let predicted_read_span_end_0based_exclusive =
+                    (anneal_start_0based + predicted_read_length_bp).min(template.len());
+                let mut covered_target_ids = Vec::new();
+                let mut covered_problem_target_ids = Vec::new();
+                let mut covered_variant_ids = Vec::new();
+                let mut covered_problem_variant_ids = Vec::new();
+                if let Some(report) = confirmation_report.as_ref() {
+                    for target in &report.targets {
+                        if Self::sequencing_primer_spans_overlap(
+                            predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive,
+                            target.start_0based,
+                            target.end_0based_exclusive,
+                        ) {
+                            covered_target_ids.push(target.target_id.clone());
+                            if target.status != SequencingConfirmationStatus::Confirmed {
+                                covered_problem_target_ids.push(target.target_id.clone());
+                            }
+                        }
+                    }
+                    for variant in &report.variants {
+                        if Self::sequencing_primer_spans_overlap(
+                            predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive,
+                            variant.start_0based,
+                            variant.end_0based_exclusive,
+                        ) {
+                            covered_variant_ids.push(variant.variant_id.clone());
+                            if !matches!(
+                                variant.classification,
+                                SequencingConfirmationVariantClassification::ExpectedMatch
+                                    | SequencingConfirmationVariantClassification::IntendedEditConfirmed
+                            ) {
+                                covered_problem_variant_ids.push(variant.variant_id.clone());
+                            }
+                        }
+                    }
+                }
+                suggestions.push(SequencingPrimerOverlaySuggestion {
+                    primer_seq_id: primer_seq_id.to_string(),
+                    primer_label: primer_label.clone(),
+                    primer_sequence: primer_sequence.clone(),
+                    orientation: SequencingPrimerOrientation::ForwardRead,
+                    anneal_sequence: anneal_sequence.clone(),
+                    anneal_start_0based,
+                    anneal_end_0based_exclusive,
+                    three_prime_position_0based: anneal_end_0based_exclusive.saturating_sub(1),
+                    predicted_read_span_start_0based,
+                    predicted_read_span_end_0based_exclusive,
+                    covered_target_ids,
+                    covered_problem_target_ids,
+                    covered_variant_ids,
+                    covered_problem_variant_ids,
+                });
+            }
+            let reverse_binding = Self::reverse_complement(&anneal_sequence);
+            let reverse_hits = Self::find_anneal_sites(
+                template,
+                reverse_binding.as_bytes(),
+                0,
+                min_3prime_anneal_bp,
+                false,
+            );
+            for anneal_start_0based in reverse_hits {
+                let anneal_end_0based_exclusive = anneal_start_0based + min_3prime_anneal_bp;
+                let predicted_read_span_end_0based_exclusive = anneal_end_0based_exclusive;
+                let predicted_read_span_start_0based =
+                    anneal_end_0based_exclusive.saturating_sub(predicted_read_length_bp);
+                let mut covered_target_ids = Vec::new();
+                let mut covered_problem_target_ids = Vec::new();
+                let mut covered_variant_ids = Vec::new();
+                let mut covered_problem_variant_ids = Vec::new();
+                if let Some(report) = confirmation_report.as_ref() {
+                    for target in &report.targets {
+                        if Self::sequencing_primer_spans_overlap(
+                            predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive,
+                            target.start_0based,
+                            target.end_0based_exclusive,
+                        ) {
+                            covered_target_ids.push(target.target_id.clone());
+                            if target.status != SequencingConfirmationStatus::Confirmed {
+                                covered_problem_target_ids.push(target.target_id.clone());
+                            }
+                        }
+                    }
+                    for variant in &report.variants {
+                        if Self::sequencing_primer_spans_overlap(
+                            predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive,
+                            variant.start_0based,
+                            variant.end_0based_exclusive,
+                        ) {
+                            covered_variant_ids.push(variant.variant_id.clone());
+                            if !matches!(
+                                variant.classification,
+                                SequencingConfirmationVariantClassification::ExpectedMatch
+                                    | SequencingConfirmationVariantClassification::IntendedEditConfirmed
+                            ) {
+                                covered_problem_variant_ids.push(variant.variant_id.clone());
+                            }
+                        }
+                    }
+                }
+                suggestions.push(SequencingPrimerOverlaySuggestion {
+                    primer_seq_id: primer_seq_id.to_string(),
+                    primer_label: primer_label.clone(),
+                    primer_sequence: primer_sequence.clone(),
+                    orientation: SequencingPrimerOrientation::ReverseRead,
+                    anneal_sequence: anneal_sequence.clone(),
+                    anneal_start_0based,
+                    anneal_end_0based_exclusive,
+                    three_prime_position_0based: anneal_start_0based,
+                    predicted_read_span_start_0based,
+                    predicted_read_span_end_0based_exclusive,
+                    covered_target_ids,
+                    covered_problem_target_ids,
+                    covered_variant_ids,
+                    covered_problem_variant_ids,
+                });
+            }
+        }
+        suggestions.sort_by(|left, right| {
+            left.primer_seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.primer_seq_id.to_ascii_lowercase())
+                .then(left.orientation.as_str().cmp(right.orientation.as_str()))
+                .then(left.anneal_start_0based.cmp(&right.anneal_start_0based))
+                .then(
+                    left.predicted_read_span_start_0based
+                        .cmp(&right.predicted_read_span_start_0based),
+                )
+        });
+        Ok(SequencingPrimerOverlayReport {
+            schema: SEQUENCING_PRIMER_OVERLAY_REPORT_SCHEMA.to_string(),
+            expected_seq_id: expected_seq_id.to_string(),
+            confirmation_report_id: confirmation_report
+                .as_ref()
+                .map(|row| row.report_id.clone()),
+            min_3prime_anneal_bp,
+            predicted_read_length_bp,
+            primer_seq_ids: primer_seq_ids
+                .iter()
+                .map(|row| row.trim().to_string())
+                .collect(),
+            suggestion_count: suggestions.len(),
+            suggestions,
+        })
+    }
+
     pub(super) fn compute_pairwise_alignment_report(
         query_seq_id: &str,
         query_text: &str,

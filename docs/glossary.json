@@ -1776,6 +1776,22 @@
          "usage": "seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv"
       },
       {
+         "aliases": [
+            "seq_primer suggest",
+            "seqprimer suggest"
+         ],
+         "engine_operations": [
+            "SuggestSequencingPrimers"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-primer suggest",
+         "summary": "Suggest sequencing-primer overlay spans on the expected construct and optionally annotate coverage against a persisted sequencing-confirmation report.",
+         "usage": "seq-primer suggest EXPECTED_SEQ_ID --primers ID[,ID...] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InterpretRnaReads"

@@ -1327,6 +1327,13 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
     },
+    SeqPrimerSuggest {
+        expected_seq_id: String,
+        primer_seq_ids: Vec<String>,
+        confirmation_report_id: Option<String>,
+        min_3prime_anneal_bp: usize,
+        predicted_read_length_bp: usize,
+    },
     RnaReadsInterpret {
         seq_id: String,
         seed_feature_id: usize,
@@ -6259,6 +6266,24 @@ impl ShellCommand {
                 "export sequencing-confirmation support TSV '{}' to '{}'",
                 report_id, path
             ),
+            Self::SeqPrimerSuggest {
+                expected_seq_id,
+                primer_seq_ids,
+                confirmation_report_id,
+                min_3prime_anneal_bp,
+                predicted_read_length_bp,
+            } => format!(
+                "suggest sequencing primers on '{}' (primers={}, report='{}', min_3prime_anneal_bp={}, predicted_read_length_bp={})",
+                expected_seq_id,
+                primer_seq_ids.len(),
+                confirmation_report_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
+                min_3prime_anneal_bp,
+                predicted_read_length_bp,
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -10530,6 +10555,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "align" => parse_align_command(tokens),
         "seq-trace" | "seq_trace" | "seqtrace" => parse_seq_trace_command(tokens),
         "seq-confirm" | "seq_confirm" | "seqconfirm" => parse_seq_confirm_command(tokens),
+        "seq-primer" | "seq_primer" | "seqprimer" => parse_seq_primer_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -16131,6 +16157,32 @@ pub fn execute_shell_command_with_options(
                     "report_id": report.report_id,
                     "path": path,
                     "target_count": report.targets.len(),
+                }),
+            }
+        }
+        ShellCommand::SeqPrimerSuggest {
+            expected_seq_id,
+            primer_seq_ids,
+            confirmation_report_id,
+            min_3prime_anneal_bp,
+            predicted_read_length_bp,
+        } => {
+            let op_result = engine
+                .apply(Operation::SuggestSequencingPrimers {
+                    expected_seq_id: expected_seq_id.clone(),
+                    primer_seq_ids: primer_seq_ids.clone(),
+                    confirmation_report_id: confirmation_report_id.clone(),
+                    min_3prime_anneal_bp: *min_3prime_anneal_bp,
+                    predicted_read_length_bp: *predicted_read_length_bp,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.sequencing_primer_overlay_report.clone();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "suggestion_count": report.as_ref().map(|value| value.suggestion_count).unwrap_or(0),
                 }),
             }
         }

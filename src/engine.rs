@@ -121,6 +121,8 @@ pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
+pub const SEQUENCING_PRIMER_OVERLAY_REPORT_SCHEMA: &str =
+    "gentle.sequencing_primer_overlay_report.v1";
 pub const SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA: &str =
     "gentle.sequencing_confirmation_support_tsv.v1";
 pub const PLANNING_METADATA_KEY: &str = "planning";
@@ -306,6 +308,14 @@ fn default_sequencing_confirmation_min_identity_fraction() -> f64 {
 
 fn default_sequencing_confirmation_min_target_coverage_fraction() -> f64 {
     1.0
+}
+
+fn default_sequencing_primer_min_3prime_anneal_bp() -> usize {
+    18
+}
+
+fn default_sequencing_primer_predicted_read_length_bp() -> usize {
+    800
 }
 
 // Private RNA-read execution state remains in the engine implementation.
@@ -4108,6 +4118,17 @@ pub enum Operation {
     ShowSequencingTrace {
         trace_id: String,
     },
+    SuggestSequencingPrimers {
+        expected_seq_id: SeqId,
+        #[serde(default)]
+        primer_seq_ids: Vec<SeqId>,
+        #[serde(default)]
+        confirmation_report_id: Option<String>,
+        #[serde(default = "default_sequencing_primer_min_3prime_anneal_bp")]
+        min_3prime_anneal_bp: usize,
+        #[serde(default = "default_sequencing_primer_predicted_read_length_bp")]
+        predicted_read_length_bp: usize,
+    },
     ConfirmConstructReads {
         expected_seq_id: SeqId,
         #[serde(default)]
@@ -5619,6 +5640,7 @@ impl GentleEngine {
                 "DeriveSplicingReferences".to_string(),
                 "AlignSequences".to_string(),
                 "ConfirmConstructReads".to_string(),
+                "SuggestSequencingPrimers".to_string(),
                 "ListSequencingConfirmationReports".to_string(),
                 "ShowSequencingConfirmationReport".to_string(),
                 "ExportSequencingConfirmationReport".to_string(),
@@ -6902,6 +6924,7 @@ impl GentleEngine {
                 | Operation::ShowSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationReport { .. }
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
+                | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
         )
     }

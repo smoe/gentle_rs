@@ -1,6 +1,6 @@
 # Sequencing Confirmation Implementation Plan
 
-Status: called-read + raw-trace + trace-aware engine/shell baseline plus GUI chromatogram review landed (2026-04-02)
+Status: called-read + raw-trace + trace-aware engine/shell baseline plus GUI chromatogram review and sequencing-primer overlays landed (2026-04-02)
 
 Current implementation snapshot:
 
@@ -20,9 +20,10 @@ Current implementation snapshot:
   - GUI sequencing-confirmation specialist now accepts imported trace ids and
     includes imported-trace metadata/called-base review plus
     variant-focused chromatogram inspection in the same window
+  - sequencing-primer overlay suggestions through the same shared engine/shell
+    path plus the GUI specialist
 - still pending from this plan:
   - lineage/artifact projection for confirmation reports
-  - sequencing-primer suggestion overlays as the next related milestone
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
 GENtle so construct validation from read evidence becomes a first-class,
