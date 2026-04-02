@@ -116,8 +116,8 @@ const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
 const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
-pub const SEQUENCING_TRACE_RECORD_SCHEMA: &str = "gentle.sequencing_trace_record.v1";
-pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace_import_report.v1";
+pub const SEQUENCING_TRACE_RECORD_SCHEMA: &str = "gentle.sequencing_trace_record.v2";
+pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace_import_report.v2";
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
@@ -3383,6 +3383,10 @@ pub struct SequencingConfirmationTargetSpec {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub junction_left_end_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_bases: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
     pub required: bool,
 }
 
@@ -3395,6 +3399,8 @@ impl Default for SequencingConfirmationTargetSpec {
             start_0based: 0,
             end_0based_exclusive: 0,
             junction_left_end_0based: None,
+            expected_bases: None,
+            baseline_bases: None,
             required: true,
         }
     }
@@ -3433,6 +3439,64 @@ pub struct SequencingConfirmationDiscrepancy {
     pub target_bases: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationVariantClassification {
+    #[default]
+    ExpectedMatch,
+    IntendedEditConfirmed,
+    ReferenceReversion,
+    UnexpectedDifference,
+    LowConfidenceOrAmbiguous,
+    InsufficientEvidence,
+}
+
+impl SequencingConfirmationVariantClassification {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExpectedMatch => "expected_match",
+            Self::IntendedEditConfirmed => "intended_edit_confirmed",
+            Self::ReferenceReversion => "reference_reversion",
+            Self::UnexpectedDifference => "unexpected_difference",
+            Self::LowConfidenceOrAmbiguous => "low_confidence_or_ambiguous",
+            Self::InsufficientEvidence => "insufficient_evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationVariantRow {
+    pub variant_id: String,
+    pub label: String,
+    pub target_id: Option<String>,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub expected_bases: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
+    pub observed_bases: String,
+    pub classification: SequencingConfirmationVariantClassification,
+    pub status: SequencingConfirmationStatus,
+    pub evidence_kind: SequencingConfirmationEvidenceKind,
+    pub evidence_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    pub read_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_min: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_max: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_mean: Option<f64>,
+    pub confidence_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_center: Option<u32>,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Construct-level verdict for one requested confirmation target.
@@ -3443,6 +3507,10 @@ pub struct SequencingConfirmationTargetResult {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub junction_left_end_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_bases: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
     pub required: bool,
     pub status: SequencingConfirmationStatus,
     pub covered_bp: usize,
@@ -3483,6 +3551,8 @@ pub struct SequencingConfirmationReport {
     pub schema: String,
     pub report_id: String,
     pub expected_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_seq_id: Option<String>,
     pub generated_at_unix_ms: u128,
     pub overall_status: SequencingConfirmationStatus,
     pub alignment_mode: PairwiseAlignmentMode,
@@ -3499,6 +3569,8 @@ pub struct SequencingConfirmationReport {
     pub target_count: usize,
     pub reads: Vec<SequencingConfirmationReadResult>,
     pub targets: Vec<SequencingConfirmationTargetResult>,
+    #[serde(default)]
+    pub variants: Vec<SequencingConfirmationVariantRow>,
     pub warnings: Vec<String>,
 }
 
@@ -4038,6 +4110,8 @@ pub enum Operation {
     },
     ConfirmConstructReads {
         expected_seq_id: SeqId,
+        #[serde(default)]
+        baseline_seq_id: Option<SeqId>,
         #[serde(default)]
         read_seq_ids: Vec<SeqId>,
         #[serde(default)]

@@ -1,6 +1,6 @@
 # Sequencing Confirmation Implementation Plan
 
-Status: called-read + raw-trace + trace-aware engine/shell baseline plus GUI trace review landed (2026-04-02)
+Status: called-read + raw-trace + trace-aware engine/shell baseline plus GUI chromatogram review landed (2026-04-02)
 
 Current implementation snapshot:
 
@@ -14,11 +14,15 @@ Current implementation snapshot:
   - raw ABI/AB1/SCF trace import plus shared `seq-trace import|list|show`
   - trace-aware confirmation refinement through the same
     `ConfirmConstructReads` contract using imported `trace_ids`
+  - optional baseline/reference context through the same
+    `ConfirmConstructReads` contract for intended-edit vs reversion
+    classification
   - GUI sequencing-confirmation specialist now accepts imported trace ids and
-    includes imported-trace metadata/called-base review in the same window
+    includes imported-trace metadata/called-base review plus
+    variant-focused chromatogram inspection in the same window
 - still pending from this plan:
-  - fuller chromatogram curve inspection
   - lineage/artifact projection for confirmation reports
+  - sequencing-primer suggestion overlays as the next related milestone
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
 GENtle so construct validation from read evidence becomes a first-class,
@@ -479,10 +483,15 @@ Status:
   - imported traces contribute their stored called-base strings as evidence
   - confirmation reports now expose evidence kind plus optional `trace_id` for
     each evidence row
+  - optional `baseline_seq_id` now lets the engine classify
+    intended edits vs reference reversions without changing expected-construct
+    primacy
+  - confidence-aware contradiction softening is now applied to low-confidence
+    trace loci
+  - GUI chromatogram review is now attached to trace-backed evidence rows
 - still pending within this phase:
-  - confidence-aware contradiction softening
-  - ambiguous-base handling
-  - GUI chromatogram review attached to trace-backed evidence rows
+  - deeper ambiguous-base policies beyond the current low-confidence softening
+  - lineage/artifact projection for confirmation reports
 
 Possible extensions:
 

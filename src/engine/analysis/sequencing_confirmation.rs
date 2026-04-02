@@ -26,6 +26,35 @@ struct TargetEvidenceStats {
     contradicted: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+struct VariantConfidenceSummary {
+    min: Option<u8>,
+    max: Option<u8>,
+    mean: Option<f64>,
+    count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct VariantLocus {
+    variant_id: String,
+    label: String,
+    target_id: Option<String>,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    expected_bases: String,
+    baseline_bases: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct VariantObservation {
+    classification: SequencingConfirmationVariantClassification,
+    status: SequencingConfirmationStatus,
+    observed_bases: String,
+    confidence: VariantConfidenceSummary,
+    peak_center: Option<u32>,
+    reason: String,
+}
+
 #[derive(Debug, Clone)]
 struct SequencingConfirmationEvidenceInput {
     evidence_kind: SequencingConfirmationEvidenceKind,
@@ -34,6 +63,8 @@ struct SequencingConfirmationEvidenceInput {
     trace_id: Option<String>,
     linked_seq_id: Option<String>,
     called_bases: String,
+    confidence_values: Option<Vec<u8>>,
+    peak_locations: Option<Vec<u32>>,
 }
 
 impl GentleEngine {
@@ -147,6 +178,8 @@ impl GentleEngine {
             start_0based: 0,
             end_0based_exclusive: expected_len,
             junction_left_end_0based: None,
+            expected_bases: None,
+            baseline_bases: None,
             required: true,
         }]
     }
@@ -162,7 +195,10 @@ impl GentleEngine {
         };
         let mut normalized = Vec::with_capacity(source_targets.len());
         for (idx, target) in source_targets.into_iter().enumerate() {
-            if target.end_0based_exclusive <= target.start_0based {
+            if target.end_0based_exclusive < target.start_0based
+                || (target.kind != SequencingConfirmationTargetKind::ExpectedEdit
+                    && target.end_0based_exclusive == target.start_0based)
+            {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
@@ -243,10 +279,132 @@ impl GentleEngine {
                 start_0based: target.start_0based,
                 end_0based_exclusive: target.end_0based_exclusive,
                 junction_left_end_0based,
+                expected_bases: target.expected_bases.clone(),
+                baseline_bases: target.baseline_bases.clone(),
                 required: target.required,
             });
         }
         Ok(normalized)
+    }
+
+    fn sequencing_trace_variant_low_confidence_threshold() -> u8 {
+        20
+    }
+
+    fn merge_sequencing_confirmation_discrepancies(
+        discrepancies: &[SequencingConfirmationDiscrepancy],
+    ) -> Vec<SequencingConfirmationDiscrepancy> {
+        let mut out: Vec<SequencingConfirmationDiscrepancy> =
+            Vec::with_capacity(discrepancies.len());
+        for row in discrepancies {
+            let Some(last) = out.last_mut() else {
+                out.push(row.clone());
+                continue;
+            };
+            let can_merge = last.kind == row.kind
+                && last.query_end_0based_exclusive == row.query_start_0based
+                && last.target_end_0based_exclusive == row.target_start_0based;
+            if can_merge {
+                last.query_end_0based_exclusive = row.query_end_0based_exclusive;
+                last.target_end_0based_exclusive = row.target_end_0based_exclusive;
+                last.query_bases.push_str(&row.query_bases);
+                last.target_bases.push_str(&row.target_bases);
+            } else {
+                out.push(row.clone());
+            }
+        }
+        out
+    }
+
+    fn infer_expected_edit_targets(
+        expected_seq_id: &str,
+        expected_text: &str,
+        baseline_seq_id: &str,
+        baseline_text: &str,
+    ) -> Result<Vec<SequencingConfirmationTargetSpec>, EngineError> {
+        let alignment = Self::compute_pairwise_alignment_report(
+            baseline_seq_id,
+            baseline_text,
+            None,
+            None,
+            expected_seq_id,
+            expected_text,
+            None,
+            None,
+            PairwiseAlignmentMode::Global,
+            2,
+            -3,
+            -5,
+            -1,
+        )?;
+        let discrepancies = Self::extract_sequencing_confirmation_discrepancies(&alignment);
+        let merged = Self::merge_sequencing_confirmation_discrepancies(&discrepancies);
+        Ok(merged
+            .into_iter()
+            .enumerate()
+            .map(|(idx, row)| {
+                let expected_bases = row.target_bases.to_ascii_uppercase();
+                let baseline_bases = row.query_bases.to_ascii_uppercase();
+                let label = if expected_bases.is_empty() {
+                    format!(
+                        "Expected deletion @ {} (remove '{}')",
+                        row.target_start_0based, baseline_bases
+                    )
+                } else if baseline_bases.is_empty() {
+                    format!(
+                        "Expected insertion @ {} ('{}')",
+                        row.target_start_0based, expected_bases
+                    )
+                } else {
+                    format!(
+                        "Expected edit @ {}..{} ({} -> {})",
+                        row.target_start_0based,
+                        row.target_end_0based_exclusive,
+                        baseline_bases,
+                        expected_bases
+                    )
+                };
+                SequencingConfirmationTargetSpec {
+                    target_id: format!("expected_edit_{}", idx + 1),
+                    label,
+                    kind: SequencingConfirmationTargetKind::ExpectedEdit,
+                    start_0based: row.target_start_0based,
+                    end_0based_exclusive: row.target_end_0based_exclusive,
+                    junction_left_end_0based: None,
+                    expected_bases: Some(expected_bases),
+                    baseline_bases: Some(baseline_bases),
+                    required: true,
+                }
+            })
+            .collect())
+    }
+
+    fn collect_variant_loci(
+        expected_text: &str,
+        targets: &[SequencingConfirmationTargetSpec],
+    ) -> Vec<VariantLocus> {
+        targets
+            .iter()
+            .filter(|target| target.kind == SequencingConfirmationTargetKind::ExpectedEdit)
+            .map(|target| VariantLocus {
+                variant_id: target.target_id.clone(),
+                label: target.label.clone(),
+                target_id: Some(target.target_id.clone()),
+                start_0based: target.start_0based,
+                end_0based_exclusive: target.end_0based_exclusive,
+                expected_bases: target
+                    .expected_bases
+                    .clone()
+                    .unwrap_or_else(|| {
+                        expected_text[target.start_0based..target.end_0based_exclusive].to_string()
+                    })
+                    .to_ascii_uppercase(),
+                baseline_bases: target
+                    .baseline_bases
+                    .clone()
+                    .map(|value| value.to_ascii_uppercase()),
+            })
+            .collect()
     }
 
     pub(super) fn compute_pairwise_alignment_report(
@@ -554,9 +712,291 @@ impl GentleEngine {
         stats
     }
 
+    fn summarize_variant_confidence(values: &[u8]) -> VariantConfidenceSummary {
+        if values.is_empty() {
+            return VariantConfidenceSummary::default();
+        }
+        let min = values.iter().copied().min();
+        let max = values.iter().copied().max();
+        let sum: usize = values.iter().map(|value| *value as usize).sum();
+        VariantConfidenceSummary {
+            min,
+            max,
+            mean: Some(sum as f64 / values.len() as f64),
+            count: values.len(),
+        }
+    }
+
+    fn variant_is_low_confidence_or_ambiguous(
+        observed_bases: &str,
+        confidence: &VariantConfidenceSummary,
+    ) -> bool {
+        if observed_bases
+            .chars()
+            .any(|base| !matches!(base, 'A' | 'C' | 'G' | 'T'))
+        {
+            return true;
+        }
+        confidence
+            .min
+            .is_some_and(|value| value < Self::sequencing_trace_variant_low_confidence_threshold())
+    }
+
+    fn extract_variant_observed_allele(
+        alignment: &ComputedPairwiseAlignment,
+        variant: &VariantLocus,
+    ) -> (bool, String, Vec<usize>, Option<usize>) {
+        let mut query_pos = alignment
+            .report
+            .aligned_query_start_0based
+            .saturating_sub(alignment.report.query_span_start_0based);
+        let mut target_pos = alignment
+            .report
+            .aligned_target_start_0based
+            .saturating_sub(alignment.report.target_span_start_0based);
+        let mut observed = String::new();
+        let mut query_indices = Vec::new();
+        let mut covered_positions = 0usize;
+        let mut zero_length_anchor_query_index = None;
+        let variant_len = variant
+            .end_0based_exclusive
+            .saturating_sub(variant.start_0based);
+        for op in &alignment.operations {
+            match op {
+                bio::alignment::AlignmentOperation::Match
+                | bio::alignment::AlignmentOperation::Subst => {
+                    let target_abs = alignment.report.target_span_start_0based + target_pos;
+                    if target_abs >= variant.start_0based
+                        && target_abs < variant.end_0based_exclusive
+                    {
+                        covered_positions += 1;
+                        let query_base = alignment
+                            .query_span_bases
+                            .get(query_pos)
+                            .copied()
+                            .unwrap_or(b'N') as char;
+                        observed.push(query_base);
+                        query_indices.push(query_pos);
+                    }
+                    if variant_len == 0
+                        && zero_length_anchor_query_index.is_none()
+                        && target_abs >= variant.start_0based
+                    {
+                        zero_length_anchor_query_index = Some(query_pos);
+                    }
+                    query_pos += 1;
+                    target_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Del => {
+                    let target_abs = alignment.report.target_span_start_0based + target_pos;
+                    if target_abs >= variant.start_0based
+                        && target_abs < variant.end_0based_exclusive
+                    {
+                        covered_positions += 1;
+                    }
+                    if variant_len == 0
+                        && zero_length_anchor_query_index.is_none()
+                        && target_abs >= variant.start_0based
+                    {
+                        zero_length_anchor_query_index = Some(query_pos);
+                    }
+                    target_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Ins => {
+                    let target_abs = alignment.report.target_span_start_0based + target_pos;
+                    let in_window = if variant_len == 0 {
+                        target_abs == variant.start_0based
+                    } else {
+                        target_abs >= variant.start_0based
+                            && target_abs <= variant.end_0based_exclusive
+                    };
+                    if in_window {
+                        let query_base = alignment
+                            .query_span_bases
+                            .get(query_pos)
+                            .copied()
+                            .unwrap_or(b'N') as char;
+                        observed.push(query_base);
+                        query_indices.push(query_pos);
+                    }
+                    if variant_len == 0 && zero_length_anchor_query_index.is_none() {
+                        zero_length_anchor_query_index = Some(query_pos);
+                    }
+                    query_pos += 1;
+                }
+                bio::alignment::AlignmentOperation::Xclip(_) => {}
+                bio::alignment::AlignmentOperation::Yclip(_) => {}
+            }
+        }
+        let covered = if variant_len == 0 {
+            alignment.report.aligned_target_start_0based <= variant.start_0based
+                && alignment.report.aligned_target_end_0based_exclusive >= variant.start_0based
+        } else {
+            covered_positions >= variant_len
+        };
+        (
+            covered,
+            observed,
+            query_indices,
+            zero_length_anchor_query_index,
+        )
+    }
+
+    fn classify_variant_observation(
+        alignment: &ComputedPairwiseAlignment,
+        evidence: &SequencingConfirmationEvidenceInput,
+        variant: &VariantLocus,
+    ) -> VariantObservation {
+        let (covered, observed_bases, query_indices, zero_length_anchor_query_index) =
+            Self::extract_variant_observed_allele(alignment, variant);
+        if !covered {
+            return VariantObservation {
+                classification: SequencingConfirmationVariantClassification::InsufficientEvidence,
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                observed_bases: String::new(),
+                confidence: VariantConfidenceSummary::default(),
+                peak_center: None,
+                reason: "Variant locus is not fully covered by this evidence row".to_string(),
+            };
+        }
+        let confidence_values = evidence
+            .confidence_values
+            .as_ref()
+            .map(|values| {
+                query_indices
+                    .iter()
+                    .filter_map(|idx| values.get(*idx).copied())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let confidence = Self::summarize_variant_confidence(&confidence_values);
+        let peak_center = evidence.peak_locations.as_ref().and_then(|peaks| {
+            let positions = if !query_indices.is_empty() {
+                query_indices
+                    .iter()
+                    .filter_map(|idx| peaks.get(*idx).copied())
+                    .collect::<Vec<_>>()
+            } else if let Some(anchor_idx) = zero_length_anchor_query_index {
+                peaks
+                    .get(anchor_idx)
+                    .copied()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if positions.is_empty() {
+                None
+            } else {
+                Some(positions.iter().sum::<u32>() / positions.len() as u32)
+            }
+        });
+        if Self::variant_is_low_confidence_or_ambiguous(&observed_bases, &confidence) {
+            return VariantObservation {
+                classification:
+                    SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous,
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                observed_bases,
+                confidence,
+                peak_center,
+                reason: format!(
+                    "Observed locus is low-confidence or ambiguous (threshold < {})",
+                    Self::sequencing_trace_variant_low_confidence_threshold()
+                ),
+            };
+        }
+        let expected_bases = variant.expected_bases.to_ascii_uppercase();
+        let baseline_bases = variant
+            .baseline_bases
+            .as_ref()
+            .map(|value| value.to_ascii_uppercase());
+        let classification = if observed_bases == expected_bases {
+            if baseline_bases
+                .as_deref()
+                .is_some_and(|value| value != expected_bases)
+            {
+                SequencingConfirmationVariantClassification::IntendedEditConfirmed
+            } else {
+                SequencingConfirmationVariantClassification::ExpectedMatch
+            }
+        } else if baseline_bases
+            .as_deref()
+            .is_some_and(|value| value == observed_bases)
+        {
+            SequencingConfirmationVariantClassification::ReferenceReversion
+        } else {
+            SequencingConfirmationVariantClassification::UnexpectedDifference
+        };
+        let status = match classification {
+            SequencingConfirmationVariantClassification::ExpectedMatch
+            | SequencingConfirmationVariantClassification::IntendedEditConfirmed => {
+                SequencingConfirmationStatus::Confirmed
+            }
+            SequencingConfirmationVariantClassification::ReferenceReversion
+            | SequencingConfirmationVariantClassification::UnexpectedDifference => {
+                SequencingConfirmationStatus::Contradicted
+            }
+            SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous
+            | SequencingConfirmationVariantClassification::InsufficientEvidence => {
+                SequencingConfirmationStatus::InsufficientEvidence
+            }
+        };
+        let reason = match classification {
+            SequencingConfirmationVariantClassification::ExpectedMatch => {
+                "Observed allele matches the expected construct".to_string()
+            }
+            SequencingConfirmationVariantClassification::IntendedEditConfirmed => format!(
+                "Observed allele matches the intended edit relative to baseline '{}'",
+                baseline_bases.unwrap_or_default()
+            ),
+            SequencingConfirmationVariantClassification::ReferenceReversion => format!(
+                "Observed allele matches the baseline/reference allele '{}'",
+                baseline_bases.unwrap_or_default()
+            ),
+            SequencingConfirmationVariantClassification::UnexpectedDifference => {
+                "Observed allele matches neither expected construct nor baseline".to_string()
+            }
+            SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous => {
+                "Observed locus is low-confidence or ambiguous".to_string()
+            }
+            SequencingConfirmationVariantClassification::InsufficientEvidence => {
+                "Variant locus lacks enough evidence".to_string()
+            }
+        };
+        VariantObservation {
+            classification,
+            status,
+            observed_bases,
+            confidence,
+            peak_center,
+            reason,
+        }
+    }
+
+    fn choose_best_variant_observation<'a>(
+        observations: &'a [(SequencingConfirmationReadResult, VariantObservation)],
+    ) -> Option<&'a (SequencingConfirmationReadResult, VariantObservation)> {
+        fn rank(observation: &VariantObservation) -> (i32, usize, i32) {
+            let priority = match observation.classification {
+                SequencingConfirmationVariantClassification::ReferenceReversion
+                | SequencingConfirmationVariantClassification::UnexpectedDifference => 3,
+                SequencingConfirmationVariantClassification::IntendedEditConfirmed
+                | SequencingConfirmationVariantClassification::ExpectedMatch => 2,
+                SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous => 1,
+                SequencingConfirmationVariantClassification::InsufficientEvidence => 0,
+            };
+            let mean_scaled = (observation.confidence.mean.unwrap_or(0.0) * 1000.0) as i32;
+            (priority, observation.confidence.count, mean_scaled)
+        }
+        observations
+            .iter()
+            .max_by_key(|(_, observation)| rank(observation))
+    }
+
     pub(super) fn confirm_construct_reads(
         &mut self,
         expected_seq_id: &str,
+        baseline_seq_id: Option<&str>,
         read_seq_ids: &[String],
         trace_ids: &[String],
         targets: &[SequencingConfirmationTargetSpec],
@@ -613,8 +1053,42 @@ impl GentleEngine {
                 ),
             });
         }
-        let normalized_targets =
-            Self::normalize_sequencing_confirmation_targets(expected_text.len(), targets)?;
+        let normalized_baseline_seq_id = baseline_seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let mut requested_targets = targets.to_vec();
+        if let Some(baseline_seq_id) = normalized_baseline_seq_id.as_deref() {
+            let baseline_dna =
+                self.state
+                    .sequences
+                    .get(baseline_seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Baseline sequence '{}' not found", baseline_seq_id),
+                    })?;
+            let baseline_text = baseline_dna.get_forward_string().to_ascii_uppercase();
+            if baseline_text.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "ConfirmConstructReads cannot use empty baseline sequence '{}'",
+                        baseline_seq_id
+                    ),
+                });
+            }
+            requested_targets.extend(Self::infer_expected_edit_targets(
+                expected_seq_id,
+                expected_text.as_str(),
+                baseline_seq_id,
+                baseline_text.as_str(),
+            )?);
+        }
+        let normalized_targets = Self::normalize_sequencing_confirmation_targets(
+            expected_text.len(),
+            &requested_targets,
+        )?;
+        let variant_loci = Self::collect_variant_loci(expected_text.as_str(), &normalized_targets);
         let report_id = match report_id {
             Some(raw) => {
                 let normalized = Self::normalize_sequencing_confirmation_report_id(raw)?;
@@ -636,6 +1110,8 @@ impl GentleEngine {
                 start_0based: target.start_0based,
                 end_0based_exclusive: target.end_0based_exclusive,
                 junction_left_end_0based: target.junction_left_end_0based,
+                expected_bases: target.expected_bases.clone(),
+                baseline_bases: target.baseline_bases.clone(),
                 required: target.required,
                 status: SequencingConfirmationStatus::InsufficientEvidence,
                 covered_bp: 0,
@@ -675,6 +1151,8 @@ impl GentleEngine {
                 trace_id: None,
                 linked_seq_id: Some(read_seq_id.clone()),
                 called_bases: read_text,
+                confidence_values: None,
+                peak_locations: None,
             });
         }
         for trace_id in trace_ids {
@@ -699,9 +1177,15 @@ impl GentleEngine {
                 trace_id: Some(trace.trace_id.clone()),
                 linked_seq_id: trace.seq_id.clone(),
                 called_bases,
+                confidence_values: Some(trace.called_base_confidence_values.clone()),
+                peak_locations: Some(trace.peak_locations.clone()),
             });
         }
 
+        let mut variant_observations: BTreeMap<
+            String,
+            Vec<(SequencingConfirmationReadResult, VariantObservation)>,
+        > = BTreeMap::new();
         for evidence in evidence_inputs {
             let forward_alignment = Self::compute_pairwise_alignment_report(
                 evidence.evidence_id.as_str(),
@@ -738,37 +1222,63 @@ impl GentleEngine {
             } else {
                 None
             };
-            let (orientation, alignment) = if let Some(reverse_alignment) = reverse_alignment {
-                let forward_score = (
-                    (forward_alignment.report.query_coverage_fraction * 1_000_000.0) as i64,
-                    (forward_alignment.report.identity_fraction * 1_000_000.0) as i64,
-                    i64::from(forward_alignment.report.score),
-                    forward_alignment.report.aligned_columns as i64,
-                );
-                let reverse_score = (
-                    (reverse_alignment.report.query_coverage_fraction * 1_000_000.0) as i64,
-                    (reverse_alignment.report.identity_fraction * 1_000_000.0) as i64,
-                    i64::from(reverse_alignment.report.score),
-                    reverse_alignment.report.aligned_columns as i64,
-                );
-                if reverse_score > forward_score {
-                    (
-                        SequencingReadOrientation::ReverseComplement,
-                        reverse_alignment,
-                    )
+            let (orientation, alignment, oriented_confidence_values, oriented_peak_locations) =
+                if let Some(reverse_alignment) = reverse_alignment {
+                    let forward_score = (
+                        (forward_alignment.report.query_coverage_fraction * 1_000_000.0) as i64,
+                        (forward_alignment.report.identity_fraction * 1_000_000.0) as i64,
+                        i64::from(forward_alignment.report.score),
+                        forward_alignment.report.aligned_columns as i64,
+                    );
+                    let reverse_score = (
+                        (reverse_alignment.report.query_coverage_fraction * 1_000_000.0) as i64,
+                        (reverse_alignment.report.identity_fraction * 1_000_000.0) as i64,
+                        i64::from(reverse_alignment.report.score),
+                        reverse_alignment.report.aligned_columns as i64,
+                    );
+                    if reverse_score > forward_score {
+                        let reversed_confidences = evidence
+                            .confidence_values
+                            .as_ref()
+                            .map(|values| values.iter().rev().copied().collect::<Vec<_>>());
+                        let reversed_peaks = evidence
+                            .peak_locations
+                            .as_ref()
+                            .map(|values| values.iter().rev().copied().collect::<Vec<_>>());
+                        (
+                            SequencingReadOrientation::ReverseComplement,
+                            reverse_alignment,
+                            reversed_confidences,
+                            reversed_peaks,
+                        )
+                    } else {
+                        (
+                            SequencingReadOrientation::Forward,
+                            forward_alignment,
+                            evidence.confidence_values.clone(),
+                            evidence.peak_locations.clone(),
+                        )
+                    }
                 } else {
-                    (SequencingReadOrientation::Forward, forward_alignment)
-                }
-            } else {
-                (SequencingReadOrientation::Forward, forward_alignment)
-            };
-            let discrepancies = Self::extract_sequencing_confirmation_discrepancies(&alignment);
+                    (
+                        SequencingReadOrientation::Forward,
+                        forward_alignment,
+                        evidence.confidence_values.clone(),
+                        evidence.peak_locations.clone(),
+                    )
+                };
+            let discrepancies = Self::merge_sequencing_confirmation_discrepancies(
+                &Self::extract_sequencing_confirmation_discrepancies(&alignment),
+            );
             let mut covered_target_ids = vec![];
             let mut confirmed_target_ids = vec![];
             let mut contradicted_target_ids = vec![];
             for (target_result, target_spec) in
                 target_results.iter_mut().zip(normalized_targets.iter())
             {
+                if target_spec.kind == SequencingConfirmationTargetKind::ExpectedEdit {
+                    continue;
+                }
                 let stats = Self::collect_target_evidence_stats(&alignment, target_spec);
                 if stats.covered_bp > target_result.covered_bp {
                     target_result.covered_bp = stats.covered_bp;
@@ -801,7 +1311,7 @@ impl GentleEngine {
                     min_identity_fraction
                 ));
             }
-            reads.push(SequencingConfirmationReadResult {
+            let mut read_result = SequencingConfirmationReadResult {
                 evidence_kind: evidence.evidence_kind,
                 evidence_id: evidence.evidence_id.clone(),
                 read_seq_id: evidence.display_read_seq_id,
@@ -809,15 +1319,48 @@ impl GentleEngine {
                 linked_seq_id: evidence.linked_seq_id,
                 orientation,
                 usable: !covered_target_ids.is_empty(),
-                best_alignment: alignment.report,
+                best_alignment: alignment.report.clone(),
                 covered_target_ids,
                 confirmed_target_ids,
                 contradicted_target_ids,
                 discrepancies,
-            });
+            };
+            let mut variant_contributed = false;
+            for variant in &variant_loci {
+                let observed = Self::classify_variant_observation(
+                    &alignment,
+                    &SequencingConfirmationEvidenceInput {
+                        evidence_kind: evidence.evidence_kind,
+                        evidence_id: evidence.evidence_id.clone(),
+                        display_read_seq_id: read_result.read_seq_id.clone(),
+                        trace_id: read_result.trace_id.clone(),
+                        linked_seq_id: read_result.linked_seq_id.clone(),
+                        called_bases: evidence.called_bases.clone(),
+                        confidence_values: oriented_confidence_values.clone(),
+                        peak_locations: oriented_peak_locations.clone(),
+                    },
+                    variant,
+                );
+                if observed.classification
+                    != SequencingConfirmationVariantClassification::InsufficientEvidence
+                {
+                    variant_contributed = true;
+                }
+                variant_observations
+                    .entry(variant.variant_id.clone())
+                    .or_default()
+                    .push((read_result.clone(), observed));
+            }
+            if variant_contributed {
+                read_result.usable = true;
+            }
+            reads.push(read_result);
         }
 
         for target in &mut target_results {
+            if target.kind == SequencingConfirmationTargetKind::ExpectedEdit {
+                continue;
+            }
             target.status = if !target.contradicting_read_ids.is_empty() {
                 SequencingConfirmationStatus::Contradicted
             } else if !target.support_read_ids.is_empty() {
@@ -848,6 +1391,110 @@ impl GentleEngine {
             };
         }
 
+        let mut variant_rows = Vec::with_capacity(variant_loci.len());
+        for variant in &variant_loci {
+            let observations = variant_observations
+                .remove(&variant.variant_id)
+                .unwrap_or_default();
+            let supporting_ids = observations
+                .iter()
+                .filter(|(_, observation)| {
+                    observation.status == SequencingConfirmationStatus::Confirmed
+                })
+                .map(|(read, _)| read.evidence_id.clone())
+                .collect::<Vec<_>>();
+            let contradicting_ids = observations
+                .iter()
+                .filter(|(_, observation)| {
+                    observation.status == SequencingConfirmationStatus::Contradicted
+                })
+                .map(|(read, _)| read.evidence_id.clone())
+                .collect::<Vec<_>>();
+            let best = Self::choose_best_variant_observation(&observations);
+            let (status, row) = if let Some((read, observation)) = best {
+                let status = if !contradicting_ids.is_empty() {
+                    SequencingConfirmationStatus::Contradicted
+                } else if !supporting_ids.is_empty() {
+                    SequencingConfirmationStatus::Confirmed
+                } else {
+                    SequencingConfirmationStatus::InsufficientEvidence
+                };
+                (
+                    status,
+                    SequencingConfirmationVariantRow {
+                        variant_id: variant.variant_id.clone(),
+                        label: variant.label.clone(),
+                        target_id: variant.target_id.clone(),
+                        start_0based: variant.start_0based,
+                        end_0based_exclusive: variant.end_0based_exclusive,
+                        expected_bases: variant.expected_bases.clone(),
+                        baseline_bases: variant.baseline_bases.clone(),
+                        observed_bases: observation.observed_bases.clone(),
+                        classification: observation.classification,
+                        status,
+                        evidence_kind: read.evidence_kind,
+                        evidence_id: read.evidence_id.clone(),
+                        trace_id: read.trace_id.clone(),
+                        read_seq_id: read.read_seq_id.clone(),
+                        linked_seq_id: read.linked_seq_id.clone(),
+                        confidence_min: observation.confidence.min,
+                        confidence_max: observation.confidence.max,
+                        confidence_mean: observation.confidence.mean,
+                        confidence_count: observation.confidence.count,
+                        peak_center: observation.peak_center,
+                        reason: observation.reason.clone(),
+                    },
+                )
+            } else {
+                (
+                    SequencingConfirmationStatus::InsufficientEvidence,
+                    SequencingConfirmationVariantRow {
+                        variant_id: variant.variant_id.clone(),
+                        label: variant.label.clone(),
+                        target_id: variant.target_id.clone(),
+                        start_0based: variant.start_0based,
+                        end_0based_exclusive: variant.end_0based_exclusive,
+                        expected_bases: variant.expected_bases.clone(),
+                        baseline_bases: variant.baseline_bases.clone(),
+                        observed_bases: String::new(),
+                        classification:
+                            SequencingConfirmationVariantClassification::InsufficientEvidence,
+                        status: SequencingConfirmationStatus::InsufficientEvidence,
+                        evidence_kind: SequencingConfirmationEvidenceKind::Sequence,
+                        evidence_id: String::new(),
+                        trace_id: None,
+                        read_seq_id: String::new(),
+                        linked_seq_id: None,
+                        confidence_min: None,
+                        confidence_max: None,
+                        confidence_mean: None,
+                        confidence_count: 0,
+                        peak_center: None,
+                        reason: "No evidence row covered this expected-edit locus".to_string(),
+                    },
+                )
+            };
+            if let Some(target_id) = variant.target_id.as_deref()
+                && let Some(target) = target_results
+                    .iter_mut()
+                    .find(|target| target.target_id == target_id)
+            {
+                target.expected_bases = Some(variant.expected_bases.clone());
+                target.baseline_bases = variant.baseline_bases.clone();
+                target.support_read_ids = supporting_ids.clone();
+                target.contradicting_read_ids = contradicting_ids.clone();
+                target.status = status;
+                target.reason = row.reason.clone();
+                target.covered_bp = if status == SequencingConfirmationStatus::InsufficientEvidence
+                {
+                    0
+                } else {
+                    target.target_length_bp.max(1)
+                };
+            }
+            variant_rows.push(row);
+        }
+
         let overall_status = if target_results.iter().any(|target| {
             target.required && target.status == SequencingConfirmationStatus::Contradicted
         }) {
@@ -866,6 +1513,7 @@ impl GentleEngine {
             schema: SEQUENCING_CONFIRMATION_REPORT_SCHEMA.to_string(),
             report_id,
             expected_seq_id: expected_seq_id.to_string(),
+            baseline_seq_id: normalized_baseline_seq_id,
             generated_at_unix_ms: Self::now_unix_ms(),
             overall_status,
             alignment_mode,
@@ -881,6 +1529,7 @@ impl GentleEngine {
             target_count: target_results.len(),
             reads,
             targets: target_results,
+            variants: variant_rows,
             warnings,
         };
         self.upsert_sequencing_confirmation_report(report.clone())?;
@@ -947,14 +1596,16 @@ impl GentleEngine {
         report: &SequencingConfirmationReport,
     ) -> String {
         format!(
-            "{} expected={} status={} reads={} traces={} evidence={} targets={} mode={} rc_allowed={} identity>={:.2} coverage>={:.2}",
+            "{} expected={} baseline={} status={} reads={} traces={} evidence={} targets={} variants={} mode={} rc_allowed={} identity>={:.2} coverage>={:.2}",
             report.report_id,
             report.expected_seq_id,
+            report.baseline_seq_id.as_deref().unwrap_or("-"),
             report.overall_status.as_str(),
             report.read_seq_ids.len(),
             report.trace_ids.len(),
             report.reads.len(),
             report.targets.len(),
+            report.variants.len(),
             report.alignment_mode.as_str(),
             report.allow_reverse_complement,
             report.min_identity_fraction,

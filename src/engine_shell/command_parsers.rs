@@ -2802,7 +2802,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
         "run" => {
             if tokens.len() < 4 {
                 return Err(
-                    "seq-confirm run requires EXPECTED_SEQ_ID plus at least one --reads/--read or --trace-ids/--trace-id value [--junction LEFT_END_0BASED]... [--junction-flank N] [--report-id ID] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement]"
+                    "seq-confirm run requires EXPECTED_SEQ_ID plus at least one --reads/--read or --trace-ids/--trace-id value [--baseline BASELINE_SEQ_ID] [--junction LEFT_END_0BASED]... [--junction-flank N] [--report-id ID] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement]"
                         .to_string(),
                 );
             }
@@ -2810,6 +2810,7 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
             if expected_seq_id.is_empty() {
                 return Err("seq-confirm run EXPECTED_SEQ_ID must not be empty".to_string());
             }
+            let mut baseline_seq_id: Option<String> = None;
             let mut read_seq_ids: Vec<String> = vec![];
             let mut trace_ids: Vec<String> = vec![];
             let mut targets: Vec<SequencingConfirmationTargetSpec> = vec![];
@@ -2827,6 +2828,16 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--baseline" | "--baseline-seq-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "seq-confirm run")?;
+                        let trimmed = raw.trim();
+                        baseline_seq_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
                     "--reads" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--reads", "seq-confirm run")?;
@@ -3000,12 +3011,15 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                             start_0based: left_end.saturating_sub(junction_flank),
                             end_0based_exclusive: left_end.saturating_add(junction_flank),
                             junction_left_end_0based: Some(*left_end),
+                            expected_bases: None,
+                            baseline_bases: None,
                             required: true,
                         }),
                 );
             }
             Ok(ShellCommand::SeqConfirmRun {
                 expected_seq_id,
+                baseline_seq_id,
                 read_seq_ids,
                 trace_ids,
                 targets,

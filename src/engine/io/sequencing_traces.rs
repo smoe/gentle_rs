@@ -21,7 +21,10 @@ struct ParsedSequencingTrace {
     called_bases: String,
     called_base_confidence_values: Vec<u8>,
     peak_locations: Vec<u32>,
+    channel_data: Vec<SequencingTraceChannelData>,
     channel_summaries: Vec<SequencingTraceChannelSummary>,
+    clip_start_base_index: Option<usize>,
+    clip_end_base_index_exclusive: Option<usize>,
     comments_text: Option<String>,
     warnings: Vec<String>,
 }
@@ -43,8 +46,8 @@ struct ScfHeader {
     samples: u32,
     samples_offset: u32,
     bases: u32,
-    _bases_left_clip: u32,
-    _bases_right_clip: u32,
+    bases_left_clip: u32,
+    bases_right_clip: u32,
     bases_offset: u32,
     comments_size: u32,
     comments_offset: u32,
@@ -204,7 +207,10 @@ impl GentleEngine {
             called_bases: parsed.called_bases,
             called_base_confidence_values: parsed.called_base_confidence_values,
             peak_locations: parsed.peak_locations,
+            channel_data: parsed.channel_data,
             channel_summaries: parsed.channel_summaries,
+            clip_start_base_index: parsed.clip_start_base_index,
+            clip_end_base_index_exclusive: parsed.clip_end_base_index_exclusive,
             comments_text: parsed.comments_text,
         };
         self.upsert_sequencing_trace(record.clone())?;
@@ -266,19 +272,20 @@ impl GentleEngine {
 
     pub(crate) fn format_sequencing_trace_summary_row(row: &SequencingTraceSummary) -> String {
         format!(
-            "{} format={} seq={} bases={} channels={} source={}",
+            "{} format={} seq={} bases={} channels={} curves={} source={}",
             row.trace_id,
             row.format.as_str(),
             row.seq_id.as_deref().unwrap_or("-"),
             row.called_base_count,
             row.channel_count,
+            if row.has_curve_data { "yes" } else { "no" },
             row.source_path
         )
     }
 
     pub(crate) fn format_sequencing_trace_detail_summary(record: &SequencingTraceRecord) -> String {
         format!(
-            "{} format={} seq={} bases={} confidences={} peaks={} channels={} source={}",
+            "{} format={} seq={} bases={} confidences={} peaks={} channels={} curves={} source={}",
             record.trace_id,
             record.format.as_str(),
             record.seq_id.as_deref().unwrap_or("-"),
@@ -286,6 +293,11 @@ impl GentleEngine {
             record.called_base_confidence_values.len(),
             record.peak_locations.len(),
             record.channel_summaries.len(),
+            if record.channel_data.is_empty() {
+                "no"
+            } else {
+                "yes"
+            },
             record.source_path
         )
     }
@@ -319,6 +331,7 @@ fn build_sequencing_trace_summary(record: &SequencingTraceRecord) -> SequencingT
         called_base_count: record.called_bases.len(),
         confidence_value_count: record.called_base_confidence_values.len(),
         peak_location_count: record.peak_locations.len(),
+        has_curve_data: !record.channel_data.is_empty(),
         channel_count: record.channel_summaries.len(),
     }
 }
@@ -339,6 +352,7 @@ fn import_report_from_trace_record(
         called_base_count: record.called_bases.len(),
         confidence_value_count: record.called_base_confidence_values.len(),
         peak_location_count: record.peak_locations.len(),
+        has_curve_data: !record.channel_data.is_empty(),
         channel_count: record.channel_summaries.len(),
         warnings,
     }
@@ -404,7 +418,8 @@ fn parse_abi_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
         .map(|entry| decode_abif_text(entry, bytes))
         .transpose()?
         .unwrap_or_else(|| "GATC".to_string());
-    let channel_summaries = abi_channel_summaries(&entries, base_order.as_str());
+    let channel_data = abi_channel_data(&entries, bytes, base_order.as_str())?;
+    let channel_summaries = summarize_trace_channels(&channel_data);
     let sample_name = find_abif_entry(&entries, "SMPL", 1)
         .map(|entry| decode_abif_text(entry, bytes))
         .transpose()?;
@@ -455,7 +470,10 @@ fn parse_abi_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
         called_bases,
         called_base_confidence_values: confidence_values,
         peak_locations,
+        channel_data,
         channel_summaries,
+        clip_start_base_index: None,
+        clip_end_base_index_exclusive: None,
         comments_text,
         warnings,
     })
@@ -465,28 +483,8 @@ fn parse_scf_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
     let header = parse_scf_header(bytes)?;
     validate_scf_offsets(path, bytes, &header)?;
     let (called_bases, peak_locations, confidence_values) = parse_scf_base_section(bytes, &header)?;
-    let channel_summaries = vec![
-        SequencingTraceChannelSummary {
-            channel: "A".to_string(),
-            trace_set: "trace".to_string(),
-            point_count: header.samples as usize,
-        },
-        SequencingTraceChannelSummary {
-            channel: "C".to_string(),
-            trace_set: "trace".to_string(),
-            point_count: header.samples as usize,
-        },
-        SequencingTraceChannelSummary {
-            channel: "G".to_string(),
-            trace_set: "trace".to_string(),
-            point_count: header.samples as usize,
-        },
-        SequencingTraceChannelSummary {
-            channel: "T".to_string(),
-            trace_set: "trace".to_string(),
-            point_count: header.samples as usize,
-        },
-    ];
+    let channel_data = parse_scf_trace_channels(bytes, &header)?;
+    let channel_summaries = summarize_trace_channels(&channel_data);
     let comments_text = if header.comments_size > 0 {
         let start = header.comments_offset as usize;
         let end = start + header.comments_size as usize;
@@ -533,7 +531,18 @@ fn parse_scf_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
         called_bases,
         called_base_confidence_values: confidence_values,
         peak_locations,
+        channel_data,
         channel_summaries,
+        clip_start_base_index: if header.bases_left_clip > 0 {
+            Some(header.bases_left_clip as usize)
+        } else {
+            None
+        },
+        clip_end_base_index_exclusive: if header.bases_right_clip > 0 {
+            Some(header.bases_right_clip as usize)
+        } else {
+            None
+        },
         comments_text,
         warnings,
     })
@@ -630,10 +639,11 @@ fn find_preferred_abif_entry<'a>(
         .max_by_key(|entry| entry.tag_number)
 }
 
-fn abi_channel_summaries(
+fn abi_channel_data(
     entries: &[AbifDirectoryEntry],
+    bytes: &[u8],
     base_order: &str,
-) -> Vec<SequencingTraceChannelSummary> {
+) -> Result<Vec<SequencingTraceChannelData>, EngineError> {
     let processed = [9u32, 10, 11, 12];
     let raw = [1u32, 2, 3, 4];
     let (trace_set, numbers) = if processed
@@ -647,30 +657,37 @@ fn abi_channel_summaries(
     {
         ("raw", raw.as_slice())
     } else {
-        return vec![];
+        return Ok(vec![]);
     };
     let order = base_order.chars().collect::<Vec<_>>();
-    numbers
+    let mut out = Vec::with_capacity(numbers.len());
+    for (idx, number) in numbers.iter().enumerate() {
+        let Some(entry) = find_abif_entry(entries, "DATA", *number) else {
+            continue;
+        };
+        let channel = order
+            .get(idx)
+            .copied()
+            .map(|ch| ch.to_string())
+            .unwrap_or_else(|| format!("channel_{}", idx + 1));
+        out.push(SequencingTraceChannelData {
+            channel,
+            trace_set: trace_set.to_string(),
+            points: decode_abif_trace_points(entry, bytes)?,
+        });
+    }
+    Ok(out)
+}
+
+fn summarize_trace_channels(
+    channel_data: &[SequencingTraceChannelData],
+) -> Vec<SequencingTraceChannelSummary> {
+    channel_data
         .iter()
-        .enumerate()
-        .filter_map(|(idx, number)| {
-            find_abif_entry(entries, "DATA", *number).map(|entry| {
-                let point_count = if entry.element_size == 0 {
-                    0
-                } else {
-                    (entry.data_size as usize) / (entry.element_size as usize)
-                };
-                let channel = order
-                    .get(idx)
-                    .copied()
-                    .map(|ch| ch.to_string())
-                    .unwrap_or_else(|| format!("channel_{}", idx + 1));
-                SequencingTraceChannelSummary {
-                    channel,
-                    trace_set: trace_set.to_string(),
-                    point_count,
-                }
-            })
+        .map(|row| SequencingTraceChannelSummary {
+            channel: row.channel.clone(),
+            trace_set: row.trace_set.clone(),
+            point_count: row.points.len(),
         })
         .collect()
 }
@@ -701,6 +718,57 @@ fn decode_abif_text(entry: &AbifDirectoryEntry, bytes: &[u8]) -> Result<String, 
 
 fn decode_abif_u8_vec(entry: &AbifDirectoryEntry, bytes: &[u8]) -> Result<Vec<u8>, EngineError> {
     Ok(abif_entry_data(entry, bytes, "ABIF byte array")?.to_vec())
+}
+
+fn decode_abif_trace_points(
+    entry: &AbifDirectoryEntry,
+    bytes: &[u8],
+) -> Result<Vec<u32>, EngineError> {
+    let raw = abif_entry_data(entry, bytes, "ABIF trace points")?;
+    match entry.element_size {
+        1 => Ok(raw.iter().map(|value| *value as u32).collect()),
+        2 => {
+            if raw.len() % 2 != 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "ABIF trace tag '{}{}' has odd byte length {} for 2-byte values",
+                        entry.tag_name,
+                        entry.tag_number,
+                        raw.len()
+                    ),
+                });
+            }
+            Ok(raw
+                .chunks_exact(2)
+                .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]) as u32)
+                .collect())
+        }
+        4 => {
+            if raw.len() % 4 != 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "ABIF trace tag '{}{}' has byte length {} not divisible by 4",
+                        entry.tag_name,
+                        entry.tag_number,
+                        raw.len()
+                    ),
+                });
+            }
+            Ok(raw
+                .chunks_exact(4)
+                .map(|chunk| u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect())
+        }
+        other => Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "ABIF trace tag '{}{}' uses unsupported element size {}",
+                entry.tag_name, entry.tag_number, other
+            ),
+        }),
+    }
 }
 
 fn decode_abif_peak_locations(
@@ -790,8 +858,8 @@ fn parse_scf_header(bytes: &[u8]) -> Result<ScfHeader, EngineError> {
         samples: read_be_u32(bytes, 4, "SCF header samples")?,
         samples_offset: read_be_u32(bytes, 8, "SCF header samples_offset")?,
         bases: read_be_u32(bytes, 12, "SCF header bases")?,
-        _bases_left_clip: read_be_u32(bytes, 16, "SCF header bases_left_clip")?,
-        _bases_right_clip: read_be_u32(bytes, 20, "SCF header bases_right_clip")?,
+        bases_left_clip: read_be_u32(bytes, 16, "SCF header bases_left_clip")?,
+        bases_right_clip: read_be_u32(bytes, 20, "SCF header bases_right_clip")?,
         bases_offset: read_be_u32(bytes, 24, "SCF header bases_offset")?,
         comments_size: read_be_u32(bytes, 28, "SCF header comments_size")?,
         comments_offset: read_be_u32(bytes, 32, "SCF header comments_offset")?,
@@ -930,6 +998,112 @@ fn parse_scf_base_section(
         }
         Ok((called_bases, peak_locations, confidence_values))
     }
+}
+
+fn parse_scf_trace_channels(
+    bytes: &[u8],
+    header: &ScfHeader,
+) -> Result<Vec<SequencingTraceChannelData>, EngineError> {
+    let samples = header.samples as usize;
+    if samples == 0 {
+        return Ok(vec![]);
+    }
+    let sample_size = header.sample_size as usize;
+    let section_len = scf_sample_section_len(header)?;
+    let raw = slice_range(
+        bytes,
+        header.samples_offset as usize,
+        header.samples_offset as usize + section_len,
+        "SCF",
+        "trace samples",
+    )?;
+    let channel_labels = ["A", "C", "G", "T"];
+    let mut channels = Vec::with_capacity(4);
+    if scf_is_version_3(header) {
+        let block_len = samples
+            .checked_mul(sample_size)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SCF v3 trace block length overflow".to_string(),
+            })?;
+        for (idx, label) in channel_labels.iter().enumerate() {
+            let start = idx * block_len;
+            let block = &raw[start..start + block_len];
+            let encoded = decode_scf_trace_block(block, sample_size)?;
+            let points = delta_decode_scf_trace_points(&encoded);
+            channels.push(SequencingTraceChannelData {
+                channel: (*label).to_string(),
+                trace_set: "trace".to_string(),
+                points,
+            });
+        }
+    } else {
+        let mut points = vec![Vec::<u32>::with_capacity(samples); 4];
+        for sample_idx in 0..samples {
+            for (channel_idx, channel_points) in points.iter_mut().enumerate() {
+                let start = (sample_idx * 4 + channel_idx) * sample_size;
+                let end = start + sample_size;
+                channel_points.push(read_scf_sample_value(&raw[start..end], sample_size)?);
+            }
+        }
+        for (idx, label) in channel_labels.iter().enumerate() {
+            channels.push(SequencingTraceChannelData {
+                channel: (*label).to_string(),
+                trace_set: "trace".to_string(),
+                points: points[idx].clone(),
+            });
+        }
+    }
+    Ok(channels)
+}
+
+fn decode_scf_trace_block(raw: &[u8], sample_size: usize) -> Result<Vec<u32>, EngineError> {
+    if sample_size == 0 {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::with_capacity(raw.len() / sample_size);
+    for chunk in raw.chunks_exact(sample_size) {
+        out.push(read_scf_sample_value(chunk, sample_size)?);
+    }
+    Ok(out)
+}
+
+fn read_scf_sample_value(raw: &[u8], sample_size: usize) -> Result<u32, EngineError> {
+    match sample_size {
+        1 => Ok(raw.first().copied().unwrap_or(0) as u32),
+        2 => {
+            if raw.len() != 2 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("SCF sample expected 2 bytes, found {}", raw.len()),
+                });
+            }
+            Ok(u16::from_be_bytes([raw[0], raw[1]]) as u32)
+        }
+        other => Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Unsupported SCF sample size {}", other),
+        }),
+    }
+}
+
+fn delta_decode_scf_trace_points(encoded: &[u32]) -> Vec<u32> {
+    let mut first = 0i64;
+    let mut second = 0i64;
+    let modulus = i64::from(u16::MAX) + 1;
+    let byte_modulus = i64::from(u8::MAX) + 1;
+    let mut out = Vec::with_capacity(encoded.len());
+    let use_u8_wrap = encoded.iter().all(|value| *value <= u8::MAX as u32);
+    let wrap = if use_u8_wrap { byte_modulus } else { modulus };
+    for value in encoded {
+        let mut current = i64::from(*value);
+        current = (current + first) % wrap;
+        first = current;
+        current = (current + second) % wrap;
+        second = current;
+        out.push(current.max(0) as u32);
+    }
+    out
 }
 
 fn scf_called_base_confidence(base: u8, prob_a: u8, prob_c: u8, prob_g: u8, prob_t: u8) -> u8 {
@@ -1088,6 +1262,8 @@ mod tests {
         assert_eq!(parsed.sample_name.as_deref(), Some("synthetic_scf"));
         assert_eq!(parsed.run_name.as_deref(), Some("demo_run"));
         assert_eq!(parsed.machine_model.as_deref(), Some("staden_test"));
+        assert_eq!(parsed.channel_data.len(), 4);
+        assert!(parsed.channel_data.iter().all(|row| row.points.len() == 4));
         assert_eq!(parsed.channel_summaries.len(), 4);
         assert_eq!(parsed.channel_summaries[0].point_count, 4);
     }

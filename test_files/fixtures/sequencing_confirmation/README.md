@@ -9,6 +9,12 @@ Status:
   one malformed-edge rejection path:
   - `3100.ab1`
   - `fake.ab1`
+- ABI imports now persist raw chromatogram curves when the source file carries
+  them, so these fixtures cover both parser acceptance and curve-capable trace
+  storage.
+- Older stored `gentle.sequencing_trace_record.v1` records without curve arrays
+  remain readable for confirmation, but GUI chromatogram review requires
+  re-import through the current importer to populate curve data.
 - SCF parser coverage is currently deterministic but synthetic-only via
   in-test byte construction in
   `src/engine/io/sequencing_traces.rs`; no public SCF payload is committed

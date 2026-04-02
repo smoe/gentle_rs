@@ -34,8 +34,8 @@ pub use gentle_protocol::{
     RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceFeatureQualifierFilter,
     SequenceFeatureQuery, SequenceFeatureQueryResult, SequenceFeatureQueryRow,
     SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
-    SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
-    SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
+    SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
+    SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
 };
 use serde::{Deserialize, Serialize};
 

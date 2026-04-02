@@ -970,6 +970,15 @@ pub struct SequencingTraceChannelSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One stored chromatogram/intensity curve for an imported sequencing trace.
+pub struct SequencingTraceChannelData {
+    pub channel: String,
+    pub trace_set: String,
+    pub points: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Persisted raw sequencing-trace evidence record.
 ///
 /// This record stores the called bases and the key per-base evidence arrays
@@ -999,7 +1008,13 @@ pub struct SequencingTraceRecord {
     #[serde(default)]
     pub peak_locations: Vec<u32>,
     #[serde(default)]
+    pub channel_data: Vec<SequencingTraceChannelData>,
+    #[serde(default)]
     pub channel_summaries: Vec<SequencingTraceChannelSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip_start_base_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip_end_base_index_exclusive: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comments_text: Option<String>,
 }
@@ -1021,6 +1036,7 @@ pub struct SequencingTraceSummary {
     pub called_base_count: usize,
     pub confidence_value_count: usize,
     pub peak_location_count: usize,
+    pub has_curve_data: bool,
     pub channel_count: usize,
 }
 
@@ -1042,6 +1058,7 @@ pub struct SequencingTraceImportReport {
     pub called_base_count: usize,
     pub confidence_value_count: usize,
     pub peak_location_count: usize,
+    pub has_curve_data: bool,
     pub channel_count: usize,
     #[serde(default)]
     pub warnings: Vec<String>,

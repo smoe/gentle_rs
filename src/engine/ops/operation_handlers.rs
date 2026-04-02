@@ -7530,6 +7530,7 @@ impl GentleEngine {
             }
             Operation::ConfirmConstructReads {
                 expected_seq_id,
+                baseline_seq_id,
                 read_seq_ids,
                 trace_ids,
                 targets,
@@ -7545,6 +7546,7 @@ impl GentleEngine {
             } => {
                 let report = self.confirm_construct_reads(
                     &expected_seq_id,
+                    baseline_seq_id.as_deref(),
                     &read_seq_ids,
                     &trace_ids,
                     &targets,

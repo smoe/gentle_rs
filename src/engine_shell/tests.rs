@@ -383,12 +383,13 @@ fn parse_workflow_payload_keeps_whitespace() {
 #[test]
 fn parse_seq_confirm_run_command() {
     let cmd = parse_shell_line(
-        "seq-confirm run construct --reads read_a,read_b --trace-id abi_trace --trace-ids abi_trace_2,abi_trace_3 --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",
+        "seq-confirm run construct --baseline baseline_ref --reads read_a,read_b --trace-id abi_trace --trace-ids abi_trace_2,abi_trace_3 --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",
     )
     .expect("parse seq-confirm run");
     match cmd {
         ShellCommand::SeqConfirmRun {
             expected_seq_id,
+            baseline_seq_id,
             read_seq_ids,
             trace_ids,
             targets,
@@ -400,6 +401,7 @@ fn parse_seq_confirm_run_command() {
             ..
         } => {
             assert_eq!(expected_seq_id, "construct");
+            assert_eq!(baseline_seq_id, Some("baseline_ref".to_string()));
             assert_eq!(read_seq_ids, vec!["read_a", "read_b"]);
             assert_eq!(trace_ids, vec!["abi_trace", "abi_trace_2", "abi_trace_3"]);
             assert_eq!(targets.len(), 1);
@@ -525,6 +527,7 @@ fn execute_seq_confirm_run_returns_persisted_report() {
         &mut engine,
         &ShellCommand::SeqConfirmRun {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec!["read_junction".to_string()],
             trace_ids: vec![],
             targets: vec![SequencingConfirmationTargetSpec {
@@ -534,6 +537,8 @@ fn execute_seq_confirm_run_returns_persisted_report() {
                 start_0based: 4,
                 end_0based_exclusive: 12,
                 junction_left_end_0based: Some(8),
+                expected_bases: None,
+                baseline_bases: None,
                 required: true,
             }],
             alignment_mode: PairwiseAlignmentMode::Local,
@@ -603,6 +608,7 @@ fn execute_seq_confirm_run_accepts_imported_trace_evidence() {
         &mut engine,
         &ShellCommand::SeqConfirmRun {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec![],
             trace_ids: vec!["junction_trace".to_string()],
             targets: vec![SequencingConfirmationTargetSpec {
@@ -612,6 +618,8 @@ fn execute_seq_confirm_run_accepts_imported_trace_evidence() {
                 start_0based: 4,
                 end_0based_exclusive: 12,
                 junction_left_end_0based: Some(8),
+                expected_bases: None,
+                baseline_bases: None,
                 required: true,
             }],
             alignment_mode: PairwiseAlignmentMode::Local,
@@ -642,6 +650,68 @@ fn execute_seq_confirm_run_accepts_imported_trace_evidence() {
     assert_eq!(
         run.output["report"]["reads"][0]["trace_id"].as_str(),
         Some("junction_trace")
+    );
+}
+
+#[test]
+fn execute_seq_confirm_run_with_baseline_exposes_variant_rows() {
+    let td = tempdir().expect("tempdir");
+    let trace_path = td.path().join("expected_edit_trace.scf");
+    fs::write(&trace_path, synthetic_scf_bytes(b"CCGTAACC")).expect("write scf");
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTGACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceImport {
+            path: trace_path.to_str().expect("utf-8 path").to_string(),
+            trace_id: Some("expected_edit_trace".to_string()),
+            seq_id: None,
+        },
+    )
+    .expect("import trace");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmRun {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["expected_edit_trace".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("expected_edit_report".to_string()),
+        },
+    )
+    .expect("execute seq-confirm from baseline-aware trace");
+
+    assert_eq!(
+        run.output["report"]["baseline_seq_id"].as_str(),
+        Some("baseline")
+    );
+    assert_eq!(
+        run.output["report"]["variants"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        run.output["report"]["variants"][0]["classification"].as_str(),
+        Some("intended_edit_confirmed")
     );
 }
 

@@ -73,7 +73,8 @@ use crate::{
         RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
         SequencingConfirmationDiscrepancy, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SequencingReadOrientation, SequencingTraceRecord,
+        SequencingConfirmationTargetSpec, SequencingConfirmationVariantClassification,
+        SequencingConfirmationVariantRow, SequencingReadOrientation, SequencingTraceRecord,
         SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
         TfbsProgress, Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
@@ -525,11 +526,14 @@ impl Default for QpcrDesignOpsUiState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct SequencingConfirmationUiState {
+    baseline_seq_id_text: String,
     read_seq_ids_text: String,
     trace_ids_text: String,
     report_id: String,
     selected_report_id: String,
     selected_trace_id: String,
+    selected_variant_id: String,
+    chromatogram_window_bp: String,
     junction_positions_0based: String,
     junction_flank_bp: String,
     include_full_span_target: bool,
@@ -546,11 +550,14 @@ struct SequencingConfirmationUiState {
 impl Default for SequencingConfirmationUiState {
     fn default() -> Self {
         Self {
+            baseline_seq_id_text: String::new(),
             read_seq_ids_text: String::new(),
             trace_ids_text: String::new(),
             report_id: "seq_confirm_gui".to_string(),
             selected_report_id: String::new(),
             selected_trace_id: String::new(),
+            selected_variant_id: String::new(),
+            chromatogram_window_bp: "24".to_string(),
             junction_positions_0based: String::new(),
             junction_flank_bp: "12".to_string(),
             include_full_span_target: true,
@@ -969,7 +976,8 @@ mod tests {
             RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-            RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SplicingScopePreset,
+            RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SequencingTraceFormat,
+            SequencingTraceRecord, SplicingScopePreset,
             parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
@@ -1296,6 +1304,7 @@ mod tests {
     fn build_confirm_construct_reads_operation_uses_gui_state() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.baseline_seq_id_text = "baseline_seq".to_string();
         area.sequencing_confirmation_ui.read_seq_ids_text = "read_a,read_b".to_string();
         area.sequencing_confirmation_ui.trace_ids_text = "trace_a,trace_b".to_string();
         area.sequencing_confirmation_ui.report_id = String::new();
@@ -1319,6 +1328,7 @@ mod tests {
         match op {
             Operation::ConfirmConstructReads {
                 expected_seq_id,
+                baseline_seq_id,
                 read_seq_ids,
                 trace_ids,
                 targets,
@@ -1333,6 +1343,7 @@ mod tests {
                 report_id,
             } => {
                 assert_eq!(expected_seq_id, "expected_seq");
+                assert_eq!(baseline_seq_id, Some("baseline_seq".to_string()));
                 assert_eq!(
                     read_seq_ids,
                     vec!["read_a".to_string(), "read_b".to_string()]
@@ -1371,15 +1382,47 @@ mod tests {
 
         match op {
             Operation::ConfirmConstructReads {
+                baseline_seq_id,
                 read_seq_ids,
                 trace_ids,
                 ..
             } => {
+                assert_eq!(baseline_seq_id, None);
                 assert!(read_seq_ids.is_empty());
                 assert_eq!(trace_ids, vec!["trace_only".to_string()]);
             }
             other => panic!("unexpected operation: {other:?}"),
         }
+    }
+
+    #[test]
+    fn sequencing_trace_curve_unavailable_message_guides_reimport_for_legacy_trace() {
+        let trace = SequencingTraceRecord {
+            schema: "gentle.sequencing_trace_record.v1".to_string(),
+            trace_id: "legacy_trace".to_string(),
+            format: SequencingTraceFormat::AbiAb1,
+            source_path: "legacy.ab1".to_string(),
+            imported_at_unix_ms: 1,
+            seq_id: None,
+            sample_name: None,
+            sample_well: None,
+            run_name: None,
+            machine_name: None,
+            machine_model: None,
+            called_bases: "ACGT".to_string(),
+            called_base_confidence_values: vec![40, 40, 40, 40],
+            peak_locations: vec![10, 20, 30, 40],
+            channel_data: vec![],
+            channel_summaries: vec![],
+            clip_start_base_index: None,
+            clip_end_base_index_exclusive: None,
+            comments_text: None,
+        };
+
+        assert_eq!(
+            MainAreaDna::sequencing_trace_curve_unavailable_message(&trace),
+            Some("curve data unavailable; re-import this trace to inspect chromatogram curves")
+        );
     }
 
     #[test]
@@ -25629,6 +25672,8 @@ impl MainAreaDna {
                 start_0based: 0,
                 end_0based_exclusive: seq_len,
                 junction_left_end_0based: None,
+                expected_bases: None,
+                baseline_bases: None,
                 required: true,
             });
         }
@@ -25654,6 +25699,8 @@ impl MainAreaDna {
                 start_0based,
                 end_0based_exclusive,
                 junction_left_end_0based: Some(left_end),
+                expected_bases: None,
+                baseline_bases: None,
                 required: true,
             });
         }
@@ -25689,6 +25736,14 @@ impl MainAreaDna {
             report_id.clone(),
             Operation::ConfirmConstructReads {
                 expected_seq_id,
+                baseline_seq_id: {
+                    let trimmed = ui.baseline_seq_id_text.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                },
                 read_seq_ids,
                 trace_ids,
                 targets,
@@ -25829,6 +25884,235 @@ impl MainAreaDna {
         )
     }
 
+    fn sequencing_confirmation_variant_color(
+        classification: SequencingConfirmationVariantClassification,
+    ) -> egui::Color32 {
+        match classification {
+            SequencingConfirmationVariantClassification::ExpectedMatch => {
+                egui::Color32::from_rgb(46, 125, 50)
+            }
+            SequencingConfirmationVariantClassification::IntendedEditConfirmed => {
+                egui::Color32::from_rgb(25, 118, 210)
+            }
+            SequencingConfirmationVariantClassification::ReferenceReversion => {
+                egui::Color32::from_rgb(183, 28, 28)
+            }
+            SequencingConfirmationVariantClassification::UnexpectedDifference => {
+                egui::Color32::from_rgb(230, 81, 0)
+            }
+            SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous => {
+                egui::Color32::from_rgb(180, 83, 9)
+            }
+            SequencingConfirmationVariantClassification::InsufficientEvidence => {
+                egui::Color32::from_gray(120)
+            }
+        }
+    }
+
+    fn sequencing_trace_sample_window(
+        trace: &SequencingTraceRecord,
+        variant: Option<&SequencingConfirmationVariantRow>,
+        flank_bp: usize,
+    ) -> Option<(u32, u32)> {
+        let max_point = trace
+            .channel_data
+            .iter()
+            .filter_map(|row| row.points.len().checked_sub(1))
+            .max()
+            .map(|value| value as u32)?;
+        if max_point == 0 {
+            return Some((0, 1));
+        }
+        let Some(variant) = variant else {
+            return Some((0, max_point.min(400)));
+        };
+        let Some(center) = variant.peak_center else {
+            return Some((0, max_point.min(400)));
+        };
+        if trace.peak_locations.is_empty() {
+            let start = center.saturating_sub((flank_bp as u32).saturating_mul(8));
+            let end = (center + (flank_bp as u32).saturating_mul(8)).min(max_point);
+            return Some((start, end.max(start + 1)));
+        }
+        let nearest_peak_idx = trace
+            .peak_locations
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, value)| value.abs_diff(center))
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+        let start_idx = nearest_peak_idx.saturating_sub(flank_bp);
+        let end_idx =
+            (nearest_peak_idx + flank_bp).min(trace.peak_locations.len().saturating_sub(1));
+        let start = trace
+            .peak_locations
+            .get(start_idx)
+            .copied()
+            .unwrap_or(0)
+            .saturating_sub(18);
+        let end = trace
+            .peak_locations
+            .get(end_idx)
+            .copied()
+            .unwrap_or(max_point)
+            .saturating_add(18)
+            .min(max_point);
+        Some((start, end.max(start + 1)))
+    }
+
+    fn sequencing_trace_curve_unavailable_message(
+        trace: &SequencingTraceRecord,
+    ) -> Option<&'static str> {
+        if trace.channel_data.is_empty() {
+            Some("curve data unavailable; re-import this trace to inspect chromatogram curves")
+        } else {
+            None
+        }
+    }
+
+    fn render_sequencing_trace_chromatogram(
+        ui: &mut egui::Ui,
+        trace: &SequencingTraceRecord,
+        variant: Option<&SequencingConfirmationVariantRow>,
+        flank_bp: usize,
+    ) {
+        if let Some(message) = Self::sequencing_trace_curve_unavailable_message(trace) {
+            ui.small(message);
+            return;
+        }
+        let Some((sample_start, sample_end)) =
+            Self::sequencing_trace_sample_window(trace, variant, flank_bp)
+        else {
+            ui.small("Trace did not include enough raw curve points to render a chromatogram.");
+            return;
+        };
+        let desired_size = egui::vec2(ui.available_width().max(320.0), 240.0);
+        let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+            egui::StrokeKind::Outside,
+        );
+        let mut max_y = 0u32;
+        for channel in &trace.channel_data {
+            for (idx, value) in channel.points.iter().enumerate() {
+                let x = idx as u32;
+                if x >= sample_start && x <= sample_end {
+                    max_y = max_y.max(*value);
+                }
+            }
+        }
+        if max_y == 0 {
+            max_y = 1;
+        }
+        let palette = [
+            ("A", egui::Color32::from_rgb(46, 125, 50)),
+            ("C", egui::Color32::from_rgb(25, 118, 210)),
+            ("G", egui::Color32::from_rgb(230, 81, 0)),
+            ("T", egui::Color32::from_rgb(183, 28, 28)),
+        ];
+        for channel in &trace.channel_data {
+            let color = palette
+                .iter()
+                .find(|(label, _)| channel.channel.eq_ignore_ascii_case(label))
+                .map(|(_, color)| *color)
+                .unwrap_or(egui::Color32::LIGHT_GRAY);
+            let mut points = Vec::new();
+            for (idx, value) in channel.points.iter().enumerate() {
+                let x = idx as u32;
+                if x < sample_start || x > sample_end {
+                    continue;
+                }
+                let x_t = (x.saturating_sub(sample_start)) as f32
+                    / (sample_end.saturating_sub(sample_start).max(1)) as f32;
+                let y_t = *value as f32 / max_y as f32;
+                points.push(egui::pos2(
+                    egui::lerp(rect.left()..=rect.right(), x_t),
+                    egui::lerp((rect.bottom() - 16.0)..=rect.top() + 8.0, y_t),
+                ));
+            }
+            if points.len() >= 2 {
+                painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
+            }
+        }
+        let peak_count = trace.called_bases.len().min(trace.peak_locations.len());
+        for idx in 0..peak_count {
+            let peak = trace.peak_locations[idx];
+            if peak < sample_start || peak > sample_end {
+                continue;
+            }
+            let x_t = (peak.saturating_sub(sample_start)) as f32
+                / (sample_end.saturating_sub(sample_start).max(1)) as f32;
+            let x = egui::lerp(rect.left()..=rect.right(), x_t);
+            painter.line_segment(
+                [
+                    egui::pos2(x, rect.bottom() - 14.0),
+                    egui::pos2(x, rect.bottom() - 6.0),
+                ],
+                egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+            );
+            if peak_count <= 64 {
+                let base = trace.called_bases.as_bytes()[idx] as char;
+                let color = palette
+                    .iter()
+                    .find(|(label, _)| label.starts_with(base))
+                    .map(|(_, color)| *color)
+                    .unwrap_or(egui::Color32::WHITE);
+                painter.text(
+                    egui::pos2(x, rect.bottom() - 4.0),
+                    egui::Align2::CENTER_BOTTOM,
+                    base,
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    color,
+                );
+            }
+        }
+        if let Some(variant) = variant {
+            if let Some(center) = variant.peak_center
+                && center >= sample_start
+                && center <= sample_end
+            {
+                let x_t = (center.saturating_sub(sample_start)) as f32
+                    / (sample_end.saturating_sub(sample_start).max(1)) as f32;
+                let x = egui::lerp(rect.left()..=rect.right(), x_t);
+                painter.line_segment(
+                    [
+                        egui::pos2(x, rect.top() + 4.0),
+                        egui::pos2(x, rect.bottom() - 18.0),
+                    ],
+                    egui::Stroke::new(
+                        2.0,
+                        Self::sequencing_confirmation_variant_color(variant.classification),
+                    ),
+                );
+            }
+            painter.text(
+                rect.left_top() + egui::vec2(8.0, 6.0),
+                egui::Align2::LEFT_TOP,
+                format!(
+                    "{} [{}] expected='{}' observed='{}'{}",
+                    variant.label,
+                    variant.classification.as_str(),
+                    variant.expected_bases,
+                    if variant.observed_bases.is_empty() {
+                        "-"
+                    } else {
+                        variant.observed_bases.as_str()
+                    },
+                    variant
+                        .baseline_bases
+                        .as_deref()
+                        .map(|baseline| format!(" baseline='{}'", baseline))
+                        .unwrap_or_default()
+                ),
+                egui::TextStyle::Small.resolve(ui.style()),
+                Self::sequencing_confirmation_variant_color(variant.classification),
+            );
+        }
+    }
+
     fn sequencing_confirmation_report_summaries(&self) -> Vec<SequencingConfirmationReportSummary> {
         let Some(engine) = self.engine.as_ref() else {
             return vec![];
@@ -25922,14 +26206,16 @@ impl MainAreaDna {
             .filter(|row| row.status == SequencingConfirmationStatus::InsufficientEvidence)
             .count();
         self.op_status = format!(
-            "Sequencing-confirmation report '{}' expected='{}' status={} reads={} traces={} evidence={} targets={} (confirmed={}, contradicted={}, insufficient={})",
+            "Sequencing-confirmation report '{}' expected='{}' baseline='{}' status={} reads={} traces={} evidence={} targets={} variants={} (confirmed={}, contradicted={}, insufficient={})",
             report.report_id,
             report.expected_seq_id,
+            report.baseline_seq_id.as_deref().unwrap_or("-"),
             report.overall_status.as_str(),
             report.read_seq_ids.len(),
             report.trace_ids.len(),
             report.reads.len(),
             report.targets.len(),
+            report.variants.len(),
             confirmed,
             contradicted,
             insufficient
@@ -27071,6 +27357,35 @@ impl MainAreaDna {
                         .ok()
                 })
         };
+        let selected_variant_id_missing = self
+            .sequencing_confirmation_ui
+            .selected_variant_id
+            .trim()
+            .is_empty()
+            || !selected_report.as_ref().is_some_and(|report| {
+                report.variants.iter().any(|row| {
+                    row.variant_id.eq_ignore_ascii_case(
+                        self.sequencing_confirmation_ui.selected_variant_id.trim(),
+                    )
+                })
+            });
+        if selected_variant_id_missing
+            && let Some(row) = selected_report
+                .as_ref()
+                .and_then(|report| report.variants.first())
+        {
+            self.sequencing_confirmation_ui.selected_variant_id = row.variant_id.clone();
+            if let Some(trace_id) = row.trace_id.as_deref() {
+                self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
+            }
+        }
+        let selected_variant = selected_report.as_ref().and_then(|report| {
+            report.variants.iter().find(|row| {
+                row.variant_id.eq_ignore_ascii_case(
+                    self.sequencing_confirmation_ui.selected_variant_id.trim(),
+                )
+            })
+        });
         let trace_summaries = self.sequencing_trace_summaries();
         let selected_trace_id_missing = self
             .sequencing_confirmation_ui
@@ -27099,13 +27414,28 @@ impl MainAreaDna {
             "Construct-confirmation specialist for already-loaded sequencing reads and imported trace evidence. Target entry uses the same shared engine contract as `seq-confirm run`.",
         );
         ui.small(
-            "Current GUI scope covers called reads plus imported ABI/AB1/SCF trace IDs through the same shared report store. Full chromatogram curve inspection remains a later follow-up.",
+            "Current GUI scope covers called reads plus imported ABI/AB1/SCF trace IDs through the same shared report store, including baseline-aware variant classification and chromatogram curve review for trace-backed loci.",
         );
         ui.separator();
         ui.columns(2, |columns| {
             columns[0].heading("Inputs + Run");
             columns[0].small(format!("Expected construct: {expected_title}"));
             columns[0].small(format!("Expected sequence ID: {expected_seq_id}"));
+            columns[0].label("Baseline/reference sequence ID");
+            let baseline_changed = columns[0]
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.sequencing_confirmation_ui.baseline_seq_id_text,
+                    )
+                    .desired_width(320.0),
+                )
+                .on_hover_text(
+                    "Optional baseline sequence used to classify intended edits versus reference reversions. Leave empty for expected-only review.",
+                )
+                .changed();
+            if baseline_changed {
+                self.save_engine_ops_state();
+            }
             columns[0].add_space(6.0);
             columns[0].label("Read sequence IDs");
             let read_ids_changed = columns[0]
@@ -27546,6 +27876,11 @@ impl MainAreaDna {
                             ui.small(format!("peaks={}", trace.peak_locations.len()));
                             ui.separator();
                             ui.small(format!("channels={}", trace.channel_summaries.len()));
+                            ui.separator();
+                            ui.small(format!(
+                                "curves={}",
+                                if trace.channel_data.is_empty() { "no" } else { "yes" }
+                            ));
                         });
                         ui.small(format!("source={}", trace.source_path));
                         ui.small(format!("imported_at_unix_ms={}", trace.imported_at_unix_ms));
@@ -27575,6 +27910,15 @@ impl MainAreaDna {
                             &trace.called_base_confidence_values,
                         ));
                         ui.small(Self::sequencing_trace_peak_summary(&trace.peak_locations));
+                        if let Some(start) = trace.clip_start_base_index {
+                            ui.small(format!(
+                                "clip window: {}..{}",
+                                start,
+                                trace.clip_end_base_index_exclusive
+                                    .map(|value| value.to_string())
+                                    .unwrap_or_else(|| "?".to_string())
+                            ));
+                        }
                         ui.label("Called bases preview");
                         let mut preview = Self::sequencing_trace_called_base_preview(
                             &trace.called_bases,
@@ -27600,6 +27944,227 @@ impl MainAreaDna {
                         }
                     });
                 }
+            }
+            columns[1].separator();
+            columns[1].heading("Chromatogram");
+            if let Some(report) = selected_report.as_ref() {
+                if report.variants.is_empty() {
+                    columns[1].small(
+                        "No variant-focused loci are recorded in this report yet. Add a baseline sequence or expected-edit targets to get intended-edit/reversion classification.",
+                    );
+                } else {
+                    columns[1].horizontal_wrapped(|ui| {
+                        ui.label("Variant focus");
+                        let mut selection_changed = false;
+                        egui::ComboBox::from_id_salt((
+                            "seq_confirm_selected_variant",
+                            self.panel_scope_key(),
+                        ))
+                        .selected_text(
+                            report
+                                .variants
+                                .iter()
+                                .find(|row| {
+                                    row.variant_id.eq_ignore_ascii_case(
+                                        self.sequencing_confirmation_ui.selected_variant_id.trim(),
+                                    )
+                                })
+                                .map(|row| {
+                                    format!(
+                                        "{} | {} | {}",
+                                        row.label,
+                                        row.classification.as_str(),
+                                        row.trace_id.as_deref().unwrap_or("-")
+                                    )
+                                })
+                                .unwrap_or_else(|| "<select variant>".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            for row in &report.variants {
+                                selection_changed |= ui
+                                    .selectable_value(
+                                        &mut self.sequencing_confirmation_ui.selected_variant_id,
+                                        row.variant_id.clone(),
+                                        format!(
+                                            "{} | {} | {}",
+                                            row.label,
+                                            row.classification.as_str(),
+                                            row.trace_id.as_deref().unwrap_or("-")
+                                        ),
+                                    )
+                                    .changed();
+                            }
+                        });
+                        ui.label("flank bp");
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.sequencing_confirmation_ui.chromatogram_window_bp,
+                                )
+                                .desired_width(56.0),
+                            )
+                            .changed()
+                        {
+                            self.save_engine_ops_state();
+                        }
+                        if selection_changed {
+                            if let Some(trace_id) = report
+                                .variants
+                                .iter()
+                                .find(|row| {
+                                    row.variant_id.eq_ignore_ascii_case(
+                                        self.sequencing_confirmation_ui.selected_variant_id.trim(),
+                                    )
+                                })
+                                .and_then(|row| row.trace_id.as_deref())
+                            {
+                                self.sequencing_confirmation_ui.selected_trace_id =
+                                    trace_id.to_string();
+                            }
+                            self.save_engine_ops_state();
+                        }
+                    });
+                    if let Some(variant) = selected_variant {
+                        columns[1].group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(&variant.label).strong());
+                                ui.separator();
+                                ui.colored_label(
+                                    Self::sequencing_confirmation_variant_color(
+                                        variant.classification,
+                                    ),
+                                    variant.classification.as_str(),
+                                );
+                                ui.separator();
+                                ui.small(format!(
+                                    "expected='{}' observed='{}'",
+                                    variant.expected_bases,
+                                    if variant.observed_bases.is_empty() {
+                                        "-"
+                                    } else {
+                                        variant.observed_bases.as_str()
+                                    }
+                                ));
+                                if let Some(baseline) = variant.baseline_bases.as_deref() {
+                                    ui.separator();
+                                    ui.small(format!("baseline='{}'", baseline));
+                                }
+                            });
+                            ui.small(format!(
+                                "evidence={} trace={} confidence={} mean={} peak_center={}",
+                                if variant.evidence_id.is_empty() {
+                                    "-"
+                                } else {
+                                    variant.evidence_id.as_str()
+                                },
+                                variant.trace_id.as_deref().unwrap_or("-"),
+                                variant.confidence_count,
+                                variant
+                                    .confidence_mean
+                                    .map(|value| format!("{value:.1}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                                variant
+                                    .peak_center
+                                    .map(|value| value.to_string())
+                                    .unwrap_or_else(|| "-".to_string())
+                            ));
+                            ui.small(&variant.reason);
+                            if let Some(trace) = selected_trace.as_ref() {
+                                let flank_bp = Self::parse_positive_usize_text(
+                                    &self.sequencing_confirmation_ui.chromatogram_window_bp,
+                                    "chromatogram flank bp",
+                                )
+                                .unwrap_or(24);
+                                Self::render_sequencing_trace_chromatogram(
+                                    ui,
+                                    trace,
+                                    Some(variant),
+                                    flank_bp,
+                                );
+                            } else if variant.trace_id.is_some() {
+                                ui.small(
+                                    "Trace-backed variant selected, but the imported trace record could not be loaded.",
+                                );
+                            } else {
+                                ui.small(
+                                    "This variant row is not trace-backed, so no chromatogram curve is available.",
+                                );
+                            }
+                        });
+                    } else if let Some(trace) = selected_trace.as_ref() {
+                        let flank_bp = Self::parse_positive_usize_text(
+                            &self.sequencing_confirmation_ui.chromatogram_window_bp,
+                            "chromatogram flank bp",
+                        )
+                        .unwrap_or(24);
+                        Self::render_sequencing_trace_chromatogram(
+                            &mut columns[1],
+                            trace,
+                            None,
+                            flank_bp,
+                        );
+                    }
+                    columns[1].collapsing("Variant rows", |ui| {
+                        egui::Grid::new(("seq_confirm_variants_grid", self.panel_scope_key()))
+                            .num_columns(6)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Variant");
+                                ui.strong("Class");
+                                ui.strong("Observed");
+                                ui.strong("Baseline");
+                                ui.strong("Trace");
+                                ui.strong("Reason");
+                                ui.end_row();
+                                for row in &report.variants {
+                                    let selected = row.variant_id.eq_ignore_ascii_case(
+                                        self.sequencing_confirmation_ui.selected_variant_id.trim(),
+                                    );
+                                    if ui
+                                        .selectable_label(selected, &row.label)
+                                        .on_hover_text(
+                                            "Select this variant locus for chromatogram review.",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.sequencing_confirmation_ui.selected_variant_id =
+                                            row.variant_id.clone();
+                                        if let Some(trace_id) = row.trace_id.as_deref() {
+                                            self.sequencing_confirmation_ui.selected_trace_id =
+                                                trace_id.to_string();
+                                        }
+                                        self.save_engine_ops_state();
+                                    }
+                                    ui.colored_label(
+                                        Self::sequencing_confirmation_variant_color(
+                                            row.classification,
+                                        ),
+                                        row.classification.as_str(),
+                                    );
+                                    ui.small(if row.observed_bases.is_empty() {
+                                        "-"
+                                    } else {
+                                        row.observed_bases.as_str()
+                                    });
+                                    ui.small(row.baseline_bases.as_deref().unwrap_or("-"));
+                                    ui.small(row.trace_id.as_deref().unwrap_or("-"));
+                                    ui.small(&row.reason);
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                }
+            } else if let Some(trace) = selected_trace.as_ref() {
+                let flank_bp = Self::parse_positive_usize_text(
+                    &self.sequencing_confirmation_ui.chromatogram_window_bp,
+                    "chromatogram flank bp",
+                )
+                .unwrap_or(24);
+                Self::render_sequencing_trace_chromatogram(&mut columns[1], trace, None, flank_bp);
+            } else {
+                columns[1].small(
+                    "Select a persisted report or imported trace to inspect chromatogram curves.",
+                );
             }
             columns[1].separator();
             columns[1].heading("Saved Reports + Evidence");
@@ -27699,6 +28264,12 @@ impl MainAreaDna {
                         ));
                         ui.separator();
                         ui.small(format!("targets={}", report.targets.len()));
+                        ui.separator();
+                        ui.small(format!("variants={}", report.variants.len()));
+                        if let Some(baseline) = report.baseline_seq_id.as_deref() {
+                            ui.separator();
+                            ui.small(format!("baseline={baseline}"));
+                        }
                         if !report.warnings.is_empty() {
                             ui.separator();
                             ui.small(format!("warnings={}", report.warnings.len()));

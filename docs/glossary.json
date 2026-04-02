@@ -1696,6 +1696,86 @@
          "usage": "seq-trace show TRACE_ID"
       },
       {
+         "aliases": [
+            "seq_confirm run",
+            "seqconfirm run"
+         ],
+         "engine_operations": [
+            "ConfirmConstructReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm run",
+         "summary": "Run called-read and/or trace-aware construct confirmation against the expected sequence, optionally with baseline context for intended-edit classification.",
+         "usage": "seq-confirm run EXPECTED_SEQ_ID [--baseline BASELINE_SEQ_ID] [--reads ID[,ID...]] [--trace-id ID]... [--trace-ids ID[,ID...]] [--junction LEFT_END_0BASED]... [--junction-flank N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement] [--report-id ID]"
+      },
+      {
+         "aliases": [
+            "seq_confirm list-reports",
+            "seqconfirm list-reports"
+         ],
+         "engine_operations": [
+            "ListSequencingConfirmationReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm list-reports",
+         "summary": "List persisted sequencing-confirmation reports, optionally filtered by expected sequence id.",
+         "usage": "seq-confirm list-reports [EXPECTED_SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "seq_confirm show-report",
+            "seqconfirm show-report"
+         ],
+         "engine_operations": [
+            "ShowSequencingConfirmationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm show-report",
+         "summary": "Inspect one persisted sequencing-confirmation report, including baseline context and per-variant rows when present.",
+         "usage": "seq-confirm show-report REPORT_ID"
+      },
+      {
+         "aliases": [
+            "seq_confirm export-report",
+            "seqconfirm export-report"
+         ],
+         "engine_operations": [
+            "ExportSequencingConfirmationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm export-report",
+         "summary": "Export one sequencing-confirmation report as pretty-printed JSON.",
+         "usage": "seq-confirm export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [
+            "seq_confirm export-support-tsv",
+            "seqconfirm export-support-tsv"
+         ],
+         "engine_operations": [
+            "ExportSequencingConfirmationSupportTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm export-support-tsv",
+         "summary": "Export one TSV row per sequencing-confirmation checkpoint target.",
+         "usage": "seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InterpretRnaReads"

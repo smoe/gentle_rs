@@ -2553,18 +2553,31 @@ Repeated multi-tool gaps to prioritize:
      - raw-trace intake is intentionally non-mutating with respect to construct
        sequences and remains separate from `SequencingConfirmationReport`
        verdict storage
+     - imported trace records now preserve raw chromatogram curves plus clip
+       window metadata when available, while older v1 trace records without
+       curves remain readable for confirmation
      - trace-aware confirmation integration is now available through the same
        shared engine/shell path:
        - `seq-confirm run` accepts imported trace ids alongside read ids
+       - `seq-confirm run` also accepts optional `baseline_seq_id` context so
+         expected edits can be classified separately from reference reversions
        - trace-backed evidence rows stay inside the same confirmation report
        - target support and contradiction ids can now reflect imported trace
          evidence directly
+       - expected-edit checkpoints can now be inferred automatically from the
+         baseline-vs-expected diff and stored as first-class variant rows
      - the GUI sequencing-confirmation specialist now consumes those imported
-       trace ids too and includes built-in imported-trace review:
+       trace ids too and includes built-in imported-trace review plus a
+       variant-focused chromatogram inspector:
        - trace ids can be added to the same run form as called-read ids
+       - optional baseline/reference sequence id can be supplied in the same
+         run form
        - saved report review shows trace-backed evidence rows explicitly
-       - imported trace metadata/called-base previews are inspectable without
-         dropping to shell
+       - imported trace metadata/called-base previews remain inspectable
+         without dropping to shell
+       - selected trace-backed variant rows now render their chromatogram curves
+         in-window with intended-edit / reversion / unexpected-difference /
+         low-confidence badges
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack
@@ -2578,7 +2591,12 @@ Repeated multi-tool gaps to prioritize:
        - shipped through engine/shell/CLI
      - trace-aware confirmation integration third
        - shipped through engine/shell/CLI and GUI specialist
-     - richer chromatogram curve inspection remains the next follow-up
+     - variant-focused chromatogram curve inspection fourth
+       - shipped through engine/shell/CLI/GUI
+     - next follow-up:
+       - sequencing-primer suggestion overlays
+       - fuller whole-trace browsing remains optional future polish, not a
+         release blocker for confirmation itself
    - likely legacy code seeds:
      - `gentle-m` `src/ABItype.cpp`
      - `gentle-m` `src/SCFtype.cpp`

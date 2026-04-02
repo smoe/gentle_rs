@@ -69,7 +69,38 @@ fn sequencing_confirmation_junction_target(
         start_0based,
         end_0based_exclusive,
         junction_left_end_0based: Some(junction_left_end_0based),
+        expected_bases: None,
+        baseline_bases: None,
         required: true,
+    }
+}
+
+fn sequencing_confirmation_trace_record(
+    trace_id: &str,
+    called_bases: &str,
+    called_base_confidence_values: &[u8],
+    peak_locations: &[u32],
+) -> SequencingTraceRecord {
+    SequencingTraceRecord {
+        schema: SEQUENCING_TRACE_RECORD_SCHEMA.to_string(),
+        trace_id: trace_id.to_string(),
+        format: SequencingTraceFormat::Scf,
+        source_path: format!("{trace_id}.scf"),
+        imported_at_unix_ms: 1,
+        seq_id: None,
+        sample_name: Some(trace_id.to_string()),
+        sample_well: None,
+        run_name: None,
+        machine_name: None,
+        machine_model: None,
+        called_bases: called_bases.to_string(),
+        called_base_confidence_values: called_base_confidence_values.to_vec(),
+        peak_locations: peak_locations.to_vec(),
+        channel_data: vec![],
+        channel_summaries: vec![],
+        clip_start_base_index: None,
+        clip_end_base_index_exclusive: None,
+        comments_text: None,
     }
 }
 
@@ -12290,6 +12321,7 @@ fn test_confirm_construct_reads_confirms_junction_target_and_lists_report() {
     let result = engine
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec!["read_junction".to_string()],
             trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
@@ -12369,6 +12401,7 @@ fn test_confirm_construct_reads_supports_reverse_complement_reads() {
     let result = engine
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec!["read_rc".to_string()],
             trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
@@ -12422,6 +12455,7 @@ fn test_confirm_construct_reads_reports_insufficient_evidence_for_truncated_read
     let result = engine
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec!["read_short".to_string()],
             trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
@@ -12475,6 +12509,7 @@ fn test_export_sequencing_confirmation_support_tsv_writes_target_rows() {
     engine
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec!["read_junction".to_string()],
             trace_ids: vec![],
             targets: vec![sequencing_confirmation_junction_target(
@@ -12547,7 +12582,12 @@ fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
         record.called_bases.len()
     );
     assert_eq!(record.peak_locations.len(), record.called_bases.len());
+    assert!(!record.channel_data.is_empty());
+    assert_eq!(record.channel_data.len(), 4);
+    assert!(record.channel_data.iter().all(|row| !row.points.is_empty()));
     assert_eq!(record.channel_summaries.len(), 4);
+    assert!(import_report.has_curve_data);
+    assert_eq!(import_report.channel_count, 4);
     assert!(
         record
             .sample_name
@@ -12558,10 +12598,13 @@ fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
     let listed = engine.list_sequencing_traces(Some("construct"));
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].trace_id, "abi_trace");
+    assert!(listed[0].has_curve_data);
+    assert_eq!(listed[0].channel_count, 4);
     let shown = engine
         .get_sequencing_trace("abi_trace")
         .expect("stored trace");
     assert_eq!(shown.called_bases, record.called_bases);
+    assert_eq!(shown.channel_data.len(), 4);
 }
 
 #[test]
@@ -12588,7 +12631,10 @@ fn test_confirm_construct_reads_accepts_imported_trace_evidence() {
             called_bases: "CCGTAACC".to_string(),
             called_base_confidence_values: vec![80; 8],
             peak_locations: (1..=8).collect(),
+            channel_data: vec![],
             channel_summaries: vec![],
+            clip_start_base_index: None,
+            clip_end_base_index_exclusive: None,
             comments_text: None,
         })
         .expect("store trace");
@@ -12596,6 +12642,7 @@ fn test_confirm_construct_reads_accepts_imported_trace_evidence() {
     let result = engine
         .apply(Operation::ConfirmConstructReads {
             expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
             read_seq_ids: vec![],
             trace_ids: vec!["junction_trace".to_string()],
             targets: vec![sequencing_confirmation_junction_target(
@@ -12695,6 +12742,380 @@ fn test_list_and_show_sequencing_traces_use_persisted_store() {
     assert_eq!(shown.trace_id, "abi_trace");
     assert_eq!(shown.format, SequencingTraceFormat::AbiAb1);
     assert!(!shown.called_bases.is_empty());
+}
+
+#[test]
+fn test_old_v1_sequencing_trace_records_without_curve_data_remain_readable() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    state.metadata.insert(
+        SEQUENCING_TRACES_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "schema": SEQUENCING_TRACES_SCHEMA,
+            "updated_at_unix_ms": 1u128,
+            "traces": {
+                "legacy_trace": {
+                    "schema": "gentle.sequencing_trace_record.v1",
+                    "trace_id": "legacy_trace",
+                    "format": "scf",
+                    "source_path": "legacy.scf",
+                    "imported_at_unix_ms": 1u128,
+                    "called_bases": "CCGTAACC",
+                    "called_base_confidence_values": [80, 80, 80, 80, 80, 80, 80, 80],
+                    "peak_locations": [10, 20, 30, 40, 50, 60, 70, 80],
+                    "channel_summaries": []
+                }
+            }
+        }),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let legacy = engine
+        .get_sequencing_trace("legacy_trace")
+        .expect("legacy trace should deserialize");
+    assert_eq!(legacy.schema, "gentle.sequencing_trace_record.v1");
+    assert!(legacy.channel_data.is_empty());
+
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec![],
+            trace_ids: vec!["legacy_trace".to_string()],
+            targets: vec![sequencing_confirmation_junction_target(
+                "junction_1",
+                4,
+                12,
+                8,
+                "Insert junction",
+            )],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("legacy_trace_confirm".to_string()),
+        })
+        .expect("legacy trace should still confirm construct");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.trace_ids, vec!["legacy_trace"]);
+    assert!(report.variants.is_empty());
+}
+
+#[test]
+fn test_confirm_construct_reads_baseline_infers_intended_edit_variant_for_trace() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTGACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(sequencing_confirmation_trace_record(
+            "trace_expected_snp",
+            "CCGTAACC",
+            &[80, 80, 80, 80, 80, 80, 80, 80],
+            &[10, 20, 30, 40, 50, 60, 70, 80],
+        ))
+        .expect("store trace");
+
+    let result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["trace_expected_snp".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("expected_edit_confirmed".to_string()),
+        })
+        .expect("confirm intended edit");
+
+    let report = result
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+    assert_eq!(report.baseline_seq_id.as_deref(), Some("baseline"));
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.targets.len(), 1);
+    assert_eq!(
+        report.targets[0].kind,
+        SequencingConfirmationTargetKind::ExpectedEdit
+    );
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(report.variants.len(), 1);
+    assert_eq!(
+        report.variants[0].classification,
+        SequencingConfirmationVariantClassification::IntendedEditConfirmed
+    );
+    assert_eq!(
+        report.variants[0].status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(
+        report.variants[0].trace_id.as_deref(),
+        Some("trace_expected_snp")
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_baseline_detects_reference_reversion_for_trace() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTGACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(sequencing_confirmation_trace_record(
+            "trace_baseline_snp",
+            "CCGTGACC",
+            &[80, 80, 80, 80, 80, 80, 80, 80],
+            &[10, 20, 30, 40, 50, 60, 70, 80],
+        ))
+        .expect("store trace");
+
+    let report = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["trace_baseline_snp".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("reference_reversion".to_string()),
+        })
+        .expect("confirm reference reversion")
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Contradicted
+    );
+    assert_eq!(report.targets.len(), 1);
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::Contradicted
+    );
+    assert_eq!(
+        report.variants[0].classification,
+        SequencingConfirmationVariantClassification::ReferenceReversion
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_baseline_detects_unexpected_difference_for_trace() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTGACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(sequencing_confirmation_trace_record(
+            "trace_unexpected_snp",
+            "CCGTTACC",
+            &[80, 80, 80, 80, 80, 80, 80, 80],
+            &[10, 20, 30, 40, 50, 60, 70, 80],
+        ))
+        .expect("store trace");
+
+    let report = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["trace_unexpected_snp".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("unexpected_difference".to_string()),
+        })
+        .expect("confirm unexpected difference")
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Contradicted
+    );
+    assert_eq!(
+        report.variants[0].classification,
+        SequencingConfirmationVariantClassification::UnexpectedDifference
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_baseline_insertion_counts_as_intended_edit_confirmation() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(sequencing_confirmation_trace_record(
+            "trace_expected_insertion",
+            "AAAACCGTAACCTTTT",
+            &[80; 16],
+            &[
+                10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
+            ],
+        ))
+        .expect("store trace");
+
+    let report = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["trace_expected_insertion".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("expected_insertion".to_string()),
+        })
+        .expect("confirm intended insertion")
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::Confirmed
+    );
+    assert_eq!(
+        report.variants[0].classification,
+        SequencingConfirmationVariantClassification::IntendedEditConfirmed
+    );
+    assert_eq!(
+        report.targets[0].kind,
+        SequencingConfirmationTargetKind::ExpectedEdit
+    );
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::Confirmed
+    );
+}
+
+#[test]
+fn test_confirm_construct_reads_low_confidence_trace_softens_reversion_to_insufficient_evidence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "expected".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("expected"),
+    );
+    state.sequences.insert(
+        "baseline".to_string(),
+        DNAsequence::from_sequence("AAAACCGTGACCTTTT").expect("baseline"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_sequencing_trace(sequencing_confirmation_trace_record(
+            "trace_low_confidence_reversion",
+            "CCGTGACC",
+            &[10, 10, 10, 10, 10, 10, 10, 10],
+            &[10, 20, 30, 40, 50, 60, 70, 80],
+        ))
+        .expect("store trace");
+
+    let report = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec![],
+            trace_ids: vec!["trace_low_confidence_reversion".to_string()],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("low_confidence_reversion".to_string()),
+        })
+        .expect("confirm low-confidence reversion")
+        .sequencing_confirmation_report
+        .expect("sequencing confirmation report");
+
+    assert_eq!(
+        report.overall_status,
+        SequencingConfirmationStatus::InsufficientEvidence
+    );
+    assert_eq!(
+        report.targets[0].status,
+        SequencingConfirmationStatus::InsufficientEvidence
+    );
+    assert_eq!(
+        report.variants[0].classification,
+        SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous
+    );
+    assert_eq!(
+        report.variants[0].status,
+        SequencingConfirmationStatus::InsufficientEvidence
+    );
 }
 
 #[test]

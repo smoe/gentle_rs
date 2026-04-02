@@ -24,9 +24,10 @@ this as a confidence map for the current GUI surface.
 - Multi-insert Gibson preview is useful, but execution currently requires a
   defined destination opening; `existing_termini` remains the single-fragment
   handoff path.
-- Sequencing confirmation now has a dedicated called-read specialist, but v1
-  now also accepts imported trace IDs plus built-in trace review in the same
-  specialist; full chromatogram curve inspection is still pending.
+- Sequencing confirmation now has a dedicated specialist that accepts called
+  reads, imported trace IDs, optional baseline context, and variant-focused
+  chromatogram review, but raw trace import still starts from CLI/shared shell
+  and whole-trace browsing remains deliberately limited.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
@@ -1212,10 +1213,15 @@ Patterns menu:
     - inspect called-base previews, confidence/peak summaries, source path,
       and sample/run metadata
     - append the selected trace directly to the current confirmation inputs
+  - baseline-aware variant review is built in:
+    - optional baseline/reference sequence id can be supplied in the run form
+    - baseline-vs-expected edits become first-class review checkpoints
+    - selected trace-backed checkpoints render a chromatogram curve pane with
+      expected, baseline, observed, and classification badges
   - saved-report review is built in:
     - choose a persisted report for the current expected construct
     - inspect overall status, target-level outcomes, evidence-level outcomes,
-      and a first-evidence alignment snapshot
+      per-variant rows, and a first-evidence alignment snapshot
     - export the selected report as JSON or support TSV
   - selection convenience:
     - the active sequence selection can append its `start`, `midpoint`, or
@@ -1223,7 +1229,10 @@ Patterns menu:
   - current limitation:
     - raw trace import itself still comes through CLI/shared shell
       (`seq-trace import ...`)
-    - full chromatogram curve inspection is still future work
+    - older traces without stored curve arrays must be re-imported before
+      chromatogram curves can be reviewed
+    - chromatogram inspection is intentionally variant-focused, not a
+      full whole-trace browser or base-calling editor
   - shared UI-intent parity:
     - `ui open sequencing-confirmation`
     - `ui focus sequencing-confirmation`
@@ -2302,16 +2311,22 @@ end for construct verification from called reads and imported sequencing traces.
 Current scope:
 
 - expected construct is the active/opened sequence window
+- optional baseline/reference sequence ID can be supplied to classify intended
+  edits versus reference reversions
 - read evidence is supplied as already-loaded project sequence IDs
 - imported ABI/AB1/SCF evidence is supplied as already-imported trace IDs
 - target coverage can be:
   - the default full construct span
   - one or more explicit junction checkpoints
+  - automatically inferred expected-edit checkpoints when a baseline sequence is
+    supplied
 - orientation handling follows the shared engine option:
   forward only or forward + reverse-complement trial
 
 Key controls:
 
+- `Baseline/reference sequence ID`: optional sequence id used only to explain
+  whether an observed supported difference is the intended edit or a reversion
 - `Read sequence IDs`: comma-separated IDs of read sequences already present in
   the project
 - `Imported trace IDs`: comma-separated IDs from the sequencing-trace evidence
@@ -2342,6 +2357,14 @@ Report review surface:
   usability, identity, and coverage
 - imported trace review pane with called-base preview plus confidence/peak
   summaries
+- variant/checkpoint list for inferred or explicit expected-edit loci
+- chromatogram pane for trace-backed loci:
+  - overlaid `A/C/G/T` curves
+  - called bases and peak positions
+  - expected allele, optional baseline allele, observed allele
+  - classification badge:
+    `expected_match`, `intended_edit_confirmed`, `reference_reversion`,
+    `unexpected_difference`, `low_confidence`, or `insufficient_evidence`
 - first-evidence alignment snapshot for quick inspection without dropping to
   shell
 
@@ -2349,7 +2372,11 @@ Current limitations:
 
 - raw ABI/AB1/SCF import still happens through CLI/shared shell, not directly
   in this GUI window
-- no full chromatogram curve inspection yet
+- older stored traces without raw curve arrays stay usable for confirmation,
+  but the GUI asks for re-import before chromatogram curve inspection
+- no chromatogram editing or base re-calling yet
+- current chromatogram inspection is variant-focused rather than a full
+  whole-trace browser
 - no lineage/artifact projection for confirmation reports yet
 - anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
 - `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line

@@ -277,7 +277,7 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
   - `seq-trace import PATH [--trace-id ID] [--seq-id ID]`
   - `seq-trace list [SEQ_ID]`
   - `seq-trace show TRACE_ID`
-  - `seq-confirm run EXPECTED_SEQ_ID --reads ID[,ID...] [--trace-id ID]... [--trace-ids ID[,ID...]]`
+  - `seq-confirm run EXPECTED_SEQ_ID [--baseline BASELINE_SEQ_ID] --reads ID[,ID...] [--trace-id ID]... [--trace-ids ID[,ID...]]`
   - `seq-confirm list-reports [EXPECTED_SEQ_ID]`
   - `seq-confirm show-report REPORT_ID`
   - `seq-confirm export-report REPORT_ID OUTPUT.json`
@@ -296,14 +296,13 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
     and `--junction-flank N`
   - forward and reverse-complement read evaluation through the same shared
     engine report contract
-  - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
-    and command palette `Sequencing Confirmation`, backed by the same
-    `ConfirmConstructReads` / report-store path
   - raw ABI/AB1/SCF intake stores trace evidence separately from
     confirmation reports:
     - preserves file-supplied called bases
     - preserves called-base confidence arrays when available
     - preserves peak locations when available
+    - preserves raw per-channel chromatogram curves and clip windows when
+      available from the source trace
     - keeps one imported trace store that can be listed/shown without running
       confirmation
   - trace-aware confirmation keeps one shared report model:
@@ -311,8 +310,24 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
       confirmation report
     - trace-backed rows expose their `trace_id` and evidence kind
     - target support/contradiction ids can now reflect imported trace ids
+    - optional `--baseline` context lets confirmation classify one locus as:
+      intended edit, reference reversion, unexpected difference, or
+      low-confidence/insufficient evidence
+    - `seq-confirm show-report` now exposes the persisted `baseline_seq_id`
+      plus per-variant rows for expected edits inferred from the
+      baseline-vs-expected diff
+  - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
+    and command palette `Sequencing Confirmation`, backed by the same
+    `ConfirmConstructReads` / report-store path:
+    - optional baseline sequence input is available in the run form
+    - the review pane now includes a variant list and chromatogram curve view
+      for trace-backed loci
+    - older traces without stored curve arrays stay usable for confirmation,
+      but the GUI asks you to re-import them before chromatogram review
   Not yet included in this phase:
-  - GUI trace review / chromatogram inspection
+  - GUI-side raw trace import
+  - chromatogram editing or base re-calling
+  - full whole-trace browsing beyond the current variant-focused window
   - lineage/artifact projection for confirmation reports
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.
