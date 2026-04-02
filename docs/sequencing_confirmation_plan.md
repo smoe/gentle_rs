@@ -26,8 +26,12 @@ Current implementation snapshot:
     each non-confirmed target or problem variant
   - saved-report driven fresh-primer proposals can now be emitted through the
     same `SuggestSequencingPrimers` contract when no good existing hit exists
-- still pending from this plan:
-  - lineage/artifact projection for confirmation reports
+  - persisted confirmation reports now project into lineage/history views and
+    reopen the sequencing-confirmation specialist from GUI lineage artifacts
+
+Current follow-up after this plan:
+
+- deeper whole-trace browsing and chromatogram-navigation polish
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
 GENtle so construct validation from read evidence becomes a first-class,

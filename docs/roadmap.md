@@ -3276,9 +3276,11 @@ Post-baseline follow-ups:
 - Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
 - Add sequencing-confirmation evidence contracts (read-aligned construct
   validation summaries) as a deterministic shared-engine path.
-  - baseline shipped: report store + shell/CLI list/show/export path for
-    called-read confirmation against expected construct sequences
-  - next: lineage/artifact projection parity and deeper whole-trace browsing
+  - shipped: report store + shell/CLI list/show/export path for called-read
+    confirmation, raw trace intake, trace-aware confirmation, GUI chromatogram
+    review, sequencing-primer guidance/proposals, and lineage/artifact
+    projection parity for persisted confirmation reports
+  - next: deeper whole-trace browsing and follow-on confirmation polish
 - Detailed sequencing-confirmation design note:
   - `docs/sequencing_confirmation_plan.md`
 - Legacy `gentle-m` intake note:

@@ -1223,6 +1223,8 @@ Patterns menu:
     - inspect overall status, target-level outcomes, evidence-level outcomes,
       per-variant rows, and a first-evidence alignment snapshot
     - export the selected report as JSON or support TSV
+    - persisted reports now also appear in the project lineage graph/table as
+      analysis artifacts and reopen this specialist on the selected report
   - sequencing-primer overlays are built in:
     - enter already-loaded primer sequence ids in the same specialist
     - suggest predicted read spans from exact 3' anneal hits on the expected
@@ -2396,7 +2398,6 @@ Current limitations:
 - no chromatogram editing or base re-calling yet
 - current chromatogram inspection is variant-focused rather than a full
   whole-trace browser
-- no lineage/artifact projection for confirmation reports yet
 - anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
 - `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line
 

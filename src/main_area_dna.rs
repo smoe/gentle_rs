@@ -7466,6 +7466,14 @@ impl MainAreaDna {
         self.open_dotplot_window();
     }
 
+    pub fn focus_sequencing_confirmation_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if !normalized_id.is_empty() {
+            self.sequencing_confirmation_ui.selected_report_id = normalized_id.to_string();
+        }
+        self.show_sequencing_confirmation_report(normalized_id);
+    }
+
     pub fn opened_from_pool_context(&self) -> bool {
         self.opened_from_pool_context
     }

@@ -32,6 +32,7 @@ use std::thread;
 enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
+    SequencingConfirmation(String),
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +108,9 @@ impl WindowDna {
             }
             DeferredAnalysisFocus::FlexibilityTrack(track_id) => {
                 self.main_area.focus_flexibility_track_analysis(&track_id);
+            }
+            DeferredAnalysisFocus::SequencingConfirmation(report_id) => {
+                self.main_area.focus_sequencing_confirmation_report(&report_id);
             }
         }
     }
@@ -392,6 +396,16 @@ impl WindowDna {
             return;
         }
         self.main_area.focus_flexibility_track_analysis(track_id);
+    }
+
+    pub fn focus_sequencing_confirmation_report(&mut self, report_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::SequencingConfirmation(
+                report_id.to_string(),
+            ));
+            return;
+        }
+        self.main_area.focus_sequencing_confirmation_report(report_id);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

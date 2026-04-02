@@ -1,7 +1,7 @@
 //! Lineage graph export and serialization utilities.
 
 use crate::{
-    engine::{LineageMacroPortBinding, Operation, OperationRecord, ProjectState},
+    engine::{GentleEngine, LineageMacroPortBinding, Operation, OperationRecord, ProjectState},
     gibson_planning::GibsonAssemblyPlan,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -264,6 +264,7 @@ enum EngineLineageRenderRowKind {
     Sequence,
     Arrangement,
     Macro,
+    Analysis,
     OperationHub,
 }
 
@@ -281,6 +282,13 @@ struct EngineLineageRenderRow {
     arrangement_id: Option<String>,
     arrangement_mode: Option<String>,
     lane_count: usize,
+    analysis_kind: Option<String>,
+    analysis_status: Option<String>,
+    analysis_reference_seq_id: Option<String>,
+    analysis_read_count: Option<usize>,
+    analysis_trace_count: Option<usize>,
+    analysis_target_count: Option<usize>,
+    analysis_variant_count: Option<usize>,
     macro_instance_id: Option<String>,
     macro_op_count: usize,
 }
@@ -341,6 +349,21 @@ fn summarize_gibson_operation(plan_json: &str) -> String {
 fn summarize_operation_for_lineage(op: &Operation) -> String {
     match op {
         Operation::ApplyGibsonAssemblyPlan { plan_json } => summarize_gibson_operation(plan_json),
+        Operation::ConfirmConstructReads {
+            expected_seq_id,
+            baseline_seq_id,
+            read_seq_ids,
+            trace_ids,
+            report_id,
+            ..
+        } => format!(
+            "Sequencing confirmation: expected={}, baseline={}, reads={}, traces={}, report_id={}",
+            expected_seq_id,
+            baseline_seq_id.as_deref().unwrap_or("-"),
+            read_seq_ids.len(),
+            trace_ids.len(),
+            report_id.as_deref().unwrap_or("-"),
+        ),
         _ => humanize_operation_variant_name(&operation_variant_name(op)),
     }
 }
@@ -728,6 +751,13 @@ fn project_lineage_operation_hubs(
             arrangement_id: None,
             arrangement_mode: None,
             lane_count: 0,
+            analysis_kind: None,
+            analysis_status: None,
+            analysis_reference_seq_id: None,
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: None,
+            analysis_variant_count: None,
             macro_instance_id: None,
             macro_op_count: 0,
         });
@@ -771,6 +801,7 @@ fn lineage_svg_node_kind(row: &EngineLineageRenderRow) -> LineageSvgNodeKind {
         EngineLineageRenderRowKind::Sequence => LineageSvgNodeKind::Sequence,
         EngineLineageRenderRowKind::Arrangement => LineageSvgNodeKind::Arrangement,
         EngineLineageRenderRowKind::Macro => LineageSvgNodeKind::Macro,
+        EngineLineageRenderRowKind::Analysis => LineageSvgNodeKind::Analysis,
         EngineLineageRenderRowKind::OperationHub => LineageSvgNodeKind::OperationHub,
     }
 }
@@ -807,6 +838,21 @@ fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
             row.macro_instance_id.as_deref().unwrap_or(&row.seq_id),
             row.macro_op_count
         ),
+        EngineLineageRenderRowKind::Analysis => match row.analysis_kind.as_deref() {
+            Some("sequencing_confirmation") => {
+                let baseline = row.analysis_reference_seq_id.as_deref().unwrap_or("-");
+                format!(
+                    "status={} | baseline={} | reads={} | traces={} | targets={} | variants={}",
+                    row.analysis_status.as_deref().unwrap_or("-"),
+                    baseline,
+                    row.analysis_read_count.unwrap_or(0),
+                    row.analysis_trace_count.unwrap_or(0),
+                    row.analysis_target_count.unwrap_or(0),
+                    row.analysis_variant_count.unwrap_or(0)
+                )
+            }
+            _ => "analysis".to_string(),
+        },
         EngineLineageRenderRowKind::OperationHub => format!("op={}", row.created_by_op),
     }
 }
@@ -817,6 +863,8 @@ pub fn build_lineage_svg_graph(
 ) -> (Vec<LineageSvgNode>, Vec<LineageSvgEdge>) {
     let mut op_created_count: HashMap<String, usize> = HashMap::new();
     let mut op_label_by_id: HashMap<String, String> = HashMap::new();
+    let mut sequencing_confirmation_op_by_report_id: HashMap<String, (String, String, Option<String>)> =
+        HashMap::new();
     let mut hub_op_ids = infer_gibson_like_operation_ids_from_state(state);
     let mut individually_rendered_multi_output_ops = hub_op_ids.clone();
     for record in operation_log {
@@ -831,6 +879,16 @@ pub fn build_lineage_svg_graph(
         if matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. }) {
             hub_op_ids.insert(record.result.op_id.clone());
             individually_rendered_multi_output_ops.insert(record.result.op_id.clone());
+        }
+        if let Some(report) = record.result.sequencing_confirmation_report.as_ref() {
+            sequencing_confirmation_op_by_report_id.insert(
+                report.report_id.clone(),
+                (
+                    record.result.op_id.clone(),
+                    report.expected_seq_id.clone(),
+                    report.baseline_seq_id.clone(),
+                ),
+            );
         }
     }
     for op_id in &hub_op_ids {
@@ -879,6 +937,13 @@ pub fn build_lineage_svg_graph(
                 arrangement_id: None,
                 arrangement_mode: None,
                 lane_count: 0,
+                analysis_kind: None,
+                analysis_status: None,
+                analysis_reference_seq_id: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
                 macro_instance_id: None,
                 macro_op_count: 0,
             }
@@ -941,6 +1006,13 @@ pub fn build_lineage_svg_graph(
             arrangement_id: Some(id.clone()),
             arrangement_mode: Some(format!("{:?}", arrangement.mode)),
             lane_count: arrangement.lane_container_ids.len(),
+            analysis_kind: None,
+            analysis_status: None,
+            analysis_reference_seq_id: None,
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: None,
+            analysis_variant_count: None,
             macro_instance_id: None,
             macro_op_count: 0,
         });
@@ -977,6 +1049,13 @@ pub fn build_lineage_svg_graph(
             arrangement_id: None,
             arrangement_mode: None,
             lane_count: 0,
+            analysis_kind: None,
+            analysis_status: None,
+            analysis_reference_seq_id: None,
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: None,
+            analysis_variant_count: None,
             macro_instance_id: Some(instance.macro_instance_id.clone()),
             macro_op_count: instance.expanded_op_ids.len(),
         });
@@ -1002,6 +1081,75 @@ pub fn build_lineage_svg_graph(
                 .or_insert_with(|| format!("out:{}", binding.port_id));
             for to_node_id in sequence_nodes_for_binding(state, binding) {
                 projected_edges.push((macro_node_id.clone(), to_node_id, edge_label_id.clone()));
+            }
+        }
+    }
+
+    for report in GentleEngine::sequencing_confirmation_reports_from_state(state) {
+        let node_id = format!("analysis:seq_confirm:{}", report.report_id);
+        let op_binding = sequencing_confirmation_op_by_report_id
+            .get(&report.report_id)
+            .cloned();
+        let created_by_op = op_binding
+            .as_ref()
+            .map(|(op_id, _, _)| op_id.clone())
+            .unwrap_or_else(|| "-".to_string());
+        let edge_op_id = if created_by_op == "-" {
+            format!("analysis:seq_confirm:{}", report.report_id)
+        } else {
+            created_by_op.clone()
+        };
+        op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+            format!(
+                "Sequencing confirmation: expected={}, baseline={}, report_id={}",
+                report.expected_seq_id,
+                report.baseline_seq_id.as_deref().unwrap_or("-"),
+                report.report_id
+            )
+        });
+        let expected_seq_id = report.expected_seq_id.clone();
+        let baseline_seq_id = report.baseline_seq_id.clone().or_else(|| {
+            op_binding
+                .as_ref()
+                .and_then(|(_, _, baseline_seq_id)| baseline_seq_id.clone())
+        });
+        projected_rows.push(EngineLineageRenderRow {
+            node_id: node_id.clone(),
+            seq_id: expected_seq_id.clone(),
+            display_name: report.report_id.clone(),
+            created_by_op,
+            created_at: report.generated_at_unix_ms,
+            kind: EngineLineageRenderRowKind::Analysis,
+            length: 0,
+            circular: false,
+            pool_size: 0,
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_count: 0,
+            analysis_kind: Some("sequencing_confirmation".to_string()),
+            analysis_status: Some(report.overall_status.as_str().to_string()),
+            analysis_reference_seq_id: baseline_seq_id.clone(),
+            analysis_read_count: Some(report.read_seq_ids.len()),
+            analysis_trace_count: Some(report.trace_ids.len()),
+            analysis_target_count: Some(report.targets.len()),
+            analysis_variant_count: Some(report.variants.len()),
+            macro_instance_id: None,
+            macro_op_count: 0,
+        });
+        let mut seen_sources: HashSet<String> = HashSet::new();
+        for source_seq_id in std::iter::once(expected_seq_id)
+            .chain(baseline_seq_id.into_iter())
+            .collect::<Vec<_>>()
+        {
+            let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
+                continue;
+            };
+            if seen_sources.insert(source_node_id.clone()) {
+                projected_edges.push((
+                    source_node_id.clone(),
+                    node_id.clone(),
+                    edge_op_id.clone(),
+                ));
             }
         }
     }

@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::genomes::BlastHit;
-use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph};
+use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use std::collections::HashMap;
@@ -12460,6 +12460,123 @@ fn test_confirm_construct_reads_supports_reverse_complement_reads() {
     assert_eq!(
         report.targets[0].status,
         SequencingConfirmationStatus::Confirmed
+    );
+}
+
+#[test]
+fn test_build_lineage_svg_graph_projects_sequencing_confirmation_artifact() {
+    let mut engine = GentleEngine::default();
+    {
+        let state = engine.state_mut();
+        state
+            .sequences
+            .insert("expected".to_string(), seq("ACGGACGT"));
+        state
+            .sequences
+            .insert("baseline".to_string(), seq("ACGTACGT"));
+        state
+            .sequences
+            .insert("read_expected".to_string(), seq("ACGGACGT"));
+        state.lineage.nodes.insert(
+            "n_expected".to_string(),
+            LineageNode {
+                node_id: "n_expected".to_string(),
+                seq_id: "expected".to_string(),
+                origin: SequenceOrigin::ImportedUnknown,
+                created_by_op: None,
+                created_at_unix_ms: 1,
+            },
+        );
+        state.lineage.nodes.insert(
+            "n_baseline".to_string(),
+            LineageNode {
+                node_id: "n_baseline".to_string(),
+                seq_id: "baseline".to_string(),
+                origin: SequenceOrigin::ImportedUnknown,
+                created_by_op: None,
+                created_at_unix_ms: 1,
+            },
+        );
+        state
+            .lineage
+            .seq_to_node
+            .insert("expected".to_string(), "n_expected".to_string());
+        state
+            .lineage
+            .seq_to_node
+            .insert("baseline".to_string(), "n_baseline".to_string());
+    }
+
+    let apply_result = engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "expected".to_string(),
+            baseline_seq_id: Some("baseline".to_string()),
+            read_seq_ids: vec!["read_expected".to_string()],
+            trace_ids: vec![],
+            targets: vec![],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.8,
+            min_target_coverage_fraction: 0.8,
+            allow_reverse_complement: true,
+            report_id: Some("lineage_confirm".to_string()),
+        })
+        .expect("confirm construct");
+
+    let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let analysis_node = nodes
+        .iter()
+        .find(|node| {
+            node.kind == LineageSvgNodeKind::Analysis && node.node_id == "analysis:seq_confirm:lineage_confirm"
+        })
+        .expect("sequencing-confirmation analysis node");
+    assert_eq!(analysis_node.title, "lineage_confirm");
+    assert!(analysis_node.subtitle.contains("status=confirmed"));
+    assert!(analysis_node.subtitle.contains("reads=1"));
+    assert!(analysis_node.subtitle.contains("variants=1"));
+    assert!(
+        edges
+            .iter()
+            .any(|edge| edge.from_node_id == "n_expected"
+                && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+                && edge.label.contains("Sequencing confirmation"))
+    );
+    assert!(
+        edges
+            .iter()
+            .any(|edge| edge.from_node_id == "n_baseline"
+                && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+                && edge.label.contains("Sequencing confirmation"))
+    );
+
+    let svg = export_lineage_svg(engine.state(), engine.operation_log());
+    assert!(svg.contains("lineage_confirm"));
+    assert!(svg.contains("status=confirmed"));
+    assert!(!svg.contains(&apply_result.op_id));
+
+    let temp = tempdir().expect("tempdir");
+    let state_path = temp.path().join("lineage_confirm.state.json");
+    engine
+        .state()
+        .save_to_path(state_path.to_string_lossy().as_ref())
+        .expect("save state");
+    let reloaded_state =
+        ProjectState::load_from_path(state_path.to_string_lossy().as_ref()).expect("reload state");
+    let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
+    assert!(
+        reloaded_nodes.iter().any(|node| {
+            node.kind == LineageSvgNodeKind::Analysis
+                && node.node_id == "analysis:seq_confirm:lineage_confirm"
+        })
+    );
+    assert!(
+        reloaded_edges.iter().any(|edge| {
+            edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+                && edge.label.contains("Sequencing confirmation")
+        })
     );
 }
 

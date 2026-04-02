@@ -1678,6 +1678,7 @@ enum LineageNodeKind {
 enum LineageAnalysisKind {
     Dotplot,
     FlexibilityTrack,
+    SequencingConfirmation,
 }
 
 impl LineageAnalysisKind {
@@ -1685,6 +1686,7 @@ impl LineageAnalysisKind {
         match self {
             Self::Dotplot => "dotplot",
             Self::FlexibilityTrack => "flexibility_track",
+            Self::SequencingConfirmation => "sequencing_confirmation",
         }
     }
 }
@@ -1747,8 +1749,13 @@ struct LineageRow {
     analysis_artifact_id: Option<String>,
     analysis_reference_seq_id: Option<String>,
     analysis_mode: Option<String>,
+    analysis_status: Option<String>,
     analysis_point_count: Option<usize>,
     analysis_bin_count: Option<usize>,
+    analysis_read_count: Option<usize>,
+    analysis_trace_count: Option<usize>,
+    analysis_target_count: Option<usize>,
+    analysis_variant_count: Option<usize>,
     macro_instance_id: Option<String>,
     macro_routine_id: Option<String>,
     macro_template_name: Option<String>,
@@ -5056,6 +5063,42 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_sequencing_confirmation_report(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        if !report_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_sequencing_confirmation_report(report_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_sequencing_confirmation_report(report_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_sequencing_confirmation_report(report_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+        self.sequencing_confirmation_seq_id = seq_id.to_string();
+        self.show_sequencing_confirmation_dialog = true;
+        self.queue_focus_viewport(Self::sequencing_confirmation_viewport_id());
+    }
+
     fn open_lineage_analysis_artifact(
         &mut self,
         kind: LineageAnalysisKind,
@@ -5068,6 +5111,9 @@ Error: `{err}`"
             }
             LineageAnalysisKind::FlexibilityTrack => {
                 self.open_sequence_window_for_flexibility_track_analysis(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::SequencingConfirmation => {
+                self.open_sequence_window_for_sequencing_confirmation_report(seq_id, artifact_id);
             }
         }
     }
@@ -5446,6 +5492,13 @@ Error: `{err}`"
         state.lineage.macro_instances.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
         state.container_state.arrangements.len().hash(&mut hasher);
+        for report in GentleEngine::sequencing_confirmation_reports_from_state(state) {
+            report.report_id.hash(&mut hasher);
+            report.expected_seq_id.hash(&mut hasher);
+            report.baseline_seq_id.hash(&mut hasher);
+            report.overall_status.as_str().hash(&mut hasher);
+            report.generated_at_unix_ms.hash(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -23372,6 +23425,10 @@ Error: `{err}`"
             let mut dotplot_op_by_id: HashMap<String, (String, String, Option<String>)> =
                 HashMap::new();
             let mut flex_track_op_by_id: HashMap<String, (String, String)> = HashMap::new();
+            let mut sequencing_confirmation_op_by_report_id: HashMap<
+                String,
+                (String, String, Option<String>),
+            > = HashMap::new();
             let mut reopenable_gibson_op_ids: HashSet<String> = HashSet::new();
             #[derive(Clone)]
             struct PendingSvgExportRow {
@@ -23431,6 +23488,18 @@ Error: `{err}`"
                             Self::lineage_flex_track_id_for_operation(store_as, &rec.result.op_id);
                         flex_track_op_by_id
                             .insert(track_id, (rec.result.op_id.clone(), seq_id.clone()));
+                    }
+                    Operation::ConfirmConstructReads { expected_seq_id, .. } => {
+                        if let Some(report) = rec.result.sequencing_confirmation_report.as_ref() {
+                            sequencing_confirmation_op_by_report_id.insert(
+                                report.report_id.clone(),
+                                (
+                                    rec.result.op_id.clone(),
+                                    expected_seq_id.clone(),
+                                    report.baseline_seq_id.clone(),
+                                ),
+                            );
+                        }
                     }
                     Operation::RenderSequenceSvg { seq_id, mode, path } => {
                         let mode_label = match mode {
@@ -23679,8 +23748,13 @@ Error: `{err}`"
                         analysis_artifact_id: None,
                         analysis_reference_seq_id: None,
                         analysis_mode: None,
+                        analysis_status: None,
                         analysis_point_count: None,
                         analysis_bin_count: None,
+                        analysis_read_count: None,
+                        analysis_trace_count: None,
+                        analysis_target_count: None,
+                        analysis_variant_count: None,
                         macro_instance_id: None,
                         macro_routine_id: None,
                         macro_template_name: None,
@@ -23831,8 +23905,13 @@ Error: `{err}`"
                     analysis_artifact_id: None,
                     analysis_reference_seq_id: None,
                     analysis_mode: None,
+                    analysis_status: None,
                     analysis_point_count: None,
                     analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: None,
+                    analysis_variant_count: None,
                     macro_instance_id: Some(instance.macro_instance_id.clone()),
                     macro_routine_id: instance.routine_id.clone(),
                     macro_template_name: instance.template_name.clone(),
@@ -23897,8 +23976,13 @@ Error: `{err}`"
                     analysis_artifact_id: Some(summary.dotplot_id.clone()),
                     analysis_reference_seq_id: reference_seq_id.clone(),
                     analysis_mode: Some(summary.mode.as_str().to_string()),
+                    analysis_status: None,
                     analysis_point_count: Some(summary.point_count),
                     analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: None,
+                    analysis_variant_count: None,
                     macro_instance_id: None,
                     macro_routine_id: None,
                     macro_template_name: None,
@@ -23968,8 +24052,13 @@ Error: `{err}`"
                     analysis_artifact_id: Some(summary.track_id.clone()),
                     analysis_reference_seq_id: None,
                     analysis_mode: Some(summary.model.as_str().to_string()),
+                    analysis_status: None,
                     analysis_point_count: None,
                     analysis_bin_count: Some(summary.bin_count),
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: None,
+                    analysis_variant_count: None,
                     macro_instance_id: None,
                     macro_routine_id: None,
                     macro_template_name: None,
@@ -23985,6 +24074,101 @@ Error: `{err}`"
                         node_id.clone(),
                         edge_op_id.clone(),
                     ));
+                }
+            }
+
+            let sequencing_confirmation_reports =
+                GentleEngine::sequencing_confirmation_reports_from_state(state);
+            for report in sequencing_confirmation_reports {
+                let node_id = format!("analysis:seq_confirm:{}", report.report_id);
+                let op_binding = sequencing_confirmation_op_by_report_id
+                    .get(&report.report_id)
+                    .cloned();
+                let created_by_op = op_binding
+                    .as_ref()
+                    .map(|(op_id, _, _)| op_id.clone())
+                    .unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:seq_confirm:{}", report.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Sequencing confirmation: expected={}, baseline={}, report_id={}",
+                        report.expected_seq_id,
+                        report.baseline_seq_id.as_deref().unwrap_or("-"),
+                        report.report_id
+                    )
+                });
+                let expected_seq_id = report.expected_seq_id.clone();
+                let baseline_seq_id = report.baseline_seq_id.clone().or_else(|| {
+                    op_binding
+                        .as_ref()
+                        .and_then(|(_, _, baseline_seq_id)| baseline_seq_id.clone())
+                });
+                let mut parents = vec![expected_seq_id.clone()];
+                if let Some(baseline_seq_id) = baseline_seq_id.as_ref() {
+                    if !baseline_seq_id.eq_ignore_ascii_case(&expected_seq_id) {
+                        parents.push(baseline_seq_id.clone());
+                    }
+                }
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: expected_seq_id.clone(),
+                    display_name: report.report_id.clone(),
+                    origin: "SequencingConfirmation".to_string(),
+                    created_by_op,
+                    created_at: report.generated_at_unix_ms,
+                    parents,
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::SequencingConfirmation),
+                    analysis_artifact_id: Some(report.report_id.clone()),
+                    analysis_reference_seq_id: baseline_seq_id.clone(),
+                    analysis_mode: None,
+                    analysis_status: Some(report.overall_status.as_str().to_string()),
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: Some(report.read_seq_ids.len()),
+                    analysis_trace_count: Some(report.trace_ids.len()),
+                    analysis_target_count: Some(report.targets.len()),
+                    analysis_variant_count: Some(report.variants.len()),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                let mut seen_sources: HashSet<String> = HashSet::new();
+                for source_seq_id in std::iter::once(expected_seq_id)
+                    .chain(baseline_seq_id.into_iter())
+                    .collect::<Vec<_>>()
+                {
+                    let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
+                        continue;
+                    };
+                    if seen_sources.insert(source_node_id.clone()) {
+                        lineage_edges.push((
+                            source_node_id.clone(),
+                            node_id.clone(),
+                            edge_op_id.clone(),
+                        ));
+                    }
                 }
             }
 
@@ -24017,8 +24201,13 @@ Error: `{err}`"
                     analysis_artifact_id: pending.analysis_artifact_id.clone(),
                     analysis_reference_seq_id: pending.analysis_reference_seq_id.clone(),
                     analysis_mode: pending.analysis_mode.clone(),
+                    analysis_status: None,
                     analysis_point_count: None,
                     analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: None,
+                    analysis_variant_count: None,
                     macro_instance_id: None,
                     macro_routine_id: None,
                     macro_template_name: None,
@@ -24431,6 +24620,9 @@ Error: `{err}`"
         if lower.contains("flexibility track") {
             return "flexibility";
         }
+        if lower.contains("sequencing confirmation") || lower.contains("confirmconstructreads") {
+            return "sequencing_confirmation";
+        }
         if lower.contains("load") || lower.contains("import") {
             return "import";
         }
@@ -24462,6 +24654,7 @@ Error: `{err}`"
             "annotate" => "A",
             "dotplot" => "DP",
             "flexibility" => "FX",
+            "sequencing_confirmation" => "SC",
             "import" => "I",
             "set_parameter" => "S",
             "branch" => "B",
@@ -24498,6 +24691,7 @@ Error: `{err}`"
             "annotate" => egui::Color32::from_rgb(74, 150, 156),
             "dotplot" => egui::Color32::from_rgb(148, 92, 172),
             "flexibility" => egui::Color32::from_rgb(132, 104, 186),
+            "sequencing_confirmation" => egui::Color32::from_rgb(74, 126, 176),
             "import" => egui::Color32::from_rgb(111, 131, 170),
             "set_parameter" => egui::Color32::from_rgb(128, 109, 82),
             "branch" => egui::Color32::from_rgb(130, 110, 152),
@@ -24944,8 +25138,13 @@ Error: `{err}`"
                 analysis_artifact_id: None,
                 analysis_reference_seq_id: None,
                 analysis_mode: Some("operation_hub".to_string()),
+                analysis_status: None,
                 analysis_point_count: None,
                 analysis_bin_count: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
                 macro_instance_id: None,
                 macro_routine_id: None,
                 macro_template_name: None,
@@ -25065,8 +25264,13 @@ Error: `{err}`"
                 analysis_artifact_id: None,
                 analysis_reference_seq_id: None,
                 analysis_mode: None,
+                analysis_status: None,
                 analysis_point_count: None,
                 analysis_bin_count: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
                 macro_instance_id: None,
                 macro_routine_id: None,
                 macro_template_name: None,
@@ -25959,6 +26163,12 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::FlexibilityTrack);
         }
+        if row.node_id.starts_with("analysis:seq_confirm:")
+            || row.node_id.starts_with("analysis:sequencing_confirmation:")
+            || row.origin.eq_ignore_ascii_case("sequencingconfirmation")
+        {
+            return Some(LineageAnalysisKind::SequencingConfirmation);
+        }
         None
     }
 
@@ -25984,6 +26194,18 @@ Error: `{err}`"
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:flexibility:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:seq_confirm:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:sequencing_confirmation:") {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -26130,8 +26352,13 @@ Error: `{err}`"
                 analysis_artifact_id: None,
                 analysis_reference_seq_id: None,
                 analysis_mode: None,
+                analysis_status: None,
                 analysis_point_count: None,
                 analysis_bin_count: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
                 macro_instance_id: None,
                 macro_routine_id: None,
                 macro_template_name: None,
@@ -26808,6 +27035,19 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                                        format!(
+                                                            "{} | status={} | reads={} | traces={} | targets={} | variants={}",
+                                                            artifact_id,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_trace_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     None => artifact_id.to_string(),
                                                 }
                                             }
@@ -27356,6 +27596,19 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                                        format!(
+                                                            "confirmation={} | status={} | reads={} | traces={} | targets={} | variants={}",
+                                                            artifact_id,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_trace_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     None => format!("analysis={artifact_id}"),
                                                 }
                                             }
@@ -27522,6 +27775,22 @@ Error: `{err}`"
                                                             "seq={} | bins={}",
                                                             row.seq_id,
                                                             row.analysis_bin_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                                        ui.small(format!(
+                                                            "expected={} | baseline={} | status={} | reads={} | traces={} | targets={} | variants={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_trace_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         ));
                                                     }
                                                     None => {}
@@ -28189,6 +28458,10 @@ Error: `{err}`"
                                                 "Open Track",
                                                 "Open the flexibility-track analysis view for this sequence",
                                             ),
+                                            Some(LineageAnalysisKind::SequencingConfirmation) => (
+                                                "Open Confirmation",
+                                                "Open the sequencing-confirmation specialist on this persisted report",
+                                            ),
                                             None => (
                                                 "Open Seq",
                                                 "Open the query/source sequence in a dedicated window",
@@ -28446,16 +28719,37 @@ Error: `{err}`"
                     ui.small(format!("source sequence={}", selected_row.seq_id));
                     if let Some(reference_seq_id) = selected_row.analysis_reference_seq_id.as_deref()
                     {
-                        ui.small(format!("reference sequence={reference_seq_id}"));
+                        let reference_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::SequencingConfirmation) => "baseline sequence",
+                            _ => "reference sequence",
+                        };
+                        ui.small(format!("{reference_label}={reference_seq_id}"));
                     }
                     if let Some(mode) = selected_row.analysis_mode.as_deref() {
                         ui.small(format!("mode/model={mode}"));
+                    }
+                    if let Some(status) = selected_row.analysis_status.as_deref() {
+                        ui.small(format!("status={status}"));
                     }
                     if let Some(points) = selected_row.analysis_point_count {
                         ui.small(format!("point_count={points}"));
                     }
                     if let Some(bin_count) = selected_row.analysis_bin_count {
                         ui.small(format!("bin_count={bin_count}"));
+                    }
+                    if let Some(read_count) = selected_row.analysis_read_count {
+                        ui.small(format!("read_count={read_count}"));
+                    }
+                    if let Some(trace_count) = selected_row.analysis_trace_count {
+                        ui.small(format!("trace_count={trace_count}"));
+                    }
+                    if let Some(target_count) = selected_row.analysis_target_count {
+                        ui.small(format!("target_count={target_count}"));
+                    }
+                    if let Some(variant_count) = selected_row.analysis_variant_count {
+                        ui.small(format!("variant_count={variant_count}"));
                     }
                     ui.horizontal(|ui| {
                         let analysis_payload =
@@ -28472,6 +28766,9 @@ Error: `{err}`"
                         {
                             Some(LineageAnalysisKind::Dotplot) => "Open Dotplot View",
                             Some(LineageAnalysisKind::FlexibilityTrack) => "Open Track View",
+                            Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                "Open Confirmation View"
+                            }
                             None => "Open Analysis View",
                         };
                         if ui
@@ -28495,9 +28792,23 @@ Error: `{err}`"
                         if let Some(reference_seq_id) =
                             selected_row.analysis_reference_seq_id.as_deref()
                         {
+                            let reference_button_label =
+                                match Self::infer_lineage_analysis_kind_from_row(&selected_row) {
+                                    Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                        "Open Baseline Sequence"
+                                    }
+                                    _ => "Open Reference Sequence",
+                                };
+                            let reference_hover_text =
+                                match Self::infer_lineage_analysis_kind_from_row(&selected_row) {
+                                    Some(LineageAnalysisKind::SequencingConfirmation) => {
+                                        "Open the baseline/reference sequence used to classify intended edits and reversions"
+                                    }
+                                    _ => "Open the analysis reference sequence",
+                                };
                             if ui
-                                .button("Open Reference Sequence")
-                                .on_hover_text("Open the analysis reference sequence")
+                                .button(reference_button_label)
+                                .on_hover_text(reference_hover_text)
                                 .clicked()
                             {
                                 open_seq = Some(reference_seq_id.to_string());
@@ -32283,6 +32594,23 @@ Error: `{err}`"
                 gap_open,
                 gap_extend
             ),
+            Operation::ConfirmConstructReads {
+                expected_seq_id,
+                baseline_seq_id,
+                read_seq_ids,
+                trace_ids,
+                targets,
+                report_id,
+                ..
+            } => format!(
+                "Sequencing confirmation: expected={}, baseline={}, reads={}, traces={}, targets={}, report_id={}",
+                expected_seq_id,
+                baseline_seq_id.as_deref().unwrap_or("-"),
+                read_seq_ids.len(),
+                trace_ids.len(),
+                targets.len(),
+                report_id.as_deref().unwrap_or("-")
+            ),
             Operation::AnnotateTfbs {
                 seq_id,
                 motifs,
@@ -32917,8 +33245,9 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DbSnpFetchProgress, DbSnpFetchStage,
             DisplaySettings, DotplotMode, Engine, FlexibilityModel,
             GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
-            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
-            RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation,
+            PairwiseAlignmentMode, ProjectState, RenderSvgMode,
+            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             SequenceOrigin,
         },
@@ -36504,6 +36833,31 @@ mod tests {
     }
 
     #[test]
+    fn open_lineage_analysis_artifact_opens_sequencing_confirmation_dialog() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_confirm".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::SequencingConfirmation,
+            "seq_confirm",
+            "report_1",
+        );
+
+        assert!(app.show_sequencing_confirmation_dialog);
+        assert_eq!(app.sequencing_confirmation_seq_id, "seq_confirm");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::sequencing_confirmation_viewport_id())
+        );
+    }
+
+    #[test]
     fn routine_assistant_detects_circular_gibson_binding() {
         let mut state = ProjectState::default();
         let mut vector = DNAsequence::from_sequence("ACGTACGTACGT").expect("vector");
@@ -38551,8 +38905,13 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             analysis_artifact_id: None,
             analysis_reference_seq_id: None,
             analysis_mode: None,
+            analysis_status: None,
             analysis_point_count: None,
             analysis_bin_count: None,
+            analysis_read_count: None,
+            analysis_trace_count: None,
+            analysis_target_count: None,
+            analysis_variant_count: None,
             macro_instance_id: None,
             macro_routine_id: None,
             macro_template_name: None,
@@ -38608,6 +38967,21 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 LineageAnalysisKind::FlexibilityTrack,
                 "seq_flex".to_string(),
                 "tp73_fx".to_string(),
+            ))
+        );
+
+        let mut confirmation_row =
+            make_lineage_row("analysis:seq_confirm:tp73_confirm", "seq_confirm");
+        confirmation_row.kind = LineageNodeKind::Analysis;
+        confirmation_row.display_name.clear();
+        confirmation_row.analysis_kind = None;
+        confirmation_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&confirmation_row),
+            Some((
+                LineageAnalysisKind::SequencingConfirmation,
+                "seq_confirm".to_string(),
+                "tp73_confirm".to_string(),
             ))
         );
     }
@@ -39002,6 +39376,88 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn refresh_lineage_cache_includes_sequencing_confirmation_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "expected".to_string(),
+                DNAsequence::from_sequence("ACGGACGT").unwrap(),
+            );
+            state.sequences.insert(
+                "baseline".to_string(),
+                DNAsequence::from_sequence("ACGTACGT").unwrap(),
+            );
+            state.sequences.insert(
+                "read_expected".to_string(),
+                DNAsequence::from_sequence("ACGGACGT").unwrap(),
+            );
+            insert_test_lineage_node(state, "n_expected", "expected");
+            insert_test_lineage_node(state, "n_baseline", "baseline");
+        }
+
+        let confirmation_op_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::ConfirmConstructReads {
+                    expected_seq_id: "expected".to_string(),
+                    baseline_seq_id: Some("baseline".to_string()),
+                    read_seq_ids: vec!["read_expected".to_string()],
+                    trace_ids: vec![],
+                    targets: vec![],
+                    alignment_mode: PairwiseAlignmentMode::Local,
+                    match_score: 2,
+                    mismatch_score: -3,
+                    gap_open: -5,
+                    gap_extend: -1,
+                    min_identity_fraction: 0.8,
+                    min_target_coverage_fraction: 0.8,
+                    allow_reverse_complement: true,
+                    report_id: Some("tp73_confirm".to_string()),
+                })
+                .expect("confirm construct")
+                .op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:seq_confirm:tp73_confirm")
+            .expect("sequencing-confirmation lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::SequencingConfirmation)
+        );
+        assert_eq!(row.analysis_artifact_id.as_deref(), Some("tp73_confirm"));
+        assert_eq!(row.analysis_reference_seq_id.as_deref(), Some("baseline"));
+        assert_eq!(row.analysis_status.as_deref(), Some("confirmed"));
+        assert_eq!(row.analysis_read_count, Some(1));
+        assert_eq!(row.analysis_trace_count, Some(0));
+        assert_eq!(row.created_by_op, confirmation_op_id);
+        assert!(row.analysis_target_count.unwrap_or(0) > 0);
+        assert!(row.analysis_variant_count.unwrap_or(0) > 0);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_expected"
+                    && to == "analysis:seq_confirm:tp73_confirm"
+                    && op_id == &confirmation_op_id)
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_baseline"
+                    && to == "analysis:seq_confirm:tp73_confirm"
+                    && op_id == &confirmation_op_id)
+        );
+    }
+
+    #[test]
     fn refresh_lineage_cache_includes_svg_export_analysis_nodes() {
         let mut app = GENtleApp::default();
         {
@@ -39142,6 +39598,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(
             GENtleApp::lineage_operation_symbol("Compute flexibility track: seq_id=a"),
             "FX"
+        );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Sequencing confirmation: expected=a"),
+            "SC"
         );
         assert_eq!(GENtleApp::lineage_operation_symbol("unknown op"), "U");
     }

@@ -103,6 +103,31 @@ impl GentleEngine {
         )
     }
 
+    pub(crate) fn sequencing_confirmation_reports_from_state(
+        state: &ProjectState,
+    ) -> Vec<SequencingConfirmationReport> {
+        let mut reports = Self::read_sequencing_confirmation_report_store_from_metadata(
+            state
+                .metadata
+                .get(SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY),
+        )
+        .reports
+        .into_values()
+        .collect::<Vec<_>>();
+        reports.sort_by(|left, right| {
+            left.expected_seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.expected_seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+        reports
+    }
+
     pub(super) fn write_sequencing_confirmation_report_store(
         &mut self,
         mut store: SequencingConfirmationReportStore,

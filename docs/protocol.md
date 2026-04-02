@@ -767,6 +767,11 @@ Sequencing-trace evidence notes:
     - `variants[]` rows with observed allele, evidence id, confidence summary,
       peak center, and classification:
       `expected_match|intended_edit_confirmed|reference_reversion|unexpected_difference|low_confidence_or_ambiguous|insufficient_evidence`
+  - persisted confirmation reports now project as lineage analysis artifacts in
+    both the GUI lineage workspace and shared `RenderLineageSvg` export:
+    nodes are keyed by `report_id`, attach to the expected construct plus
+    optional baseline/reference sequence, and reopen the sequencing-confirmation
+    specialist on that stored report in GUI adapters
 - `SuggestSequencingPrimers { expected_seq_id, primer_seq_ids[], confirmation_report_id?, min_3prime_anneal_bp, predicted_read_length_bp }`
   - non-mutating helper for sequencing-confirmation review and primer coverage
     planning
