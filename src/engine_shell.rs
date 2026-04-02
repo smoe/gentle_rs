@@ -1286,6 +1286,17 @@ pub enum ShellCommand {
         gap_open: i32,
         gap_extend: i32,
     },
+    SeqTraceImport {
+        path: String,
+        trace_id: Option<String>,
+        seq_id: Option<String>,
+    },
+    SeqTraceList {
+        seq_id: Option<String>,
+    },
+    SeqTraceShow {
+        trace_id: String,
+    },
     SeqConfirmRun {
         expected_seq_id: String,
         read_seq_ids: Vec<String>,
@@ -6157,6 +6168,34 @@ impl ShellCommand {
                 gap_open,
                 gap_extend,
             ),
+            Self::SeqTraceImport {
+                path,
+                trace_id,
+                seq_id,
+            } => format!(
+                "import sequencing trace '{}' (trace_id='{}', seq_id='{}')",
+                path,
+                trace_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+                seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
+            ),
+            Self::SeqTraceList { seq_id } => format!(
+                "list sequencing traces{}",
+                seq_id
+                    .as_deref()
+                    .map(|value| format!(" for '{}'", value))
+                    .unwrap_or_default()
+            ),
+            Self::SeqTraceShow { trace_id } => {
+                format!("show sequencing trace '{}'", trace_id)
+            }
             Self::SeqConfirmRun {
                 expected_seq_id,
                 read_seq_ids,
@@ -6593,6 +6632,7 @@ impl ShellCommand {
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
                 | Self::SplicingRefsDerive { .. }
+                | Self::SeqTraceImport { .. }
                 | Self::SeqConfirmRun { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
@@ -10479,6 +10519,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "transcripts" => parse_transcripts_command(tokens),
         "splicing-refs" | "splicing_refs" | "splicingrefs" => parse_splicing_refs_command(tokens),
         "align" => parse_align_command(tokens),
+        "seq-trace" | "seq_trace" | "seqtrace" => parse_seq_trace_command(tokens),
         "seq-confirm" | "seq_confirm" | "seqconfirm" => parse_seq_confirm_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
@@ -15906,6 +15947,64 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "result": op_result,
                     "alignment": alignment,
+                }),
+            }
+        }
+        ShellCommand::SeqTraceImport {
+            path,
+            trace_id,
+            seq_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportSequencingTrace {
+                    path: path.clone(),
+                    trace_id: trace_id.clone(),
+                    seq_id: seq_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let import_report = op_result.sequencing_trace_import_report.clone();
+            let trace_record = op_result.sequencing_trace_record.clone();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "import_report": import_report,
+                    "trace": trace_record,
+                }),
+            }
+        }
+        ShellCommand::SeqTraceList { seq_id } => {
+            let op_result = engine
+                .apply(Operation::ListSequencingTraces {
+                    seq_id: seq_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let traces = op_result
+                .sequencing_trace_summaries
+                .clone()
+                .unwrap_or_default();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_trace_list.v1",
+                    "trace_count": traces.len(),
+                    "traces": traces,
+                    "result": op_result,
+                }),
+            }
+        }
+        ShellCommand::SeqTraceShow { trace_id } => {
+            let op_result = engine
+                .apply(Operation::ShowSequencingTrace {
+                    trace_id: trace_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let trace = op_result.sequencing_trace_record.clone();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "trace": trace,
+                    "result": op_result,
                 }),
             }
         }

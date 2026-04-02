@@ -48,6 +48,13 @@ fn formula_test_sequence() -> DNAsequence {
     dna
 }
 
+fn sequencing_confirmation_fixture_path(name: &str) -> String {
+    format!(
+        "{}/test_files/fixtures/sequencing_confirmation/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
 fn sequencing_confirmation_junction_target(
     target_id: &str,
     start_0based: usize,
@@ -12349,6 +12356,122 @@ fn test_export_sequencing_confirmation_support_tsv_writes_target_rows() {
     assert!(text.contains("report_id\texpected_seq_id\toverall_status"));
     assert!(text.contains("construct_tsv\tconstruct\tconfirmed"));
     assert!(text.contains("junction_1"));
+}
+
+#[test]
+fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
+    let fixture = sequencing_confirmation_fixture_path("3100.ab1");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    let original_sequence_count = state.sequences.len();
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::ImportSequencingTrace {
+            path: fixture.clone(),
+            trace_id: Some("abi_trace".to_string()),
+            seq_id: Some("construct".to_string()),
+        })
+        .expect("import ABI trace");
+
+    assert_eq!(engine.state().sequences.len(), original_sequence_count);
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.changed_seq_ids.is_empty());
+    let import_report = result
+        .sequencing_trace_import_report
+        .expect("trace import report");
+    let record = result.sequencing_trace_record.expect("trace record");
+    assert_eq!(import_report.trace_id, "abi_trace");
+    assert_eq!(record.trace_id, "abi_trace");
+    assert_eq!(record.format, SequencingTraceFormat::AbiAb1);
+    assert_eq!(record.seq_id.as_deref(), Some("construct"));
+    assert!(!record.called_bases.is_empty());
+    assert_eq!(
+        import_report.called_base_count,
+        record.called_bases.len()
+    );
+    assert_eq!(
+        record.called_base_confidence_values.len(),
+        record.called_bases.len()
+    );
+    assert_eq!(record.peak_locations.len(), record.called_bases.len());
+    assert_eq!(record.channel_summaries.len(), 4);
+    assert!(record
+        .sample_name
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty()));
+
+    let listed = engine.list_sequencing_traces(Some("construct"));
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].trace_id, "abi_trace");
+    let shown = engine
+        .get_sequencing_trace("abi_trace")
+        .expect("stored trace");
+    assert_eq!(shown.called_bases, record.called_bases);
+}
+
+#[test]
+fn test_import_sequencing_trace_rejects_malformed_abi_fixture() {
+    let fixture = sequencing_confirmation_fixture_path("fake.ab1");
+    let mut engine = GentleEngine::default();
+    let err = engine
+        .apply(Operation::ImportSequencingTrace {
+            path: fixture,
+            trace_id: Some("bad_trace".to_string()),
+            seq_id: None,
+        })
+        .expect_err("malformed ABI should fail");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(
+        err.message.contains("Unsupported sequencing trace format")
+            || err.message.contains("ABIF"),
+        "unexpected error: {}",
+        err.message
+    );
+}
+
+#[test]
+fn test_list_and_show_sequencing_traces_use_persisted_store() {
+    let fixture = sequencing_confirmation_fixture_path("3100.ab1");
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::ImportSequencingTrace {
+            path: fixture.clone(),
+            trace_id: Some("abi_trace".to_string()),
+            seq_id: None,
+        })
+        .expect("import ABI trace");
+    engine
+        .apply(Operation::ImportSequencingTrace {
+            path: fixture,
+            trace_id: Some("abi_trace".to_string()),
+            seq_id: None,
+        })
+        .expect("repeat import ABI trace");
+
+    let list_result = engine
+        .apply(Operation::ListSequencingTraces { seq_id: None })
+        .expect("list sequencing traces");
+    let rows = list_result
+        .sequencing_trace_summaries
+        .expect("trace summary rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].trace_id, "abi_trace");
+
+    let show_result = engine
+        .apply(Operation::ShowSequencingTrace {
+            trace_id: "abi_trace".to_string(),
+        })
+        .expect("show sequencing trace");
+    let shown = show_result
+        .sequencing_trace_record
+        .expect("shown sequencing trace");
+    assert_eq!(shown.trace_id, "abi_trace");
+    assert_eq!(shown.format, SequencingTraceFormat::AbiAb1);
+    assert!(!shown.called_bases.is_empty());
 }
 
 #[test]

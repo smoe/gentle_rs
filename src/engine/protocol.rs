@@ -33,7 +33,9 @@ pub use gentle_protocol::{
     RnaReadTopHitPreview, RnaReadTransitionSupportRow, RnaSeedHashCatalogEntry,
     RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceFeatureQualifierFilter,
     SequenceFeatureQuery, SequenceFeatureQueryResult, SequenceFeatureQueryRow,
-    SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter, TfbsProgress,
+    SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
+    SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
+    SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
 };
 use serde::{Deserialize, Serialize};
 
@@ -397,6 +399,12 @@ pub struct OpResult {
     pub sequence_alignment: Option<SequenceAlignmentReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequencing_trace_import_report: Option<SequencingTraceImportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequencing_trace_record: Option<SequencingTraceRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequencing_trace_summaries: Option<Vec<SequencingTraceSummary>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
 }

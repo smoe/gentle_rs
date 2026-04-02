@@ -708,7 +708,7 @@ impl RnaReadAlignmentInspectionSortKey {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 /// Stable high-level error class for engine operation failures.
 pub enum ErrorCode {
     InvalidInput,
@@ -939,6 +939,112 @@ pub struct SequenceAlignmentReport {
     pub query_coverage_fraction: f64,
     pub target_coverage_fraction: f64,
     pub cigar: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Raw sequencing-trace file format supported by sequencing-evidence intake.
+pub enum SequencingTraceFormat {
+    #[default]
+    AbiAb1,
+    Scf,
+}
+
+impl SequencingTraceFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AbiAb1 => "abi_ab1",
+            Self::Scf => "scf",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One raw-channel availability summary for an imported sequencing trace.
+pub struct SequencingTraceChannelSummary {
+    pub channel: String,
+    pub trace_set: String,
+    pub point_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted raw sequencing-trace evidence record.
+///
+/// This record stores the called bases and the key per-base evidence arrays
+/// needed for later trace-aware confirmation without mutating project
+/// sequences.
+pub struct SequencingTraceRecord {
+    pub schema: String,
+    pub trace_id: String,
+    pub format: SequencingTraceFormat,
+    pub source_path: String,
+    pub imported_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_well: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_model: Option<String>,
+    pub called_bases: String,
+    #[serde(default)]
+    pub called_base_confidence_values: Vec<u8>,
+    #[serde(default)]
+    pub peak_locations: Vec<u32>,
+    #[serde(default)]
+    pub channel_summaries: Vec<SequencingTraceChannelSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact row used by adapters to list imported sequencing traces.
+pub struct SequencingTraceSummary {
+    pub trace_id: String,
+    pub format: SequencingTraceFormat,
+    pub source_path: String,
+    pub imported_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_name: Option<String>,
+    pub called_base_count: usize,
+    pub confidence_value_count: usize,
+    pub peak_location_count: usize,
+    pub channel_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Structured result emitted when one raw trace file is imported.
+pub struct SequencingTraceImportReport {
+    pub schema: String,
+    pub trace_id: String,
+    pub format: SequencingTraceFormat,
+    pub source_path: String,
+    pub imported_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_id: Option<SeqId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_name: Option<String>,
+    pub called_base_count: usize,
+    pub confidence_value_count: usize,
+    pub peak_location_count: usize,
+    pub channel_count: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

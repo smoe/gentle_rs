@@ -699,6 +699,9 @@ Current draft operations:
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
 - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
+- `ImportSequencingTrace { path, trace_id?, seq_id? }` (implemented baseline; imports one ABI/AB1 or SCF evidence file into the shared sequencing-trace store without mutating construct sequences)
+- `ListSequencingTraces { seq_id? }`
+- `ShowSequencingTrace { trace_id }`
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
 - `ListRnaReadReports { seq_id? }`
@@ -728,6 +731,23 @@ Current draft operations:
   - for helper genome IDs containing `pUC18`/`pUC19`, the same deterministic MCS fallback annotation behavior applies when an MCS feature is missing; non-unique motif matches are warned and skipped.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
+
+Sequencing-trace evidence notes:
+
+- raw traces are stored separately from `SequencingConfirmationReport`
+  payloads; importing a trace does not run confirmation and does not mutate any
+  sequence entry
+- `ImportSequencingTrace` currently auto-detects:
+  - ABIF/AB1 via `ABIF` magic bytes
+  - SCF via `.scf` magic bytes
+- stored `SequencingTraceRecord` payloads preserve:
+  - file-supplied called bases
+  - called-base confidence arrays when available
+  - peak locations when available
+  - compact per-channel trace-length summaries
+  - optional sample/run/machine metadata when present in the source file
+- future trace-aware confirmation should link a confirmation read row to one
+  imported trace record by evidence id rather than forking the report model
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,

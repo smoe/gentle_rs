@@ -272,12 +272,18 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
 
 Sequencing-confirmation capability status (called-read phase-1):
 
-- `gentle_cli`: supported via shared-shell/direct commands:
+- `gentle_cli`: supported via shared-shell commands plus the current GUI
+  specialist:
+  - `seq-trace import PATH [--trace-id ID] [--seq-id ID]`
+  - `seq-trace list [SEQ_ID]`
+  - `seq-trace show TRACE_ID`
   - `seq-confirm run EXPECTED_SEQ_ID --reads ID[,ID...]`
   - `seq-confirm list-reports [EXPECTED_SEQ_ID]`
   - `seq-confirm show-report REPORT_ID`
   - `seq-confirm export-report REPORT_ID OUTPUT.json`
   - `seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv`
+  raw-trace intake is backed by `ImportSequencingTrace`,
+  `ListSequencingTraces`, and `ShowSequencingTrace`.
   backed by `ConfirmConstructReads`, `ListSequencingConfirmationReports`,
   `ShowSequencingConfirmationReport`, `ExportSequencingConfirmationReport`, and
   `ExportSequencingConfirmationSupportTsv`.
@@ -291,8 +297,17 @@ Sequencing-confirmation capability status (called-read phase-1):
   - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
     and command palette `Sequencing Confirmation`, backed by the same
     `ConfirmConstructReads` / report-store path
+  - raw ABI/AB1/SCF intake now stores trace evidence separately from
+    confirmation reports:
+    - preserves file-supplied called bases
+    - preserves called-base confidence arrays when available
+    - preserves peak locations when available
+    - keeps one imported trace store that can be listed/shown without running
+      confirmation
   Not yet included in this phase:
-  - ABI/AB1/SCF raw-trace import
+  - trace-aware confirmation that links imported traces into
+    construct-confirmation verdicts
+  - GUI trace review / chromatogram inspection
   - lineage/artifact projection for confirmation reports
 - `gentle_js`: baseline support via `apply_operation` for the same operation
   family.

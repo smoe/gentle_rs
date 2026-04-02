@@ -2506,14 +2506,27 @@ Repeated multi-tool gaps to prioritize:
      - dedicated GUI specialist is now available through
        `Patterns -> Sequencing Confirmation...`, including persisted report
        review plus JSON/TSV export on top of the same engine report store
+     - raw ABI/AB1/SCF trace intake is now available through the shared
+       engine/shell/CLI path via a separate sequencing-trace evidence store:
+       `ImportSequencingTrace`, `ListSequencingTraces`, `ShowSequencingTrace`,
+       and shell routes `seq-trace import|list|show`
+     - raw-trace intake is intentionally non-mutating with respect to construct
+       sequences and remains separate from `SequencingConfirmationReport`
+       verdicts
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
+     - committed parser fixtures now include a tiny Biopython-derived ABI pack
+       (`3100.ab1`, `fake.ab1`); SCF parser coverage is deterministic but still
+       synthetic pending a provenance-safe public fixture
    - legacy `gentle-m` intake priority: do this before resurrecting broader
      legacy cloning conveniences because it most directly improves user trust
    - stage the work as:
      - called-sequence Sanger/amplicon confirmation first
      - ABI/AB1/SCF raw-trace import and inspection second
+       - shipped through engine/shell/CLI
      - trace-aware confirmation integration third
+       - still pending
+     - GUI trace review / chromatogram inspection remains the next follow-up
    - likely legacy code seeds:
      - `gentle-m` `src/ABItype.cpp`
      - `gentle-m` `src/SCFtype.cpp`

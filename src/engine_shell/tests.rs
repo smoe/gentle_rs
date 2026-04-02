@@ -59,6 +59,13 @@ fn primer3_fixture_path(name: &str) -> String {
     )
 }
 
+fn sequencing_confirmation_fixture_path(name: &str) -> String {
+    format!(
+        "{}/test_files/fixtures/sequencing_confirmation/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
 fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path::PathBuf {
     let install_dir = root.join(genome_id.to_ascii_lowercase());
     std::fs::create_dir_all(install_dir.join("blastdb")).expect("create install dir");
@@ -352,6 +359,99 @@ fn parse_seq_confirm_run_command() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_seq_trace_import_and_list_commands() {
+    let import = parse_shell_line(
+        "seq-trace import /tmp/demo.ab1 --trace-id abi_trace --seq-id construct",
+    )
+    .expect("parse seq-trace import");
+    match import {
+        ShellCommand::SeqTraceImport {
+            path,
+            trace_id,
+            seq_id,
+        } => {
+            assert_eq!(path, "/tmp/demo.ab1");
+            assert_eq!(trace_id.as_deref(), Some("abi_trace"));
+            assert_eq!(seq_id.as_deref(), Some("construct"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let list = parse_shell_line("seq-trace list construct").expect("parse seq-trace list");
+    match list {
+        ShellCommand::SeqTraceList { seq_id } => {
+            assert_eq!(seq_id.as_deref(), Some("construct"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let show = parse_shell_line("seq-trace show abi_trace").expect("parse seq-trace show");
+    match show {
+        ShellCommand::SeqTraceShow { trace_id } => {
+            assert_eq!(trace_id, "abi_trace");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_seq_trace_import_list_and_show_round_trip() {
+    let fixture = sequencing_confirmation_fixture_path("3100.ab1");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence("AAAACCGTAACCTTTT").expect("construct"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceImport {
+            path: fixture,
+            trace_id: Some("abi_trace".to_string()),
+            seq_id: Some("construct".to_string()),
+        },
+    )
+    .expect("execute seq-trace import");
+    assert!(imported.state_changed);
+    assert_eq!(
+        imported.output["import_report"]["trace_id"].as_str(),
+        Some("abi_trace")
+    );
+    assert_eq!(
+        imported.output["trace"]["format"].as_str(),
+        Some("abi_ab1")
+    );
+
+    let listed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceList {
+            seq_id: Some("construct".to_string()),
+        },
+    )
+    .expect("execute seq-trace list");
+    assert_eq!(listed.output["trace_count"].as_u64(), Some(1));
+    assert_eq!(
+        listed.output["traces"][0]["trace_id"].as_str(),
+        Some("abi_trace")
+    );
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceShow {
+            trace_id: "abi_trace".to_string(),
+        },
+    )
+    .expect("execute seq-trace show");
+    assert_eq!(shown.output["trace"]["trace_id"].as_str(), Some("abi_trace"));
+    assert!(
+        shown.output["trace"]["called_bases"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
 }
 
 #[test]
