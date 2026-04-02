@@ -3106,7 +3106,7 @@ pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand
         "suggest" => {
             if tokens.len() < 4 {
                 return Err(
-                    "seq-primer suggest requires EXPECTED_SEQ_ID plus at least one --primers/--primer value [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
+                    "seq-primer suggest requires EXPECTED_SEQ_ID plus optional --primers/--primer values and/or --confirmation-report REPORT_ID [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
                         .to_string(),
                 );
             }
@@ -3190,9 +3190,9 @@ pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand
                     }
                 }
             }
-            if primer_seq_ids.is_empty() {
+            if primer_seq_ids.is_empty() && confirmation_report_id.is_none() {
                 return Err(
-                    "seq-primer suggest requires at least one primer via --primers/--primer"
+                    "seq-primer suggest requires at least one primer via --primers/--primer or a saved report via --confirmation-report"
                         .to_string(),
                 );
             }

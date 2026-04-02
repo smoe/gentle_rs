@@ -7598,11 +7598,12 @@ impl GentleEngine {
                 )?;
                 result.sequencing_primer_overlay_report = Some(report.clone());
                 result.messages.push(format!(
-                    "Sequencing-primer overlay report for '{}' (primers={}, suggestions={}, guidance_rows={}, min_3prime_anneal_bp={}, predicted_read_length_bp={})",
+                    "Sequencing-primer overlay report for '{}' (primers={}, suggestions={}, guidance_rows={}, proposal_rows={}, min_3prime_anneal_bp={}, predicted_read_length_bp={})",
                     report.expected_seq_id,
                     report.primer_seq_ids.len(),
                     report.suggestion_count,
                     report.problem_guidance_count,
+                    report.proposal_count,
                     report.min_3prime_anneal_bp,
                     report.predicted_read_length_bp
                 ));

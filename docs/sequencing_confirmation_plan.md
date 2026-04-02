@@ -24,6 +24,8 @@ Current implementation snapshot:
     path plus the GUI specialist
   - unresolved-locus guidance rows now rank the best existing primer hit for
     each non-confirmed target or problem variant
+  - saved-report driven fresh-primer proposals can now be emitted through the
+    same `SuggestSequencingPrimers` contract when no good existing hit exists
 - still pending from this plan:
   - lineage/artifact projection for confirmation reports
 

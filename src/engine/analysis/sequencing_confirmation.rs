@@ -67,6 +67,18 @@ struct SequencingConfirmationEvidenceInput {
     peak_locations: Option<Vec<u32>>,
 }
 
+#[derive(Debug, Clone)]
+struct SequencingPrimerProposalCandidate {
+    orientation: SequencingPrimerOrientation,
+    primer: PrimerDesignPrimerRecord,
+    anneal_sequence: String,
+    three_prime_position_0based: usize,
+    predicted_read_span_start_0based: usize,
+    predicted_read_span_end_0based_exclusive: usize,
+    three_prime_distance_bp: usize,
+    score: f64,
+}
+
 impl GentleEngine {
     pub(super) fn read_sequencing_confirmation_report_store_from_metadata(
         value: Option<&serde_json::Value>,
@@ -507,6 +519,271 @@ impl GentleEngine {
         }
     }
 
+    fn sequencing_primer_proposal_distance_window(
+        predicted_read_length_bp: usize,
+    ) -> (usize, usize, usize) {
+        let min_distance_bp = predicted_read_length_bp.saturating_sub(1).min(40);
+        let max_distance_bp = predicted_read_length_bp
+            .saturating_sub(1)
+            .min(500)
+            .max(min_distance_bp);
+        let target_distance_bp = 120usize.min(max_distance_bp).max(min_distance_bp);
+        (min_distance_bp, max_distance_bp, target_distance_bp)
+    }
+
+    fn sequencing_primer_guidance_is_good_enough(
+        row: &SequencingPrimerProblemGuidanceRow,
+        predicted_read_length_bp: usize,
+    ) -> bool {
+        let (min_distance_bp, max_distance_bp, _) =
+            Self::sequencing_primer_proposal_distance_window(predicted_read_length_bp);
+        matches!(
+            (
+                row.recommended_primer_seq_id.as_deref(),
+                row.recommended_in_read_direction,
+                row.recommended_three_prime_distance_bp,
+            ),
+            (Some(_), Some(true), Some(distance_bp))
+                if distance_bp >= min_distance_bp && distance_bp <= max_distance_bp
+        )
+    }
+
+    fn sequencing_primer_proposal_score(
+        primer: &PrimerDesignPrimerRecord,
+        three_prime_distance_bp: usize,
+        target_distance_bp: usize,
+    ) -> f64 {
+        let distance_penalty = three_prime_distance_bp.abs_diff(target_distance_bp) as f64 * 2.0;
+        let tm_penalty = (primer.tm_c - 60.0).abs() * 12.0;
+        let gc_penalty = (primer.gc_fraction - 0.5).abs() * 80.0;
+        let length_penalty = Self::preferred_primer_length_penalty(primer.anneal_length_bp) * 6.0;
+        let hit_penalty = primer.anneal_hits.saturating_sub(1) as f64 * 25.0;
+        let homopolymer_penalty = if primer.longest_homopolymer_run_bp
+            > PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+        {
+            (primer.longest_homopolymer_run_bp - PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP) as f64
+                * 10.0
+        } else {
+            0.0
+        };
+        let self_complementary_penalty = if primer.self_complementary_run_bp
+            > PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
+        {
+            (primer.self_complementary_run_bp - PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP)
+                as f64
+                * 12.0
+        } else {
+            0.0
+        };
+        let gc_clamp_bonus = if primer.three_prime_gc_clamp {
+            8.0
+        } else {
+            -8.0
+        };
+        1000.0
+            - distance_penalty
+            - tm_penalty
+            - gc_penalty
+            - length_penalty
+            - hit_penalty
+            - homopolymer_penalty
+            - self_complementary_penalty
+            + gc_clamp_bonus
+    }
+
+    fn build_sequencing_primer_proposal_candidates(
+        expected_text: &str,
+        locus_start_0based: usize,
+        locus_end_0based_exclusive: usize,
+        predicted_read_length_bp: usize,
+    ) -> Vec<SequencingPrimerProposalCandidate> {
+        let template = expected_text.as_bytes();
+        if template.is_empty() || predicted_read_length_bp == 0 {
+            return vec![];
+        }
+        let locus_center_0based =
+            Self::sequencing_primer_problem_center(locus_start_0based, locus_end_0based_exclusive)
+                .min(template.len().saturating_sub(1));
+        let default_side = PrimerDesignSideConstraint::default();
+        let (min_distance_bp, max_distance_bp, target_distance_bp) =
+            Self::sequencing_primer_proposal_distance_window(predicted_read_length_bp);
+        let mut ret = Vec::new();
+
+        for length_bp in default_side.min_length..=default_side.max_length {
+            if length_bp > template.len() {
+                break;
+            }
+            for distance_bp in min_distance_bp..=max_distance_bp {
+                let Some(anneal_end_0based_exclusive) = locus_center_0based
+                    .checked_add(1)
+                    .and_then(|value| value.checked_sub(distance_bp))
+                else {
+                    continue;
+                };
+                if anneal_end_0based_exclusive == 0 || anneal_end_0based_exclusive > template.len()
+                {
+                    continue;
+                }
+                let Some(anneal_start_0based) = anneal_end_0based_exclusive.checked_sub(length_bp)
+                else {
+                    continue;
+                };
+                let binding_window = &template[anneal_start_0based..anneal_end_0based_exclusive];
+                let anneal_hits = Self::find_all_subsequences(template, binding_window).len();
+                if anneal_hits != 1 {
+                    continue;
+                }
+                let anneal_sequence =
+                    String::from_utf8(binding_window.to_vec()).unwrap_or_default();
+                let tm_c = Self::estimate_primer_tm_c(binding_window);
+                let gc_fraction = Self::sequence_gc_fraction(binding_window).unwrap_or(0.0);
+                if gc_fraction < default_side.min_gc_fraction
+                    || gc_fraction > default_side.max_gc_fraction
+                    || tm_c < default_side.min_tm_c
+                    || tm_c > default_side.max_tm_c
+                {
+                    continue;
+                }
+                let predicted_read_span_start_0based = anneal_start_0based;
+                let predicted_read_span_end_0based_exclusive =
+                    (anneal_start_0based + predicted_read_length_bp).min(template.len());
+                if locus_center_0based < predicted_read_span_start_0based
+                    || locus_center_0based >= predicted_read_span_end_0based_exclusive
+                {
+                    continue;
+                }
+                let primer = Self::annotate_primer_record_heuristics(
+                    PrimerDesignPrimerRecord {
+                        sequence: anneal_sequence.clone(),
+                        start_0based: anneal_start_0based,
+                        end_0based_exclusive: anneal_end_0based_exclusive,
+                        tm_c,
+                        gc_fraction,
+                        anneal_hits,
+                        ..PrimerDesignPrimerRecord::default()
+                    },
+                    length_bp,
+                );
+                let score = Self::sequencing_primer_proposal_score(
+                    &primer,
+                    distance_bp,
+                    target_distance_bp,
+                );
+                ret.push(SequencingPrimerProposalCandidate {
+                    orientation: SequencingPrimerOrientation::ForwardRead,
+                    primer,
+                    anneal_sequence,
+                    three_prime_position_0based: anneal_end_0based_exclusive.saturating_sub(1),
+                    predicted_read_span_start_0based,
+                    predicted_read_span_end_0based_exclusive,
+                    three_prime_distance_bp: distance_bp,
+                    score,
+                });
+            }
+
+            for distance_bp in min_distance_bp..=max_distance_bp {
+                let anneal_start_0based = locus_center_0based.saturating_add(distance_bp);
+                let Some(anneal_end_0based_exclusive) = anneal_start_0based.checked_add(length_bp)
+                else {
+                    continue;
+                };
+                if anneal_end_0based_exclusive > template.len() {
+                    continue;
+                }
+                let binding_window = &template[anneal_start_0based..anneal_end_0based_exclusive];
+                let anneal_hits = Self::find_all_subsequences(template, binding_window).len();
+                if anneal_hits != 1 {
+                    continue;
+                }
+                let anneal_bytes = Self::reverse_complement_bytes(binding_window);
+                let anneal_sequence = String::from_utf8(anneal_bytes).unwrap_or_default();
+                let tm_c = Self::estimate_primer_tm_c(anneal_sequence.as_bytes());
+                let gc_fraction =
+                    Self::sequence_gc_fraction(anneal_sequence.as_bytes()).unwrap_or(0.0);
+                if gc_fraction < default_side.min_gc_fraction
+                    || gc_fraction > default_side.max_gc_fraction
+                    || tm_c < default_side.min_tm_c
+                    || tm_c > default_side.max_tm_c
+                {
+                    continue;
+                }
+                let predicted_read_span_end_0based_exclusive = anneal_end_0based_exclusive;
+                let predicted_read_span_start_0based =
+                    anneal_end_0based_exclusive.saturating_sub(predicted_read_length_bp);
+                if locus_center_0based < predicted_read_span_start_0based
+                    || locus_center_0based >= predicted_read_span_end_0based_exclusive
+                {
+                    continue;
+                }
+                let primer = Self::annotate_primer_record_heuristics(
+                    PrimerDesignPrimerRecord {
+                        sequence: anneal_sequence.clone(),
+                        start_0based: anneal_start_0based,
+                        end_0based_exclusive: anneal_end_0based_exclusive,
+                        tm_c,
+                        gc_fraction,
+                        anneal_hits,
+                        ..PrimerDesignPrimerRecord::default()
+                    },
+                    length_bp,
+                );
+                let score = Self::sequencing_primer_proposal_score(
+                    &primer,
+                    distance_bp,
+                    target_distance_bp,
+                );
+                ret.push(SequencingPrimerProposalCandidate {
+                    orientation: SequencingPrimerOrientation::ReverseRead,
+                    primer,
+                    anneal_sequence,
+                    three_prime_position_0based: anneal_start_0based,
+                    predicted_read_span_start_0based,
+                    predicted_read_span_end_0based_exclusive,
+                    three_prime_distance_bp: distance_bp,
+                    score,
+                });
+            }
+        }
+
+        ret.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then(
+                    left.three_prime_distance_bp
+                        .cmp(&right.three_prime_distance_bp),
+                )
+                .then(left.orientation.as_str().cmp(right.orientation.as_str()))
+                .then(left.primer.start_0based.cmp(&right.primer.start_0based))
+                .then(left.primer.sequence.cmp(&right.primer.sequence))
+        });
+        ret.dedup_by(|left, right| {
+            left.orientation == right.orientation
+                && left.primer.start_0based == right.primer.start_0based
+                && left.primer.end_0based_exclusive == right.primer.end_0based_exclusive
+                && left.primer.sequence == right.primer.sequence
+        });
+        ret
+    }
+
+    fn sequencing_primer_proposal_reason(
+        problem_summary: &str,
+        replaced_existing_primer_seq_id: Option<&str>,
+        candidate_count: usize,
+        three_prime_distance_bp: usize,
+    ) -> String {
+        match replaced_existing_primer_seq_id {
+            Some(existing) => format!(
+                "Existing primer '{}' covered this {} locus but not within the preferred sequencing window, so the best of {candidate_count} fresh proposals was chosen {} bp from the new primer 3' end.",
+                existing, problem_summary, three_prime_distance_bp
+            ),
+            None => format!(
+                "No existing primer covered this {} locus, so the best of {candidate_count} fresh proposals was chosen {} bp from the new primer 3' end.",
+                problem_summary, three_prime_distance_bp
+            ),
+        }
+    }
+
     pub fn suggest_sequencing_primers(
         &self,
         expected_seq_id: &str,
@@ -515,11 +792,12 @@ impl GentleEngine {
         min_3prime_anneal_bp: usize,
         predicted_read_length_bp: usize,
     ) -> Result<SequencingPrimerOverlayReport, EngineError> {
-        if primer_seq_ids.is_empty() {
+        if primer_seq_ids.is_empty() && confirmation_report_id.is_none() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "SuggestSequencingPrimers requires at least one primer sequence id"
-                    .to_string(),
+                message:
+                    "SuggestSequencingPrimers requires at least one primer sequence id or a saved sequencing-confirmation report"
+                        .to_string(),
             });
         }
         if min_3prime_anneal_bp == 0 {
@@ -751,6 +1029,7 @@ impl GentleEngine {
                 )
         });
         let mut problem_guidance = Vec::new();
+        let mut proposals = Vec::new();
         if let Some(report) = confirmation_report.as_ref() {
             for target in &report.targets {
                 if target.status == SequencingConfirmationStatus::Confirmed {
@@ -861,6 +1140,50 @@ impl GentleEngine {
                         ),
                     }
                 };
+                let needs_proposal = !Self::sequencing_primer_guidance_is_good_enough(
+                    &recommendation,
+                    predicted_read_length_bp,
+                );
+                if needs_proposal {
+                    let proposal_candidates = Self::build_sequencing_primer_proposal_candidates(
+                        &expected_text,
+                        target.start_0based,
+                        target.end_0based_exclusive,
+                        predicted_read_length_bp,
+                    );
+                    if let Some(candidate) = proposal_candidates.first() {
+                        proposals.push(SequencingPrimerProposalRow {
+                            proposal_id: format!("{}_proposal", target.target_id),
+                            problem_id: target.target_id.clone(),
+                            problem_kind: SequencingPrimerProblemKind::Target,
+                            problem_label: target.label.clone(),
+                            problem_summary: target.status.as_str().to_string(),
+                            orientation: candidate.orientation,
+                            primer_sequence: candidate.primer.sequence.clone(),
+                            anneal_sequence: candidate.anneal_sequence.clone(),
+                            anneal_start_0based: candidate.primer.start_0based,
+                            anneal_end_0based_exclusive: candidate.primer.end_0based_exclusive,
+                            three_prime_position_0based: candidate.three_prime_position_0based,
+                            predicted_read_span_start_0based: candidate
+                                .predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive: candidate
+                                .predicted_read_span_end_0based_exclusive,
+                            three_prime_distance_bp: candidate.three_prime_distance_bp,
+                            tm_c: candidate.primer.tm_c,
+                            gc_fraction: candidate.primer.gc_fraction,
+                            anneal_hits: candidate.primer.anneal_hits,
+                            three_prime_gc_clamp: candidate.primer.three_prime_gc_clamp,
+                            longest_homopolymer_run_bp: candidate.primer.longest_homopolymer_run_bp,
+                            self_complementary_run_bp: candidate.primer.self_complementary_run_bp,
+                            reason: Self::sequencing_primer_proposal_reason(
+                                target.status.as_str(),
+                                recommendation.recommended_primer_seq_id.as_deref(),
+                                proposal_candidates.len(),
+                                candidate.three_prime_distance_bp,
+                            ),
+                        });
+                    }
+                }
                 problem_guidance.push(recommendation);
             }
             for variant in &report.variants {
@@ -975,6 +1298,50 @@ impl GentleEngine {
                         ),
                     }
                 };
+                let needs_proposal = !Self::sequencing_primer_guidance_is_good_enough(
+                    &recommendation,
+                    predicted_read_length_bp,
+                );
+                if needs_proposal {
+                    let proposal_candidates = Self::build_sequencing_primer_proposal_candidates(
+                        &expected_text,
+                        variant.start_0based,
+                        variant.end_0based_exclusive,
+                        predicted_read_length_bp,
+                    );
+                    if let Some(candidate) = proposal_candidates.first() {
+                        proposals.push(SequencingPrimerProposalRow {
+                            proposal_id: format!("{}_proposal", variant.variant_id),
+                            problem_id: variant.variant_id.clone(),
+                            problem_kind: SequencingPrimerProblemKind::Variant,
+                            problem_label: variant.label.clone(),
+                            problem_summary: variant.classification.as_str().to_string(),
+                            orientation: candidate.orientation,
+                            primer_sequence: candidate.primer.sequence.clone(),
+                            anneal_sequence: candidate.anneal_sequence.clone(),
+                            anneal_start_0based: candidate.primer.start_0based,
+                            anneal_end_0based_exclusive: candidate.primer.end_0based_exclusive,
+                            three_prime_position_0based: candidate.three_prime_position_0based,
+                            predicted_read_span_start_0based: candidate
+                                .predicted_read_span_start_0based,
+                            predicted_read_span_end_0based_exclusive: candidate
+                                .predicted_read_span_end_0based_exclusive,
+                            three_prime_distance_bp: candidate.three_prime_distance_bp,
+                            tm_c: candidate.primer.tm_c,
+                            gc_fraction: candidate.primer.gc_fraction,
+                            anneal_hits: candidate.primer.anneal_hits,
+                            three_prime_gc_clamp: candidate.primer.three_prime_gc_clamp,
+                            longest_homopolymer_run_bp: candidate.primer.longest_homopolymer_run_bp,
+                            self_complementary_run_bp: candidate.primer.self_complementary_run_bp,
+                            reason: Self::sequencing_primer_proposal_reason(
+                                variant.classification.as_str(),
+                                recommendation.recommended_primer_seq_id.as_deref(),
+                                proposal_candidates.len(),
+                                candidate.three_prime_distance_bp,
+                            ),
+                        });
+                    }
+                }
                 problem_guidance.push(recommendation);
             }
         }
@@ -994,6 +1361,8 @@ impl GentleEngine {
             suggestions,
             problem_guidance_count: problem_guidance.len(),
             problem_guidance,
+            proposal_count: proposals.len(),
+            proposals,
         })
     }
 

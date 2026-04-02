@@ -767,10 +767,15 @@ Sequencing-trace evidence notes:
 - `SuggestSequencingPrimers { expected_seq_id, primer_seq_ids[], confirmation_report_id?, min_3prime_anneal_bp, predicted_read_length_bp }`
   - non-mutating helper for sequencing-confirmation review and primer coverage
     planning
+  - `primer_seq_ids[]` may be empty when `confirmation_report_id` is present:
+    that mode proposes fresh sequencing primers for unresolved loci using the
+    expected construct plus the saved report context
   - returns `SequencingPrimerOverlayReport` with per-hit orientation, anneal
     span, predicted read span, optional coverage annotations against a
-    persisted sequencing-confirmation report, and per-problem guidance rows
-    naming the best existing primer hit for unresolved targets or variant loci
+    persisted sequencing-confirmation report, per-problem guidance rows naming
+    the best existing primer hit for unresolved targets or variant loci, and
+    `proposals[]` rows for fresh primer candidates when no good existing hit is
+    available
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,

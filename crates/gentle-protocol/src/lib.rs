@@ -1159,6 +1159,33 @@ pub struct SequencingPrimerProblemGuidanceRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One fresh sequencing-primer proposal for an unresolved confirmation locus.
+pub struct SequencingPrimerProposalRow {
+    pub proposal_id: String,
+    pub problem_id: String,
+    pub problem_kind: SequencingPrimerProblemKind,
+    pub problem_label: String,
+    pub problem_summary: String,
+    pub orientation: SequencingPrimerOrientation,
+    pub primer_sequence: String,
+    pub anneal_sequence: String,
+    pub anneal_start_0based: usize,
+    pub anneal_end_0based_exclusive: usize,
+    pub three_prime_position_0based: usize,
+    pub predicted_read_span_start_0based: usize,
+    pub predicted_read_span_end_0based_exclusive: usize,
+    pub three_prime_distance_bp: usize,
+    pub tm_c: f64,
+    pub gc_fraction: f64,
+    pub anneal_hits: usize,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Transient machine-readable report for sequencing-primer coverage hints.
 pub struct SequencingPrimerOverlayReport {
     pub schema: String,
@@ -1176,6 +1203,10 @@ pub struct SequencingPrimerOverlayReport {
     pub problem_guidance_count: usize,
     #[serde(default)]
     pub problem_guidance: Vec<SequencingPrimerProblemGuidanceRow>,
+    #[serde(default)]
+    pub proposal_count: usize,
+    #[serde(default)]
+    pub proposals: Vec<SequencingPrimerProposalRow>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

@@ -13381,6 +13381,177 @@ fn test_suggest_sequencing_primers_marks_unresolved_target_without_covering_prim
 }
 
 #[test]
+fn test_suggest_sequencing_primers_report_only_mode_proposes_fresh_primer_for_unresolved_target() {
+    let mut state = ProjectState::default();
+    let construct_text = [
+        "ACGTTGCAAGTCCTAGTGAC",
+        "TTACCGGATGCTACGATCGA",
+        "GCTTACAGGATCCGTTAGCA",
+        "CGATTCGGAACCTGACTTGA",
+        "TGCAGATCCGTACGTTACGA",
+        "AGTCGATGGCATTCAGTGCA",
+        "CAGTTCGACGGTATGCACTA",
+        "TACGAGCTTGACCGTATGGA",
+        "GATTCAGCGTACCTGATGCA",
+        "CTAGTGACCGTTAGCATGGC",
+    ]
+    .concat();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence(&construct_text).expect("construct"),
+    );
+    state.sequences.insert(
+        "read_early".to_string(),
+        DNAsequence::from_sequence("ACGTTGCAAGTC").expect("read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_early".to_string()],
+            trace_ids: vec![],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "gap_target".to_string(),
+                label: "Gap locus".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 118,
+                end_0based_exclusive: 122,
+                junction_left_end_0based: Some(120),
+                expected_bases: None,
+                baseline_bases: None,
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("report_only_gap".to_string()),
+        })
+        .expect("persist unresolved report");
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec![],
+            confirmation_report_id: Some("report_only_gap".to_string()),
+            min_3prime_anneal_bp: 6,
+            predicted_read_length_bp: 80,
+        })
+        .expect("suggest report-only fresh primers")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(report.suggestion_count, 0);
+    assert_eq!(report.problem_guidance_count, 1);
+    assert_eq!(report.problem_guidance[0].recommended_primer_seq_id, None);
+    assert_eq!(report.proposal_count, 1);
+    assert_eq!(report.proposals[0].problem_id, "gap_target");
+    assert_eq!(
+        report.proposals[0].problem_kind,
+        SequencingPrimerProblemKind::Target
+    );
+    assert_eq!(report.proposals[0].anneal_hits, 1);
+    assert!(
+        report.proposals[0]
+            .reason
+            .contains("No existing primer covered")
+    );
+}
+
+#[test]
+fn test_suggest_sequencing_primers_adds_fresh_proposal_when_best_existing_hit_is_outside_window() {
+    let mut state = ProjectState::default();
+    let construct_text = [
+        "ACGTTGCAAGTCCTAGTGAC",
+        "TTACCGGATGCTACGATCGA",
+        "GCTTACAGGATCCGTTAGCA",
+        "CGATTCGGAACCTGACTTGA",
+        "TGCAGATCCGTACGTTACGA",
+        "AGTCGATGGCATTCAGTGCA",
+        "CAGTTCGACGGTATGCACTA",
+        "TACGAGCTTGACCGTATGGA",
+        "GATTCAGCGTACCTGATGCA",
+        "CTAGTGACCGTTAGCATGGC",
+    ]
+    .concat();
+    let primer_near = construct_text[101..110].to_string();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence(&construct_text).expect("construct"),
+    );
+    state.sequences.insert(
+        "read_early".to_string(),
+        DNAsequence::from_sequence("ACGTTGCAAGTC").expect("read"),
+    );
+    state.sequences.insert(
+        "primer_near".to_string(),
+        DNAsequence::from_sequence(&primer_near).expect("primer"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ConfirmConstructReads {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_early".to_string()],
+            trace_ids: vec![],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "gap_target".to_string(),
+                label: "Gap locus".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 118,
+                end_0based_exclusive: 122,
+                junction_left_end_0based: Some(120),
+                expected_bases: None,
+                baseline_bases: None,
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("window_gap".to_string()),
+        })
+        .expect("persist unresolved report");
+
+    let report = engine
+        .apply(Operation::SuggestSequencingPrimers {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec!["primer_near".to_string()],
+            confirmation_report_id: Some("window_gap".to_string()),
+            min_3prime_anneal_bp: 6,
+            predicted_read_length_bp: 80,
+        })
+        .expect("suggest primers with fresh fallback")
+        .sequencing_primer_overlay_report
+        .expect("overlay report");
+
+    assert_eq!(
+        report.problem_guidance[0]
+            .recommended_primer_seq_id
+            .as_deref(),
+        Some("primer_near")
+    );
+    assert_eq!(report.proposal_count, 1);
+    assert_eq!(report.proposals[0].problem_id, "gap_target");
+    assert!(
+        report.proposals[0]
+            .reason
+            .contains("Existing primer 'primer_near'")
+    );
+}
+
+#[test]
 fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
     let td = tempdir().expect("tempdir");
     let fasta_gz = td.path().join("reads.fa.gz");

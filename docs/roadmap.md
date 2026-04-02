@@ -2593,11 +2593,14 @@ Repeated multi-tool gaps to prioritize:
          expected construct
        - shell/CLI route `seq-primer suggest ...` exposes the same overlay
          report without adding a second logic path
-       - GUI specialist can suggest overlays from already-loaded primer
-         sequence ids and annotate coverage against the selected saved report
-       - unresolved targets and problem-variant loci now receive shared
-         recommendation rows naming the best existing primer hit to clarify
-         them next
+     - GUI specialist can suggest overlays from already-loaded primer
+        sequence ids and annotate coverage against the selected saved report
+      - unresolved targets and problem-variant loci now receive shared
+        recommendation rows naming the best existing primer hit to clarify
+        them next
+      - the same shared report can now emit fresh primer proposals when no
+        primer ids are supplied or when the best existing hit still sits
+        outside the preferred sequencing window
      - public benchmark shortlist/provenance note now lives at
        `test_files/fixtures/sequencing_confirmation/README.md`
      - committed parser fixtures now include a tiny Biopython-derived ABI pack

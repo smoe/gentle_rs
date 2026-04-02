@@ -479,6 +479,30 @@ fn parse_seq_primer_suggest_command() {
 }
 
 #[test]
+fn parse_seq_primer_suggest_command_allows_report_only_mode() {
+    let cmd = parse_shell_line(
+        "seq-primer suggest construct --confirmation-report construct_report --min-3prime-anneal-bp 20 --predicted-read-length-bp 650",
+    )
+    .expect("parse report-only seq-primer suggest");
+    match cmd {
+        ShellCommand::SeqPrimerSuggest {
+            expected_seq_id,
+            primer_seq_ids,
+            confirmation_report_id,
+            min_3prime_anneal_bp,
+            predicted_read_length_bp,
+        } => {
+            assert_eq!(expected_seq_id, "construct");
+            assert!(primer_seq_ids.is_empty());
+            assert_eq!(confirmation_report_id.as_deref(), Some("construct_report"));
+            assert_eq!(min_3prime_anneal_bp, 20);
+            assert_eq!(predicted_read_length_bp, 650);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_seq_trace_import_list_and_show_round_trip() {
     let fixture = sequencing_confirmation_fixture_path("3100.ab1");
     let mut state = ProjectState::default();
@@ -905,6 +929,88 @@ fn execute_seq_primer_suggest_reports_guidance_for_unresolved_target() {
     assert_eq!(
         run.output["report"]["problem_guidance"][0]["candidate_count"].as_u64(),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_seq_primer_suggest_report_only_mode_returns_fresh_proposals() {
+    let mut state = ProjectState::default();
+    let construct_text = [
+        "ACGTTGCAAGTCCTAGTGAC",
+        "TTACCGGATGCTACGATCGA",
+        "GCTTACAGGATCCGTTAGCA",
+        "CGATTCGGAACCTGACTTGA",
+        "TGCAGATCCGTACGTTACGA",
+        "AGTCGATGGCATTCAGTGCA",
+        "CAGTTCGACGGTATGCACTA",
+        "TACGAGCTTGACCGTATGGA",
+        "GATTCAGCGTACCTGATGCA",
+        "CTAGTGACCGTTAGCATGGC",
+    ]
+    .concat();
+    state.sequences.insert(
+        "construct".to_string(),
+        DNAsequence::from_sequence(&construct_text).expect("construct"),
+    );
+    state.sequences.insert(
+        "read_early".to_string(),
+        DNAsequence::from_sequence("ACGTTGCAAGTC").expect("read"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqConfirmRun {
+            expected_seq_id: "construct".to_string(),
+            baseline_seq_id: None,
+            read_seq_ids: vec!["read_early".to_string()],
+            trace_ids: vec![],
+            targets: vec![SequencingConfirmationTargetSpec {
+                target_id: "gap_target".to_string(),
+                label: "Gap locus".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 118,
+                end_0based_exclusive: 122,
+                junction_left_end_0based: Some(120),
+                expected_bases: None,
+                baseline_bases: None,
+                required: true,
+            }],
+            alignment_mode: PairwiseAlignmentMode::Local,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+            min_identity_fraction: 0.80,
+            min_target_coverage_fraction: 1.0,
+            allow_reverse_complement: true,
+            report_id: Some("report_only_gap".to_string()),
+        },
+    )
+    .expect("persist unresolved report");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqPrimerSuggest {
+            expected_seq_id: "construct".to_string(),
+            primer_seq_ids: vec![],
+            confirmation_report_id: Some("report_only_gap".to_string()),
+            min_3prime_anneal_bp: 6,
+            predicted_read_length_bp: 80,
+        },
+    )
+    .expect("execute report-only seq-primer suggest");
+
+    assert_eq!(run.output["suggestion_count"].as_u64(), Some(0));
+    assert_eq!(run.output["proposal_count"].as_u64(), Some(1));
+    assert_eq!(
+        run.output["report"]["proposals"][0]["problem_id"].as_str(),
+        Some("gap_target")
+    );
+    assert!(
+        run.output["report"]["proposals"][0]["reason"]
+            .as_str()
+            .is_some_and(|value| value.contains("No existing primer covered"))
     );
 }
 

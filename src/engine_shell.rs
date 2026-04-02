@@ -16183,6 +16183,7 @@ pub fn execute_shell_command_with_options(
                     "result": op_result,
                     "report": report,
                     "suggestion_count": report.as_ref().map(|value| value.suggestion_count).unwrap_or(0),
+                    "proposal_count": report.as_ref().map(|value| value.proposal_count).unwrap_or(0),
                 }),
             }
         }

@@ -1229,9 +1229,13 @@ Patterns menu:
       construct
     - optionally annotate which saved-report targets or variant loci each
       primer-derived span would cover
+    - leave primer ids empty to get report-driven fresh primer proposals for
+      unresolved loci when you only have the saved confirmation report
     - unresolved targets and variant loci now get a `Recommended Next Primers`
       table that picks the best existing primer hit by 3' distance and coverage
       of additional unresolved loci
+    - a `Proposed New Primers` table now suggests fresh primers when no
+      existing hit is good enough for the preferred sequencing window
   - selection convenience:
     - the active sequence selection can append its `start`, `midpoint`, or
       `end` as explicit junction breakpoints

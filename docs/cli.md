@@ -282,7 +282,7 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
   - `seq-confirm show-report REPORT_ID`
   - `seq-confirm export-report REPORT_ID OUTPUT.json`
   - `seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv`
-  - `seq-primer suggest EXPECTED_SEQ_ID --primers ID[,ID...] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]`
+  - `seq-primer suggest EXPECTED_SEQ_ID [--primers ID[,ID...]] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]`
   raw-trace intake is backed by `ImportSequencingTrace`,
   `ListSequencingTraces`, and `ShowSequencingTrace`.
   backed by `ConfirmConstructReads`, `ListSequencingConfirmationReports`,
@@ -318,6 +318,14 @@ Sequencing-confirmation capability status (called-read plus trace-aware engine b
     - `seq-confirm show-report` now exposes the persisted `baseline_seq_id`
       plus per-variant rows for expected edits inferred from the
       baseline-vs-expected diff
+  - sequencing-primer suggestion now has two modes through the same
+    `SuggestSequencingPrimers` operation:
+    - overlay existing primer ids onto the expected construct
+    - or, with only `--confirmation-report`, emit fresh primer proposals for
+      unresolved loci that still lack a good existing hit
+    - when existing primer hits do exist but sit outside the preferred
+      sequencing window, the report now keeps both the best existing hit and
+      the top fresh proposal
   - GUI parity is now available through `Patterns -> Sequencing Confirmation...`
     and command palette `Sequencing Confirmation`, backed by the same
     `ConfirmConstructReads` / report-store path:

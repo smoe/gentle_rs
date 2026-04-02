@@ -1522,6 +1522,32 @@ mod tests {
     }
 
     #[test]
+    fn build_suggest_sequencing_primers_operation_allows_report_only_gui_state() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.primer_seq_ids_text.clear();
+        area.sequencing_confirmation_ui.selected_report_id = "confirm_report".to_string();
+
+        let op = area
+            .build_suggest_sequencing_primers_operation()
+            .expect("report-only sequencing-primer overlay operation should build");
+
+        match op {
+            Operation::SuggestSequencingPrimers {
+                expected_seq_id,
+                primer_seq_ids,
+                confirmation_report_id,
+                ..
+            } => {
+                assert_eq!(expected_seq_id, "expected_seq");
+                assert!(primer_seq_ids.is_empty());
+                assert_eq!(confirmation_report_id, Some("confirm_report".to_string()));
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
     fn sequencing_trace_curve_unavailable_message_guides_reimport_for_legacy_trace() {
         let trace = SequencingTraceRecord {
             schema: "gentle.sequencing_trace_record.v1".to_string(),
@@ -25939,23 +25965,24 @@ impl MainAreaDna {
             .ok_or_else(|| "No active expected construct sequence".to_string())?;
         let ui = &self.sequencing_confirmation_ui;
         let primer_seq_ids = Self::parse_ids(&ui.primer_seq_ids_text);
-        if primer_seq_ids.is_empty() {
+        let confirmation_report_id = {
+            let trimmed = ui.selected_report_id.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        };
+        if primer_seq_ids.is_empty() && confirmation_report_id.is_none() {
             return Err(
-                "Provide at least one primer sequence ID before suggesting sequencing-primer overlays"
+                "Provide at least one primer sequence ID or select a saved confirmation report before suggesting sequencing-primer overlays"
                     .to_string(),
             );
         }
         Ok(Operation::SuggestSequencingPrimers {
             expected_seq_id,
             primer_seq_ids,
-            confirmation_report_id: {
-                let trimmed = ui.selected_report_id.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            },
+            confirmation_report_id,
             min_3prime_anneal_bp: Self::parse_positive_usize_text(
                 &ui.primer_min_3prime_anneal_bp,
                 "sequencing_confirmation.primer_min_3prime_anneal_bp",
@@ -28080,7 +28107,7 @@ impl MainAreaDna {
             columns[0].separator();
             columns[0].heading("Sequencing-Primer Overlays");
             columns[0].small(
-                "Suggest read-coverage overlays from already-loaded primer sequences. This stays on the shared engine path and optionally annotates coverage against the selected sequencing-confirmation report.",
+                "Suggest read-coverage overlays from already-loaded primer sequences and, when unresolved loci still lack a good hit, propose fresh sequencing primers on the same shared engine path.",
             );
             columns[0].label("Primer sequence IDs");
             if columns[0]
@@ -28097,6 +28124,9 @@ impl MainAreaDna {
             {
                 self.save_engine_ops_state();
             }
+            columns[0].small(
+                "Leave primer IDs empty if you only want de novo proposals for loci flagged in the selected saved report.",
+            );
             columns[0].horizontal_wrapped(|ui| {
                 ui.label("min 3' anneal bp");
                 if ui
@@ -28178,6 +28208,8 @@ impl MainAreaDna {
                         ui.separator();
                         ui.small(format!("guidance={}", report.problem_guidance_count));
                         ui.separator();
+                        ui.small(format!("proposals={}", report.proposal_count));
+                        ui.separator();
                         ui.small(format!(
                             "min_3prime_anneal_bp={}",
                             report.min_3prime_anneal_bp
@@ -28235,9 +28267,45 @@ impl MainAreaDna {
                             }
                         });
                     }
+                    if !report.proposals.is_empty() {
+                        ui.separator();
+                        ui.label(egui::RichText::new("Proposed New Primers").strong());
+                        egui::Grid::new((
+                            "seq_confirm_primer_proposals_grid",
+                            self.panel_scope_key(),
+                        ))
+                        .num_columns(8)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Problem");
+                            ui.strong("Orientation");
+                            ui.strong("Sequence");
+                            ui.strong("3' dist");
+                            ui.strong("Read span");
+                            ui.strong("Tm");
+                            ui.strong("GC");
+                            ui.strong("Reason");
+                            ui.end_row();
+                            for row in &report.proposals {
+                                ui.label(&row.problem_label);
+                                ui.small(row.orientation.as_str());
+                                ui.small(egui::RichText::new(&row.primer_sequence).monospace());
+                                ui.small(row.three_prime_distance_bp.to_string());
+                                ui.small(format!(
+                                    "{}..{}",
+                                    row.predicted_read_span_start_0based,
+                                    row.predicted_read_span_end_0based_exclusive
+                                ));
+                                ui.small(format!("{:.1}", row.tm_c));
+                                ui.small(format!("{:.2}", row.gc_fraction));
+                                ui.small(&row.reason);
+                                ui.end_row();
+                            }
+                        });
+                    }
                     if report.suggestions.is_empty() {
                         ui.small(
-                            "No primer overlays matched the current expected construct with the requested exact 3' anneal length.",
+                            "No existing primer overlays matched the current expected construct with the requested exact 3' anneal length.",
                         );
                     } else {
                         egui::ScrollArea::vertical()
