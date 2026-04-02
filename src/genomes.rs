@@ -42,7 +42,7 @@ use flate2::read::MultiGzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -2378,13 +2378,7 @@ impl GenomeCatalog {
         Self::validate_manifest_files(&manifest)?;
 
         let index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
-        let mut chr_candidates = Vec::new();
-        chr_candidates.push(chromosome.to_string());
-        if let Some(trimmed) = chromosome.strip_prefix("chr") {
-            chr_candidates.push(trimmed.to_string());
-        } else {
-            chr_candidates.push(format!("chr{chromosome}"));
-        }
+        let chr_candidates = chromosome_lookup_candidates(chromosome);
 
         let index_entry = chr_candidates
             .iter()
@@ -7207,14 +7201,73 @@ fn normalize_gene_match_token(raw: &str) -> String {
 }
 
 fn normalize_chromosome_token(raw: &str) -> String {
-    let trimmed = raw.trim().to_ascii_lowercase();
+    let canonical_source =
+        accession_style_chromosome_alias(raw).unwrap_or_else(|| raw.trim().to_string());
+    let trimmed = canonical_source.trim().to_ascii_lowercase();
     let without_chr = trimmed.strip_prefix("chr").unwrap_or(&trimmed);
-    let stripped_zeros = without_chr.trim_start_matches('0');
+    let canonical = match without_chr {
+        "m" | "mt" => "mt",
+        other => other,
+    };
+    let stripped_zeros = canonical.trim_start_matches('0');
     if stripped_zeros.is_empty() {
         "0".to_string()
     } else {
         stripped_zeros.to_string()
     }
+}
+
+fn chromosome_lookup_candidates(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    let mut candidates = BTreeSet::new();
+    candidates.insert(trimmed.to_string());
+    if let Some(stripped) = trimmed
+        .strip_prefix("chr")
+        .or_else(|| trimmed.strip_prefix("Chr"))
+        .or_else(|| trimmed.strip_prefix("CHR"))
+    {
+        if !stripped.trim().is_empty() {
+            candidates.insert(stripped.trim().to_string());
+        }
+    } else {
+        candidates.insert(format!("chr{trimmed}"));
+    }
+
+    let mut push_common_aliases = |alias: &str| {
+        let normalized = normalize_chromosome_token(alias);
+        if normalized.is_empty() {
+            return;
+        }
+        match normalized.as_str() {
+            "x" => {
+                candidates.insert("X".to_string());
+                candidates.insert("chrX".to_string());
+            }
+            "y" => {
+                candidates.insert("Y".to_string());
+                candidates.insert("chrY".to_string());
+            }
+            "mt" => {
+                candidates.insert("MT".to_string());
+                candidates.insert("M".to_string());
+                candidates.insert("chrMT".to_string());
+                candidates.insert("chrM".to_string());
+            }
+            other => {
+                candidates.insert(other.to_string());
+                candidates.insert(format!("chr{other}"));
+            }
+        }
+    };
+
+    push_common_aliases(trimmed);
+    if let Some(alias) = accession_style_chromosome_alias(trimmed) {
+        push_common_aliases(&alias);
+    }
+    candidates.into_iter().collect()
 }
 
 fn accession_style_chromosome_alias(raw: &str) -> Option<String> {
@@ -7231,11 +7284,13 @@ fn accession_style_chromosome_alias(raw: &str) -> Option<String> {
         return None;
     }
     let normalized = suffix.trim_start_matches('0');
-    if normalized.is_empty() {
-        Some("0".to_string())
-    } else {
-        Some(normalized.to_string())
-    }
+    Some(match normalized {
+        "" => "0".to_string(),
+        "23" => "x".to_string(),
+        "24" => "y".to_string(),
+        "12920" => "mt".to_string(),
+        other => other.to_string(),
+    })
 }
 
 fn chromosome_names_match(expected: &str, actual: &str) -> bool {
@@ -8181,6 +8236,57 @@ mod tests {
         assert!(chromosome_names_match("17", "NC_000017.11"));
         assert!(chromosome_names_match("chr17", "NC_000017.11"));
         assert!(!chromosome_names_match("17", "NC_000018.11"));
+    }
+
+    #[test]
+    fn test_chromosome_names_match_accepts_human_sex_and_mito_accessions() {
+        assert!(chromosome_names_match("X", "NC_000023.11"));
+        assert!(chromosome_names_match("chrY", "NC_000024.10"));
+        assert!(chromosome_names_match("MT", "NC_012920.1"));
+        assert!(chromosome_names_match("chrM", "NC_012920.1"));
+    }
+
+    #[test]
+    fn test_get_sequence_region_accepts_refseq_accession_alias_for_numeric_contig_names() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">16\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "16\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let slice = catalog
+            .get_sequence_region("ToyGenome", "NC_000016.10", 1, 4)
+            .expect("sequence region by accession alias");
+        assert_eq!(slice, "ACGT");
     }
 
     #[test]

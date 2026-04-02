@@ -1294,11 +1294,38 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("unknown");
+        let accession_note = if chromosome.trim().is_empty()
+            || chromosome.trim().eq_ignore_ascii_case(chromosome_label)
+        {
+            String::new()
+        } else {
+            format!(" [accession={}]", chromosome.trim())
+        };
         let mut note = format!(
-            "dbSNP variant {rs_id} resolved from NCBI Variation to {chromosome_label}:{position_1based} (assembly={assembly_label})"
+            "dbSNP variant {rs_id} resolved from NCBI Variation to {chromosome_label}:{position_1based}{accession_note} (assembly={assembly_label})"
         );
         if !gene_symbols.is_empty() {
             note.push_str(&format!(" [genes={}]", gene_symbols.join(", ")));
+        }
+        let mut qualifiers = vec![
+            ("label".into(), Some(rs_id.to_string())),
+            ("note".into(), Some(note)),
+            ("db_xref".into(), Some(format!("dbSNP:{rs_id}"))),
+            ("chromosome".into(), Some(chromosome.to_string())),
+            (
+                "genomic_position_1based".into(),
+                Some(position_1based.to_string()),
+            ),
+            ("assembly_name".into(), Some(assembly_label.to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+        ];
+        if !chromosome.trim().is_empty()
+            && !chromosome.trim().eq_ignore_ascii_case(chromosome_label)
+        {
+            qualifiers.push(("refseq_accession".into(), Some(chromosome.to_string())));
         }
         gb_io::seq::Feature {
             kind: "variation".into(),
@@ -1306,21 +1333,7 @@ impl GentleEngine {
                 local_start_0based as i64,
                 local_start_0based.saturating_add(1) as i64,
             ),
-            qualifiers: vec![
-                ("label".into(), Some(rs_id.to_string())),
-                ("note".into(), Some(note)),
-                ("db_xref".into(), Some(format!("dbSNP:{rs_id}"))),
-                ("chromosome".into(), Some(chromosome.to_string())),
-                (
-                    "genomic_position_1based".into(),
-                    Some(position_1based.to_string()),
-                ),
-                ("assembly_name".into(), Some(assembly_label.to_string())),
-                (
-                    "gentle_generated".into(),
-                    Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
-                ),
-            ],
+            qualifiers,
         }
     }
 
@@ -3501,6 +3514,16 @@ impl GentleEngine {
                 } else {
                     placement.chromosome_display.clone()
                 };
+                let chromosome_message_label = if placement.chromosome.trim().is_empty()
+                    || placement
+                        .chromosome
+                        .trim()
+                        .eq_ignore_ascii_case(chromosome_label.trim())
+                {
+                    chromosome_label.clone()
+                } else {
+                    format!("{} [{}]", chromosome_label, placement.chromosome)
+                };
                 let output_id = output_id.or_else(|| {
                     Some(format!(
                         "{}_{}_{}_{}",
@@ -3532,7 +3555,7 @@ impl GentleEngine {
                     "Resolved dbSNP '{}' from '{}' to {}:{} (assembly={}) and extracted +/-{} bp on '{}'{}",
                     placement.rs_id,
                     source_url,
-                    chromosome_label,
+                    chromosome_message_label,
                     placement.position_1based,
                     assembly_name,
                     flank_bp,

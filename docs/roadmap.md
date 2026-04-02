@@ -1116,7 +1116,8 @@ order. Durable architecture constraints and decisions remain in
   can start from one rsID and extract `+/- 3000 bp` with full feature
   annotation from a prepared reference genome without leaving the NCBI fetch
   workflow, including a visible one-base rsID marker feature at the resolved
-  SNP position.
+  SNP position and RefSeq-style chromosome alias matching for dbSNP placements
+  like `NC_000016.10`.
 - `File -> Open Sequence...` now supports multi-file selection and imports the
   chosen files sequentially through the same per-file `LoadFile` path, opening
   one sequence window per successful import.

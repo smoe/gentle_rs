@@ -3932,7 +3932,7 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
   "primary_snapshot_data": {
     "placements_with_allele": [
       {
-        "seq_id": "chr1",
+        "seq_id": "NC_000001.11",
         "is_ptlp": true,
         "placement_annot": {
           "seq_id_traits_by_assembly": [
@@ -3949,7 +3949,7 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
           {
             "allele": {
               "spdi": {
-                "seq_id": "chr1",
+                "seq_id": "NC_000001.11",
                 "position": 29,
                 "deleted_sequence": "A",
                 "inserted_sequence": "G"
@@ -4005,10 +4005,9 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 
     assert_eq!(result.created_seq_ids, vec!["rs123_local".to_string()]);
     assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| message.contains("Resolved dbSNP 'rs123'")),
+        result.messages.iter().any(|message| {
+            message.contains("Resolved dbSNP 'rs123'") && message.contains("1 [NC_000001.11]:30")
+        }),
         "messages were: {:?}",
         result.messages
     );
@@ -4048,6 +4047,10 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
         Some("30")
     );
     assert_eq!(
+        marker.qualifier_values("refseq_accession").next(),
+        Some("NC_000001.11")
+    );
+    assert_eq!(
         marker.qualifier_values("gentle_generated").next(),
         Some("dbsnp_variant_marker")
     );
@@ -4081,8 +4084,24 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
             .get("chromosome")
             .and_then(|v| v.as_str())
             .unwrap_or_default(),
-        "chr1"
+        "NC_000001.11"
     );
+}
+
+#[test]
+fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_contigs() {
+    assert!(GentleEngine::genome_chromosome_matches(
+        "chrX",
+        "NC_000023.11"
+    ));
+    assert!(GentleEngine::genome_chromosome_matches(
+        "chrY",
+        "NC_000024.10"
+    ));
+    assert!(GentleEngine::genome_chromosome_matches(
+        "chrM",
+        "NC_012920.1"
+    ));
 }
 
 #[test]
