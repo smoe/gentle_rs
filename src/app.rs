@@ -2386,7 +2386,21 @@ impl GENtleApp {
         ]
     }
 
-    fn reset_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
+    fn stale_help_title_layer_id(title: &str) -> egui::LayerId {
+        egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
+    }
+
+    fn reset_help_areas_if_legacy_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
+        let stale_title_layer = Self::stale_help_title_layer_id(title);
+        if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
+            ctx.memory_mut(|mem| mem.reset_areas());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn reset_root_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
         let stale_hosted_help_layers = Self::legacy_hosted_help_layer_ids(title);
         if stale_hosted_help_layers
             .iter()
@@ -31346,31 +31360,46 @@ Error: `{err}`"
                 if self
                     .pending_window_open_timestamps
                     .contains_key(&viewport_id)
-                    || Self::reset_help_areas_if_legacy_layers_visible(ctx, title.as_str())
+                    || Self::reset_help_areas_if_legacy_title_layer_visible(ctx, title.as_str())
                 {
-                    // Help used to render as a nested egui::Window inside the hosted
-                    // viewport. Older saved area state from that path can leave a
-                    // stray title bar or broken resize shell behind. Reset the local
-                    // help viewport areas when reopening or when a legacy nested help
-                    // layer is still visible so the hosted help surface self-heals.
+                    // Older help builds used the visible title as the implicit
+                    // egui::Window id. Reset those legacy title-based areas when
+                    // reopening so topic switches do not leave a detached shell.
                     ctx.memory_mut(|mem| mem.reset_areas());
                 }
                 let render_started = Instant::now();
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default().frame(egui::Frame::NONE),
-                    |ui| {
-                        self.render_help_contents(ui);
-                    },
+                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+                let min_size = Vec2::new(420.0, 320.0);
+                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                    Vec2::new(860.0, 680.0),
+                    constrain_rect,
+                    min_size,
                 );
+                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                    None,
+                    constrain_rect,
+                    default_size,
+                );
+                let mut open = self.show_help_dialog;
+                egui::Window::new(title.clone())
+                    .id(egui::Id::new(("hosted_help_window", viewport_id)))
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_pos(default_pos)
+                    .default_size(default_size)
+                    .min_size(min_size)
+                    .max_size(constrain_rect.size())
+                    .constrain_to(constrain_rect)
+                    .show(ctx, |ui| {
+                        self.render_help_contents(ui);
+                    });
                 self.note_slow_open_phase(
                     viewport_id,
                     "Help first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                if Self::viewport_close_requested_or_shortcut(ctx) {
-                    self.show_help_dialog = false;
-                }
+                self.show_help_dialog = open;
                 return;
             }
 
@@ -32588,7 +32617,7 @@ impl GENtleApp {
             self.sync_open_windows_if_display_changed(ctx);
 
             if self.show_help_dialog {
-                Self::reset_help_areas_if_legacy_layers_visible(
+                Self::reset_root_help_areas_if_legacy_layers_visible(
                     ctx,
                     format!("Help - {}", self.active_help_title()).as_str(),
                 );
@@ -36800,13 +36829,16 @@ mod tests {
         let mut app = GENtleApp::default();
         app.show_help_dialog = true;
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
-        let stale_help_layer_ids = GENtleApp::legacy_hosted_help_layer_ids("Help - GUI Manual");
+        let hosted_help_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())),
+        );
+        let stale_title_layer_id = GENtleApp::stale_help_title_layer_id("Help - GUI Manual");
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
-        for layer_id in stale_help_layer_ids {
-            assert!(!ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
-        }
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
         let _ = ctx.end_pass();
     }
 
@@ -36826,7 +36858,7 @@ mod tests {
                 .any(|layer_id| ctx.memory(|mem| mem.areas().is_visible(layer_id)))
         );
 
-        assert!(GENtleApp::reset_help_areas_if_legacy_layers_visible(
+        assert!(GENtleApp::reset_root_help_areas_if_legacy_layers_visible(
             &ctx, title
         ));
         for layer_id in stale_help_layer_ids {
