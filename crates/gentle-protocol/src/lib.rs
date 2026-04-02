@@ -983,7 +983,8 @@ pub struct SequencingTraceChannelData {
 ///
 /// This record stores the called bases and the key per-base evidence arrays
 /// needed for later trace-aware confirmation without mutating project
-/// sequences.
+/// sequences. Newer schema revisions may also carry raw chromatogram curves
+/// and clip-window metadata for GUI inspection.
 pub struct SequencingTraceRecord {
     pub schema: String,
     pub trace_id: String,

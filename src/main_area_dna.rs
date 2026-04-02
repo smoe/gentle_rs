@@ -530,6 +530,10 @@ struct SequencingConfirmationUiState {
     baseline_seq_id_text: String,
     read_seq_ids_text: String,
     trace_ids_text: String,
+    trace_import_path: String,
+    trace_import_id: String,
+    trace_import_associate_with_expected_seq: bool,
+    trace_import_add_to_run: bool,
     report_id: String,
     selected_report_id: String,
     selected_trace_id: String,
@@ -559,6 +563,10 @@ impl Default for SequencingConfirmationUiState {
             baseline_seq_id_text: String::new(),
             read_seq_ids_text: String::new(),
             trace_ids_text: String::new(),
+            trace_import_path: String::new(),
+            trace_import_id: String::new(),
+            trace_import_associate_with_expected_seq: true,
+            trace_import_add_to_run: true,
             report_id: "seq_confirm_gui".to_string(),
             selected_report_id: String::new(),
             selected_trace_id: String::new(),
@@ -978,16 +986,16 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
-            LinearSequenceLetterLayoutMode, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
-            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-            RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
+            ProjectState, ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
+            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
+            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SequencingTraceFormat,
-            SequencingTraceRecord, SplicingScopePreset,
+            SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
             parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
@@ -1403,6 +1411,79 @@ mod tests {
             }
             other => panic!("unexpected operation: {other:?}"),
         }
+    }
+
+    #[test]
+    fn build_import_sequencing_trace_operation_uses_gui_state() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.trace_import_path = "/tmp/demo_trace.ab1".to_string();
+        area.sequencing_confirmation_ui.trace_import_id = "trace_demo".to_string();
+        area.sequencing_confirmation_ui
+            .trace_import_associate_with_expected_seq = true;
+
+        let op = area
+            .build_import_sequencing_trace_operation()
+            .expect("trace import operation should build");
+
+        match op {
+            Operation::ImportSequencingTrace {
+                path,
+                trace_id,
+                seq_id,
+            } => {
+                assert_eq!(path, "/tmp/demo_trace.ab1");
+                assert_eq!(trace_id, Some("trace_demo".to_string()));
+                assert_eq!(seq_id, Some("expected_seq".to_string()));
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        area.sequencing_confirmation_ui.trace_ids_text = "trace_a".to_string();
+        area.sequencing_confirmation_ui.trace_import_add_to_run = true;
+
+        area.handle_imported_sequencing_trace_result(&OpResult {
+            op_id: "op-import-trace".to_string(),
+            created_seq_ids: vec![],
+            changed_seq_ids: vec![],
+            warnings: vec![],
+            messages: vec![],
+            protocol_cartoon_preview: None,
+            genome_annotation_projection: None,
+            sequence_alignment: None,
+            sequencing_confirmation_report: None,
+            sequencing_trace_import_report: Some(SequencingTraceImportReport {
+                schema: "gentle.sequencing_trace_import_report.v2".to_string(),
+                trace_id: "trace_b".to_string(),
+                format: SequencingTraceFormat::AbiAb1,
+                source_path: "/tmp/demo_trace.ab1".to_string(),
+                imported_at_unix_ms: 1,
+                seq_id: Some("expected_seq".to_string()),
+                sample_name: None,
+                run_name: None,
+                called_base_count: 4,
+                confidence_value_count: 4,
+                peak_location_count: 4,
+                has_curve_data: true,
+                channel_count: 4,
+                warnings: vec![],
+            }),
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
+            sequencing_primer_overlay_report: None,
+            rna_read_gene_support_summary: None,
+        });
+
+        assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
+        assert_eq!(
+            area.sequencing_confirmation_ui.trace_ids_text,
+            "trace_a,trace_b"
+        );
     }
 
     #[test]
@@ -25824,6 +25905,33 @@ impl MainAreaDna {
         ))
     }
 
+    fn build_import_sequencing_trace_operation(&self) -> Result<Operation, String> {
+        let ui = &self.sequencing_confirmation_ui;
+        let path = ui.trace_import_path.trim();
+        if path.is_empty() {
+            return Err(
+                "Choose a local ABI/AB1/SCF trace file before importing sequencing evidence"
+                    .to_string(),
+            );
+        }
+        let seq_id = if ui.trace_import_associate_with_expected_seq {
+            Some(
+                self.seq_id
+                    .clone()
+                    .ok_or_else(|| "No active expected construct sequence".to_string())?,
+            )
+        } else {
+            None
+        };
+        let trace_id =
+            (!ui.trace_import_id.trim().is_empty()).then(|| ui.trace_import_id.trim().to_string());
+        Ok(Operation::ImportSequencingTrace {
+            path: path.to_string(),
+            trace_id,
+            seq_id,
+        })
+    }
+
     fn build_suggest_sequencing_primers_operation(&self) -> Result<Operation, String> {
         let expected_seq_id = self
             .seq_id
@@ -25894,6 +26002,20 @@ impl MainAreaDna {
             .read()
             .ok()
             .and_then(|guard| guard.get_sequencing_trace(trace_id).ok())
+    }
+
+    fn handle_imported_sequencing_trace_result(&mut self, result: &OpResult) {
+        let Some(import_report) = result.sequencing_trace_import_report.as_ref() else {
+            return;
+        };
+        self.sequencing_confirmation_ui.selected_trace_id = import_report.trace_id.clone();
+        if self.sequencing_confirmation_ui.trace_import_add_to_run {
+            Self::append_unique_csv_token(
+                &mut self.sequencing_confirmation_ui.trace_ids_text,
+                import_report.trace_id.clone(),
+            );
+        }
+        self.save_engine_ops_state();
     }
 
     fn sequencing_trace_called_base_preview(
@@ -27548,6 +27670,107 @@ impl MainAreaDna {
             if trace_ids_changed {
                 self.save_engine_ops_state();
             }
+            columns[0].group(|ui| {
+                ui.label(egui::RichText::new("Raw Trace Import").strong());
+                ui.small(
+                    "Import ABI/AB1/SCF files directly into the shared sequencing-trace evidence store used by GUI, CLI, and shell review.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("trace file");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.trace_import_path,
+                            )
+                            .desired_width(240.0),
+                        )
+                        .on_hover_text(
+                            "Local ABI/AB1/SCF file to import into the project evidence store.",
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text(
+                            "Choose a local ABI/AB1/SCF chromatogram file and fill the import path.",
+                        )
+                        .clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Sequencing traces", &["ab1", "abi", "scf"])
+                            .pick_file()
+                    {
+                        self.sequencing_confirmation_ui.trace_import_path =
+                            path.display().to_string();
+                        self.save_engine_ops_state();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("trace id");
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.sequencing_confirmation_ui.trace_import_id,
+                            )
+                            .desired_width(180.0),
+                        )
+                        .on_hover_text(
+                            "Optional stable trace id. Leave empty to auto-derive one from the filename.",
+                        )
+                        .changed()
+                    {
+                        self.save_engine_ops_state();
+                    }
+                    let associate_changed = ui
+                        .checkbox(
+                            &mut self
+                                .sequencing_confirmation_ui
+                                .trace_import_associate_with_expected_seq,
+                            "associate with expected construct",
+                        )
+                        .on_hover_text(
+                            "Record the active expected construct sequence ID on the imported trace metadata.",
+                        )
+                        .changed();
+                    let auto_add_changed = ui
+                        .checkbox(
+                            &mut self.sequencing_confirmation_ui.trace_import_add_to_run,
+                            "add imported trace to current run",
+                        )
+                        .on_hover_text(
+                            "Append the imported trace ID to the current trace input list after a successful import.",
+                        )
+                        .changed();
+                    if associate_changed || auto_add_changed {
+                        self.save_engine_ops_state();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button("Import trace")
+                        .on_hover_text(
+                            "Run ImportSequencingTrace through the shared engine path, then focus the imported trace in this specialist.",
+                        )
+                        .clicked()
+                    {
+                        match self.build_import_sequencing_trace_operation() {
+                            Ok(op) => {
+                                if let Some(result) = self.apply_operation_with_feedback_and_result(op)
+                                {
+                                    self.handle_imported_sequencing_trace_result(&result);
+                                }
+                            }
+                            Err(err) => {
+                                self.op_status = err;
+                            }
+                        }
+                    }
+                    ui.small(
+                        "Imported traces stay separate from confirmation verdicts until you explicitly include their IDs in a run.",
+                    );
+                });
+            });
             let alternate_ids = project_sequence_ids
                 .iter()
                 .filter(|seq_id| *seq_id != &expected_seq_id)
@@ -27567,7 +27790,7 @@ impl MainAreaDna {
             }
             if trace_summaries.is_empty() {
                 columns[0].small(
-                    "No imported sequencing traces are stored yet. Import them through CLI/shared shell first with `seq-trace import ...`, then select them here by trace ID.",
+                    "No imported sequencing traces are stored yet. Use the Raw Trace Import box above or `seq-trace import ...` through CLI/shared shell, then select them here by trace ID.",
                 );
             } else {
                 let preview_ids = trace_summaries

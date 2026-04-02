@@ -2574,6 +2574,10 @@ Repeated multi-tool gaps to prioritize:
      - the GUI sequencing-confirmation specialist now consumes those imported
        trace ids too and includes built-in imported-trace review plus a
        variant-focused chromatogram inspector:
+       - raw ABI/AB1/SCF files can now also be imported directly inside the
+         specialist through the same shared `ImportSequencingTrace` operation
+         path, with optional association to the active expected construct and
+         optional auto-append to the current run input list
        - trace ids can be added to the same run form as called-read ids
        - optional baseline/reference sequence id can be supplied in the same
          run form
@@ -3268,7 +3272,7 @@ Post-baseline follow-ups:
   validation summaries) as a deterministic shared-engine path.
   - baseline shipped: report store + shell/CLI list/show/export path for
     called-read confirmation against expected construct sequences
-  - next: GUI specialist, trace import, and lineage/artifact projection parity
+  - next: lineage/artifact projection parity and deeper whole-trace browsing
 - Detailed sequencing-confirmation design note:
   - `docs/sequencing_confirmation_plan.md`
 - Legacy `gentle-m` intake note:

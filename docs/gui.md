@@ -25,9 +25,9 @@ this as a confidence map for the current GUI surface.
   defined destination opening; `existing_termini` remains the single-fragment
   handoff path.
 - Sequencing confirmation now has a dedicated specialist that accepts called
-  reads, imported trace IDs, optional baseline context, and variant-focused
-  chromatogram review, but raw trace import still starts from CLI/shared shell
-  and whole-trace browsing remains deliberately limited.
+  reads, direct ABI/AB1/SCF trace import, optional baseline context, and
+  variant-focused chromatogram review, but whole-trace browsing remains
+  deliberately limited.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
@@ -1236,8 +1236,6 @@ Patterns menu:
     - the active sequence selection can append its `start`, `midpoint`, or
       `end` as explicit junction breakpoints
   - current limitation:
-    - raw trace import itself still comes through CLI/shared shell
-      (`seq-trace import ...`)
     - older traces without stored curve arrays must be re-imported before
       chromatogram curves can be reviewed
     - chromatogram inspection is intentionally variant-focused, not a
@@ -2323,7 +2321,9 @@ Current scope:
 - optional baseline/reference sequence ID can be supplied to classify intended
   edits versus reference reversions
 - read evidence is supplied as already-loaded project sequence IDs
-- imported ABI/AB1/SCF evidence is supplied as already-imported trace IDs
+- imported ABI/AB1/SCF evidence can be supplied either by:
+  - importing local trace files directly in this window, or
+  - reusing already-imported trace IDs from the project evidence store
 - target coverage can be:
   - the default full construct span
   - one or more explicit junction checkpoints
@@ -2340,6 +2340,11 @@ Key controls:
   the project
 - `Imported trace IDs`: comma-separated IDs from the sequencing-trace evidence
   store
+- `Raw Trace Import`:
+  - `trace file`
+  - optional `trace id`
+  - `associate with expected construct`
+  - `add imported trace to current run`
 - `Include full construct span target`
 - `Junction breakpoints (0-based)` plus `flank`
 - alignment scoring knobs:
@@ -2351,6 +2356,7 @@ Key controls:
 Actions:
 
 - `Run confirmation`
+- `Import trace`
 - `Refresh reports`
 - `Show selected`
 - `Export JSON...`
@@ -2379,8 +2385,6 @@ Report review surface:
 
 Current limitations:
 
-- raw ABI/AB1/SCF import still happens through CLI/shared shell, not directly
-  in this GUI window
 - older stored traces without raw curve arrays stay usable for confirmation,
   but the GUI asks for re-import before chromatogram curve inspection
 - no chromatogram editing or base re-calling yet
