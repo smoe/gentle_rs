@@ -11725,12 +11725,485 @@ pub fn execute_shell_command(
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
+fn execute_agents_ask_command(
+    engine: &mut GentleEngine,
+    system_id: &str,
+    prompt: &str,
+    catalog_path: Option<&str>,
+    base_url_override: Option<&str>,
+    model_override: Option<&str>,
+    timeout_seconds: Option<u64>,
+    connect_timeout_seconds: Option<u64>,
+    read_timeout_seconds: Option<u64>,
+    max_retries: Option<usize>,
+    max_response_bytes: Option<usize>,
+    include_state_summary: bool,
+    allow_auto_exec: bool,
+    execute_all: bool,
+    execute_indices: &[usize],
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    if !options.allow_agent_commands {
+        return Err(
+            "agents ask execution is blocked in this context (agent-to-agent recursion guardrail)"
+                .to_string(),
+        );
+    }
+    let state_summary = if include_state_summary {
+        Some(engine.summarize_state())
+    } else {
+        None
+    };
+    let mut env_overrides = HashMap::new();
+    if let Some(base_url) = base_url_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url.to_string());
+    }
+    if let Some(model) = model_override.map(str::trim).filter(|value| !value.is_empty()) {
+        env_overrides.insert(AGENT_MODEL_ENV.to_string(), model.to_string());
+    }
+    if let Some(timeout_seconds) = timeout_seconds.filter(|value| *value > 0) {
+        env_overrides.insert(
+            AGENT_TIMEOUT_SECS_ENV.to_string(),
+            timeout_seconds.to_string(),
+        );
+    }
+    if let Some(connect_timeout_seconds) = connect_timeout_seconds.filter(|value| *value > 0) {
+        env_overrides.insert(
+            AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
+            connect_timeout_seconds.to_string(),
+        );
+    }
+    if let Some(read_timeout_seconds) = read_timeout_seconds.filter(|value| *value > 0) {
+        env_overrides.insert(
+            AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
+            read_timeout_seconds.to_string(),
+        );
+    }
+    if let Some(max_retries) = max_retries {
+        env_overrides.insert(AGENT_MAX_RETRIES_ENV.to_string(), max_retries.to_string());
+    }
+    if let Some(max_response_bytes) = max_response_bytes.filter(|value| *value > 0) {
+        env_overrides.insert(
+            AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
+            max_response_bytes.to_string(),
+        );
+    }
+    let invocation = invoke_agent_support_with_env_overrides(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary.as_ref(),
+        if env_overrides.is_empty() {
+            None
+        } else {
+            Some(&env_overrides)
+        },
+    )?;
+    let suggested = invocation.response.suggested_commands.clone();
+    let suggested_count = suggested.len();
+    let requested_indices = execute_indices.iter().copied().collect::<BTreeSet<usize>>();
+    let mut invalid_execute_indices = requested_indices
+        .iter()
+        .copied()
+        .filter(|idx| *idx == 0 || *idx > suggested_count)
+        .collect::<Vec<_>>();
+    invalid_execute_indices.sort_unstable();
+    let execute_index_set = requested_indices
+        .iter()
+        .copied()
+        .filter(|idx| *idx >= 1 && *idx <= suggested_count)
+        .collect::<BTreeSet<_>>();
+    let (state_changed, execution_reports) = execute_agent_suggested_commands(
+        engine,
+        &suggested,
+        execute_all,
+        &execute_index_set,
+        allow_auto_exec,
+        options,
+    );
+    let executed_count = execution_reports.iter().filter(|row| row.executed).count();
+    let executed_error_count = execution_reports
+        .iter()
+        .filter(|row| row.executed && !row.ok)
+        .count();
+    let auto_suggestion_count = suggested
+        .iter()
+        .filter(|item| item.execution == AgentExecutionIntent::Auto)
+        .count();
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({
+            "schema": "gentle.agent_ask_result.v1",
+            "invocation": invocation,
+            "request": {
+                "include_state_summary": include_state_summary,
+                "allow_auto_exec": allow_auto_exec,
+                "execute_all": execute_all,
+                "execute_indices": execute_indices,
+                "base_url_override": base_url_override,
+                "model_override": model_override,
+                "timeout_seconds": timeout_seconds,
+                "connect_timeout_seconds": connect_timeout_seconds,
+                "read_timeout_seconds": read_timeout_seconds,
+                "max_retries": max_retries,
+                "max_response_bytes": max_response_bytes,
+                "invalid_execute_indices": invalid_execute_indices,
+            },
+            "summary": {
+                "suggested_command_count": suggested_count,
+                "auto_suggestion_count": auto_suggestion_count,
+                "executed_count": executed_count,
+                "executed_error_count": executed_error_count,
+            },
+            "executions": execution_reports
+        }),
+    })
+}
+
+fn execute_macros_run_command(
+    engine: &mut GentleEngine,
+    script: &str,
+    transactional: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let start_operation_index = engine.operation_log().len();
+    match run_workflow_macro(engine, script, transactional, options) {
+        Ok(mut run) => {
+            let macro_instance_id = record_macro_lineage_instance(
+                engine,
+                start_operation_index,
+                None,
+                None,
+                None,
+                vec![],
+                vec![],
+                MacroInstanceStatus::Ok,
+                None,
+            );
+            if let Some(map) = run.output.as_object_mut() {
+                map.insert("macro_instance_id".to_string(), json!(macro_instance_id));
+                map.insert("macro_recorded".to_string(), json!(true));
+            }
+            run.state_changed = true;
+            Ok(run)
+        }
+        Err(err) => {
+            let status = macro_status_from_error(&err);
+            let macro_instance_id = record_macro_lineage_instance(
+                engine,
+                start_operation_index,
+                None,
+                None,
+                None,
+                vec![],
+                vec![],
+                status,
+                Some(err.clone()),
+            );
+            Err(format!("{} [macro_instance_id={}]", err, macro_instance_id))
+        }
+    }
+}
+
+fn execute_macros_template_run_command(
+    engine: &mut GentleEngine,
+    name: &str,
+    bindings: &HashMap<String, String>,
+    transactional: bool,
+    validate_only: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let preflight = preflight_workflow_macro_template_run(engine, name, bindings)?;
+    if validate_only {
+        return Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "template_name": name,
+                "bindings": bindings,
+                "validate_only": true,
+                "can_execute": preflight.can_execute(),
+                "preflight": preflight,
+            }),
+        });
+    }
+    if !preflight.can_execute() {
+        let macro_instance_id = record_macro_lineage_instance(
+            engine,
+            engine.operation_log().len(),
+            Some(name.to_string()),
+            preflight.routine_id.clone(),
+            preflight.routine_title.clone(),
+            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+            MacroInstanceStatus::Failed,
+            Some(format!("preflight failed: {}", preflight.errors.join("; "))),
+        );
+        return Err(format!(
+            "Workflow macro template '{}' preflight failed: {} [macro_instance_id={}]",
+            name,
+            preflight.errors.join("; "),
+            macro_instance_id
+        ));
+    }
+    let script = engine
+        .render_workflow_macro_template_script(name, bindings)
+        .map_err(|e| e.to_string())?;
+    let start_operation_index = engine.operation_log().len();
+    match run_workflow_macro(engine, &script, transactional, options) {
+        Ok(mut run) => {
+            let macro_instance_id = record_macro_lineage_instance(
+                engine,
+                start_operation_index,
+                Some(name.to_string()),
+                preflight.routine_id.clone(),
+                preflight.routine_title.clone(),
+                macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+                MacroInstanceStatus::Ok,
+                None,
+            );
+            run.state_changed = true;
+            run.output = json!({
+                "template_name": name,
+                "bindings": bindings,
+                "expanded_script": script,
+                "macro_instance_id": macro_instance_id,
+                "preflight": preflight,
+                "run": run.output
+            });
+            Ok(run)
+        }
+        Err(err) => {
+            let status = macro_status_from_error(&err);
+            let macro_instance_id = record_macro_lineage_instance(
+                engine,
+                start_operation_index,
+                Some(name.to_string()),
+                preflight.routine_id.clone(),
+                preflight.routine_title.clone(),
+                macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+                status,
+                Some(err.clone()),
+            );
+            Err(format!("{} [macro_instance_id={}]", err, macro_instance_id))
+        }
+    }
+}
+
+fn execute_candidates_template_run_command(
+    engine: &mut GentleEngine,
+    name: &str,
+    bindings: &HashMap<String, String>,
+    transactional: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let script = engine
+        .render_candidate_macro_template_script(name, bindings)
+        .map_err(|e| e.to_string())?;
+    let mut run = run_candidates_macro(engine, &script, transactional, options)?;
+    run.output = json!({
+        "template_name": name,
+        "bindings": bindings,
+        "expanded_script": script,
+        "run": run.output
+    });
+    Ok(run)
+}
+
+fn execute_ui_intent_command(
+    engine: &mut GentleEngine,
+    action: UiIntentAction,
+    target: UiIntentTarget,
+    genome_id: Option<String>,
+    helper_mode: bool,
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
+    filter: Option<String>,
+    species: Option<String>,
+    latest: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let mut selected_genome_id = genome_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mut prepared_query: Option<Value> = None;
+    if matches!(target, UiIntentTarget::PreparedReferences) && selected_genome_id.is_none() {
+        let prepared = execute_shell_command_with_options(
+            engine,
+            &ShellCommand::UiPreparedGenomes {
+                helper_mode,
+                catalog_path: catalog_path.clone(),
+                cache_dir: cache_dir.clone(),
+                filter: filter.clone(),
+                species: species.clone(),
+                latest,
+            },
+            options,
+        )?;
+        selected_genome_id = prepared
+            .output
+            .get("selected_genome_id")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
+        prepared_query = Some(prepared.output);
+    }
+    let message = if matches!(target, UiIntentTarget::PreparedReferences) {
+        if selected_genome_id.is_some() {
+            "UI intent recorded; prepared-references selection resolved deterministically."
+        } else {
+            "UI intent recorded; prepared-references selection found no prepared genome."
+        }
+    } else {
+        "UI intent recorded; requires GUI host integration to apply."
+    };
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "schema": "gentle.ui_intent.v1",
+            "ui_intent": {
+                "action": action.as_str(),
+                "target": target.as_str(),
+                "genome_id": genome_id,
+                "helper_mode": helper_mode,
+                "catalog_path": catalog_path,
+                "cache_dir": cache_dir,
+                "filter": filter,
+                "species": species,
+                "latest": latest
+            },
+            "selected_genome_id": selected_genome_id,
+            "prepared_query": prepared_query,
+            "applied": false,
+            "message": message
+        }),
+    })
+}
+
 /// Execute one parsed shell command against the shared engine.
 ///
 /// This is the main adapter-neutral execution entry point for the textual shell
 /// surface. Callers are expected to parse first, then execute here instead of
 /// re-implementing command behavior in frontend code.
 pub fn execute_shell_command_with_options(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    if let ShellCommand::AgentsAsk {
+        system_id,
+        prompt,
+        catalog_path,
+        base_url_override,
+        model_override,
+        timeout_seconds,
+        connect_timeout_seconds,
+        read_timeout_seconds,
+        max_retries,
+        max_response_bytes,
+        include_state_summary,
+        allow_auto_exec,
+        execute_all,
+        execute_indices,
+    } = command
+    {
+        return execute_agents_ask_command(
+            engine,
+            system_id,
+            prompt,
+            catalog_path.as_deref(),
+            base_url_override.as_deref(),
+            model_override.as_deref(),
+            *timeout_seconds,
+            *connect_timeout_seconds,
+            *read_timeout_seconds,
+            *max_retries,
+            *max_response_bytes,
+            *include_state_summary,
+            *allow_auto_exec,
+            *execute_all,
+            execute_indices,
+            options,
+        );
+    }
+    if let ShellCommand::MacrosRun {
+        script,
+        transactional,
+    } = command
+    {
+        return execute_macros_run_command(engine, script, *transactional, options);
+    }
+    if let ShellCommand::MacrosTemplateRun {
+        name,
+        bindings,
+        transactional,
+        validate_only,
+    } = command
+    {
+        return execute_macros_template_run_command(
+            engine,
+            name,
+            bindings,
+            *transactional,
+            *validate_only,
+            options,
+        );
+    }
+    if let ShellCommand::CandidatesMacro {
+        script,
+        transactional,
+    } = command
+    {
+        return run_candidates_macro(engine, script, *transactional, options);
+    }
+    if let ShellCommand::CandidatesTemplateRun {
+        name,
+        bindings,
+        transactional,
+    } = command
+    {
+        return execute_candidates_template_run_command(
+            engine,
+            name,
+            bindings,
+            *transactional,
+            options,
+        );
+    }
+    if let ShellCommand::UiIntent {
+        action,
+        target,
+        genome_id,
+        helper_mode,
+        catalog_path,
+        cache_dir,
+        filter,
+        species,
+        latest,
+    } = command
+    {
+        return execute_ui_intent_command(
+            engine,
+            *action,
+            *target,
+            genome_id.clone(),
+            *helper_mode,
+            catalog_path.clone(),
+            cache_dir.clone(),
+            filter.clone(),
+            species.clone(),
+            *latest,
+            options,
+        );
+    }
+    execute_shell_command_with_options_inner(engine, command, options)
+}
+
+fn execute_shell_command_with_options_inner(
     engine: &mut GentleEngine,
     command: &ShellCommand,
     options: &ShellExecutionOptions,
