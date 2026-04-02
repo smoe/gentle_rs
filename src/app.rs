@@ -28998,13 +28998,30 @@ Error: `{err}`"
             &self.window_backdrops,
         );
         with_window_content_inset(ui, |ui| {
-            self.render_main_lineage(ui);
-            ui.separator();
-            if project_dirty {
-                ui.label("Status: unsaved changes");
-            } else {
-                ui.label("Status: saved");
-            }
+            let workspace_size = ui.available_size_before_wrap();
+            let width = workspace_size.x.max(720.0);
+            let height = workspace_size.y.max(420.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    let status_height = ui.spacing().interact_size.y + 16.0;
+                    let lineage_height = (ui.available_height() - status_height).max(240.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(width, lineage_height),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            self.render_main_lineage(ui);
+                        },
+                    );
+                    ui.separator();
+                    if project_dirty {
+                        ui.label("Status: unsaved changes");
+                    } else {
+                        ui.label("Status: saved");
+                    }
+                },
+            );
         });
     }
 

@@ -266,10 +266,9 @@ order. Durable architecture constraints and decisions remain in
   - the hosted help body now reserves the remaining viewport height before
     opening its vertical scroll area so wheel scrolling stays inside the help
     content instead of falling through to the background workspace
-  - the shared hosted content-inset helper now uses a simple inner-margin
-    frame inside embedded windows instead of manual child-rect synthesis,
-    fixing project/help content that had been painting outside their visible
-    hosted shells
+  - hosted macOS project/help window content now paints against the visible
+    shell clip and reserves an explicit client-area frame inside embedded
+    child windows, reducing spillover painting and resize/scroll desync
     root-level panel identities
   - hosted workspace windows are now constrained to an inset-safe root rect to
     reduce accidental macOS menu-bar/Dock activation while moving or resizing

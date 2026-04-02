@@ -536,8 +536,10 @@ pub fn paint_window_backdrop(
         return;
     }
 
-    // Overdraw slightly to avoid thin panel-edge seams from backend sampling/frame rounding.
-    let rect = ui.max_rect().expand(BACKDROP_OVERDRAW_PX);
+    // Prefer the visible clip when hosted child windows are embedded so the
+    // backdrop does not visually spill beyond the hosted shell.
+    let rect = resolve_window_backdrop_paint_rect(ui.clip_rect(), ui.max_rect())
+        .expand(BACKDROP_OVERDRAW_PX);
     // Keep a warm, low-contrast palette even when backend color management changes.
     let base_accent = settings.tint_color_for_kind(kind);
     let blend = BACKDROP_WARM_ACCENT_BLEND.clamp(0.0, 1.0);
@@ -645,6 +647,17 @@ pub fn paint_window_backdrop(
     }
 }
 
+fn resolve_window_backdrop_paint_rect(clip_rect: Rect, max_rect: Rect) -> Rect {
+    if clip_rect.is_positive()
+        && clip_rect.width() <= max_rect.width() + 1.0
+        && clip_rect.height() <= max_rect.height() + 1.0
+    {
+        clip_rect
+    } else {
+        max_rect
+    }
+}
+
 pub fn with_window_content_inset<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     let outer_rect = ui.available_rect_before_wrap();
     let inset_limit = (outer_rect.width().min(outer_rect.height()) * 0.25).max(0.0);
@@ -661,9 +674,9 @@ mod tests {
         DEFAULT_SEQUENCE_IMAGE_PATH, DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind,
         WindowBackdropSettings, cover_uv_rect, default_tint_rgb_for_kind,
         kind_content_veil_opacity, kind_image_opacity_scale, kind_tint_opacity_scale,
-        resolve_runtime_asset_uri,
+        resolve_runtime_asset_uri, resolve_window_backdrop_paint_rect,
     };
-    use egui::Vec2;
+    use egui::{Rect, Vec2};
 
     #[test]
     fn resolve_runtime_asset_uri_preserves_supported_uri_schemes() {
@@ -706,6 +719,28 @@ mod tests {
         assert!(uv.max.y < 1.0);
         assert_eq!(uv.min.x, 0.0);
         assert_eq!(uv.max.x, 1.0);
+    }
+
+    #[test]
+    fn resolve_window_backdrop_paint_rect_prefers_clip_rect_inside_max_rect() {
+        let max_rect = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(800.0, 600.0));
+        let clip_rect = Rect::from_min_size(egui::pos2(24.0, 32.0), Vec2::new(640.0, 420.0));
+
+        assert_eq!(
+            resolve_window_backdrop_paint_rect(clip_rect, max_rect),
+            clip_rect
+        );
+    }
+
+    #[test]
+    fn resolve_window_backdrop_paint_rect_falls_back_to_max_rect_for_invalid_clip() {
+        let max_rect = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(800.0, 600.0));
+        let invalid_clip = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::ZERO);
+
+        assert_eq!(
+            resolve_window_backdrop_paint_rect(invalid_clip, max_rect),
+            max_rect
+        );
     }
 
     #[test]

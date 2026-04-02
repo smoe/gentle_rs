@@ -91,9 +91,10 @@ macOS auxiliary-window stability note:
 - The hosted help body now reserves the full remaining window height before its
   vertical scroll area is built so mouse-wheel scrolling stays with the help
   content instead of falling through to the background workspace.
-- Hosted dialog/project/help content insets now use a simple inner-margin
-  frame inside the hosted window instead of manual child-rect synthesis, so
-  content stays attached to the visible shell rather than painting outside it.
+- Hosted dialog/project/help content now paints its backdrop against the
+  visible shell clip and reserves an explicit client-area frame inside the
+  hosted window, reducing background spill and making resize/scroll ownership
+  less ambiguous.
 - While this hosted-window workaround is active, native macOS `Main` / `Windows`
   menu behavior can be imperfect because those menus still assume native child
   windows. The menu path is intentionally not being deepened further; the
