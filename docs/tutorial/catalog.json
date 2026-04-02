@@ -79,6 +79,20 @@
       "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export."
     },
     {
+      "id": "sequencing_confirmation_trace_cli",
+      "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
+      "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export."
+    },
+    {
       "id": "agent_interfaces",
       "title": "GENtle Agent Interfaces Tutorial",
       "path": "docs/agent_interfaces_tutorial.md",

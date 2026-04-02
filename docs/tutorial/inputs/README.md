@@ -35,3 +35,31 @@ Current intended use in GENtle:
 - Use them to inspect the `Patterns -> Gibson...` specialist window, especially
   overlap derivation, primer suggestions, and cartoon behavior on an easily
   understood sequence context.
+
+## Sequencing Confirmation Trace Demo Construct
+
+Files:
+
+- `sequencing_confirmation_trace_demo_construct.fa`
+
+Purpose:
+
+- Minimal expected construct for the CLI trace-aware sequencing-confirmation
+  tutorial.
+- Lets one bundled ABI/AB1 trace confirm a known local junction target without
+  adding another binary tutorial artifact.
+
+Provenance:
+
+- Hand-crafted local tutorial input derived from the first `48` called bases of
+  the committed ABI fixture
+  `test_files/fixtures/sequencing_confirmation/3100.ab1`.
+- Exact sequence:
+  `CAAGATTGCATTCATGATCTACGATTACTAGCGATTCCAGCTTCATAT`
+
+Current intended use in GENtle:
+
+- Load it as `trace_demo_construct` in
+  `docs/tutorial/sequencing_confirmation_trace_cli.md`.
+- Pair it with the bundled `3100.ab1` trace via `seq-trace import` and
+  `seq-confirm run --trace-id ...`.

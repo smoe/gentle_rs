@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "sequencing_confirmation_trace_cli",
+  "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
+  "catalog": {
+    "order": 6,
+    "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
+    "type": "cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "cli_first",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export."
+  }
+}

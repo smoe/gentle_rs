@@ -2850,6 +2850,9 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
                         }
                         read_seq_ids.push(trimmed.to_string());
                     }
+                    // Keep imported trace evidence flags symmetrical with the
+                    // called-read flags so CLI shell and GUI shell stay in
+                    // lockstep as trace-aware confirmation expands.
                     "--trace-ids" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--trace-ids", "seq-confirm run")?;
