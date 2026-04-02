@@ -161,6 +161,7 @@ const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
+const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -22963,8 +22964,20 @@ Error: `{err}`"
         cfg!(target_os = "macos")
     }
 
+    fn macos_native_child_viewports_override_enabled() -> bool {
+        env::var(MACOS_NATIVE_CHILD_VIEWPORTS_ENV)
+            .ok()
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    }
+
     fn should_embed_child_viewports() -> bool {
-        cfg!(target_os = "macos")
+        cfg!(target_os = "macos") && !Self::macos_native_child_viewports_override_enabled()
     }
 
     fn configure_platform_viewport_mode(ctx: &egui::Context) {
@@ -36715,12 +36728,26 @@ mod tests {
 
     #[test]
     fn configure_platform_viewport_mode_sets_expected_embed_flag() {
+        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(false);
+        let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
 
         GENtleApp::configure_platform_viewport_mode(&ctx);
 
         assert_eq!(ctx.embed_viewports(), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn macos_native_child_viewports_env_override_disables_embed_mode() {
+        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "1");
+
+        GENtleApp::configure_platform_viewport_mode(&ctx);
+
+        assert!(!ctx.embed_viewports());
     }
 
     #[test]

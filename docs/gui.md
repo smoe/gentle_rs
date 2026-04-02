@@ -67,6 +67,8 @@ macOS auxiliary-window stability note:
 - This is a deliberate stability workaround for current `egui/eframe` native
   viewport resize/maximize regressions reproduced locally with
   `cargo run --bin gentle_egui_window_repro`.
+- If you want to try native child windows again on macOS, start GENtle with
+  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1 cargo run --bin gentle`.
 - The main/root GENtle window remains native, but it now acts as a neutral
   workspace host instead of directly being the project biology UI.
 - What used to be the privileged main/project surface is now the first hosted
@@ -83,6 +85,11 @@ macOS auxiliary-window stability note:
   and resets stale local help-window area state on first reopen, so broken old
   resize/title-bar geometry from earlier builds self-heals instead of
   persisting across restarts or topic switches.
+- While this hosted-window workaround is active, native macOS `Main` / `Windows`
+  menu behavior can be imperfect because those menus still assume native child
+  windows. The menu path is intentionally not being deepened further; the
+  intended exit is to return to native child viewports once the upstream egui
+  bug is fixed.
 
 ## Configuration Window
 

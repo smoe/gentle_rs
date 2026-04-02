@@ -248,6 +248,9 @@ order. Durable architecture constraints and decisions remain in
   - upstream repro remains reduced to `src/bin/gentle_egui_window_repro.rs`
   - native child viewports are still treated as unreliable on current
     `egui/eframe 0.34.1` macOS
+  - temporary opt-out now exists for future upstream validation:
+    `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1` disables the hosted workaround and
+    re-enables native child viewports without another code change
   - root GENtle window now acts as a neutral workspace host
   - the project/lineage surface is rendered as the first hosted internal
     window instead of being privileged root content
@@ -264,6 +267,10 @@ order. Durable architecture constraints and decisions remain in
     on macOS and resets stale local area state on first reopen, so old broken
     help geometry from earlier builds does not persist across restarts or topic
     switches
+  - native macOS `Main` / `Windows` menu behavior remains knowingly imperfect
+    while hosted child windows are in use; preferred strategy is to retire the
+    workaround after an upstream egui fix rather than to deepen platform-
+    specific menu emulation further
   - remaining feature-tree split/scroll ids are now keyed by per-window scope
     so sequence-panel show/hide relayouts do not briefly collide across hosted
     windows showing the same sequence
