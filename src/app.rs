@@ -896,6 +896,7 @@ pub struct GENtleApp {
     rack_view_status: String,
     rack_view_selected_coordinate: Option<String>,
     rack_view_selected_arrangement_id: Option<String>,
+    rack_view_drag_state: Option<RackDragState>,
     place_arrangement_source_id: String,
     place_arrangement_target_rack_id: String,
     place_arrangement_status: String,
@@ -1862,6 +1863,19 @@ struct RackRow {
     arrangement_ids: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RackDragState {
+    Sample {
+        from_coordinate: String,
+        arrangement_id: String,
+        role_label: String,
+    },
+    ArrangementBlock {
+        arrangement_id: String,
+        from_coordinate: String,
+    },
+}
+
 #[derive(Clone, Default)]
 struct ArrangementGelPreviewState {
     arrangement_id: String,
@@ -2339,6 +2353,7 @@ impl Default for GENtleApp {
             rack_view_status: String::new(),
             rack_view_selected_coordinate: None,
             rack_view_selected_arrangement_id: None,
+            rack_view_drag_state: None,
             place_arrangement_source_id: String::new(),
             place_arrangement_target_rack_id: String::new(),
             place_arrangement_status: String::new(),
@@ -5805,6 +5820,7 @@ Error: `{err}`"
         self.rack_view_status.clear();
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
+        self.rack_view_drag_state = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -6669,6 +6685,7 @@ Error: `{err}`"
         self.rack_view_status.clear();
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
+        self.rack_view_drag_state = None;
         self.show_rack_dialog = true;
         self.mark_viewport_open_requested(Self::rack_viewport_id());
         self.queue_focus_viewport(Self::rack_viewport_id());
@@ -6749,6 +6766,110 @@ Error: `{err}`"
         out
     }
 
+    fn rack_first_coordinate_for_arrangement(
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        arrangement_id: &str,
+    ) -> Option<String> {
+        sorted_entries
+            .iter()
+            .filter(|(_, _, entry)| entry.arrangement_id == arrangement_id)
+            .min_by_key(|(index, _, _)| *index)
+            .map(|(_, coordinate, _)| coordinate.clone())
+    }
+
+    fn rack_drag_status_text(drag: &RackDragState, drop_target: Option<&str>) -> String {
+        match drag {
+            RackDragState::Sample {
+                from_coordinate,
+                arrangement_id,
+                role_label,
+            } => match drop_target {
+                Some(target) => format!(
+                    "Dragging sample '{}' from {} in arrangement '{}' to {}. Release to shift neighboring slots.",
+                    role_label,
+                    from_coordinate,
+                    arrangement_id,
+                    target
+                ),
+                None => format!(
+                    "Dragging sample '{}' from {} in arrangement '{}'. Hover a rack slot and release to shift neighboring slots.",
+                    role_label,
+                    from_coordinate,
+                    arrangement_id
+                ),
+            },
+            RackDragState::ArrangementBlock {
+                arrangement_id,
+                from_coordinate,
+            } => match drop_target {
+                Some(target) => format!(
+                    "Dragging arrangement block '{}' from {} to {}. Release to move the whole block and shift later occupied slots.",
+                    arrangement_id,
+                    from_coordinate,
+                    target
+                ),
+                None => format!(
+                    "Dragging arrangement block '{}' from {}. Hover a rack slot and release to move the whole block.",
+                    arrangement_id,
+                    from_coordinate
+                ),
+            },
+        }
+    }
+
+    fn apply_rack_move(
+        &mut self,
+        rack_id: &str,
+        from_coordinate: &str,
+        to_coordinate: &str,
+        move_block: bool,
+    ) {
+        if from_coordinate.trim().is_empty() || to_coordinate.trim().is_empty() {
+            self.rack_view_status = "Rack move requires both a source and target coordinate."
+                .to_string();
+            return;
+        }
+        if from_coordinate.trim() == to_coordinate.trim() {
+            self.rack_view_status = "Rack move canceled because the source and target are the same slot."
+                .to_string();
+            return;
+        }
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::MoveRackPlacement {
+                rack_id: rack_id.trim().to_string(),
+                from_coordinate: from_coordinate.trim().to_string(),
+                to_coordinate: to_coordinate.trim().to_string(),
+                move_block,
+            });
+        match result {
+            Ok(op_result) => {
+                self.rack_view_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        if move_block {
+                            "Moved arrangement block".to_string()
+                        } else {
+                            "Moved sample on rack".to_string()
+                        }
+                    });
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+            }
+            Err(err) => {
+                self.rack_view_status = if move_block {
+                    format!("Could not move arrangement block: {}", err.message)
+                } else {
+                    format!("Could not move sample: {}", err.message)
+                };
+            }
+        }
+    }
+
     fn render_rack_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Rack");
@@ -6759,7 +6880,7 @@ Error: `{err}`"
             ui.small("No rack is currently selected.");
             return close_requested;
         };
-        ui.label("Physical rack/plate placement linked to one or more arrangements. Click one sample slot to select it, or click an arrangement chip to select a whole block, then click a target position to shift neighbors.");
+        ui.label("Physical rack/plate placement linked to one or more arrangements. Drag one occupied sample slot to another slot to shift neighbors within that arrangement block, or drag an arrangement chip to move the whole block. Click-select and click-target still works as a fallback.");
         ui.horizontal(|ui| {
             ui.label("Rack");
             ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
@@ -6807,6 +6928,17 @@ Error: `{err}`"
             }
         });
         let sorted_entries = Self::rack_sorted_entries(&rack);
+        let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
+        let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
+        let escape_pressed = ui.ctx().input(|i| i.key_pressed(Key::Escape));
+        let mut pending_drag_start: Option<RackDragState> = None;
+        let mut drop_target_coordinate: Option<String> = None;
+        let drag_highlight_color = self.rack_view_drag_state.as_ref().map(|drag| match drag {
+            RackDragState::Sample { arrangement_id, .. }
+            | RackDragState::ArrangementBlock { arrangement_id, .. } => {
+                Self::rack_color_for_arrangement(arrangement_id)
+            }
+        });
         let mut entry_by_coordinate: HashMap<String, crate::engine::RackPlacementEntry> =
             HashMap::new();
         for (_, coordinate, entry) in &sorted_entries {
@@ -6830,12 +6962,21 @@ Error: `{err}`"
                 let button = egui::Button::new(
                     egui::RichText::new(arrangement_id.clone()).color(color).strong(),
                 )
-                .selected(selected);
-                if ui
+                .selected(selected)
+                .sense(egui::Sense::click_and_drag());
+                let response = ui
                     .add(button)
-                    .on_hover_text("Select this whole arrangement block for shifting on the rack")
-                    .clicked()
-                {
+                    .on_hover_text("Drag this arrangement block onto another rack slot, or click once to select it for a later target click");
+                if response.drag_started() {
+                    if let Some(from_coordinate) =
+                        Self::rack_first_coordinate_for_arrangement(&sorted_entries, arrangement_id)
+                    {
+                        pending_drag_start = Some(RackDragState::ArrangementBlock {
+                            arrangement_id: arrangement_id.clone(),
+                            from_coordinate,
+                        });
+                    }
+                } else if response.clicked() {
                     if selected {
                         self.rack_view_selected_arrangement_id = None;
                     } else {
@@ -6846,11 +6987,12 @@ Error: `{err}`"
             }
             if ui
                 .button("Clear selection")
-                .on_hover_text("Clear current sample/block selection")
+                .on_hover_text("Clear current sample/block selection or cancel an in-progress rack drag")
                 .clicked()
             {
                 self.rack_view_selected_coordinate = None;
                 self.rack_view_selected_arrangement_id = None;
+                self.rack_view_drag_state = None;
             }
         });
 
@@ -6896,46 +7038,49 @@ Error: `{err}`"
                                             .color(arrangement_color)
                                             .small(),
                                     )
-                                    .selected(selected),
+                                    .selected(selected)
+                                    .sense(egui::Sense::click_and_drag()),
+                                )
+                                .on_hover_text(
+                                    "Drag this sample to another rack slot, or click once to select it for a later target click",
                                 );
-                                if response.clicked() {
+                                let is_drop_target = self.rack_view_drag_state.is_some()
+                                    && pointer_pos
+                                        .map(|pos| response.rect.contains(pos))
+                                        .unwrap_or(false);
+                                if is_drop_target {
+                                    drop_target_coordinate = Some(coordinate.clone());
+                                    ui.painter().rect_stroke(
+                                        response.rect.expand(1.5),
+                                        6.0,
+                                        egui::Stroke::new(
+                                            2.0,
+                                            drag_highlight_color.unwrap_or(arrangement_color),
+                                        ),
+                                        egui::StrokeKind::Outside,
+                                    );
+                                }
+                                if response.drag_started() {
+                                    pending_drag_start = Some(RackDragState::Sample {
+                                        from_coordinate: coordinate.clone(),
+                                        arrangement_id: entry.arrangement_id.clone(),
+                                        role_label: entry.role_label.clone(),
+                                    });
+                                } else if response.clicked() && self.rack_view_drag_state.is_none() {
                                     if let Some(arrangement_id) =
                                         self.rack_view_selected_arrangement_id.clone()
                                     {
-                                        let first_coordinate = sorted_entries
-                                            .iter()
-                                            .find(|(_, _, row)| row.arrangement_id == arrangement_id)
-                                            .map(|(_, coordinate, _)| coordinate.clone());
+                                        let first_coordinate = Self::rack_first_coordinate_for_arrangement(
+                                            &sorted_entries,
+                                            &arrangement_id,
+                                        );
                                         if let Some(from_coordinate) = first_coordinate {
-                                            let result = self
-                                                .engine
-                                                .write()
-                                                .unwrap()
-                                                .apply(Operation::MoveRackPlacement {
-                                                    rack_id: rack.rack_id.clone(),
-                                                    from_coordinate,
-                                                    to_coordinate: coordinate.clone(),
-                                                    move_block: true,
-                                                });
-                                            match result {
-                                                Ok(op_result) => {
-                                                    self.rack_view_status = op_result
-                                                        .messages
-                                                        .first()
-                                                        .cloned()
-                                                        .unwrap_or_else(|| {
-                                                            "Moved arrangement block".to_string()
-                                                        });
-                                                    self.lineage_cache_valid = false;
-                                                    self.refresh_lineage_cache_if_needed();
-                                                }
-                                                Err(err) => {
-                                                    self.rack_view_status = format!(
-                                                        "Could not move arrangement block: {}",
-                                                        err.message
-                                                    );
-                                                }
-                                            }
+                                            self.apply_rack_move(
+                                                &rack.rack_id,
+                                                &from_coordinate,
+                                                &coordinate,
+                                                true,
+                                            );
                                         }
                                         self.rack_view_selected_arrangement_id = None;
                                     } else if let Some(from_coordinate) =
@@ -6944,35 +7089,12 @@ Error: `{err}`"
                                         if from_coordinate == coordinate {
                                             self.rack_view_selected_coordinate = None;
                                         } else {
-                                            let result = self
-                                                .engine
-                                                .write()
-                                                .unwrap()
-                                                .apply(Operation::MoveRackPlacement {
-                                                    rack_id: rack.rack_id.clone(),
-                                                    from_coordinate,
-                                                    to_coordinate: coordinate.clone(),
-                                                    move_block: false,
-                                                });
-                                            match result {
-                                                Ok(op_result) => {
-                                                    self.rack_view_status = op_result
-                                                        .messages
-                                                        .first()
-                                                        .cloned()
-                                                        .unwrap_or_else(|| {
-                                                            "Moved sample on rack".to_string()
-                                                        });
-                                                        self.lineage_cache_valid = false;
-                                                        self.refresh_lineage_cache_if_needed();
-                                                }
-                                                Err(err) => {
-                                                    self.rack_view_status = format!(
-                                                        "Could not move sample: {}",
-                                                        err.message
-                                                    );
-                                                }
-                                            }
+                                            self.apply_rack_move(
+                                                &rack.rack_id,
+                                                &from_coordinate,
+                                                &coordinate,
+                                                false,
+                                            );
                                             self.rack_view_selected_coordinate = None;
                                         }
                                     } else {
@@ -6984,79 +7106,50 @@ Error: `{err}`"
                                 let response = ui.add_sized(
                                     egui::vec2(96.0, 44.0),
                                     egui::Button::new(egui::RichText::new(coordinate.clone()).weak()),
-                                );
-                                if response.clicked() {
+                                )
+                                .on_hover_text("Drop a dragged sample or arrangement block here, or click as the target for an already selected move");
+                                let is_drop_target = self.rack_view_drag_state.is_some()
+                                    && pointer_pos
+                                        .map(|pos| response.rect.contains(pos))
+                                        .unwrap_or(false);
+                                if is_drop_target {
+                                    drop_target_coordinate = Some(coordinate.clone());
+                                    ui.painter().rect_stroke(
+                                        response.rect.expand(1.5),
+                                        6.0,
+                                        egui::Stroke::new(
+                                            2.0,
+                                            drag_highlight_color.unwrap_or(ui.visuals().strong_text_color()),
+                                        ),
+                                        egui::StrokeKind::Outside,
+                                    );
+                                }
+                                if response.clicked() && self.rack_view_drag_state.is_none() {
                                     if let Some(arrangement_id) =
                                         self.rack_view_selected_arrangement_id.clone()
                                     {
-                                        let first_coordinate = sorted_entries
-                                            .iter()
-                                            .find(|(_, _, row)| row.arrangement_id == arrangement_id)
-                                            .map(|(_, coordinate, _)| coordinate.clone());
+                                        let first_coordinate = Self::rack_first_coordinate_for_arrangement(
+                                            &sorted_entries,
+                                            &arrangement_id,
+                                        );
                                         if let Some(from_coordinate) = first_coordinate {
-                                            let result = self
-                                                .engine
-                                                .write()
-                                                .unwrap()
-                                                .apply(Operation::MoveRackPlacement {
-                                                    rack_id: rack.rack_id.clone(),
-                                                    from_coordinate,
-                                                    to_coordinate: coordinate.clone(),
-                                                    move_block: true,
-                                                });
-                                            match result {
-                                                Ok(op_result) => {
-                                                    self.rack_view_status = op_result
-                                                        .messages
-                                                        .first()
-                                                        .cloned()
-                                                        .unwrap_or_else(|| {
-                                                            "Moved arrangement block".to_string()
-                                                        });
-                                                    self.lineage_cache_valid = false;
-                                                    self.refresh_lineage_cache_if_needed();
-                                                }
-                                                Err(err) => {
-                                                    self.rack_view_status = format!(
-                                                        "Could not move arrangement block: {}",
-                                                        err.message
-                                                    );
-                                                }
-                                            }
+                                            self.apply_rack_move(
+                                                &rack.rack_id,
+                                                &from_coordinate,
+                                                &coordinate,
+                                                true,
+                                            );
                                         }
                                         self.rack_view_selected_arrangement_id = None;
                                     } else if let Some(from_coordinate) =
                                         self.rack_view_selected_coordinate.clone()
                                     {
-                                        let result = self
-                                            .engine
-                                            .write()
-                                            .unwrap()
-                                            .apply(Operation::MoveRackPlacement {
-                                                rack_id: rack.rack_id.clone(),
-                                                from_coordinate,
-                                                to_coordinate: coordinate.clone(),
-                                                move_block: false,
-                                            });
-                                        match result {
-                                            Ok(op_result) => {
-                                                self.rack_view_status = op_result
-                                                    .messages
-                                                    .first()
-                                                    .cloned()
-                                                    .unwrap_or_else(|| {
-                                                        "Moved sample on rack".to_string()
-                                                    });
-                                                self.lineage_cache_valid = false;
-                                                self.refresh_lineage_cache_if_needed();
-                                            }
-                                            Err(err) => {
-                                                self.rack_view_status = format!(
-                                                    "Could not move sample: {}",
-                                                    err.message
-                                                );
-                                            }
-                                        }
+                                        self.apply_rack_move(
+                                            &rack.rack_id,
+                                            &from_coordinate,
+                                            &coordinate,
+                                            false,
+                                        );
                                         self.rack_view_selected_coordinate = None;
                                     }
                                 }
@@ -7066,6 +7159,40 @@ Error: `{err}`"
                     }
                 });
         });
+        if let Some(drag) = pending_drag_start {
+            self.rack_view_drag_state = Some(drag);
+            self.rack_view_selected_coordinate = None;
+            self.rack_view_selected_arrangement_id = None;
+        }
+        if escape_pressed && self.rack_view_drag_state.is_some() {
+            self.rack_view_drag_state = None;
+            self.rack_view_status = "Canceled rack drag.".to_string();
+        }
+        if let Some(drag) = self.rack_view_drag_state.as_ref() {
+            ui.small(Self::rack_drag_status_text(
+                drag,
+                drop_target_coordinate.as_deref(),
+            ));
+        }
+        if pointer_released {
+            if let Some(drag) = self.rack_view_drag_state.clone() {
+                match drag {
+                    RackDragState::Sample {
+                        from_coordinate, ..
+                    } => {
+                        if let Some(target) = drop_target_coordinate.as_deref() {
+                            self.apply_rack_move(&rack.rack_id, &from_coordinate, target, false);
+                        }
+                    }
+                    RackDragState::ArrangementBlock { from_coordinate, .. } => {
+                        if let Some(target) = drop_target_coordinate.as_deref() {
+                            self.apply_rack_move(&rack.rack_id, &from_coordinate, target, true);
+                        }
+                    }
+                }
+                self.rack_view_drag_state = None;
+            }
+        }
         ui.separator();
         ui.horizontal(|ui| {
             if ui
@@ -23453,6 +23580,7 @@ Error: `{err}`"
         self.rack_view_status.clear();
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
+        self.rack_view_drag_state = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -34703,6 +34831,7 @@ mod tests {
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
         PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery, PrepareGenomeUiStepStatus,
         PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
+        RackDragState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
@@ -38897,6 +39026,84 @@ mod tests {
                 .racks
                 .contains_key(&app.rack_view_rack_id)
         );
+    }
+
+    #[test]
+    fn rack_first_coordinate_for_arrangement_prefers_earliest_slot() {
+        let entries = vec![
+            (
+                3,
+                "A4".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A4".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "insert_1".to_string(),
+                },
+            ),
+            (
+                1,
+                "A2".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "vector".to_string(),
+                },
+            ),
+            (
+                2,
+                "A3".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "vector".to_string(),
+                },
+            ),
+        ];
+        assert_eq!(
+            GENtleApp::rack_first_coordinate_for_arrangement(&entries, "arr-a"),
+            Some("A2".to_string())
+        );
+        assert_eq!(
+            GENtleApp::rack_first_coordinate_for_arrangement(&entries, "arr-b"),
+            Some("A3".to_string())
+        );
+        assert_eq!(
+            GENtleApp::rack_first_coordinate_for_arrangement(&entries, "missing"),
+            None
+        );
+    }
+
+    #[test]
+    fn rack_drag_status_text_mentions_drop_target_and_mode() {
+        let sample_text = GENtleApp::rack_drag_status_text(
+            &RackDragState::Sample {
+                from_coordinate: "A2".to_string(),
+                arrangement_id: "arr-a".to_string(),
+                role_label: "insert_1".to_string(),
+            },
+            Some("B4"),
+        );
+        assert!(sample_text.contains("A2"));
+        assert!(sample_text.contains("B4"));
+        assert!(sample_text.contains("insert_1"));
+
+        let block_text = GENtleApp::rack_drag_status_text(
+            &RackDragState::ArrangementBlock {
+                arrangement_id: "arr-b".to_string(),
+                from_coordinate: "C1".to_string(),
+            },
+            Some("D6"),
+        );
+        assert!(block_text.contains("arr-b"));
+        assert!(block_text.contains("C1"));
+        assert!(block_text.contains("D6"));
+        assert!(block_text.contains("whole block"));
     }
 
     #[test]

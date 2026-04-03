@@ -1083,9 +1083,10 @@ order. Durable architecture constraints and decisions remain in
   - arrangement-scoped and rack-wide SVG label export are now available from
     the same shared engine path
   - follow-up work should focus on richer authoring rather than a second model:
-    - true drag/drop UX instead of click-select/click-target moves
     - custom rack-profile authoring beyond the current built-ins
     - broader label-sheet presets and print-oriented layouts
+    - richer drag/drop polish beyond the current baseline
+      (for example autoscroll, multi-select, and clearer ghost previews)
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows

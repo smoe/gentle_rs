@@ -2201,11 +2201,13 @@ Rack view is the first physical-placement layer on top of arrangements.
 
 Interaction model:
 
-- Click one occupied sample position, then click another position to move that
-  sample within its arrangement block.
-- Click one arrangement chip, then click a target position to move the whole
-  arrangement block.
-- Both operations use shift-neighbor semantics:
+- Drag one occupied sample position onto another slot to move that sample
+  within its arrangement block.
+- Drag one arrangement chip onto a target slot to move the whole arrangement
+  block.
+- Click-select plus click-target still exists as a fallback, but drag/drop is
+  now the primary interaction.
+- All rack moves use shift-neighbor semantics:
   - later occupied positions move to keep the rack block contiguous
   - free-floating holes are not the primary editing model in this baseline
 
