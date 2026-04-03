@@ -41,7 +41,8 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        RackOccupant, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+        RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
@@ -717,10 +718,28 @@ pub enum ShellCommand {
         rack_id: String,
         output: String,
         arrangement_id: Option<String>,
+        preset: RackLabelSheetPreset,
     },
     RacksSetProfile {
         rack_id: String,
         profile: RackProfileKind,
+    },
+    RacksApplyTemplate {
+        rack_id: String,
+        template: RackAuthoringTemplate,
+    },
+    RacksSetFillDirection {
+        rack_id: String,
+        fill_direction: RackFillDirection,
+    },
+    RacksSetCustomProfile {
+        rack_id: String,
+        rows: usize,
+        columns: usize,
+    },
+    RacksSetBlocked {
+        rack_id: String,
+        blocked_coordinates: Vec<String>,
     },
     LaddersList {
         molecule: LadderMolecule,
@@ -4729,16 +4748,53 @@ impl ShellCommand {
                 rack_id,
                 output,
                 arrangement_id,
+                preset,
             } => format!(
-                "export rack labels SVG for '{}' to '{}' (arrangement={})",
+                "export rack labels SVG for '{}' to '{}' (arrangement={}, preset={})",
                 rack_id.trim(),
                 output,
-                arrangement_id.as_deref().unwrap_or("all")
+                arrangement_id.as_deref().unwrap_or("all"),
+                preset.as_str()
             ),
             Self::RacksSetProfile { rack_id, profile } => format!(
                 "set rack '{}' profile to '{}'",
                 rack_id.trim(),
                 profile.as_str()
+            ),
+            Self::RacksApplyTemplate { rack_id, template } => format!(
+                "apply rack template '{}' to '{}'",
+                template.as_str(),
+                rack_id.trim()
+            ),
+            Self::RacksSetFillDirection {
+                rack_id,
+                fill_direction,
+            } => format!(
+                "set rack '{}' fill direction to '{}'",
+                rack_id.trim(),
+                fill_direction.as_str()
+            ),
+            Self::RacksSetCustomProfile {
+                rack_id,
+                rows,
+                columns,
+            } => format!(
+                "set rack '{}' to custom profile {}x{}",
+                rack_id.trim(),
+                rows,
+                columns
+            ),
+            Self::RacksSetBlocked {
+                rack_id,
+                blocked_coordinates,
+            } => format!(
+                "set rack '{}' blocked coordinates to {}",
+                rack_id.trim(),
+                if blocked_coordinates.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    blocked_coordinates.join(",")
+                }
             ),
             Self::LaddersList {
                 molecule,
@@ -7768,6 +7824,45 @@ fn parse_rack_profile_kind(value: &str) -> Result<RackProfileKind, String> {
     }
 }
 
+fn parse_rack_fill_direction(value: &str) -> Result<RackFillDirection, String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "row_major" | "row" => Ok(RackFillDirection::RowMajor),
+        "column_major" | "column" | "col" => Ok(RackFillDirection::ColumnMajor),
+        other => Err(format!(
+            "Unsupported rack fill direction '{other}' (expected row_major|column_major)"
+        )),
+    }
+}
+
+fn parse_rack_authoring_template(value: &str) -> Result<RackAuthoringTemplate, String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "bench_rows" | "bench" | "rows" => Ok(RackAuthoringTemplate::BenchRows),
+        "plate_columns" | "columns" | "column" | "plate_cols" => {
+            Ok(RackAuthoringTemplate::PlateColumns)
+        }
+        "plate_edge_avoidance" | "edge_avoidance" | "edge" | "avoid_edges" => {
+            Ok(RackAuthoringTemplate::PlateEdgeAvoidance)
+        }
+        other => Err(format!(
+            "Unsupported rack template '{other}' (expected bench_rows|plate_columns|plate_edge_avoidance)"
+        )),
+    }
+}
+
+fn parse_rack_label_sheet_preset(value: &str) -> Result<RackLabelSheetPreset, String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "compact_cards" | "compact" => Ok(RackLabelSheetPreset::CompactCards),
+        "print_a4" | "a4" => Ok(RackLabelSheetPreset::PrintA4),
+        "wide_cards" | "wide" => Ok(RackLabelSheetPreset::WideCards),
+        other => Err(format!(
+            "Unsupported rack label preset '{other}' (expected compact_cards|print_a4|wide_cards)"
+        )),
+    }
+}
+
 fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(PrimerDesignBackend::Auto),
@@ -10751,7 +10846,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "labels-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID]"
+                            "racks labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]"
                                 .to_string(),
                         );
                     }
@@ -10764,6 +10859,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         return Err("racks labels-svg requires a non-empty OUTPUT.svg".to_string());
                     }
                     let mut arrangement_id: Option<String> = None;
+                    let mut preset = RackLabelSheetPreset::default();
                     let mut idx = 4usize;
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
@@ -10777,6 +10873,13 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 }
                                 idx += 2;
                             }
+                            "--preset" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --preset".to_string());
+                                }
+                                preset = parse_rack_label_sheet_preset(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
                             other => {
                                 return Err(format!(
                                     "Unknown argument '{other}' for racks labels-svg"
@@ -10788,6 +10891,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         rack_id,
                         output,
                         arrangement_id,
+                        preset,
                     })
                 }
                 "set-profile" => {
@@ -10801,8 +10905,111 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let profile = parse_rack_profile_kind(&tokens[3])?;
                     Ok(ShellCommand::RacksSetProfile { rack_id, profile })
                 }
+                "apply-template" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "racks apply-template requires RACK_ID bench_rows|plate_columns|plate_edge_avoidance"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks apply-template requires a non-empty RACK_ID".to_string(),
+                        );
+                    }
+                    let template = parse_rack_authoring_template(&tokens[3])?;
+                    Ok(ShellCommand::RacksApplyTemplate { rack_id, template })
+                }
+                "set-fill-direction" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "racks set-fill-direction requires RACK_ID row_major|column_major"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks set-fill-direction requires a non-empty RACK_ID".to_string(),
+                        );
+                    }
+                    let fill_direction = parse_rack_fill_direction(&tokens[3])?;
+                    Ok(ShellCommand::RacksSetFillDirection {
+                        rack_id,
+                        fill_direction,
+                    })
+                }
+                "set-custom-profile" => {
+                    if tokens.len() != 5 {
+                        return Err(
+                            "racks set-custom-profile requires RACK_ID ROWS COLUMNS".to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks set-custom-profile requires a non-empty RACK_ID".to_string(),
+                        );
+                    }
+                    let rows = tokens[3].trim().parse::<usize>().map_err(|e| {
+                        format!("Could not parse ROWS '{}': {e}", tokens[3].trim())
+                    })?;
+                    let columns = tokens[4].trim().parse::<usize>().map_err(|e| {
+                        format!("Could not parse COLUMNS '{}': {e}", tokens[4].trim())
+                    })?;
+                    Ok(ShellCommand::RacksSetCustomProfile {
+                        rack_id,
+                        rows,
+                        columns,
+                    })
+                }
+                "set-blocked" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks set-blocked requires RACK_ID COORD[,COORD...]... or --clear"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks set-blocked requires a non-empty RACK_ID".to_string(),
+                        );
+                    }
+                    let blocked_coordinates = if tokens[3] == "--clear" {
+                        if tokens.len() != 4 {
+                            return Err(
+                                "racks set-blocked RACK_ID --clear does not accept extra arguments"
+                                    .to_string(),
+                            );
+                        }
+                        vec![]
+                    } else {
+                        let mut out = Vec::new();
+                        for token in &tokens[3..] {
+                            for value in token.split(',') {
+                                let trimmed = value.trim();
+                                if !trimmed.is_empty() {
+                                    out.push(trimmed.to_string());
+                                }
+                            }
+                        }
+                        if out.is_empty() {
+                            return Err(
+                                "racks set-blocked requires at least one non-empty coordinate"
+                                    .to_string(),
+                            );
+                        }
+                        out
+                    };
+                    Ok(ShellCommand::RacksSetBlocked {
+                        rack_id,
+                        blocked_coordinates,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile)"
+                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
                 )),
             }
         }
@@ -13409,12 +13616,14 @@ fn execute_shell_command_with_options_inner(
             rack_id,
             output,
             arrangement_id,
+            preset,
         } => {
             let op_result = engine
                 .apply(Operation::ExportRackLabelsSvg {
                     rack_id: rack_id.clone(),
                     path: output.clone(),
                     arrangement_id: arrangement_id.clone(),
+                    preset: *preset,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -13427,6 +13636,65 @@ fn execute_shell_command_with_options_inner(
                 .apply(Operation::SetRackProfile {
                     rack_id: rack_id.clone(),
                     profile: *profile,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksApplyTemplate { rack_id, template } => {
+            let op_result = engine
+                .apply(Operation::ApplyRackTemplate {
+                    rack_id: rack_id.clone(),
+                    template: *template,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksSetFillDirection {
+            rack_id,
+            fill_direction,
+        } => {
+            let op_result = engine
+                .apply(Operation::SetRackFillDirection {
+                    rack_id: rack_id.clone(),
+                    fill_direction: *fill_direction,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksSetCustomProfile {
+            rack_id,
+            rows,
+            columns,
+        } => {
+            let op_result = engine
+                .apply(Operation::SetRackProfileCustom {
+                    rack_id: rack_id.clone(),
+                    rows: *rows,
+                    columns: *columns,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksSetBlocked {
+            rack_id,
+            blocked_coordinates,
+        } => {
+            let op_result = engine
+                .apply(Operation::SetRackBlockedCoordinates {
+                    rack_id: rack_id.clone(),
+                    blocked_coordinates: blocked_coordinates.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

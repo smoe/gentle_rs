@@ -69,9 +69,10 @@ use crate::{
         GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackOccupant, RackProfileKind, RenderSvgMode,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState, Rack,
+        RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+        RackProfileKind, ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode,
         RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
@@ -893,9 +894,11 @@ pub struct GENtleApp {
     arrangement_gel_preview: ArrangementGelPreviewState,
     rack_view_rack_id: String,
     rack_view_status: String,
+    rack_label_sheet_preset: RackLabelSheetPreset,
     rack_view_selected_coordinate: Option<String>,
     rack_view_selected_arrangement_id: Option<String>,
     rack_view_drag_state: Option<RackDragState>,
+    rack_view_hover_target_coordinate: Option<String>,
     place_arrangement_source_id: String,
     place_arrangement_target_rack_id: String,
     place_arrangement_status: String,
@@ -1875,6 +1878,11 @@ enum RackDragState {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RackGhostPreviewCell {
+    predicted_entry: Option<crate::engine::RackPlacementEntry>,
+}
+
 #[derive(Clone, Default)]
 struct ArrangementGelPreviewState {
     arrangement_id: String,
@@ -2350,9 +2358,11 @@ impl Default for GENtleApp {
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
+            rack_label_sheet_preset: RackLabelSheetPreset::default(),
             rack_view_selected_coordinate: None,
             rack_view_selected_arrangement_id: None,
             rack_view_drag_state: None,
+            rack_view_hover_target_coordinate: None,
             place_arrangement_source_id: String::new(),
             place_arrangement_target_rack_id: String::new(),
             place_arrangement_status: String::new(),
@@ -5820,6 +5830,7 @@ Error: `{err}`"
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
         self.rack_view_drag_state = None;
+        self.rack_view_hover_target_coordinate = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -6605,11 +6616,95 @@ Error: `{err}`"
             RackProfileKind::SmallTube4x6 => "Small tube rack (4 x 6)",
             RackProfileKind::Plate96 => "Plate 96",
             RackProfileKind::Plate384 => "Plate 384",
+            RackProfileKind::Custom => "Custom",
         }
     }
 
-    fn rack_coordinate_for_slot(row: usize, column: usize) -> String {
-        format!("{}{}", (b'A' + row as u8) as char, column + 1)
+    fn rack_authoring_template_label(template: RackAuthoringTemplate) -> &'static str {
+        match template {
+            RackAuthoringTemplate::BenchRows => "Bench rows",
+            RackAuthoringTemplate::PlateColumns => "Plate columns",
+            RackAuthoringTemplate::PlateEdgeAvoidance => "Plate edge avoidance",
+        }
+    }
+
+    fn rack_label_sheet_preset_label(preset: RackLabelSheetPreset) -> &'static str {
+        match preset {
+            RackLabelSheetPreset::CompactCards => "Compact cards",
+            RackLabelSheetPreset::PrintA4 => "Print A4",
+            RackLabelSheetPreset::WideCards => "Wide cards",
+        }
+    }
+
+    fn rack_coordinate_for_slot(
+        profile: &crate::engine::RackProfileSnapshot,
+        row: usize,
+        column: usize,
+    ) -> String {
+        GentleEngine::rack_coordinate_from_row_column(profile, row, column).unwrap_or_else(|_| {
+            format!(
+                "{}{}",
+                GentleEngine::rack_row_label_from_index(row),
+                column + 1
+            )
+        })
+    }
+
+    fn rack_edge_avoidance_coordinates(
+        profile: &crate::engine::RackProfileSnapshot,
+    ) -> Option<Vec<String>> {
+        if profile.rows < 3 || profile.columns < 3 {
+            return None;
+        }
+        let mut out = Vec::new();
+        match profile.fill_direction {
+            RackFillDirection::RowMajor => {
+                for row in 0..profile.rows {
+                    for column in 0..profile.columns {
+                        if row == 0
+                            || row + 1 == profile.rows
+                            || column == 0
+                            || column + 1 == profile.columns
+                        {
+                            out.push(Self::rack_coordinate_for_slot(profile, row, column));
+                        }
+                    }
+                }
+            }
+            RackFillDirection::ColumnMajor => {
+                for column in 0..profile.columns {
+                    for row in 0..profile.rows {
+                        if row == 0
+                            || row + 1 == profile.rows
+                            || column == 0
+                            || column + 1 == profile.columns
+                        {
+                            out.push(Self::rack_coordinate_for_slot(profile, row, column));
+                        }
+                    }
+                }
+            }
+        }
+        Some(out)
+    }
+
+    fn infer_rack_authoring_template(
+        profile: &crate::engine::RackProfileSnapshot,
+    ) -> RackAuthoringTemplate {
+        match profile.fill_direction {
+            RackFillDirection::RowMajor => RackAuthoringTemplate::BenchRows,
+            RackFillDirection::ColumnMajor => {
+                if profile.blocked_coordinates.as_slice()
+                    == Self::rack_edge_avoidance_coordinates(profile)
+                        .unwrap_or_default()
+                        .as_slice()
+                {
+                    RackAuthoringTemplate::PlateEdgeAvoidance
+                } else {
+                    RackAuthoringTemplate::PlateColumns
+                }
+            }
+        }
     }
 
     fn rack_color_for_arrangement(arrangement_id: &str) -> egui::Color32 {
@@ -6701,6 +6796,7 @@ Error: `{err}`"
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
         self.rack_view_drag_state = None;
+        self.rack_view_hover_target_coordinate = None;
         self.show_rack_dialog = true;
         self.mark_viewport_open_requested(Self::rack_viewport_id());
         self.queue_focus_viewport(Self::rack_viewport_id());
@@ -6735,6 +6831,7 @@ Error: `{err}`"
                 rack_id: rack_id.clone(),
                 path: path_text.clone(),
                 arrangement_id: Some(arrangement_id.trim().to_string()),
+                preset: self.rack_label_sheet_preset,
             });
         match result {
             Ok(op_result) => {
@@ -6819,6 +6916,190 @@ Error: `{err}`"
                     arrangement_id, from_coordinate
                 ),
             },
+        }
+    }
+
+    fn rack_available_coordinates(
+        profile: &crate::engine::RackProfileSnapshot,
+    ) -> Vec<String> {
+        let blocked = profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut coordinates = Vec::new();
+        match profile.fill_direction {
+            RackFillDirection::RowMajor => {
+                for row in 0..profile.rows {
+                    for column in 0..profile.columns {
+                        let coordinate = Self::rack_coordinate_for_slot(profile, row, column);
+                        if !blocked.contains(&coordinate) {
+                            coordinates.push(coordinate);
+                        }
+                    }
+                }
+            }
+            RackFillDirection::ColumnMajor => {
+                for column in 0..profile.columns {
+                    for row in 0..profile.rows {
+                        let coordinate = Self::rack_coordinate_for_slot(profile, row, column);
+                        if !blocked.contains(&coordinate) {
+                            coordinates.push(coordinate);
+                        }
+                    }
+                }
+            }
+        }
+        coordinates
+    }
+
+    fn rack_preview_entries_for_drop(
+        rack: &Rack,
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        drag: &RackDragState,
+        drop_target: &str,
+    ) -> Option<Vec<crate::engine::RackPlacementEntry>> {
+        let available_coordinates = Self::rack_available_coordinates(&rack.profile);
+        let mut ordered = sorted_entries
+            .iter()
+            .map(|(index, _, entry)| (*index, entry.clone()))
+            .collect::<Vec<_>>();
+        let from_coordinate = match drag {
+            RackDragState::Sample {
+                from_coordinate, ..
+            }
+            | RackDragState::ArrangementBlock {
+                from_coordinate, ..
+            } => from_coordinate.as_str(),
+        };
+        let from_index = GentleEngine::rack_index_from_coordinate(&rack.profile, from_coordinate).ok()?;
+        let to_index = GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
+        let from_pos = ordered.iter().position(|(index, _)| *index == from_index)?;
+        match drag {
+            RackDragState::ArrangementBlock { arrangement_id, .. } => {
+                let block_positions = ordered
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, (_, entry))| {
+                        if entry.arrangement_id == *arrangement_id {
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let block_start = *block_positions.first().unwrap_or(&from_pos);
+                let block_entries = ordered
+                    .iter()
+                    .filter(|(_, entry)| entry.arrangement_id == *arrangement_id)
+                    .map(|(_, entry)| entry.clone())
+                    .collect::<Vec<_>>();
+                let block_len = block_entries.len();
+                ordered.retain(|(_, entry)| entry.arrangement_id != *arrangement_id);
+                if ordered.len() + block_len > available_coordinates.len() {
+                    return None;
+                }
+                let insertion_index = to_index.min(ordered.len());
+                for (offset, entry) in block_entries.into_iter().enumerate() {
+                    ordered.insert(insertion_index + offset, (block_start + offset, entry));
+                }
+            }
+            RackDragState::Sample { arrangement_id, .. } => {
+                let block_positions = ordered
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, (_, entry))| {
+                        if entry.arrangement_id == *arrangement_id {
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let block_start = *block_positions.first().unwrap_or(&from_pos);
+                let block_end = *block_positions.last().unwrap_or(&from_pos);
+                if to_index < block_start || to_index > block_end {
+                    return None;
+                }
+                let mut block_entries = ordered[block_start..=block_end]
+                    .iter()
+                    .map(|(_, entry)| entry.clone())
+                    .collect::<Vec<_>>();
+                let local_from = from_pos - block_start;
+                let local_to = to_index - block_start;
+                let moved = block_entries.remove(local_from);
+                block_entries.insert(local_to, moved);
+                for (offset, entry) in block_entries.into_iter().enumerate() {
+                    ordered[block_start + offset].1 = entry;
+                }
+            }
+        }
+        let mut reflowed = ordered
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect::<Vec<_>>();
+        if reflowed.len() > available_coordinates.len() {
+            return None;
+        }
+        let mut order_by_arrangement: HashMap<String, usize> = HashMap::new();
+        for (entry, coordinate) in reflowed.iter_mut().zip(available_coordinates.into_iter()) {
+            entry.coordinate = coordinate;
+            let next = order_by_arrangement
+                .entry(entry.arrangement_id.clone())
+                .and_modify(|index| *index += 1)
+                .or_insert(0usize);
+            entry.order_index = *next;
+        }
+        Some(reflowed)
+    }
+
+    fn rack_ghost_preview_map(
+        rack: &Rack,
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        drag: &RackDragState,
+        drop_target: &str,
+    ) -> Option<BTreeMap<String, RackGhostPreviewCell>> {
+        let preview_entries =
+            Self::rack_preview_entries_for_drop(rack, sorted_entries, drag, drop_target)?;
+        let current_entries = sorted_entries
+            .iter()
+            .map(|(_, coordinate, entry)| (coordinate.clone(), entry.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let preview_map = preview_entries
+            .into_iter()
+            .map(|entry| (entry.coordinate.clone(), entry))
+            .collect::<BTreeMap<_, _>>();
+        let mut out = BTreeMap::new();
+        let all_coordinates = current_entries
+            .keys()
+            .chain(preview_map.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for coordinate in all_coordinates {
+            let current_entry = current_entries.get(&coordinate);
+            let preview_entry = preview_map.get(&coordinate);
+            if current_entry != preview_entry {
+                out.insert(
+                    coordinate,
+                    RackGhostPreviewCell {
+                        predicted_entry: preview_entry.cloned(),
+                    },
+                );
+            }
+        }
+        Some(out)
+    }
+
+    fn rack_entry_display(entry: &crate::engine::RackPlacementEntry) -> String {
+        let role_text = Self::rack_short_role_label(&entry.role_label);
+        match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => {
+                format!("{role_text}\n{container_id}")
+            }
+            Some(RackOccupant::LadderReference { ladder_name }) => {
+                format!("{role_text}\n{ladder_name}")
+            }
+            None => role_text,
         }
     }
 
@@ -6928,6 +7209,56 @@ Error: `{err}`"
                 }
             }
         });
+        ui.horizontal(|ui| {
+            let mut selected_template = Self::infer_rack_authoring_template(&rack.profile);
+            ui.label("Template");
+            egui::ComboBox::from_id_salt("rack_template_combo")
+                .selected_text(Self::rack_authoring_template_label(selected_template))
+                .show_ui(ui, |ui| {
+                    for template in [
+                        RackAuthoringTemplate::BenchRows,
+                        RackAuthoringTemplate::PlateColumns,
+                        RackAuthoringTemplate::PlateEdgeAvoidance,
+                    ] {
+                        ui.selectable_value(
+                            &mut selected_template,
+                            template,
+                            Self::rack_authoring_template_label(template),
+                        );
+                    }
+                });
+            if ui
+                .button("Apply Template")
+                .on_hover_text(
+                    "Apply one shared rack-authoring shortcut. Bench rows uses row-major fill; plate columns uses column-major fill; plate edge avoidance uses column-major fill and blocks the outer ring.",
+                )
+                .clicked()
+            {
+                let result = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .apply(Operation::ApplyRackTemplate {
+                        rack_id: rack.rack_id.clone(),
+                        template: selected_template,
+                    });
+                match result {
+                    Ok(op_result) => {
+                        self.rack_view_status = op_result
+                            .messages
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Applied rack template".to_string());
+                        self.lineage_cache_valid = false;
+                        self.refresh_lineage_cache_if_needed();
+                    }
+                    Err(err) => {
+                        self.rack_view_status =
+                            format!("Could not apply rack template: {}", err.message);
+                    }
+                }
+            }
+        });
         let sorted_entries = Self::rack_sorted_entries(&rack);
         let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
@@ -6940,11 +7271,20 @@ Error: `{err}`"
                 Self::rack_color_for_arrangement(arrangement_id)
             }
         });
+        let previous_hover_target = self.rack_view_hover_target_coordinate.clone();
         let mut entry_by_coordinate: HashMap<String, crate::engine::RackPlacementEntry> =
             HashMap::new();
         for (_, coordinate, entry) in &sorted_entries {
             entry_by_coordinate.insert(coordinate.clone(), entry.clone());
         }
+        let ghost_preview = self
+            .rack_view_drag_state
+            .as_ref()
+            .and_then(|drag| {
+                previous_hover_target
+                    .as_deref()
+                    .and_then(|target| Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target))
+            });
         let arrangement_ids = sorted_entries
             .iter()
             .map(|(_, _, entry)| entry.arrangement_id.clone())
@@ -7011,40 +7351,43 @@ Error: `{err}`"
                     }
                     ui.end_row();
                     for row in 0..rack.profile.rows {
-                        ui.monospace(((b'A' + row as u8) as char).to_string());
+                        ui.monospace(GentleEngine::rack_row_label_from_index(row));
                         for column in 0..rack.profile.columns {
-                            let coordinate = Self::rack_coordinate_for_slot(row, column);
-                            if let Some(entry) = entry_by_coordinate.get(&coordinate).cloned() {
+                            let coordinate =
+                                Self::rack_coordinate_for_slot(&rack.profile, row, column);
+                            let preview_cell =
+                                ghost_preview.as_ref().and_then(|map| map.get(&coordinate));
+                            let current_entry = entry_by_coordinate.get(&coordinate).cloned();
+                            let effective_entry = preview_cell
+                                .and_then(|cell| cell.predicted_entry.clone())
+                                .or(current_entry.clone());
+                            if let Some(entry) = effective_entry {
                                 let arrangement_color =
                                     Self::rack_color_for_arrangement(&entry.arrangement_id);
-                                let role_text = Self::rack_short_role_label(&entry.role_label);
-                                let display = match entry.occupant.as_ref() {
-                                    Some(RackOccupant::Container { container_id }) => {
-                                        format!("{role_text}\n{container_id}")
-                                    }
-                                    Some(RackOccupant::LadderReference { ladder_name }) => {
-                                        format!("{role_text}\n{ladder_name}")
-                                    }
-                                    None => role_text.clone(),
-                                };
+                                let display = Self::rack_entry_display(&entry);
                                 let selected = self
                                     .rack_view_selected_coordinate
                                     .as_deref()
                                     .map(|value| value == coordinate)
                                     .unwrap_or(false);
-                                let response = ui.add_sized(
-                                    egui::vec2(96.0, 44.0),
-                                    egui::Button::new(
-                                        egui::RichText::new(display)
-                                            .color(arrangement_color)
-                                            .small(),
-                                    )
-                                    .selected(selected)
-                                    .sense(egui::Sense::click_and_drag()),
+                                let mut button = egui::Button::new(
+                                    egui::RichText::new(display)
+                                        .color(arrangement_color)
+                                        .small(),
                                 )
-                                .on_hover_text(
-                                    "Drag this sample to another rack slot, or click once to select it for a later target click",
-                                );
+                                .selected(selected)
+                                .sense(egui::Sense::click_and_drag());
+                                if preview_cell.is_some() {
+                                    button = button.fill(arrangement_color.gamma_multiply(0.12));
+                                }
+                                let hover_text = if preview_cell.is_some() {
+                                    "Ghost preview after drop. Drag this sample to another rack slot, or click once to select it for a later target click"
+                                } else {
+                                    "Drag this sample to another rack slot, or click once to select it for a later target click"
+                                };
+                                let response = ui
+                                    .add_sized(egui::vec2(96.0, 44.0), button)
+                                    .on_hover_text(hover_text);
                                 let is_drop_target = self.rack_view_drag_state.is_some()
                                     && pointer_pos
                                         .map(|pos| response.rect.contains(pos))
@@ -7060,12 +7403,25 @@ Error: `{err}`"
                                         ),
                                         egui::StrokeKind::Outside,
                                     );
+                                } else if preview_cell.is_some() {
+                                    ui.painter().rect_stroke(
+                                        response.rect.expand(1.0),
+                                        6.0,
+                                        egui::Stroke::new(1.5, arrangement_color.gamma_multiply(0.85)),
+                                        egui::StrokeKind::Outside,
+                                    );
                                 }
-                                if response.drag_started() {
+                                if current_entry.is_some() && response.drag_started() {
                                     pending_drag_start = Some(RackDragState::Sample {
                                         from_coordinate: coordinate.clone(),
-                                        arrangement_id: entry.arrangement_id.clone(),
-                                        role_label: entry.role_label.clone(),
+                                        arrangement_id: current_entry
+                                            .as_ref()
+                                            .map(|value| value.arrangement_id.clone())
+                                            .unwrap_or_else(|| entry.arrangement_id.clone()),
+                                        role_label: current_entry
+                                            .as_ref()
+                                            .map(|value| value.role_label.clone())
+                                            .unwrap_or_else(|| entry.role_label.clone()),
                                     });
                                 } else if response.clicked() && self.rack_view_drag_state.is_none() {
                                     if let Some(arrangement_id) =
@@ -7098,17 +7454,24 @@ Error: `{err}`"
                                             );
                                             self.rack_view_selected_coordinate = None;
                                         }
-                                    } else {
+                                    } else if current_entry.is_some() {
                                         self.rack_view_selected_coordinate = Some(coordinate);
                                         self.rack_view_selected_arrangement_id = None;
                                     }
                                 }
                             } else {
-                                let response = ui.add_sized(
-                                    egui::vec2(96.0, 44.0),
-                                    egui::Button::new(egui::RichText::new(coordinate.clone()).weak()),
-                                )
-                                .on_hover_text("Drop a dragged sample or arrangement block here, or click as the target for an already selected move");
+                                let mut button =
+                                    egui::Button::new(egui::RichText::new(coordinate.clone()).weak());
+                                if preview_cell.is_some() {
+                                    button = button.fill(ui.visuals().faint_bg_color);
+                                }
+                                let response = ui
+                                    .add_sized(egui::vec2(96.0, 44.0), button)
+                                    .on_hover_text(if preview_cell.is_some() {
+                                        "Ghost preview after drop. Drop a dragged sample or arrangement block here, or click as the target for an already selected move"
+                                    } else {
+                                        "Drop a dragged sample or arrangement block here, or click as the target for an already selected move"
+                                    });
                                 let is_drop_target = self.rack_view_drag_state.is_some()
                                     && pointer_pos
                                         .map(|pos| response.rect.contains(pos))
@@ -7120,7 +7483,20 @@ Error: `{err}`"
                                         6.0,
                                         egui::Stroke::new(
                                             2.0,
-                                            drag_highlight_color.unwrap_or(ui.visuals().strong_text_color()),
+                                            drag_highlight_color
+                                                .unwrap_or(ui.visuals().strong_text_color()),
+                                        ),
+                                        egui::StrokeKind::Outside,
+                                    );
+                                } else if preview_cell.is_some() {
+                                    ui.painter().rect_stroke(
+                                        response.rect.expand(1.0),
+                                        6.0,
+                                        egui::Stroke::new(
+                                            1.5,
+                                            drag_highlight_color
+                                                .unwrap_or(ui.visuals().strong_text_color())
+                                                .gamma_multiply(0.8),
                                         ),
                                         egui::StrokeKind::Outside,
                                     );
@@ -7196,11 +7572,37 @@ Error: `{err}`"
                 self.rack_view_drag_state = None;
             }
         }
+        if self.rack_view_drag_state.is_some() {
+            if previous_hover_target != drop_target_coordinate {
+                ui.ctx().request_repaint();
+            }
+            self.rack_view_hover_target_coordinate = drop_target_coordinate.clone();
+        } else {
+            self.rack_view_hover_target_coordinate = None;
+        }
         ui.separator();
         ui.horizontal(|ui| {
+            ui.label("Label preset");
+            egui::ComboBox::from_id_salt("rack_label_sheet_preset_combo")
+                .selected_text(Self::rack_label_sheet_preset_label(
+                    self.rack_label_sheet_preset,
+                ))
+                .show_ui(ui, |ui| {
+                    for preset in [
+                        RackLabelSheetPreset::CompactCards,
+                        RackLabelSheetPreset::PrintA4,
+                        RackLabelSheetPreset::WideCards,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rack_label_sheet_preset,
+                            preset,
+                            Self::rack_label_sheet_preset_label(preset),
+                        );
+                    }
+                });
             if ui
                 .button("Labels SVG...")
-                .on_hover_text("Export one deterministic label sheet for the currently shown rack")
+                .on_hover_text("Export one deterministic label sheet for the currently shown rack using the selected preset")
                 .clicked()
             {
                 let stem = Self::sanitize_file_stem(&rack.name, "rack_labels");
@@ -7219,6 +7621,7 @@ Error: `{err}`"
                             rack_id: rack.rack_id.clone(),
                             path: path_text.clone(),
                             arrangement_id: None,
+                            preset: self.rack_label_sheet_preset,
                         }) {
                         Ok(op_result) => {
                             self.rack_view_status =
@@ -23597,6 +24000,7 @@ Error: `{err}`"
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
         self.rack_view_drag_state = None;
+        self.rack_view_hover_target_coordinate = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -30590,6 +30994,29 @@ Error: `{err}`"
                 ui.set_max_width(container_panel_width);
                 ui.heading("Arrangements");
                 ui.label("Serial lane setups from one or more containers");
+                ui.horizontal(|ui| {
+                    ui.label("Label preset");
+                    egui::ComboBox::from_id_salt("arrangement_label_sheet_preset_combo")
+                        .selected_text(Self::rack_label_sheet_preset_label(
+                            self.rack_label_sheet_preset,
+                        ))
+                        .show_ui(ui, |ui| {
+                            for preset in [
+                                RackLabelSheetPreset::CompactCards,
+                                RackLabelSheetPreset::PrintA4,
+                                RackLabelSheetPreset::WideCards,
+                            ] {
+                                ui.selectable_value(
+                                    &mut self.rack_label_sheet_preset,
+                                    preset,
+                                    Self::rack_label_sheet_preset_label(preset),
+                                );
+                            }
+                        });
+                    ui.small(
+                        "Used by arrangement-scoped and rack-wide label SVG export.",
+                    );
+                });
                 egui::ScrollArea::both()
                     .id_salt("lineage_arrangement_grid_scroll")
                     .auto_shrink([false, false])
@@ -30689,7 +31116,7 @@ Error: `{err}`"
                                             if ui
                                                 .button("Labels SVG")
                                                 .on_hover_text(
-                                                    "Export one deterministic label sheet for this arrangement from its linked rack draft",
+                                                    "Export one deterministic label sheet for this arrangement from its linked rack draft using the current label preset",
                                                 )
                                                 .clicked()
                                             {
@@ -34354,14 +34781,51 @@ Error: `{err}`"
                 rack_id.trim(),
                 profile.as_str()
             ),
+            Operation::ApplyRackTemplate { rack_id, template } => format!(
+                "Apply rack template: rack_id={}, template={}",
+                rack_id.trim(),
+                template.as_str()
+            ),
+            Operation::SetRackFillDirection {
+                rack_id,
+                fill_direction,
+            } => format!(
+                "Set rack fill direction: rack_id={}, fill_direction={}",
+                rack_id.trim(),
+                fill_direction.as_str()
+            ),
+            Operation::SetRackProfileCustom {
+                rack_id,
+                rows,
+                columns,
+            } => format!(
+                "Set custom rack profile: rack_id={}, rows={}, columns={}",
+                rack_id.trim(),
+                rows,
+                columns
+            ),
+            Operation::SetRackBlockedCoordinates {
+                rack_id,
+                blocked_coordinates,
+            } => format!(
+                "Set blocked rack coordinates: rack_id={}, blocked={}",
+                rack_id.trim(),
+                if blocked_coordinates.is_empty() {
+                    "-".to_string()
+                } else {
+                    blocked_coordinates.join(", ")
+                }
+            ),
             Operation::ExportRackLabelsSvg {
                 rack_id,
                 path,
                 arrangement_id,
+                preset,
             } => format!(
-                "Export rack labels SVG: rack_id={}, arrangement_id={}, path={}",
+                "Export rack labels SVG: rack_id={}, arrangement_id={}, preset={}, path={}",
                 rack_id.trim(),
                 arrangement_id.as_deref().unwrap_or("all"),
+                preset.as_str(),
                 path
             ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
@@ -39126,6 +39590,152 @@ mod tests {
         assert!(block_text.contains("C1"));
         assert!(block_text.contains("D6"));
         assert!(block_text.contains("whole block"));
+    }
+
+    #[test]
+    fn rack_ghost_preview_reorders_sample_within_arrangement_block() {
+        let rack = crate::engine::Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: crate::engine::RackProfileSnapshot::custom(1, 4),
+            placements: vec![
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-vector".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "vector".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-insert".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "insert_1".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-product".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 2,
+                    role_label: "product".to_string(),
+                },
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        };
+        let sorted_entries = GENtleApp::rack_sorted_entries(&rack);
+        let preview = GENtleApp::rack_ghost_preview_map(
+            &rack,
+            &sorted_entries,
+            &RackDragState::Sample {
+                from_coordinate: "A1".to_string(),
+                arrangement_id: "arr-a".to_string(),
+                role_label: "vector".to_string(),
+            },
+            "A3",
+        )
+        .expect("preview");
+        assert_eq!(preview.len(), 3);
+        assert_eq!(
+            preview
+                .get("A1")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.role_label.as_str()),
+            Some("insert_1")
+        );
+        assert_eq!(
+            preview
+                .get("A2")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.role_label.as_str()),
+            Some("product")
+        );
+        assert_eq!(
+            preview
+                .get("A3")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.role_label.as_str()),
+            Some("vector")
+        );
+    }
+
+    #[test]
+    fn rack_ghost_preview_moves_whole_block_and_shifts_neighbors() {
+        let rack = crate::engine::Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: crate::engine::RackProfileSnapshot::custom(1, 4),
+            placements: vec![
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a1".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "vector".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a2".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "product".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-b1".to_string(),
+                    }),
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "vector".to_string(),
+                },
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        };
+        let sorted_entries = GENtleApp::rack_sorted_entries(&rack);
+        let preview = GENtleApp::rack_ghost_preview_map(
+            &rack,
+            &sorted_entries,
+            &RackDragState::ArrangementBlock {
+                arrangement_id: "arr-a".to_string(),
+                from_coordinate: "A1".to_string(),
+            },
+            "A3",
+        )
+        .expect("preview");
+        assert_eq!(
+            preview
+                .get("A1")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.arrangement_id.as_str()),
+            Some("arr-b")
+        );
+        assert_eq!(
+            preview
+                .get("A2")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.arrangement_id.as_str()),
+            Some("arr-a")
+        );
+        assert_eq!(
+            preview
+                .get("A3")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.arrangement_id.as_str()),
+            Some("arr-a")
+        );
     }
 
     #[test]

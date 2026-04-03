@@ -12,8 +12,9 @@
 use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackOccupant, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot,
+    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackAuthoringTemplate,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot,
 };
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
@@ -1279,6 +1280,57 @@ fn parse_racks_move_command() {
 }
 
 #[test]
+fn parse_racks_labels_svg_command_with_preset() {
+    let cmd = parse_shell_line(
+        "racks labels-svg rack-1 labels.svg --arrangement arr-x --preset print_a4",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+            preset,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "labels.svg".to_string());
+            assert_eq!(arrangement_id, Some("arr-x".to_string()));
+            assert_eq!(preset, RackLabelSheetPreset::PrintA4);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_apply_template_command() {
+    let cmd = parse_shell_line("racks apply-template rack-1 plate_edge_avoidance")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RacksApplyTemplate { rack_id, template } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(template, RackAuthoringTemplate::PlateEdgeAvoidance);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_set_fill_direction_command() {
+    let cmd = parse_shell_line("racks set-fill-direction rack-1 column_major")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RacksSetFillDirection {
+            rack_id,
+            fill_direction,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(fill_direction, RackFillDirection::ColumnMajor);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_racks_show_returns_structured_rack_state() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -1342,6 +1394,78 @@ fn execute_racks_show_returns_structured_rack_state() {
     assert_eq!(out.output["rack"]["rack_id"], "rack-1");
     assert_eq!(out.output["placements"][0]["coordinate"], "A1");
     assert_eq!(out.output["placements"][0]["occupant"]["kind"], "container");
+}
+
+#[test]
+fn execute_racks_labels_svg_with_preset_writes_marker() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: Some("op-1".to_string()),
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-x".to_string(),
+        Arrangement {
+            arrangement_id: "arr-x".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Demo".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["vector".to_string()],
+            default_rack_id: Some("rack-1".to_string()),
+            created_by_op: Some("op-2".to_string()),
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.racks.insert(
+        "rack-1".to_string(),
+        Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".to_string(),
+                occupant: Some(RackOccupant::Container {
+                    container_id: "container-1".to_string(),
+                }),
+                arrangement_id: "arr-x".to_string(),
+                order_index: 0,
+                role_label: "vector".to_string(),
+            }],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().expect("temp");
+    let output = tmp.path().with_extension("labels.svg");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksLabelsSvg {
+            rack_id: "rack-1".to_string(),
+            output: output.display().to_string(),
+            arrangement_id: Some("arr-x".to_string()),
+            preset: RackLabelSheetPreset::WideCards,
+        },
+    )
+    .expect("export labels");
+    assert!(!out.state_changed);
+    let svg = fs::read_to_string(&output).expect("labels svg");
+    assert!(svg.contains("data-label-preset=\"wide_cards\""));
+    assert!(svg.contains("viewBox=\"0 0 556 124\""));
+    assert!(svg.contains("role: vector"));
+    assert!(svg.contains("arrangement: Demo"));
 }
 
 #[test]

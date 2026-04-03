@@ -474,7 +474,7 @@
          ],
          "path": "racks labels-svg",
          "summary": "Export a deterministic rack or arrangement-scoped label sheet as SVG.",
-         "usage": "racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]"
+         "usage": "racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]"
       },
       {
          "aliases": [],

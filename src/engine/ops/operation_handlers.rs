@@ -3358,18 +3358,71 @@ impl GentleEngine {
                     profile.as_str()
                 ));
             }
+            Operation::ApplyRackTemplate { rack_id, template } => {
+                self.apply_rack_template(&rack_id, template)?;
+                result.messages.push(format!(
+                    "Applied rack template '{}' to '{}'",
+                    template.as_str(),
+                    rack_id.trim()
+                ));
+            }
+            Operation::SetRackFillDirection {
+                rack_id,
+                fill_direction,
+            } => {
+                self.set_rack_fill_direction(&rack_id, fill_direction)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' fill direction to '{}'",
+                    rack_id.trim(),
+                    fill_direction.as_str()
+                ));
+            }
+            Operation::SetRackProfileCustom {
+                rack_id,
+                rows,
+                columns,
+            } => {
+                self.set_rack_profile_custom(&rack_id, rows, columns)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' profile to custom {}x{}",
+                    rack_id.trim(),
+                    rows,
+                    columns
+                ));
+            }
+            Operation::SetRackBlockedCoordinates {
+                rack_id,
+                blocked_coordinates,
+            } => {
+                self.set_rack_blocked_coordinates(&rack_id, blocked_coordinates.clone())?;
+                result.messages.push(if blocked_coordinates.is_empty() {
+                    format!("Cleared blocked rack positions on '{}'", rack_id.trim())
+                } else {
+                    format!(
+                        "Updated blocked rack positions on '{}' ({})",
+                        rack_id.trim(),
+                        blocked_coordinates.join(", ")
+                    )
+                });
+            }
             Operation::ExportRackLabelsSvg {
                 rack_id,
                 path,
                 arrangement_id,
+                preset,
             } => {
-                let count =
-                    self.export_rack_labels_svg(&rack_id, arrangement_id.as_deref(), &path)?;
+                let count = self.export_rack_labels_svg(
+                    &rack_id,
+                    arrangement_id.as_deref(),
+                    preset,
+                    &path,
+                )?;
                 result.messages.push(format!(
-                    "Wrote {} rack label(s) for '{}' to '{}'",
+                    "Wrote {} rack label(s) for '{}' to '{}' using preset '{}'",
                     count,
                     rack_id.trim(),
-                    path
+                    path,
+                    preset.as_str()
                 ));
             }
             Operation::RenderPoolGelSvg {

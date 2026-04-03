@@ -828,7 +828,7 @@ Current draft operations:
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
 - `SetRackProfile { rack_id, profile }`
-- `ExportRackLabelsSvg { rack_id, path, arrangement_id? }`
+- `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ValidateProtocolCartoonTemplate { template_path }`
@@ -1873,6 +1873,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Writes one deterministic SVG label sheet for a saved rack.
 - Optional `arrangement_id` restricts output to labels belonging to one
   arrangement block on that rack.
+- `preset` is engine-owned and defaults to `compact_cards`.
+- Built-in presets:
+  - `compact_cards`
+  - `print_a4`
+  - `wide_cards`
 - Label rows currently include:
   - rack id
   - position

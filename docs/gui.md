@@ -2163,7 +2163,8 @@ Serial gel export is available in two places:
     that arrangement, creating the default rack on demand for older/legacy
     arrangements that do not yet have one.
   - `Arrangements` table: `Labels SVG` exports one deterministic label sheet
-    scoped to that arrangement on its linked rack draft.
+    scoped to that arrangement on its linked rack draft, using the currently
+    selected label-sheet preset.
   - `Arrangements` table: `Place on Existing Rack...` appends the arrangement
     as one contiguous block onto another saved rack.
 
@@ -2223,6 +2224,8 @@ Interaction model:
   block.
 - Click-select plus click-target still exists as a fallback, but drag/drop is
   now the primary interaction.
+- While dragging, the rack grid now paints a ghost preview of the reordered
+  sample/block positions before you release the mouse.
 - All rack moves use shift-neighbor semantics:
   - later occupied positions move to keep the rack block contiguous
   - free-floating holes are not the primary editing model in this baseline
@@ -2230,9 +2233,16 @@ Interaction model:
 Exports:
 
 - `Labels SVG...` in the rack window exports one deterministic rack label
-  sheet.
+  sheet using the selected label-sheet preset.
 - `Labels SVG` from the arrangement table exports the same label style but
   filtered to the selected arrangement only.
+- Built-in label-sheet presets:
+  - `Compact cards`
+  - `Print A4`
+  - `Wide cards`
+- The `Label preset` selector above `Arrangements` and in the rack window is
+  shared, so arrangement-scoped and rack-wide exports use the same engine-owned
+  preset choice.
 
 ## Engine Settings (Engine Ops)
 

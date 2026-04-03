@@ -1068,7 +1068,7 @@ Shared shell command:
     - `racks place-arrangement ARR_ID --rack RACK_ID`
     - `racks move RACK_ID --from A1 --to B1 [--block]`
     - `racks show RACK_ID`
-    - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+    - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
@@ -1568,10 +1568,14 @@ Rendering export commands:
 - `racks show RACK_ID`
   - Returns `gentle.rack_state.v1` JSON with the saved rack record and resolved
     occupied positions.
-- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Calls engine operation `ExportRackLabelsSvg`.
   - Writes one deterministic label sheet for the whole rack or one selected
     arrangement block on that rack.
+  - Built-in presets:
+    - `compact_cards` (current compact two-column cards)
+    - `print_a4` (denser print-oriented A4 sheet)
+    - `wide_cards` (single-column wider cards)
 - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
@@ -1813,7 +1817,7 @@ Helper convenience commands:
   - Same shared rack move/reorder contract used by the rack editor.
 - `racks show RACK_ID`
   - Emits structured rack placement JSON (`gentle.rack_state.v1`).
-- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Exports deterministic rack or arrangement-scoped label SVG through the
     same engine path as GUI `Labels SVG`.
 - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`

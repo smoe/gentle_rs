@@ -828,6 +828,7 @@ pub enum RackProfileKind {
     SmallTube4x6,
     Plate96,
     Plate384,
+    Custom,
 }
 
 impl RackProfileKind {
@@ -836,6 +837,7 @@ impl RackProfileKind {
             Self::SmallTube4x6 => "small_tube_4x6",
             Self::Plate96 => "plate_96",
             Self::Plate384 => "plate_384",
+            Self::Custom => "custom",
         }
     }
 
@@ -844,6 +846,7 @@ impl RackProfileKind {
             Self::SmallTube4x6 => (4, 6),
             Self::Plate96 => (8, 12),
             Self::Plate384 => (16, 24),
+            Self::Custom => (0, 0),
         }
     }
 
@@ -855,10 +858,60 @@ impl RackProfileKind {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Deterministic SVG sheet layouts for rack/arrangement label export.
+pub enum RackLabelSheetPreset {
+    #[default]
+    CompactCards,
+    PrintA4,
+    WideCards,
+}
+
+impl RackLabelSheetPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CompactCards => "compact_cards",
+            Self::PrintA4 => "print_a4",
+            Self::WideCards => "wide_cards",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Engine-owned quick authoring templates for common rack/plate setup styles.
+pub enum RackAuthoringTemplate {
+    #[default]
+    BenchRows,
+    PlateColumns,
+    PlateEdgeAvoidance,
+}
+
+impl RackAuthoringTemplate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BenchRows => "bench_rows",
+            Self::PlateColumns => "plate_columns",
+            Self::PlateEdgeAvoidance => "plate_edge_avoidance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Deterministic fill policy for physical rack/plate placement.
 pub enum RackFillDirection {
     #[default]
     RowMajor,
+    ColumnMajor,
+}
+
+impl RackFillDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RowMajor => "row_major",
+            Self::ColumnMajor => "column_major",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -870,6 +923,7 @@ pub struct RackProfileSnapshot {
     pub columns: usize,
     pub coordinate_scheme: String,
     pub fill_direction: RackFillDirection,
+    pub blocked_coordinates: Vec<String>,
 }
 
 impl Default for RackProfileSnapshot {
@@ -887,6 +941,18 @@ impl RackProfileSnapshot {
             columns,
             coordinate_scheme: "a1".to_string(),
             fill_direction: RackFillDirection::RowMajor,
+            blocked_coordinates: vec![],
+        }
+    }
+
+    pub fn custom(rows: usize, columns: usize) -> Self {
+        Self {
+            kind: RackProfileKind::Custom,
+            rows,
+            columns,
+            coordinate_scheme: "a1".to_string(),
+            fill_direction: RackFillDirection::RowMajor,
+            blocked_coordinates: vec![],
         }
     }
 
@@ -3872,11 +3938,31 @@ pub enum Operation {
         rack_id: String,
         profile: RackProfileKind,
     },
+    ApplyRackTemplate {
+        rack_id: String,
+        template: RackAuthoringTemplate,
+    },
+    SetRackFillDirection {
+        rack_id: String,
+        fill_direction: RackFillDirection,
+    },
+    SetRackProfileCustom {
+        rack_id: String,
+        rows: usize,
+        columns: usize,
+    },
+    SetRackBlockedCoordinates {
+        rack_id: String,
+        #[serde(default)]
+        blocked_coordinates: Vec<String>,
+    },
     ExportRackLabelsSvg {
         rack_id: String,
         path: String,
         #[serde(default)]
         arrangement_id: Option<String>,
+        #[serde(default)]
+        preset: RackLabelSheetPreset,
     },
     ExportDnaLadders {
         path: String,
@@ -5775,6 +5861,10 @@ impl GentleEngine {
                 "PlaceArrangementOnRack".to_string(),
                 "MoveRackPlacement".to_string(),
                 "SetRackProfile".to_string(),
+                "ApplyRackTemplate".to_string(),
+                "SetRackFillDirection".to_string(),
+                "SetRackProfileCustom".to_string(),
+                "SetRackBlockedCoordinates".to_string(),
                 "ExportRackLabelsSvg".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),

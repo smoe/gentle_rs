@@ -69,6 +69,9 @@ Rack-placement rule (target model):
 - Serial arrangements may keep one canonical `default_rack_id` so the same
   experiment order has a deterministic draft physical placement without
   preventing later reuse on shared racks.
+- Rack/arrangement label export should stay engine-owned as well:
+  - GUI and CLI choose among shared deterministic label-sheet presets
+  - sheet geometry must not live only in one frontend adapter
 - Rack editing should remain order-preserving by default:
   moving one sample or one arrangement block shifts neighboring occupied
   positions in fill order rather than encouraging arbitrary free-floating holes.

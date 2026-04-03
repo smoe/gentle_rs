@@ -1122,11 +1122,18 @@ order. Durable architecture constraints and decisions remain in
   - rack placements consume arrangement order rather than duplicating it
   - arrangement-scoped and rack-wide SVG label export are now available from
     the same shared engine path
+  - built-in deterministic label-sheet presets are now available from that
+    same shared engine path:
+    - `compact_cards`
+    - `print_a4`
+    - `wide_cards`
   - follow-up work should focus on richer authoring rather than a second model:
     - custom rack-profile authoring beyond the current built-ins
-    - broader label-sheet presets and print-oriented layouts
+    - broader label-sheet presets and print-oriented layouts beyond the
+      current baseline
     - richer drag/drop polish beyond the current baseline
-      (for example autoscroll, multi-select, and clearer ghost previews)
+      (for example autoscroll and multi-select; ghost previews now ship in the
+      baseline rack editor)
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows

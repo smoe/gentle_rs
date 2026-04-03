@@ -211,25 +211,53 @@ impl GentleEngine {
         profile: &RackProfileSnapshot,
         index: usize,
     ) -> Result<String, EngineError> {
-        if index >= profile.capacity() {
+        let available = Self::rack_available_coordinates_in_fill_order(profile)?;
+        if index >= available.len() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Rack slot index {index} is outside profile capacity {}",
-                    profile.capacity()
+                    "Rack slot index {index} is outside available rack capacity {}",
+                    available.len()
                 ),
             });
         }
-        let row = index / profile.columns;
-        let column = (index % profile.columns) + 1;
-        let row_letter = ((b'A' + row as u8) as char).to_string();
-        Ok(format!("{row_letter}{column}"))
+        Ok(available[index].clone())
     }
 
-    pub(crate) fn rack_index_from_coordinate(
-        profile: &RackProfileSnapshot,
-        coordinate: &str,
-    ) -> Result<usize, EngineError> {
+    pub(crate) fn rack_row_label_from_index(mut row: usize) -> String {
+        let mut chars = Vec::new();
+        loop {
+            chars.push((b'A' + (row % 26) as u8) as char);
+            if row < 26 {
+                break;
+            }
+            row = row / 26 - 1;
+        }
+        chars.iter().rev().collect()
+    }
+
+    fn rack_row_index_from_label(label: &str) -> Result<usize, EngineError> {
+        let trimmed = label.trim().to_ascii_uppercase();
+        if trimmed.is_empty() || !trimmed.chars().all(|ch| ch.is_ascii_uppercase()) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid rack row label '{label}'"),
+            });
+        }
+        let mut value = 0usize;
+        for ch in trimmed.chars() {
+            value = value
+                .checked_mul(26)
+                .and_then(|v| v.checked_add((ch as u8 - b'A' + 1) as usize))
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Rack row label '{label}' is too large"),
+                })?;
+        }
+        Ok(value - 1)
+    }
+
+    fn rack_parse_row_column_label(coordinate: &str) -> Result<(usize, usize), EngineError> {
         let trimmed = coordinate.trim().to_ascii_uppercase();
         if trimmed.is_empty() {
             return Err(EngineError {
@@ -251,18 +279,126 @@ impl GentleEngine {
                 });
             }
         }
-        if letters.len() != 1 || digits.is_empty() {
+        if letters.is_empty() || digits.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
             });
         }
-        let row = (letters.as_bytes()[0] - b'A') as usize;
-        let column = digits.parse::<usize>().map_err(|e| EngineError {
+        let row = Self::rack_row_index_from_label(&letters)?;
+        let column_1based = digits.parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Invalid rack coordinate '{coordinate}': {e}"),
         })?;
-        if row >= profile.rows || column == 0 || column > profile.columns {
+        if column_1based == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid rack coordinate '{coordinate}'"),
+            });
+        }
+        Ok((row, column_1based - 1))
+    }
+
+    pub(crate) fn rack_coordinate_from_row_column(
+        profile: &RackProfileSnapshot,
+        row: usize,
+        column: usize,
+    ) -> Result<String, EngineError> {
+        if row >= profile.rows || column >= profile.columns {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Rack position ({}, {}) is outside profile {}x{}",
+                    row, column, profile.rows, profile.columns
+                ),
+            });
+        }
+        Ok(format!("{}{}", Self::rack_row_label_from_index(row), column + 1))
+    }
+
+    fn rack_fill_ordinal(profile: &RackProfileSnapshot, row: usize, column: usize) -> usize {
+        match profile.fill_direction {
+            RackFillDirection::RowMajor => row * profile.columns + column,
+            RackFillDirection::ColumnMajor => column * profile.rows + row,
+        }
+    }
+
+    fn normalized_blocked_coordinates_for_profile(
+        profile: &RackProfileSnapshot,
+        blocked_coordinates: &[String],
+        drop_out_of_bounds: bool,
+    ) -> Result<Vec<String>, EngineError> {
+        let mut rows = Vec::new();
+        let mut seen = HashSet::new();
+        for raw in blocked_coordinates {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let (row, column) = Self::rack_parse_row_column_label(trimmed)?;
+            if row >= profile.rows || column >= profile.columns {
+                if drop_out_of_bounds {
+                    continue;
+                }
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Blocked rack coordinate '{}' is outside profile {}x{}",
+                        trimmed, profile.rows, profile.columns
+                    ),
+                });
+            }
+            let canonical = Self::rack_coordinate_from_row_column(profile, row, column)?;
+            if seen.insert(canonical.clone()) {
+                rows.push((Self::rack_fill_ordinal(profile, row, column), canonical));
+            }
+        }
+        rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        Ok(rows.into_iter().map(|(_, coordinate)| coordinate).collect())
+    }
+
+    pub(crate) fn rack_available_coordinates_in_fill_order(
+        profile: &RackProfileSnapshot,
+    ) -> Result<Vec<String>, EngineError> {
+        let blocked = Self::normalized_blocked_coordinates_for_profile(
+            profile,
+            &profile.blocked_coordinates,
+            false,
+        )?
+        .into_iter()
+        .collect::<HashSet<_>>();
+        let mut out = Vec::with_capacity(profile.capacity().saturating_sub(blocked.len()));
+        match profile.fill_direction {
+            RackFillDirection::RowMajor => {
+                for row in 0..profile.rows {
+                    for column in 0..profile.columns {
+                        let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
+                        if !blocked.contains(&coordinate) {
+                            out.push(coordinate);
+                        }
+                    }
+                }
+            }
+            RackFillDirection::ColumnMajor => {
+                for column in 0..profile.columns {
+                    for row in 0..profile.rows {
+                        let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
+                        if !blocked.contains(&coordinate) {
+                            out.push(coordinate);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    pub(crate) fn rack_index_from_coordinate(
+        profile: &RackProfileSnapshot,
+        coordinate: &str,
+    ) -> Result<usize, EngineError> {
+        let (row, column) = Self::rack_parse_row_column_label(coordinate)?;
+        if row >= profile.rows || column >= profile.columns {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -271,7 +407,19 @@ impl GentleEngine {
                 ),
             });
         }
-        Ok(row * profile.columns + (column - 1))
+        let coordinate =
+            Self::rack_coordinate_from_row_column(profile, row, column)?;
+        let available = Self::rack_available_coordinates_in_fill_order(profile)?;
+        available
+            .iter()
+            .position(|candidate| *candidate == coordinate)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Rack coordinate '{}' is blocked or unavailable in profile {}x{}",
+                    coordinate, profile.rows, profile.columns
+                ),
+            })
     }
 
     fn sorted_rack_placements(
@@ -291,8 +439,20 @@ impl GentleEngine {
         profile: &RackProfileSnapshot,
         entries: &mut [RackPlacementEntry],
     ) -> Result<(), EngineError> {
+        let available = Self::rack_available_coordinates_in_fill_order(profile)?;
+        if entries.len() > available.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Profile {}x{} with current blocked coordinates can fit only {} occupied positions",
+                    profile.rows,
+                    profile.columns,
+                    available.len()
+                ),
+            });
+        }
         for (idx, entry) in entries.iter_mut().enumerate() {
-            entry.coordinate = Self::rack_coordinate_from_index(profile, idx)?;
+            entry.coordinate = available[idx].clone();
         }
         Ok(())
     }
@@ -581,7 +741,8 @@ impl GentleEngine {
             });
         }
         let start_index = rack.placements.len();
-        if start_index + payload.len() > rack.profile.capacity() {
+        let available_capacity = Self::rack_available_coordinates_in_fill_order(&rack.profile)?.len();
+        if start_index + payload.len() > available_capacity {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -589,7 +750,7 @@ impl GentleEngine {
                     rack_id,
                     arrangement_id,
                     payload.len(),
-                    rack.profile.capacity().saturating_sub(start_index)
+                    available_capacity.saturating_sub(start_index)
                 ),
             });
         }
@@ -670,7 +831,9 @@ impl GentleEngine {
                 .collect::<Vec<_>>();
             ordered.retain(|(_, entry)| entry.arrangement_id != arrangement_id);
             let insertion_index = to_index.min(ordered.len());
-            if ordered.len() + block_len > rack.profile.capacity() {
+            let available_capacity =
+                Self::rack_available_coordinates_in_fill_order(&rack.profile)?.len();
+            if ordered.len() + block_len > available_capacity {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
@@ -743,6 +906,48 @@ impl GentleEngine {
         rack_id: &str,
         profile: RackProfileKind,
     ) -> Result<(), EngineError> {
+        if profile == RackProfileKind::Custom {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "Use SetRackProfileCustom for custom row/column rack dimensions".to_string(),
+            });
+        }
+        let existing_rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let mut new_profile = RackProfileSnapshot::from_kind(profile);
+        new_profile.fill_direction = existing_rack.profile.fill_direction;
+        new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
+            &new_profile,
+            &existing_rack.profile.blocked_coordinates,
+            true,
+        )?;
+        self.reproject_rack_with_profile(rack_id, new_profile)
+    }
+
+    fn validate_custom_rack_profile_dimensions(rows: usize, columns: usize) -> Result<(), EngineError> {
+        if rows == 0 || columns == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Custom rack profile requires positive rows and columns".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn reproject_rack_with_profile(
+        &mut self,
+        rack_id: &str,
+        new_profile: RackProfileSnapshot,
+    ) -> Result<(), EngineError> {
         let existing_rack = self
             .state
             .container_state
@@ -758,31 +963,171 @@ impl GentleEngine {
             .into_iter()
             .map(|(_, entry)| entry)
             .collect::<Vec<_>>();
-        let rack = self
+        Self::reflow_rack_placements(&new_profile, &mut placements)?;
+        if let Some(rack) = self.state.container_state.racks.get_mut(rack_id) {
+            rack.profile = new_profile;
+            rack.placements = placements;
+        }
+        Ok(())
+    }
+
+    pub(super) fn set_rack_profile_custom(
+        &mut self,
+        rack_id: &str,
+        rows: usize,
+        columns: usize,
+    ) -> Result<(), EngineError> {
+        Self::validate_custom_rack_profile_dimensions(rows, columns)?;
+        let existing_rack = self
             .state
             .container_state
             .racks
-            .get_mut(rack_id)
+            .get(rack_id)
+            .cloned()
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
             })?;
-        let new_profile = RackProfileSnapshot::from_kind(profile);
-        if rack.placements.len() > new_profile.capacity() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Rack '{}' cannot switch to profile '{}' because {} positions are occupied",
-                    rack_id,
-                    profile.as_str(),
-                    rack.placements.len()
-                ),
-            });
+        let mut new_profile = RackProfileSnapshot::custom(rows, columns);
+        new_profile.fill_direction = existing_rack.profile.fill_direction;
+        new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
+            &new_profile,
+            &existing_rack.profile.blocked_coordinates,
+            true,
+        )?;
+        self.reproject_rack_with_profile(rack_id, new_profile)
+    }
+
+    fn rack_template_blocked_coordinates(
+        profile: &RackProfileSnapshot,
+        template: RackAuthoringTemplate,
+    ) -> Result<Vec<String>, EngineError> {
+        match template {
+            RackAuthoringTemplate::BenchRows | RackAuthoringTemplate::PlateColumns => Ok(vec![]),
+            RackAuthoringTemplate::PlateEdgeAvoidance => {
+                if profile.rows < 3 || profile.columns < 3 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Rack template '{}' requires at least a 3x3 profile, found {}x{}",
+                            template.as_str(),
+                            profile.rows,
+                            profile.columns
+                        ),
+                    });
+                }
+                let mut blocked = Vec::new();
+                match profile.fill_direction {
+                    RackFillDirection::RowMajor => {
+                        for row in 0..profile.rows {
+                            for column in 0..profile.columns {
+                                if row == 0
+                                    || row + 1 == profile.rows
+                                    || column == 0
+                                    || column + 1 == profile.columns
+                                {
+                                    blocked.push(Self::rack_coordinate_from_row_column(
+                                        profile, row, column,
+                                    )?);
+                                }
+                            }
+                        }
+                    }
+                    RackFillDirection::ColumnMajor => {
+                        for column in 0..profile.columns {
+                            for row in 0..profile.rows {
+                                if row == 0
+                                    || row + 1 == profile.rows
+                                    || column == 0
+                                    || column + 1 == profile.columns
+                                {
+                                    blocked.push(Self::rack_coordinate_from_row_column(
+                                        profile, row, column,
+                                    )?);
+                                }
+                            }
+                        }
+                    }
+                }
+                Self::normalized_blocked_coordinates_for_profile(profile, &blocked, false)
+            }
         }
-        Self::reflow_rack_placements(&new_profile, &mut placements)?;
-        rack.profile = new_profile;
-        rack.placements = placements;
-        Ok(())
+    }
+
+    pub(super) fn apply_rack_template(
+        &mut self,
+        rack_id: &str,
+        template: RackAuthoringTemplate,
+    ) -> Result<(), EngineError> {
+        let existing_rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let mut new_profile = existing_rack.profile.clone();
+        new_profile.fill_direction = match template {
+            RackAuthoringTemplate::BenchRows => RackFillDirection::RowMajor,
+            RackAuthoringTemplate::PlateColumns | RackAuthoringTemplate::PlateEdgeAvoidance => {
+                RackFillDirection::ColumnMajor
+            }
+        };
+        new_profile.blocked_coordinates =
+            Self::rack_template_blocked_coordinates(&new_profile, template)?;
+        self.reproject_rack_with_profile(rack_id, new_profile)
+    }
+
+    pub(super) fn set_rack_fill_direction(
+        &mut self,
+        rack_id: &str,
+        fill_direction: RackFillDirection,
+    ) -> Result<(), EngineError> {
+        let existing_rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let mut new_profile = existing_rack.profile.clone();
+        new_profile.fill_direction = fill_direction;
+        new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
+            &new_profile,
+            &new_profile.blocked_coordinates,
+            false,
+        )?;
+        self.reproject_rack_with_profile(rack_id, new_profile)
+    }
+
+    pub(super) fn set_rack_blocked_coordinates(
+        &mut self,
+        rack_id: &str,
+        blocked_coordinates: Vec<String>,
+    ) -> Result<(), EngineError> {
+        let existing_rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let mut new_profile = existing_rack.profile.clone();
+        new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
+            &new_profile,
+            &blocked_coordinates,
+            false,
+        )?;
+        self.reproject_rack_with_profile(rack_id, new_profile)
     }
 
     fn xml_escape(raw: &str) -> String {
@@ -797,6 +1142,7 @@ impl GentleEngine {
         &self,
         rack_id: &str,
         arrangement_id: Option<&str>,
+        preset: RackLabelSheetPreset,
         path: &str,
     ) -> Result<usize, EngineError> {
         let rack = self
@@ -830,15 +1176,58 @@ impl GentleEngine {
                 ),
             });
         }
-        let label_width = 280.0f32;
-        let label_height = 120.0f32;
-        let columns = 2usize;
-        let margin = 18.0f32;
+        struct RackLabelSheetLayout {
+            label_width: f32,
+            label_height: f32,
+            columns: usize,
+            margin: f32,
+            title_font_size: usize,
+            body_font_size: usize,
+            line_step: f32,
+            corner_radius: f32,
+        }
+        let layout = match preset {
+            RackLabelSheetPreset::CompactCards => RackLabelSheetLayout {
+                label_width: 280.0,
+                label_height: 120.0,
+                columns: 2,
+                margin: 18.0,
+                title_font_size: 15,
+                body_font_size: 13,
+                line_step: 15.0,
+                corner_radius: 8.0,
+            },
+            RackLabelSheetPreset::PrintA4 => RackLabelSheetLayout {
+                label_width: 178.0,
+                label_height: 104.0,
+                columns: 3,
+                margin: 14.0,
+                title_font_size: 12,
+                body_font_size: 10,
+                line_step: 12.0,
+                corner_radius: 6.0,
+            },
+            RackLabelSheetPreset::WideCards => RackLabelSheetLayout {
+                label_width: 520.0,
+                label_height: 88.0,
+                columns: 1,
+                margin: 18.0,
+                title_font_size: 14,
+                body_font_size: 11,
+                line_step: 12.0,
+                corner_radius: 8.0,
+            },
+        };
+        let label_width = layout.label_width;
+        let label_height = layout.label_height;
+        let columns = layout.columns;
+        let margin = layout.margin;
         let svg_width = margin * 2.0 + columns as f32 * label_width;
         let svg_height =
             margin * 2.0 + ((rows.len() + columns - 1) / columns) as f32 * label_height;
         let mut svg = format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width}\" height=\"{svg_height}\" viewBox=\"0 0 {svg_width} {svg_height}\">"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width}\" height=\"{svg_height}\" viewBox=\"0 0 {svg_width} {svg_height}\" data-label-preset=\"{}\">",
+            preset.as_str()
         );
         svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
         for (idx, entry) in rows.iter().enumerate() {
@@ -903,14 +1292,20 @@ impl GentleEngine {
                 }
             }
             svg.push_str(&format!(
-                "<rect x=\"{x}\" y=\"{y}\" width=\"{}\" height=\"{}\" rx=\"8\" ry=\"8\" fill=\"#f7fbfd\" stroke=\"#5d8aa8\" stroke-width=\"1.2\"/>",
+                "<rect x=\"{x}\" y=\"{y}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"#f7fbfd\" stroke=\"#5d8aa8\" stroke-width=\"1.2\"/>",
                 label_width - 12.0,
-                label_height - 12.0
+                label_height - 12.0,
+                layout.corner_radius,
+                layout.corner_radius
             ));
             for (line_idx, line) in lines.iter().enumerate() {
-                let font_size = if line_idx == 0 { 15 } else { 13 };
+                let font_size = if line_idx == 0 {
+                    layout.title_font_size
+                } else {
+                    layout.body_font_size
+                };
                 let font_weight = if line_idx == 0 { "700" } else { "400" };
-                let line_y = y + 24.0 + line_idx as f32 * 15.0;
+                let line_y = y + 24.0 + line_idx as f32 * layout.line_step;
                 svg.push_str(&format!(
                     "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"{}\" font-weight=\"{}\" fill=\"#173042\">{}</text>",
                     x + 12.0,

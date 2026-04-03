@@ -6554,9 +6554,12 @@ fn place_arrangement_on_existing_rack_appends_second_block_and_exports_labels() 
             rack_id: rack_a.clone(),
             path: label_path.display().to_string(),
             arrangement_id: Some("arr-b".to_string()),
+            preset: RackLabelSheetPreset::PrintA4,
         })
         .expect("export labels");
     let svg = std::fs::read_to_string(&label_path).expect("labels svg");
+    assert!(svg.contains("data-label-preset=\"print_a4\""));
+    assert!(svg.contains("viewBox=\"0 0 562 132\""));
     assert!(svg.contains("rack-"));
     assert!(svg.contains("arrangement: B"));
     assert!(svg.contains("role: lane_1"));
