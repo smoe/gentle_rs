@@ -1420,7 +1420,7 @@ fn parse_feature_qual_key_value(raw: &str, flag: &str) -> Result<(String, String
 
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("features requires a subcommand: query".to_string());
+        return Err("features requires a subcommand: query, tfbs-summary".to_string());
     }
     match tokens[1].as_str() {
         "query" => {
@@ -1630,8 +1630,102 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
 
             Ok(ShellCommand::FeaturesQuery { query })
         }
+        "tfbs-summary" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features tfbs-summary requires SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let mut request = TfbsRegionSummaryRequest {
+                seq_id: tokens[2].clone(),
+                ..TfbsRegionSummaryRequest::default()
+            };
+            let mut focus_range: Option<(usize, usize)> = None;
+            let mut context_range: Option<(usize, usize)> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--focus" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--focus",
+                            "features tfbs-summary",
+                        )?;
+                        if focus_range.is_some() {
+                            return Err("--focus was specified multiple times".to_string());
+                        }
+                        focus_range = Some(parse_feature_range(&raw, "features tfbs-summary")?);
+                    }
+                    "--context" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--context",
+                            "features tfbs-summary",
+                        )?;
+                        if context_range.is_some() {
+                            return Err("--context was specified multiple times".to_string());
+                        }
+                        context_range = Some(parse_feature_range(&raw, "features tfbs-summary")?);
+                    }
+                    "--min-focus-count" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-focus-count",
+                            "features tfbs-summary",
+                        )?;
+                        request.min_focus_occurrences = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --min-focus-count value '{raw}': {e}"))?;
+                    }
+                    "--min-context-count" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-context-count",
+                            "features tfbs-summary",
+                        )?;
+                        request.min_context_occurrences = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --min-context-count value '{raw}': {e}")
+                        })?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "features tfbs-summary",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                        request.limit = Some(parsed);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features tfbs-summary"
+                        ));
+                    }
+                }
+            }
+            let (focus_start, focus_end) = focus_range
+                .ok_or_else(|| "features tfbs-summary requires --focus START..END".to_string())?;
+            request.focus_start_0based = focus_start;
+            request.focus_end_0based_exclusive = focus_end;
+            if let Some((context_start, context_end)) = context_range {
+                request.context_start_0based = Some(context_start);
+                request.context_end_0based_exclusive = Some(context_end);
+            }
+            Ok(ShellCommand::FeaturesTfbsSummary { request })
+        }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query)"
+            "Unknown features subcommand '{other}' (expected query or tfbs-summary)"
         )),
     }
 }

@@ -1392,6 +1392,8 @@ Rendering export commands:
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,
     so workflow-driven `SetLinearViewport` crops carry through into the SVG.
+  - Single-base `variation` features render as DNA-baseline markers, which is
+    useful for dbSNP-driven context figures.
 - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
@@ -2126,6 +2128,33 @@ Motif-selection shortcuts:
   - omitted: default cap of `500` hits
   - `0`: unlimited (no cap)
   - `N > 0`: stop after `N` accepted hits
+
+Summarize grouped TFBS occupancy in one focus window relative to a wider
+context through the shared shell:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state STATE.json shell \
+  'features tfbs-summary vkorc1_rs9923231_context --focus 2900..3100 --context 0..6001 --limit 25'
+```
+
+The JSON payload groups TFBS features by factor name (preferring
+`bound_moiety`, then `standard_name`, then `tf_id`) and reports:
+
+- `focus_occurrences`
+- `context_occurrences`
+- `outside_focus_occurrences`
+- `focus_density_per_kb`
+- `context_density_per_kb`
+- `outside_focus_density_per_kb`
+- `focus_vs_context_density_ratio`
+- `focus_vs_outside_density_ratio`
+
+Notes:
+
+- `--context` is optional; when omitted, the full sequence is used as the wider
+  comparison window.
+- `--min-focus-count` defaults to `1`, so the command naturally lists TFs that
+  are actually present in the requested focus window.
 
 Select one candidate in-silico (explicit provenance step):
 

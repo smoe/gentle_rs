@@ -125,6 +125,94 @@ pub struct RnaReadGeneSupportSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Request parameters for summarizing TFBS density in one focus window relative
+/// to a wider context window on the same sequence.
+///
+/// The current engine implementation counts TFBS features by overlap with the
+/// requested spans. When `context_*` is omitted, the full sequence is used as
+/// the wider comparison window.
+pub struct TfbsRegionSummaryRequest {
+    pub seq_id: String,
+    pub focus_start_0based: usize,
+    pub focus_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_end_0based_exclusive: Option<usize>,
+    #[serde(default = "default_tfbs_region_summary_min_focus_occurrences")]
+    pub min_focus_occurrences: usize,
+    #[serde(default)]
+    pub min_context_occurrences: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
+    1
+}
+
+impl Default for TfbsRegionSummaryRequest {
+    fn default() -> Self {
+        Self {
+            seq_id: String::new(),
+            focus_start_0based: 0,
+            focus_end_0based_exclusive: 0,
+            context_start_0based: None,
+            context_end_0based_exclusive: None,
+            min_focus_occurrences: default_tfbs_region_summary_min_focus_occurrences(),
+            min_context_occurrences: 0,
+            limit: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One grouped TFBS summary row for a transcription factor across a focus and
+/// context span.
+pub struct TfbsRegionSummaryRow {
+    pub tf_name: String,
+    pub motif_ids: Vec<String>,
+    pub focus_occurrences: usize,
+    pub context_occurrences: usize,
+    pub outside_focus_occurrences: usize,
+    pub focus_density_per_kb: f64,
+    pub context_density_per_kb: f64,
+    pub outside_focus_density_per_kb: f64,
+    pub focus_share_of_context_occurrences: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_vs_context_density_ratio: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_vs_outside_density_ratio: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable grouped TFBS summary for one focus window and one wider context.
+pub struct TfbsRegionSummary {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub focus_start_0based: usize,
+    pub focus_end_0based_exclusive: usize,
+    pub context_start_0based: usize,
+    pub context_end_0based_exclusive: usize,
+    pub focus_width_bp: usize,
+    pub context_width_bp: usize,
+    pub outside_focus_width_bp: usize,
+    pub total_tfbs_feature_count: usize,
+    pub focus_hit_count: usize,
+    pub context_hit_count: usize,
+    pub matched_tf_count: usize,
+    pub returned_tf_count: usize,
+    pub min_focus_occurrences: usize,
+    pub min_context_occurrences: usize,
+    pub limit: usize,
+    pub rows: Vec<TfbsRegionSummaryRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
 ///
 /// Adapters should treat these as the canonical shared display toggles.

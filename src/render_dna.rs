@@ -793,6 +793,14 @@ impl RenderDna {
                 return name;
             }
         }
+        if Self::is_tfbs_feature(feature) {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &["bound_moiety", "standard_name", "name", "tf_id", "label"],
+            ) {
+                return name;
+            }
+        }
         for k in [
             "label",
             "name",
@@ -1059,5 +1067,18 @@ mod tests {
     fn variation_feature_detection_is_kind_based() {
         let feature = make_feature("variation", &[("label", "rs9923231")]);
         assert!(RenderDna::is_variation_feature(&feature));
+    }
+
+    #[test]
+    fn tfbs_feature_name_prefers_bound_moiety() {
+        let feature = make_feature(
+            "TFBS",
+            &[
+                ("label", "TFBS MA0079.5"),
+                ("tf_id", "MA0079.5"),
+                ("bound_moiety", "SP1"),
+            ],
+        );
+        assert_eq!(RenderDna::feature_name(&feature), "SP1");
     }
 }

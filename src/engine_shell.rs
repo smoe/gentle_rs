@@ -49,7 +49,7 @@ use crate::{
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
         SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
         SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SplicingScopePreset,
+        SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1185,6 +1185,9 @@ pub enum ShellCommand {
     },
     FeaturesQuery {
         query: SequenceFeatureQuery,
+    },
+    FeaturesTfbsSummary {
+        request: TfbsRegionSummaryRequest,
     },
     PrimersDesign {
         request_json: String,
@@ -5936,6 +5939,26 @@ impl ShellCommand {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "default".to_string()),
                 query.offset
+            ),
+            Self::FeaturesTfbsSummary { request } => format!(
+                "summarize TFBS on '{}' (focus={}..{}, context={}..{}, min_focus={}, min_context={}, limit={})",
+                request.seq_id,
+                request.focus_start_0based,
+                request.focus_end_0based_exclusive,
+                request
+                    .context_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                request
+                    .context_end_0based_exclusive
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                request.min_focus_occurrences,
+                request.min_context_occurrences,
+                request
+                    .limit
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
             ),
             Self::PrimersDesign {
                 request_json,
@@ -11761,7 +11784,10 @@ fn execute_agents_ask_command(
     {
         env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url.to_string());
     }
-    if let Some(model) = model_override.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(model) = model_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         env_overrides.insert(AGENT_MODEL_ENV.to_string(), model.to_string());
     }
     if let Some(timeout_seconds) = timeout_seconds.filter(|value| *value > 0) {
@@ -16005,6 +16031,16 @@ fn execute_shell_command_with_options_inner(
                 state_changed: false,
                 output: serde_json::to_value(result)
                     .map_err(|e| format!("Could not serialize feature query result: {e}"))?,
+            }
+        }
+        ShellCommand::FeaturesTfbsSummary { request } => {
+            let summary = engine
+                .summarize_tfbs_region(request.clone())
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(summary)
+                    .map_err(|e| format!("Could not serialize TFBS region summary: {e}"))?,
             }
         }
         ShellCommand::PrimersDesign {

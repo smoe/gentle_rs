@@ -18238,3 +18238,97 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
         "TP73"
     );
 }
+
+#[test]
+fn summarize_tfbs_region_groups_focus_hits_and_compares_context_density() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(250)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(95, 105),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(150, 160),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.4".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(210, 220),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("CTCF".to_string())),
+            ("tf_id".into(), Some("MA0139.1".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(400, 410),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(520, 530),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("TP53".to_string())),
+            ("tf_id".into(), Some("MA0106.3".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let summary = engine
+        .summarize_tfbs_region(TfbsRegionSummaryRequest {
+            seq_id: "promoter".to_string(),
+            focus_start_0based: 90,
+            focus_end_0based_exclusive: 200,
+            context_start_0based: Some(0),
+            context_end_0based_exclusive: Some(500),
+            ..TfbsRegionSummaryRequest::default()
+        })
+        .expect("TFBS summary should succeed");
+
+    assert_eq!(summary.schema, "gentle.tfbs_region_summary.v1");
+    assert_eq!(summary.total_tfbs_feature_count, 5);
+    assert_eq!(summary.focus_hit_count, 2);
+    assert_eq!(summary.context_hit_count, 4);
+    assert_eq!(summary.focus_width_bp, 110);
+    assert_eq!(summary.context_width_bp, 500);
+    assert_eq!(summary.outside_focus_width_bp, 390);
+    assert_eq!(summary.matched_tf_count, 1);
+    assert_eq!(summary.returned_tf_count, 1);
+    let row = summary.rows.first().expect("SP1 row");
+    assert_eq!(row.tf_name, "SP1");
+    assert_eq!(
+        row.motif_ids,
+        vec!["MA0079.3".to_string(), "MA0079.4".to_string()]
+    );
+    assert_eq!(row.focus_occurrences, 2);
+    assert_eq!(row.context_occurrences, 3);
+    assert_eq!(row.outside_focus_occurrences, 1);
+    assert!((row.focus_density_per_kb - (2.0 * 1000.0 / 110.0)).abs() < 1e-9);
+    assert!((row.context_density_per_kb - 6.0).abs() < 1e-9);
+    assert!((row.outside_focus_density_per_kb - (1000.0 / 390.0)).abs() < 1e-9);
+    assert!((row.focus_share_of_context_occurrences - (2.0 / 3.0)).abs() < 1e-9);
+    assert!(
+        (row.focus_vs_context_density_ratio.unwrap_or_default() - ((2.0 * 1000.0 / 110.0) / 6.0))
+            .abs()
+            < 1e-9
+    );
+    assert!(
+        (row.focus_vs_outside_density_ratio.unwrap_or_default()
+            - ((2.0 * 1000.0 / 110.0) / (1000.0 / 390.0)))
+            .abs()
+            < 1e-9
+    );
+}

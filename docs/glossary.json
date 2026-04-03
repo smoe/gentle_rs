@@ -1528,6 +1528,17 @@
       },
       {
          "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "features tfbs-summary",
+         "summary": "Group TFBS hits by factor name within one focus window and compare them against a wider context window.",
+         "usage": "features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "ComputeDotplot"
          ],

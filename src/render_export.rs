@@ -32,6 +32,9 @@ const LINEAR_SVG_BOTTOM_PADDING: f32 = 28.0;
 const LINEAR_SVG_MIN_HEIGHT: f32 = 180.0;
 const SVG_TEXT_ASCENT: f32 = 10.0;
 const SVG_TEXT_DESCENT: f32 = 4.0;
+const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
+const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
+const VARIATION_MARKER_RADIUS: f32 = 2.5;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -43,6 +46,7 @@ struct FeatureVm {
     is_reverse: bool,
     is_pointy: bool,
     is_regulatory: bool,
+    is_variation: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +77,13 @@ fn feature_name(feature: &Feature) -> String {
             } else {
                 reg_class
             };
+        }
+    }
+    if is_tfbs_feature(feature) {
+        for key in ["bound_moiety", "standard_name", "name", "tf_id", "label"] {
+            if let Some(value) = feature_qualifier_text(feature, key) {
+                return value;
+            }
         }
     }
     for k in [
@@ -126,6 +137,7 @@ fn feature_color(feature: &Feature) -> &'static str {
         "CDS" => "#cc1f1f",
         "GENE" => "#1f4fcc",
         "MRNA" => "#b4640a",
+        "VARIATION" => "#e17f0f",
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
     }
@@ -143,6 +155,10 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
         feature.kind.to_string().to_ascii_uppercase().as_str(),
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
     )
+}
+
+fn is_variation_feature(feature: &Feature) -> bool {
+    feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
 }
 
 fn is_track_feature(feature: &Feature) -> bool {
@@ -505,6 +521,7 @@ fn collect_features(
         else {
             continue;
         };
+        let is_variation = is_variation_feature(feature);
         ret.push(FeatureVm {
             from,
             to,
@@ -514,6 +531,7 @@ fn collect_features(
             is_reverse: feature_is_reverse(feature),
             is_pointy: feature_pointy(feature),
             is_regulatory: is_regulatory_feature(feature),
+            is_variation,
         });
     }
     ret.sort_by(|a, b| {
@@ -596,7 +614,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if !f.is_reverse && !f.is_regulatory {
+            if !f.is_reverse && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -621,7 +639,7 @@ fn compute_linear_svg_feature_layout(
         .iter()
         .enumerate()
         .filter_map(|(idx, f)| {
-            if f.is_reverse && !f.is_regulatory {
+            if f.is_reverse && !f.is_regulatory && !f.is_variation {
                 Some(idx)
             } else {
                 None
@@ -700,7 +718,11 @@ fn compute_linear_svg_feature_layout(
     let mut top_extent = 0.0f32;
     let mut bottom_extent = 0.0f32;
     for (idx, f) in features.iter().enumerate() {
-        if f.is_regulatory {
+        if f.is_variation {
+            if !f.label.trim().is_empty() {
+                top_extent = top_extent.max(12.0 + SVG_TEXT_ASCENT);
+            }
+        } else if f.is_regulatory {
             let lane = lane_regulatory_top_by_idx[idx] as f32;
             let center_offset = if regulatory_tracks_near_baseline {
                 REGULATORY_SIDE_MARGIN
@@ -987,6 +1009,39 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             for (idx, f) in features.iter().enumerate() {
                 let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
                 let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+                if f.is_variation {
+                    let x = (x1 + x2) * 0.5;
+                    doc = doc.add(
+                        Line::new()
+                            .set("x1", x)
+                            .set("y1", baseline - VARIATION_MARKER_OVERSHOOT_PX)
+                            .set("x2", x)
+                            .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
+                            .set("stroke", f.color)
+                            .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH),
+                    );
+                    doc = doc.add(
+                        Circle::new()
+                            .set("cx", x)
+                            .set("cy", baseline)
+                            .set("r", VARIATION_MARKER_RADIUS)
+                            .set("fill", "#ffffff")
+                            .set("stroke", f.color)
+                            .set("stroke-width", 1.5),
+                    );
+                    if !f.label.trim().is_empty() {
+                        labels.push(
+                            Text::new(f.label.clone())
+                                .set("x", x)
+                                .set("y", baseline - 10.0)
+                                .set("text-anchor", "middle")
+                                .set("font-family", "monospace")
+                                .set("font-size", 9)
+                                .set("fill", "#111111"),
+                        );
+                    }
+                    continue;
+                }
                 let (y, block_height) = if f.is_regulatory {
                     let y = if regulatory_tracks_near_baseline {
                         baseline - REGULATORY_SIDE_MARGIN
@@ -1530,6 +1585,14 @@ mod tests {
         });
     }
 
+    fn push_variation_feature(dna: &mut DNAsequence, label: &str, start: usize, end: usize) {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![("label".into(), Some(label.to_string()))],
+        });
+    }
+
     fn push_vcf_track_feature(
         dna: &mut DNAsequence,
         label: &str,
@@ -1721,6 +1784,41 @@ mod tests {
         assert!(svg.contains("401..500 (100 bp view of 1000 bp)"));
         assert!(svg.contains("visible_tx"));
         assert!(!svg.contains("hidden_tx"));
+    }
+
+    #[test]
+    fn linear_svg_export_renders_variation_as_baseline_marker() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(80)).expect("sequence");
+        push_variation_feature(&mut dna, "rs9923231", 120, 121);
+
+        let svg = export_linear_svg(&dna, &DisplaySettings::default());
+        assert!(svg.contains("rs9923231"));
+        assert!(svg.contains("<circle"));
+        assert!(svg.contains("stroke=\"#e17f0f\""));
+        assert!(!svg.contains("<rect fill=\"#e17f0f\""));
+    }
+
+    #[test]
+    fn linear_svg_export_prefers_tfbs_bound_moiety_label() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(80)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "TFBS".into(),
+            location: Location::simple_range(40, 49),
+            qualifiers: vec![
+                ("label".into(), Some("TFBS MA0079.5".to_string())),
+                ("tf_id".into(), Some("MA0079.5".to_string())),
+                ("bound_moiety".into(), Some("SP1".to_string())),
+                ("llr_bits".into(), Some("12.5".to_string())),
+                ("llr_quantile".into(), Some("0.999".to_string())),
+                ("true_log_odds_quantile".into(), Some("0.999".to_string())),
+            ],
+        });
+
+        let mut display = DisplaySettings::default();
+        display.show_tfbs = true;
+        let svg = export_linear_svg(&dna, &display);
+        assert!(svg.contains("SP1"));
+        assert!(!svg.contains("TFBS MA0079.5"));
     }
 
     #[test]
