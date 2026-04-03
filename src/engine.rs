@@ -43,7 +43,7 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
+    pool_gel::{GelSampleInput, export_pool_gel_svg},
     protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
@@ -3642,6 +3642,11 @@ pub enum Operation {
         #[serde(default)]
         ladders: Option<Vec<String>>,
     },
+    SetArrangementLadders {
+        arrangement_id: String,
+        #[serde(default)]
+        ladders: Option<Vec<String>>,
+    },
     ExportDnaLadders {
         path: String,
         #[serde(default)]
@@ -5504,6 +5509,7 @@ impl GentleEngine {
                 "ExportProtocolCartoonTemplateJson".to_string(),
                 "ApplyGibsonAssemblyPlan".to_string(),
                 "CreateArrangementSerial".to_string(),
+                "SetArrangementLadders".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),

@@ -2751,9 +2751,11 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(state
-            .sequences
-            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+        assert!(
+            state
+                .sequences
+                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
+        );
 
         let arrangement = state
             .container_state

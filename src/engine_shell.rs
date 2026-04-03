@@ -690,6 +690,10 @@ pub enum ShellCommand {
         name: Option<String>,
         ladders: Option<Vec<String>>,
     },
+    SetArrangementLadders {
+        arrangement_id: String,
+        ladders: Option<Vec<String>>,
+    },
     LaddersList {
         molecule: LadderMolecule,
         name_filter: Option<String>,
@@ -4628,6 +4632,19 @@ impl ShellCommand {
                 format!(
                     "create serial arrangement id={arrangement_id}, name={name}, lanes={} (ladders={ladders})",
                     container_ids.len()
+                )
+            }
+            Self::SetArrangementLadders {
+                arrangement_id,
+                ladders,
+            } => {
+                let ladders = ladders
+                    .as_ref()
+                    .map(|v| v.join(","))
+                    .unwrap_or_else(|| "auto".to_string());
+                format!(
+                    "set serial arrangement ladders id={} (ladders={ladders})",
+                    arrangement_id.trim()
                 )
             }
             Self::LaddersList {
@@ -10386,6 +10403,39 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 ladders,
             })
         }
+        "arrange-set-ladders" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "arrange-set-ladders requires: ARR_ID [--ladders NAME[,NAME]]".to_string(),
+                );
+            }
+            let arrangement_id = tokens[1].trim().to_string();
+            if arrangement_id.is_empty() {
+                return Err("arrange-set-ladders requires a non-empty ARR_ID".to_string());
+            }
+            let mut ladders: Option<Vec<String>> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--ladders" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --ladders".to_string());
+                        }
+                        ladders = Some(split_ids(&tokens[idx + 1]));
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for arrange-set-ladders"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::SetArrangementLadders {
+                arrangement_id,
+                ladders: ladders.filter(|values| !values.is_empty()),
+            })
+        }
         "ladders" => {
             if tokens.len() < 2 {
                 return Err("ladders requires a subcommand: list or export".to_string());
@@ -12242,6 +12292,21 @@ pub fn execute_shell_command_with_options(
                     container_ids: container_ids.clone(),
                     arrangement_id: arrangement_id.clone(),
                     name: name.clone(),
+                    ladders: ladders.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::SetArrangementLadders {
+            arrangement_id,
+            ladders,
+        } => {
+            let op_result = engine
+                .apply(Operation::SetArrangementLadders {
+                    arrangement_id: arrangement_id.clone(),
                     ladders: ladders.clone(),
                 })
                 .map_err(|e| e.to_string())?;

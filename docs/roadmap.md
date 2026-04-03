@@ -172,6 +172,13 @@ order. Durable architecture constraints and decisions remain in
     - Gibson apply also records one reusable serial arrangement comprising the
       original vector, ordered insert lane(s), and assembled product, with
       recommended DNA ladders available for flanking gel export
+    - arrangement lane opening is now less disruptive:
+      `Open Lanes` offers per-lane selection plus `All`, and the resulting DNA
+      windows start in a compact map-first layout with the sequence text panel
+      hidden by default
+    - arrangements now also have an in-app `Preview Gel` surface with live
+      left/right ladder selection, rendered gel preview, `Save to Arrangement`,
+      and shared CLI/shell parity via `arrange-set-ladders`
     - protocol-cartoon preview now shows both destination-insert junctions
       explicitly for the current single-insert flow instead of collapsing to
       one representative overlap

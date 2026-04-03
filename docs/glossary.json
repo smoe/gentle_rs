@@ -1,5 +1,5 @@
 {
-   "command_count": 255,
+   "command_count": 262,
    "commands": [
       {
          "aliases": [
@@ -377,8 +377,36 @@
             "cli-direct"
          ],
          "path": "render-pool-gel-svg",
-         "summary": "Render pool gel SVG with optional explicit ladders.",
-         "usage": "render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]"
+         "summary": "Render serial gel SVG from sequence ids, containers, or an arrangement with optional explicit ladders.",
+         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateArrangementSerial"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrange-serial",
+         "summary": "Create a reusable serial arrangement over stored lane containers.",
+         "usage": "arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetArrangementLadders"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrange-set-ladders",
+         "summary": "Persist one or two ladder names on an existing serial arrangement.",
+         "usage": "arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]"
       },
       {
          "aliases": [],

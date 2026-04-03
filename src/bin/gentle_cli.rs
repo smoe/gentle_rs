@@ -470,7 +470,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
   gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n\n  \
+  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n  \
+  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]\n\n  \
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
@@ -2743,6 +2744,58 @@ fn run() -> Result<(), String> {
                     arrangement_id,
                     name,
                     ladders,
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "arrange-set-ladders" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(
+                    "arrange-set-ladders requires: ARR_ID [--ladders NAME[,NAME]]".to_string(),
+                );
+            }
+            let arrangement_id = args[cmd_idx + 1].trim().to_string();
+            if arrangement_id.is_empty() {
+                return Err("arrange-set-ladders requires a non-empty ARR_ID".to_string());
+            }
+            let mut ladders: Option<Vec<String>> = None;
+            let mut idx = cmd_idx + 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--ladders" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --ladders".to_string());
+                        }
+                        ladders = Some(
+                            args[idx + 1]
+                                .split(',')
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string())
+                                .collect::<Vec<_>>(),
+                        );
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for arrange-set-ladders (expected --ladders)"
+                        ));
+                    }
+                }
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::SetArrangementLadders {
+                    arrangement_id,
+                    ladders: ladders.filter(|values| !values.is_empty()),
                 })
                 .map_err(|e| e.to_string())?;
             engine

@@ -111,6 +111,16 @@ impl GENtleApp {
                     .to_string(),
             });
         }
+        if self.show_arrangement_gel_preview_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::arrangement_gel_preview_viewport_id(),
+                ),
+                viewport_id: Self::arrangement_gel_preview_viewport_id(),
+                title: self.arrangement_gel_preview_title(),
+                detail: "Serial gel preview with live ladder selection".to_string(),
+            });
+        }
         if self.show_pcr_design_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::pcr_design_viewport_id()),
