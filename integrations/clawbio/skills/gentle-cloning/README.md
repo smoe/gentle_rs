@@ -10,11 +10,18 @@ This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 - `examples/*.json`: request payload examples
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
-## Local smoke test
+## Recommended smoke test
 
 ```bash
+export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
 python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
 ```
+
+Alternative runtimes:
+
+- local `gentle_cli` on `PATH`
+- `--gentle-cli "<command>"`
+- repository-local `cargo run --quiet --bin gentle_cli --`
 
 ## Request schema
 

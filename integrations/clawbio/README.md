@@ -16,7 +16,17 @@ Intended use:
 
 1. Copy `integrations/clawbio/skills/gentle-cloning/` into a ClawBio checkout
    under `skills/gentle-cloning/`.
-2. Install or otherwise resolve `gentle_cli`.
+2. Set `GENTLE_CLI_CMD` to the recommended Docker-backed GENtle CLI route, for
+   example:
+
+   ```bash
+   export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
+   ```
+
+   Alternatives:
+   - install `gentle_cli` locally and rely on `PATH`
+   - pass `--gentle-cli "<command>"`
+   - use repository-local `cargo run --quiet --bin gentle_cli --`
 3. Run:
    - `python clawbio.py run gentle-cloning --demo`
    - `python clawbio.py run gentle-cloning --input <request.json> --output <dir>`

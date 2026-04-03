@@ -107,7 +107,11 @@ def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
         )
     raise SkillError(
         "Could not resolve gentle_cli executable. "
-        "Set --gentle-cli, or GENTLE_CLI_CMD, or install gentle_cli on PATH."
+        "Recommended: set GENTLE_CLI_CMD to a Docker/OCI command such as "
+        "'docker run --rm -i -v \"$PWD\":/work -w /work "
+        "ghcr.io/smoe/gentle_rs:latest cli'. "
+        "Alternatives: use --gentle-cli, install gentle_cli on PATH, or run "
+        "from a local repo with cargo available."
     )
 
 
@@ -281,8 +285,9 @@ def main() -> int:
     parser.add_argument("--demo", action="store_true", help="Run built-in demo request")
     parser.add_argument(
         "--gentle-cli",
-        help="Explicit command used to invoke gentle_cli (e.g. 'gentle_cli' or "
-        "'cargo run --bin gentle_cli --')",
+        help="Explicit command used to invoke gentle_cli. Recommended runtime "
+        "is Docker/OCI via GENTLE_CLI_CMD; examples include 'gentle_cli' or "
+        "'cargo run --bin gentle_cli --'.",
     )
     args = parser.parse_args()
 
