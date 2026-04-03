@@ -11,6 +11,33 @@
 use super::*;
 
 impl GentleEngine {
+    pub(super) fn normalize_serial_gel_ladders_from_iter<I>(iter: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = String>,
+    {
+        let mut ladders = Vec::new();
+        let mut seen = HashSet::new();
+        for value in iter {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = trimmed.to_string();
+            if seen.insert(normalized.clone()) {
+                ladders.push(normalized);
+            }
+        }
+        ladders
+    }
+
+    pub(super) fn normalize_serial_gel_ladders_owned(ladders: Option<Vec<String>>) -> Vec<String> {
+        Self::normalize_serial_gel_ladders_from_iter(ladders.unwrap_or_default())
+    }
+
+    pub(super) fn normalize_serial_gel_ladders_slice(ladders: &[String]) -> Vec<String> {
+        Self::normalize_serial_gel_ladders_from_iter(ladders.iter().cloned())
+    }
+
     pub(super) fn add_lineage_node(
         &mut self,
         seq_id: &str,
@@ -178,12 +205,7 @@ impl GentleEngine {
             mode: ArrangementMode::Serial,
             name: name.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             lane_container_ids,
-            ladders: ladders
-                .unwrap_or_default()
-                .into_iter()
-                .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-                .collect::<Vec<_>>(),
+            ladders: Self::normalize_serial_gel_ladders_owned(ladders),
             created_by_op: created_by_op.map(ToString::to_string),
             created_at_unix_ms: Self::now_unix_ms(),
         };
@@ -192,6 +214,41 @@ impl GentleEngine {
             .arrangements
             .insert(arrangement_id.clone(), arrangement);
         Ok(arrangement_id)
+    }
+
+    pub(super) fn set_arrangement_ladders(
+        &mut self,
+        arrangement_id: &str,
+        ladders: Option<Vec<String>>,
+    ) -> Result<Vec<String>, EngineError> {
+        let arrangement_id = arrangement_id.trim();
+        if arrangement_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "arrangement_id cannot be empty".to_string(),
+            });
+        }
+        let arrangement = self
+            .state
+            .container_state
+            .arrangements
+            .get_mut(arrangement_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Arrangement '{arrangement_id}' not found"),
+            })?;
+        if arrangement.mode != ArrangementMode::Serial {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Arrangement '{}' is mode '{:?}', only serial arrangements can update gel ladders",
+                    arrangement_id, arrangement.mode
+                ),
+            });
+        }
+        let normalized = Self::normalize_serial_gel_ladders_owned(ladders);
+        arrangement.ladders = normalized.clone();
+        Ok(normalized)
     }
 
     pub(super) fn add_container(

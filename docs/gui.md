@@ -183,6 +183,9 @@ The project main window (lineage page) supports two views:
   provenance/script parity
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
+- `Open Lanes` now opens a chooser menu rather than immediately opening every lane window:
+  - choose one lane container, or `All`
+  - lane windows opened from arrangements start in a compact map-first layout with the sequence text panel hidden by default
 - The lineage (`Table`/`Graph`) area is split from `Containers` with a
   draggable horizontal divider in the main window.
 - In `Table` view, the lineage grid supports both horizontal and vertical
@@ -2126,8 +2129,14 @@ Serial gel export is available in two places:
 
 - Engine Ops (`Export Pool Gel SVG`) for current sequence-id inputs.
 - Main lineage page:
+  - `Arrangements` table: `Preview Gel` opens an in-app serial-gel preview with
+    live left/right ladder selectors, a rendered gel image, `Save to
+    Arrangement`, and `Export SVG...`.
   - `Containers` table: `Gel SVG` exports one lane for that container.
-  - `Arrangements` table: `Export Gel` exports all lanes defined in that arrangement.
+  - `Arrangements` table: `Export Gel` exports all lanes defined in that
+    arrangement, using the arrangement's saved ladder pair when present or auto
+    ladder selection otherwise.
+  - `Arrangements` table: `Open Lanes` lets you open one chosen lane or all lanes as compact DNA windows instead of always opening every lane at once.
 
 Tutorial companion:
 
@@ -2152,6 +2161,14 @@ Controls:
   - if empty, ladder selection is automatic
 - `Export Pool Gel SVG`: writes the current ladder + pool band view to SVG via
   shared engine operation `RenderPoolGelSvg`
+- `Arrangement Preview Gel`:
+  - left/right ladder selectors can be changed independently
+  - changing one side while the other stays `Auto` coerces to the same named
+    ladder on both sides, so single-ladder selection remains simple
+  - `Auto` on both sides previews/export uses shared engine auto ladder
+    selection
+  - `Save to Arrangement` persists the currently selected ladder pair for later
+    `Export Gel` reuse
 
 ## Engine Settings (Engine Ops)
 

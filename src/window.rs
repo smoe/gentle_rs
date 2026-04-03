@@ -42,6 +42,12 @@ impl Window {
         }
     }
 
+    pub fn enable_compact_lane_layout(&mut self) {
+        match self {
+            Self::Dna(window) => window.enable_compact_lane_layout(),
+        }
+    }
+
     pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
         match self {
             Self::Dna(window) => window.focus_dotplot_analysis(dotplot_id),

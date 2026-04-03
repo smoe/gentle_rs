@@ -379,6 +379,10 @@ impl WindowDna {
         self.main_area.set_pool_context(pool_seq_ids);
     }
 
+    pub fn enable_compact_lane_layout(&mut self) {
+        self.main_area.enable_compact_lane_layout();
+    }
+
     pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
         if self.pending_dna_load.is_some() {
             self.deferred_analysis_focus =

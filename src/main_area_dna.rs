@@ -3603,6 +3603,32 @@ mod tests {
     }
 
     #[test]
+    fn compact_lane_layout_hides_sequence_panel_without_changing_shared_display_default() {
+        let dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        state.display.show_sequence_panel = true;
+        state.display.show_map_panel = true;
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine.clone()));
+
+        area.enable_compact_lane_layout();
+        area.refresh_from_engine_settings();
+
+        assert!(!area.show_sequence);
+        assert!(area.show_map);
+        assert!(
+            engine
+                .read()
+                .expect("engine lock")
+                .state()
+                .display
+                .show_sequence_panel,
+            "compact lane windows should not flip the shared display default"
+        );
+    }
+
+    #[test]
     fn replace_active_dna_marks_layout_dirty_and_expands_full_view_on_growth() {
         let initial_dna = DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
         let mut area = MainAreaDna::new(initial_dna, None, None);
@@ -6760,6 +6786,7 @@ pub struct MainAreaDna {
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
+    compact_lane_layout: bool,
     primary_map_mode: PrimaryMapMode,
     dna_presentation_mode: DnaPresentationMode,
     show_all_contextual_transcripts: bool,
@@ -7130,6 +7157,7 @@ impl MainAreaDna {
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: true,
             show_map: true,
+            compact_lane_layout: false,
             primary_map_mode: PrimaryMapMode::Standard,
             dna_presentation_mode: DnaPresentationMode::Region,
             show_all_contextual_transcripts: false,
@@ -7441,6 +7469,16 @@ impl MainAreaDna {
         self.export_pool_inputs_text = pool_seq_ids.join(", ");
         self.show_engine_ops = true;
         self.op_status = "Opened from lineage pool node".to_string();
+    }
+
+    fn apply_compact_lane_layout(&mut self) {
+        self.show_sequence = false;
+        self.show_map = true;
+    }
+
+    pub fn enable_compact_lane_layout(&mut self) {
+        self.compact_lane_layout = true;
+        self.apply_compact_lane_layout();
     }
 
     pub fn focus_dotplot_analysis(&mut self, dotplot_id: &str) {
@@ -8560,6 +8598,7 @@ impl MainAreaDna {
                 .add(button)
                 .on_hover_text("Show or hide the sequence text panel");
             if response.clicked() {
+                self.compact_lane_layout = false;
                 self.show_sequence = !self.show_sequence;
                 self.set_display_visibility(DisplayTarget::SequencePanel, self.show_sequence);
             };
@@ -8575,6 +8614,7 @@ impl MainAreaDna {
                 .add(button)
                 .on_hover_text("Show or hide the DNA map panel");
             if response.clicked() {
+                self.compact_lane_layout = false;
                 self.show_map = !self.show_map;
                 self.set_display_visibility(DisplayTarget::MapPanel, self.show_map);
             };
@@ -11858,6 +11898,9 @@ impl MainAreaDna {
         drop(guard);
         self.show_sequence = settings.show_sequence_panel;
         self.show_map = settings.show_map_panel;
+        if self.compact_lane_layout {
+            self.apply_compact_lane_layout();
+        }
         let mut display = self.dna_display.write().expect("DNA display lock poisoned");
         display.set_show_features(settings.show_features);
         display.set_show_cds_features(settings.show_cds_features);

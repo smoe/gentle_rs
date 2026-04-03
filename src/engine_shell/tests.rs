@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
-use crate::engine::ContainerKind;
+use crate::engine::{Arrangement, ArrangementMode, Container, ContainerKind};
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
     write_demo_workflow_with_shebang,
@@ -1153,6 +1153,82 @@ fn parse_arrange_serial_command() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_arrange_set_ladders_command() {
+    let cmd = parse_shell_line("arrange-set-ladders arr-x --ladders 100bp,1kb")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::SetArrangementLadders {
+            arrangement_id,
+            ladders,
+        } => {
+            assert_eq!(arrangement_id, "arr-x".to_string());
+            assert_eq!(ladders, Some(vec!["100bp".to_string(), "1kb".to_string()]));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_arrange_set_ladders_updates_existing_arrangement() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-x".to_string(),
+        Arrangement {
+            arrangement_id: "arr-x".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Demo".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec!["Old ladder".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SetArrangementLadders {
+            arrangement_id: "arr-x".to_string(),
+            ladders: Some(vec![
+                "Plasmid Factory 1kb DNA Ladder".to_string(),
+                "GeneRuler 100bp DNA Ladder Plus".to_string(),
+            ]),
+        },
+    )
+    .expect("execute arrange-set-ladders");
+
+    assert!(out.state_changed);
+    let arrangement = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-x")
+        .expect("arrangement");
+    assert_eq!(
+        arrangement.ladders,
+        vec![
+            "Plasmid Factory 1kb DNA Ladder".to_string(),
+            "GeneRuler 100bp DNA Ladder Plus".to_string()
+        ]
+    );
 }
 
 #[test]

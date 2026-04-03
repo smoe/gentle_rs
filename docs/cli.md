@@ -1055,6 +1055,7 @@ Shared shell command:
     - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
+    - `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -1502,14 +1503,22 @@ Rendering export commands:
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
   - `--containers` renders one lane per container ID.
   - `--arrangement` renders lanes from a stored serial arrangement.
-  - Optional `--ladders` overrides auto ladder selection.
-  - If `--ladders` is omitted, engine auto-selects one or two ladders based on
-    pool bp range.
+  - Optional `--ladders` overrides both auto mode and any saved arrangement
+    ladder pair.
+  - If `--ladders` is omitted for `--arrangement`, engine uses the saved
+    arrangement ladder pair when present, otherwise falls back to auto ladder
+    selection.
+  - If `--ladders` is omitted without `--arrangement`, engine auto-selects one
+    or two ladders based on pool bp range.
 - `render-gel-svg ...`
   - Alias for `render-pool-gel-svg ...` with identical semantics.
 - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
   - Calls engine operation `CreateArrangementSerial`.
   - Persists a serial lane setup that can be reused by `render-pool-gel-svg --arrangement`.
+- `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
+  - Calls engine operation `SetArrangementLadders`.
+  - Persists one or two ladder names on an existing serial arrangement.
+  - Omit `--ladders` to clear back to shared engine auto ladder selection.
 
 RNA secondary-structure text command:
 
@@ -2413,6 +2422,18 @@ Render pool gel SVG with automatic ladder selection:
 
 ```json
 {"RenderPoolGelSvg":{"inputs":["frag_1","frag_2","frag_3"],"path":"digest.auto.gel.svg","ladders":null}}
+```
+
+Persist a ladder pair on an existing arrangement:
+
+```json
+{"SetArrangementLadders":{"arrangement_id":"arrangement-2","ladders":["Plasmid Factory 1kb DNA Ladder","GeneRuler 100bp DNA Ladder Plus"]}}
+```
+
+Clear an arrangement back to automatic ladder selection:
+
+```json
+{"SetArrangementLadders":{"arrangement_id":"arrangement-2","ladders":null}}
 ```
 
 Prepare a whole reference genome once (download/copy sequence + annotation and

@@ -6202,6 +6202,88 @@ fn test_create_arrangement_serial_operation() {
 }
 
 #[test]
+fn test_set_arrangement_ladders_operation_updates_arrangement() {
+    let mut state = ProjectState::default();
+    state.container_state.arrangements.insert(
+        "arr-test".to_string(),
+        Arrangement {
+            arrangement_id: "arr-test".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Digest run".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec!["NEB 1kb DNA Ladder".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::SetArrangementLadders {
+            arrangement_id: "arr-test".to_string(),
+            ladders: Some(vec![
+                "GeneRuler 100bp DNA Ladder Plus".to_string(),
+                "NEB 1kb DNA Ladder".to_string(),
+            ]),
+        })
+        .unwrap();
+    assert!(result
+        .messages
+        .iter()
+        .any(|m| m.contains("Updated arrangement 'arr-test' ladders")));
+    let arrangement = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-test")
+        .expect("arrangement was updated");
+    assert_eq!(
+        arrangement.ladders,
+        vec![
+            "GeneRuler 100bp DNA Ladder Plus".to_string(),
+            "NEB 1kb DNA Ladder".to_string()
+        ]
+    );
+}
+
+#[test]
+fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangement_ladders() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("a".to_string(), seq(&"ATGC".repeat(75)));
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Tube A".to_string()),
+            members: vec!["a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-auto".to_string(),
+        Arrangement {
+            arrangement_id: "arr-auto".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Run Auto".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec!["Missing Ladder".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let engine = GentleEngine::from_state(state);
+    let layout = engine
+        .build_serial_gel_layout_for_render(&[], None, Some("arr-auto"), Some(&[]))
+        .expect("explicit auto override should ignore stored invalid ladder names");
+    assert_eq!(layout.sample_count, 1);
+    assert!(!layout.selected_ladders.is_empty());
+    assert!(layout.lanes.iter().any(|lane| lane.name == "Tube A"));
+}
+
+#[test]
 fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
     let mut state = ProjectState::default();
     state

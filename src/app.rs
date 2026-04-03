@@ -859,6 +859,7 @@ pub struct GENtleApp {
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
     show_gibson_dialog: bool,
+    show_arrangement_gel_preview_dialog: bool,
     show_pcr_design_dialog: bool,
     show_sequencing_confirmation_dialog: bool,
     show_planning_dialog: bool,
@@ -886,6 +887,7 @@ pub struct GENtleApp {
     gibson_status: String,
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
+    arrangement_gel_preview: ArrangementGelPreviewState,
     genome_track_seq_id: String,
     genome_track_source_selection: GenomeTrackSourceSelection,
     genome_track_path: String,
@@ -1839,6 +1841,17 @@ struct ArrangementRow {
     ladders: Vec<String>,
 }
 
+#[derive(Clone, Default)]
+struct ArrangementGelPreviewState {
+    arrangement_id: String,
+    arrangement_title: String,
+    saved_ladders: Vec<String>,
+    left_ladder_name: String,
+    right_ladder_name: String,
+    svg_uri: String,
+    status: String,
+}
+
 #[derive(Clone)]
 struct CloningPatternCatalogEntry {
     label: String,
@@ -2269,6 +2282,7 @@ impl Default for GENtleApp {
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
             show_gibson_dialog: false,
+            show_arrangement_gel_preview_dialog: false,
             show_pcr_design_dialog: false,
             show_sequencing_confirmation_dialog: false,
             show_planning_dialog: false,
@@ -2296,6 +2310,7 @@ impl Default for GENtleApp {
             gibson_status: String::new(),
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
+            arrangement_gel_preview: ArrangementGelPreviewState::default(),
             genome_track_seq_id: String::new(),
             genome_track_source_selection: GenomeTrackSourceSelection::Auto,
             genome_track_path: String::new(),
@@ -2457,6 +2472,10 @@ impl GENtleApp {
 
     fn gibson_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Gibson Viewport")
+    }
+
+    fn arrangement_gel_preview_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Arrangement Gel Preview Viewport")
     }
 
     fn pcr_design_viewport_id() -> ViewportId {
@@ -4933,6 +4952,8 @@ Error: `{err}`"
             "Track Import focus acquisition"
         } else if viewport_id == Self::gibson_viewport_id() {
             "Gibson focus acquisition"
+        } else if viewport_id == Self::arrangement_gel_preview_viewport_id() {
+            "Arrangement Gel focus acquisition"
         } else if viewport_id == Self::pcr_design_viewport_id() {
             "PCR Designer focus acquisition"
         } else if viewport_id == Self::sequencing_confirmation_viewport_id() {
@@ -4972,12 +4993,26 @@ Error: `{err}`"
         self.note_slow_phase(&format!("{label} window open"), elapsed_ms);
     }
 
-    fn open_sequence_window(&mut self, seq_id: &str) {
+    fn open_sequence_window_with_compact_lane_layout(
+        &mut self,
+        seq_id: &str,
+        compact_lane_layout: bool,
+    ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if compact_lane_layout {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.enable_compact_lane_layout();
+                    }
+                }
+            }
             self.queue_focus_viewport(viewport_id);
             return;
         }
-        if self.find_pending_sequence_window_mut(seq_id).is_some() {
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            if compact_lane_layout {
+                window.enable_compact_lane_layout();
+            }
             return;
         }
         let exists = self
@@ -4988,11 +5023,20 @@ Error: `{err}`"
             .sequences
             .contains_key(seq_id);
         if exists {
-            self.new_windows.push(Window::new_dna_lazy(
-                seq_id.to_string(),
-                self.engine.clone(),
-            ));
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            if compact_lane_layout {
+                window.enable_compact_lane_layout();
+            }
+            self.new_windows.push(window);
         }
+    }
+
+    fn open_sequence_window(&mut self, seq_id: &str) {
+        self.open_sequence_window_with_compact_lane_layout(seq_id, false);
+    }
+
+    fn open_sequence_window_compact(&mut self, seq_id: &str) {
+        self.open_sequence_window_with_compact_lane_layout(seq_id, true);
     }
 
     fn open_sequence_window_for_dotplot_analysis(&mut self, seq_id: &str, dotplot_id: &str) {
@@ -5118,11 +5162,19 @@ Error: `{err}`"
         }
     }
 
-    fn open_pool_window(&mut self, representative_seq_id: &str, pool_seq_ids: Vec<String>) {
+    fn open_pool_window_with_compact_lane_layout(
+        &mut self,
+        representative_seq_id: &str,
+        pool_seq_ids: Vec<String>,
+        compact_lane_layout: bool,
+    ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(representative_seq_id) {
             if let Some(window) = self.windows.get(&viewport_id) {
                 if let Ok(mut window) = window.write() {
                     window.set_pool_context(pool_seq_ids);
+                    if compact_lane_layout {
+                        window.enable_compact_lane_layout();
+                    }
                 }
             }
             self.queue_focus_viewport(viewport_id);
@@ -5130,6 +5182,9 @@ Error: `{err}`"
         }
         if let Some(window) = self.find_pending_sequence_window_mut(representative_seq_id) {
             window.set_pool_context(pool_seq_ids);
+            if compact_lane_layout {
+                window.enable_compact_lane_layout();
+            }
             return;
         }
         let exists = self
@@ -5143,8 +5198,102 @@ Error: `{err}`"
             let mut window =
                 Window::new_dna_lazy(representative_seq_id.to_string(), self.engine.clone());
             window.set_pool_context(pool_seq_ids);
+            if compact_lane_layout {
+                window.enable_compact_lane_layout();
+            }
             self.new_windows.push(window);
         }
+    }
+
+    fn open_pool_window(&mut self, representative_seq_id: &str, pool_seq_ids: Vec<String>) {
+        self.open_pool_window_with_compact_lane_layout(representative_seq_id, pool_seq_ids, false);
+    }
+
+    fn open_pool_window_compact(&mut self, representative_seq_id: &str, pool_seq_ids: Vec<String>) {
+        self.open_pool_window_with_compact_lane_layout(representative_seq_id, pool_seq_ids, true);
+    }
+
+    fn arrangement_lane_container_rows<'a>(
+        &'a self,
+        lane_container_ids: &[String],
+    ) -> Vec<&'a ContainerRow> {
+        lane_container_ids
+            .iter()
+            .filter_map(|container_id| {
+                self.lineage_containers
+                    .iter()
+                    .find(|row| row.container_id == *container_id)
+            })
+            .collect()
+    }
+
+    fn arrangement_lane_menu_label(row: &ContainerRow) -> String {
+        if row.member_count > 1 {
+            format!(
+                "{} ({}, {} seqs)",
+                row.container_id, row.kind, row.member_count
+            )
+        } else if row.representative.trim().is_empty() {
+            row.container_id.clone()
+        } else {
+            format!("{} ({})", row.container_id, row.representative)
+        }
+    }
+
+    fn arrangement_lane_menu_hover(row: &ContainerRow) -> String {
+        if row.member_count > 1 {
+            format!(
+                "Open this pooled lane as a compact DNA window with the sequence text panel hidden by default.\nRepresentative: {}\nMembers: {}",
+                row.representative,
+                row.members.join(", ")
+            )
+        } else {
+            format!(
+                "Open this lane as a compact DNA window with the sequence text panel hidden by default.\nSequence: {}",
+                row.representative
+            )
+        }
+    }
+
+    fn render_open_lanes_menu(
+        &self,
+        ui: &mut egui::Ui,
+        lane_container_ids: &[String],
+        open_lane_containers: &mut Option<Vec<String>>,
+    ) {
+        let lane_rows = self.arrangement_lane_container_rows(lane_container_ids);
+        if lane_rows.is_empty() {
+            ui.label("-");
+            return;
+        }
+        ui.menu_button("Open Lanes", |ui| {
+            if ui
+                .button(format!("All ({})", lane_rows.len()))
+                .on_hover_text(
+                    "Open all arrangement lanes as compact DNA windows with the sequence text panel hidden by default.",
+                )
+                .clicked()
+            {
+                *open_lane_containers =
+                    Some(lane_rows.iter().map(|row| row.container_id.clone()).collect());
+                ui.close();
+            }
+            ui.separator();
+            for row in &lane_rows {
+                if ui
+                    .button(Self::arrangement_lane_menu_label(row))
+                    .on_hover_text(Self::arrangement_lane_menu_hover(row))
+                    .clicked()
+                {
+                    *open_lane_containers = Some(vec![row.container_id.clone()]);
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text(
+            "Choose one arrangement lane to open, or open all lanes at once as compact DNA windows.",
+        );
     }
 
     fn sanitize_fasta_header(raw: &str) -> String {
@@ -5594,6 +5743,7 @@ Error: `{err}`"
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
         self.show_gibson_dialog = false;
+        self.show_arrangement_gel_preview_dialog = false;
         self.show_pcr_design_dialog = false;
         self.show_sequencing_confirmation_dialog = false;
         self.show_routine_assistant_dialog = false;
@@ -5612,6 +5762,7 @@ Error: `{err}`"
         self.gibson_status.clear();
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
+        self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -6146,6 +6297,221 @@ Error: `{err}`"
             }
             Err(e) => {
                 self.app_status = format!("Could not export serial gel SVG: {}", e.message);
+            }
+        }
+    }
+
+    fn arrangement_gel_preview_title(&self) -> String {
+        if self.arrangement_gel_preview.arrangement_title.trim().is_empty() {
+            "Arrangement Gel".to_string()
+        } else {
+            format!(
+                "Arrangement Gel — {}",
+                self.arrangement_gel_preview.arrangement_title.trim()
+            )
+        }
+    }
+
+    fn describe_arrangement_ladders(ladders: &[String]) -> String {
+        if ladders.is_empty() {
+            "auto".to_string()
+        } else {
+            ladders.join(" + ")
+        }
+    }
+
+    fn set_arrangement_gel_preview_controls_from_ladders(&mut self, ladders: &[String]) {
+        self.arrangement_gel_preview.saved_ladders = ladders.to_vec();
+        self.arrangement_gel_preview.left_ladder_name.clear();
+        self.arrangement_gel_preview.right_ladder_name.clear();
+        match ladders {
+            [] => {}
+            [name] => {
+                self.arrangement_gel_preview.left_ladder_name = name.clone();
+                self.arrangement_gel_preview.right_ladder_name = name.clone();
+            }
+            [left, right, ..] => {
+                self.arrangement_gel_preview.left_ladder_name = left.clone();
+                self.arrangement_gel_preview.right_ladder_name = right.clone();
+            }
+        }
+    }
+
+    fn arrangement_gel_preview_effective_ladders(&self) -> Vec<String> {
+        let left = self.arrangement_gel_preview.left_ladder_name.trim();
+        let right = self.arrangement_gel_preview.right_ladder_name.trim();
+        match (left.is_empty(), right.is_empty()) {
+            (true, true) => vec![],
+            (false, true) => vec![left.to_string()],
+            (true, false) => vec![right.to_string()],
+            (false, false) if left == right => vec![left.to_string()],
+            (false, false) => vec![left.to_string(), right.to_string()],
+        }
+    }
+
+    fn coerce_arrangement_gel_preview_pair(&mut self) {
+        let left = self.arrangement_gel_preview.left_ladder_name.trim().to_string();
+        let right = self.arrangement_gel_preview.right_ladder_name.trim().to_string();
+        if left.is_empty() && !right.is_empty() {
+            self.arrangement_gel_preview.left_ladder_name = right.clone();
+        } else if !left.is_empty() && right.is_empty() {
+            self.arrangement_gel_preview.right_ladder_name = left.clone();
+        }
+    }
+
+    fn open_arrangement_gel_preview_dialog(&mut self, arrangement_id: &str) {
+        let arrangement_id = arrangement_id.trim();
+        if arrangement_id.is_empty() {
+            self.app_status = "Arrangement gel preview requires a non-empty arrangement id"
+                .to_string();
+            return;
+        }
+        if self.show_arrangement_gel_preview_dialog
+            && self.arrangement_gel_preview.arrangement_id == arrangement_id
+        {
+            self.queue_focus_viewport(Self::arrangement_gel_preview_viewport_id());
+            return;
+        }
+        self.refresh_lineage_cache_if_needed();
+        let Some(arrangement) = self
+            .lineage_arrangements
+            .iter()
+            .find(|row| row.arrangement_id == arrangement_id)
+            .cloned()
+        else {
+            self.app_status = format!("Arrangement '{arrangement_id}' is not available");
+            return;
+        };
+        self.arrangement_gel_preview.arrangement_id = arrangement.arrangement_id.clone();
+        self.arrangement_gel_preview.arrangement_title = if arrangement.name.trim().is_empty() {
+            arrangement.arrangement_id.clone()
+        } else {
+            arrangement.name.clone()
+        };
+        self.arrangement_gel_preview.status.clear();
+        self.arrangement_gel_preview.svg_uri.clear();
+        self.set_arrangement_gel_preview_controls_from_ladders(&arrangement.ladders);
+        if arrangement.ladders.len() > 2 {
+            self.arrangement_gel_preview.status = format!(
+                "Saved arrangement stores {} ladder names; this preview editor currently exposes left/right flanks only.",
+                arrangement.ladders.len()
+            );
+        }
+        self.show_arrangement_gel_preview_dialog = true;
+        self.mark_viewport_open_requested(Self::arrangement_gel_preview_viewport_id());
+        self.queue_focus_viewport(Self::arrangement_gel_preview_viewport_id());
+        self.refresh_arrangement_gel_preview_svg();
+    }
+
+    fn refresh_arrangement_gel_preview_svg(&mut self) {
+        let arrangement_id = self.arrangement_gel_preview.arrangement_id.trim().to_string();
+        if arrangement_id.is_empty() {
+            self.arrangement_gel_preview.status =
+                "No arrangement is selected for gel preview.".to_string();
+            self.arrangement_gel_preview.svg_uri.clear();
+            return;
+        }
+        let override_ladders = self.arrangement_gel_preview_effective_ladders();
+        let layout_result = {
+            let engine = self.engine.read().unwrap();
+            engine.build_serial_gel_layout_for_render(
+                &[],
+                None,
+                Some(arrangement_id.as_str()),
+                Some(override_ladders.as_slice()),
+            )
+        };
+        let layout = match layout_result {
+            Ok(layout) => layout,
+            Err(err) => {
+                self.arrangement_gel_preview.status =
+                    format!("Could not refresh arrangement gel preview: {}", err.message);
+                self.arrangement_gel_preview.svg_uri.clear();
+                return;
+            }
+        };
+        let svg = crate::pool_gel::export_pool_gel_svg(&layout);
+        let stamp = now_unix_ms_u64();
+        let png_path = env::temp_dir().join(format!("gentle_arrangement_gel_preview_{stamp}.png"));
+        let raster_result = (|| -> std::result::Result<(), String> {
+            let mut opt = usvg::Options {
+                resources_dir: png_path.parent().map(|path| path.to_path_buf()),
+                ..usvg::Options::default()
+            };
+            opt.fontdb_mut().load_system_fonts();
+            let tree = usvg::Tree::from_str(&svg, &opt)
+                .map_err(|e| format!("Could not parse arrangement gel SVG: {e}"))?;
+            let pixmap_size = tree
+                .size()
+                .to_int_size()
+                .scale_by(1.0)
+                .ok_or_else(|| "Could not determine arrangement gel raster size".to_string())?;
+            let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
+                .ok_or_else(|| {
+                    format!(
+                        "Could not allocate arrangement gel raster {}x{}",
+                        pixmap_size.width(),
+                        pixmap_size.height()
+                    )
+                })?;
+            resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+            pixmap.save_png(&png_path).map_err(|e| {
+                format!(
+                    "Could not write temporary arrangement gel preview PNG '{}': {e}",
+                    png_path.display()
+                )
+            })?;
+            Ok(())
+        })();
+        match raster_result {
+            Ok(()) => {
+                self.arrangement_gel_preview.svg_uri = Self::file_uri_from_path(&png_path);
+                self.arrangement_gel_preview.status = format!(
+                    "Previewing {} sample lane(s), {} sequence(s); ladders: {}",
+                    layout.sample_count,
+                    layout.pool_member_count,
+                    Self::describe_arrangement_ladders(&layout.selected_ladders)
+                );
+            }
+            Err(err) => {
+                self.arrangement_gel_preview.status = err;
+                self.arrangement_gel_preview.svg_uri.clear();
+            }
+        }
+    }
+
+    fn save_arrangement_gel_preview_ladders(&mut self) {
+        let arrangement_id = self.arrangement_gel_preview.arrangement_id.trim().to_string();
+        if arrangement_id.is_empty() {
+            self.arrangement_gel_preview.status =
+                "No arrangement is selected for ladder updates.".to_string();
+            return;
+        }
+        let ladders = self.arrangement_gel_preview_effective_ladders();
+        let op_result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::SetArrangementLadders {
+                arrangement_id: arrangement_id.clone(),
+                ladders: (!ladders.is_empty()).then_some(ladders.clone()),
+            });
+        match op_result {
+            Ok(result) => {
+                self.app_status = result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Updated arrangement '{arrangement_id}' ladders"));
+                self.arrangement_gel_preview.status = self.app_status.clone();
+                self.set_arrangement_gel_preview_controls_from_ladders(&ladders);
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+                self.refresh_arrangement_gel_preview_svg();
+            }
+            Err(err) => {
+                self.arrangement_gel_preview.status =
+                    format!("Could not update arrangement ladders: {}", err.message);
             }
         }
     }
@@ -18379,6 +18745,209 @@ Error: `{err}`"
         }
     }
 
+    fn render_arrangement_gel_preview_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Arrangement Gel");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
+        ui.label("Preview one serial arrangement inside GENtle, tune left/right DNA ladders, then save or export the chosen setup.");
+        ui.horizontal(|ui| {
+            ui.label("Arrangement");
+            ui.monospace(self.arrangement_gel_preview.arrangement_title.clone());
+        });
+        ui.horizontal(|ui| {
+            ui.label("Saved ladders");
+            ui.monospace(Self::describe_arrangement_ladders(
+                &self.arrangement_gel_preview.saved_ladders,
+            ));
+            let preview_ladders = self.arrangement_gel_preview_effective_ladders();
+            if preview_ladders != self.arrangement_gel_preview.saved_ladders {
+                ui.small("Preview differs from the saved arrangement until you click 'Save to Arrangement'.");
+            }
+        });
+        let ladder_names = GentleEngine::inspect_dna_ladders(None)
+            .ladders
+            .into_iter()
+            .map(|ladder| ladder.name)
+            .collect::<Vec<_>>();
+        let mut selection_changed = false;
+        ui.horizontal(|ui| {
+            ui.label("Left ladder");
+            egui::ComboBox::from_id_salt("arrangement_gel_left_ladder")
+                .selected_text(if self.arrangement_gel_preview.left_ladder_name.trim().is_empty() {
+                    "Auto".to_string()
+                } else {
+                    self.arrangement_gel_preview.left_ladder_name.clone()
+                })
+                .show_ui(ui, |ui| {
+                    selection_changed |= ui
+                        .selectable_value(
+                            &mut self.arrangement_gel_preview.left_ladder_name,
+                            String::new(),
+                            "Auto",
+                        )
+                        .changed();
+                    for ladder_name in &ladder_names {
+                        selection_changed |= ui
+                            .selectable_value(
+                                &mut self.arrangement_gel_preview.left_ladder_name,
+                                ladder_name.clone(),
+                                ladder_name,
+                            )
+                            .changed();
+                    }
+                });
+            ui.label("Right ladder");
+            egui::ComboBox::from_id_salt("arrangement_gel_right_ladder")
+                .selected_text(if self.arrangement_gel_preview.right_ladder_name.trim().is_empty() {
+                    "Auto".to_string()
+                } else {
+                    self.arrangement_gel_preview.right_ladder_name.clone()
+                })
+                .show_ui(ui, |ui| {
+                    selection_changed |= ui
+                        .selectable_value(
+                            &mut self.arrangement_gel_preview.right_ladder_name,
+                            String::new(),
+                            "Auto",
+                        )
+                        .changed();
+                    for ladder_name in &ladder_names {
+                        selection_changed |= ui
+                            .selectable_value(
+                                &mut self.arrangement_gel_preview.right_ladder_name,
+                                ladder_name.clone(),
+                                ladder_name,
+                            )
+                            .changed();
+                    }
+                });
+            if ui
+                .button("Auto")
+                .on_hover_text("Reset both flanking ladders to automatic selection for this preview")
+                .clicked()
+            {
+                self.arrangement_gel_preview.left_ladder_name.clear();
+                self.arrangement_gel_preview.right_ladder_name.clear();
+                selection_changed = true;
+            }
+        });
+        if selection_changed {
+            self.coerce_arrangement_gel_preview_pair();
+            self.refresh_arrangement_gel_preview_svg();
+        }
+
+        ui.horizontal(|ui| {
+            if ui
+                .button("Preview")
+                .on_hover_text("Recompute the in-window gel preview using the current ladder choices")
+                .clicked()
+            {
+                self.refresh_arrangement_gel_preview_svg();
+            }
+            if ui
+                .button("Save to Arrangement")
+                .on_hover_text("Persist the current ladder choices on this arrangement for future export/reopen")
+                .clicked()
+            {
+                self.save_arrangement_gel_preview_ladders();
+            }
+            if ui
+                .button("Export SVG...")
+                .on_hover_text("Export one serial gel SVG using the current preview ladder choices")
+                .clicked()
+            {
+                let stem = Self::sanitize_file_stem(
+                    &self.arrangement_gel_preview.arrangement_title,
+                    "arrangement_gel",
+                );
+                self.prompt_export_serial_gel_svg(
+                    &stem,
+                    None,
+                    Some(self.arrangement_gel_preview.arrangement_id.clone()),
+                    Some(self.arrangement_gel_preview_effective_ladders()),
+                );
+            }
+        });
+
+        if !self.arrangement_gel_preview.status.trim().is_empty() {
+            ui.small(&self.arrangement_gel_preview.status);
+        }
+        ui.separator();
+        ui.label("Gel preview");
+        if !self.arrangement_gel_preview.svg_uri.trim().is_empty() {
+            ui.add(
+                egui::Image::from_uri(self.arrangement_gel_preview.svg_uri.clone())
+                    .max_width(ui.available_width())
+                    .max_height(520.0)
+                    .shrink_to_fit(),
+            );
+        } else {
+            ui.small("No arrangement gel preview is loaded yet.");
+        }
+        close_requested
+    }
+
+    fn render_arrangement_gel_preview_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_arrangement_gel_preview_dialog {
+            return;
+        }
+        let mut open = self.show_arrangement_gel_preview_dialog;
+        let title = self.arrangement_gel_preview_title();
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([980.0, 760.0])
+            .with_min_inner_size([760.0, 560.0]);
+        ctx.show_viewport_immediate(
+            Self::arrangement_gel_preview_viewport_id(),
+            builder,
+            |ctx, class| {
+                self.note_viewport_focus_if_active(ctx, Self::arrangement_gel_preview_viewport_id());
+                if class == egui::ViewportClass::EmbeddedWindow {
+                    let mut close_requested = false;
+                    egui::Window::new(title.clone())
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(980.0, 760.0))
+                        .show(ctx, |ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    close_requested =
+                                        self.render_arrangement_gel_preview_contents(ui);
+                                });
+                        });
+                    if close_requested {
+                        open = false;
+                    }
+                } else {
+                    let mut close_requested = false;
+                    crate::egui_compat::show_central_panel(
+                        ctx,
+                        egui::CentralPanel::default(),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    close_requested =
+                                        self.render_arrangement_gel_preview_contents(ui);
+                                });
+                        },
+                    );
+                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                        open = false;
+                    }
+                }
+            },
+        );
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_arrangement_gel_preview_dialog = open;
+    }
+
     fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
@@ -22109,6 +22678,7 @@ Error: `{err}`"
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
         self.show_gibson_dialog = false;
+        self.show_arrangement_gel_preview_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.gibson_destination_seq_id.clear();
         self.gibson_show_all_unique_cutters = false;
@@ -22120,6 +22690,7 @@ Error: `{err}`"
         self.gibson_status.clear();
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
+        self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -26259,6 +26830,7 @@ Error: `{err}`"
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
+        let mut open_arrangement_gel_preview: Option<String> = None;
         let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
         let mut request_export_lineage_svg = false;
         let mut reopen_gibson_from_operation: Option<String> = None;
@@ -28074,12 +28646,7 @@ Error: `{err}`"
                                     if let Some(row) = hover_row {
                                         if resp.double_clicked() {
                                             match row.kind {
-                                                LineageNodeKind::Arrangement => {
-                                                    if !row.lane_container_ids.is_empty() {
-                                                        open_lane_containers =
-                                                            Some(row.lane_container_ids.clone());
-                                                    }
-                                                }
+                                                LineageNodeKind::Arrangement => {}
                                                 LineageNodeKind::Macro => {}
                                                 LineageNodeKind::Analysis => {
                                                     if Self::is_lineage_operation_hub(row) {
@@ -28426,16 +28993,12 @@ Error: `{err}`"
                                 }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
-                                        if !row.lane_container_ids.is_empty()
-                                            && ui
-                                                .button("Open Lanes")
-                                                .on_hover_text(
-                                                    "Open windows for the lane containers in this arrangement",
-                                                )
-                                                .clicked()
-                                        {
-                                            open_lane_containers =
-                                                Some(row.lane_container_ids.clone());
+                                        if !row.lane_container_ids.is_empty() {
+                                            self.render_open_lanes_menu(
+                                                ui,
+                                                &row.lane_container_ids,
+                                                &mut open_lane_containers,
+                                            );
                                         } else {
                                             ui.label("-");
                                         }
@@ -29130,6 +29693,16 @@ Error: `{err}`"
                                         });
                                         ui.horizontal(|ui| {
                                             if ui
+                                                .button("Preview Gel")
+                                                .on_hover_text(
+                                                    "Open an in-app gel preview where left/right ladder choices update the visual result together",
+                                                )
+                                                .clicked()
+                                            {
+                                                open_arrangement_gel_preview =
+                                                    Some(arrangement.arrangement_id.clone());
+                                            }
+                                            if ui
                                                 .button("Export Gel")
                                                 .on_hover_text(
                                                     "Export one serial gel using this arrangement",
@@ -29146,16 +29719,12 @@ Error: `{err}`"
                                                     arrangement.arrangement_id.clone(),
                                                 ));
                                             }
-                                            if !arrangement.lane_container_ids.is_empty()
-                                                && ui
-                                                    .button("Open Lanes")
-                                                    .on_hover_text(
-                                                        "Open windows for the lane containers in this arrangement",
-                                                    )
-                                                    .clicked()
-                                            {
-                                                open_lane_containers =
-                                                    Some(arrangement.lane_container_ids.clone());
+                                            if !arrangement.lane_container_ids.is_empty() {
+                                                self.render_open_lanes_menu(
+                                                    ui,
+                                                    &arrangement.lane_container_ids,
+                                                    &mut open_lane_containers,
+                                                );
                                             }
                                         });
                                         ui.end_row();
@@ -29172,6 +29741,9 @@ Error: `{err}`"
         }
         if let Some((stem, arrangement_id)) = export_arrangement_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None);
+        }
+        if let Some(arrangement_id) = open_arrangement_gel_preview.take() {
+            self.open_arrangement_gel_preview_dialog(&arrangement_id);
         }
         if let Some((seq_id, dotplot_id, reference_seq_id)) = export_lineage_dotplot_svg.take() {
             self.prompt_export_dotplot_svg_from_lineage(
@@ -29192,12 +29764,12 @@ Error: `{err}`"
                     .cloned()
                 {
                     if container_row.member_count > 1 {
-                        self.open_pool_window(
+                        self.open_pool_window_compact(
                             &container_row.representative,
                             container_row.members.clone(),
                         );
                     } else if !container_row.representative.is_empty() {
-                        self.open_sequence_window(&container_row.representative);
+                        self.open_sequence_window_compact(&container_row.representative);
                     }
                 }
             }
@@ -32750,6 +33322,18 @@ Error: `{err}`"
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "auto".to_string())
             ),
+            Operation::SetArrangementLadders {
+                arrangement_id,
+                ladders,
+            } => format!(
+                "Set arrangement ladders: arrangement_id={}, ladders={}",
+                arrangement_id.trim(),
+                ladders
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "auto".to_string())
+            ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
                 "Export DNA ladders: path={}, filter={}",
                 path,
@@ -33154,6 +33738,7 @@ impl GENtleApp {
             self.render_pending_catalog_entry_removal_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
+            self.render_arrangement_gel_preview_dialog(ctx);
             self.render_pcr_design_dialog(ctx);
             self.render_sequencing_confirmation_dialog(ctx);
             self.render_planning_dialog(ctx);
@@ -33224,7 +33809,7 @@ mod tests {
         APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
         BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
         CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
-        DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
+        ContainerRow, DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DbSnpFetchTask, DbSnpFetchTaskMessage, EngineError,
         ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage,
@@ -33242,8 +33827,9 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            BlastHitFeatureInput, BlastInvocationProvenance, DbSnpFetchProgress, DbSnpFetchStage,
-            DisplaySettings, DotplotMode, Engine, FlexibilityModel,
+            Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance,
+            Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
+            DotplotMode, Engine, FlexibilityModel,
             GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
             LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation,
             PairwiseAlignmentMode, ProjectState, RenderSvgMode,
@@ -37258,6 +37844,126 @@ mod tests {
         let project_path = temp.path().join("my_project.gentle.json");
         let label = GENtleApp::recent_project_menu_label(project_path.to_string_lossy().as_ref());
         assert!(label.starts_with("my_project.gentle.json ("));
+    }
+
+    #[test]
+    fn arrangement_lane_helpers_preserve_order_and_describe_pools() {
+        let mut app = GENtleApp::default();
+        app.lineage_containers = vec![
+            ContainerRow {
+                container_id: "container-1".to_string(),
+                kind: "Singleton".to_string(),
+                member_count: 1,
+                representative: "gibson_destination_pgex".to_string(),
+                members: vec!["gibson_destination_pgex".to_string()],
+            },
+            ContainerRow {
+                container_id: "container-2".to_string(),
+                kind: "Pool".to_string(),
+                member_count: 3,
+                representative: "pooled_product".to_string(),
+                members: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            },
+        ];
+
+        let rows = app.arrangement_lane_container_rows(&[
+            "container-2".to_string(),
+            "container-1".to_string(),
+        ]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].container_id, "container-2");
+        assert_eq!(rows[1].container_id, "container-1");
+        assert_eq!(
+            GENtleApp::arrangement_lane_menu_label(rows[0]),
+            "container-2 (Pool, 3 seqs)"
+        );
+        assert_eq!(
+            GENtleApp::arrangement_lane_menu_label(rows[1]),
+            "container-1 (gibson_destination_pgex)"
+        );
+    }
+
+    #[test]
+    fn arrangement_gel_preview_coerces_one_sided_choice_to_symmetric_ladder() {
+        let mut app = GENtleApp::default();
+        app.arrangement_gel_preview.left_ladder_name.clear();
+        app.arrangement_gel_preview.right_ladder_name = "NEB 1kb DNA Ladder".to_string();
+
+        app.coerce_arrangement_gel_preview_pair();
+
+        assert_eq!(
+            app.arrangement_gel_preview.left_ladder_name,
+            "NEB 1kb DNA Ladder"
+        );
+        assert_eq!(
+            app.arrangement_gel_preview_effective_ladders(),
+            vec!["NEB 1kb DNA Ladder".to_string()]
+        );
+    }
+
+    #[test]
+    fn open_arrangement_gel_preview_dialog_seeds_ladder_controls_and_preview() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), DNAsequence::from_sequence(&"ATGC".repeat(90)).unwrap());
+        state
+            .sequences
+            .insert("seq_b".to_string(), DNAsequence::from_sequence(&"ATGC".repeat(35)).unwrap());
+        state.container_state.containers.insert(
+            "container-1".to_string(),
+            Container {
+                container_id: "container-1".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Vector".to_string()),
+                members: vec!["seq_a".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.containers.insert(
+            "container-2".to_string(),
+            Container {
+                container_id: "container-2".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Insert".to_string()),
+                members: vec!["seq_b".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.arrangements.insert(
+            "arr-1".to_string(),
+            Arrangement {
+                arrangement_id: "arr-1".to_string(),
+                mode: ArrangementMode::Serial,
+                name: Some("Demo run".to_string()),
+                lane_container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+                ladders: vec![
+                    "NEB 1kb DNA Ladder".to_string(),
+                    "GeneRuler 100bp DNA Ladder Plus".to_string(),
+                ],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_arrangement_gel_preview_dialog("arr-1");
+
+        assert!(app.show_arrangement_gel_preview_dialog);
+        assert_eq!(app.arrangement_gel_preview.arrangement_id, "arr-1");
+        assert_eq!(app.arrangement_gel_preview.arrangement_title, "Demo run");
+        assert_eq!(
+            app.arrangement_gel_preview.left_ladder_name,
+            "NEB 1kb DNA Ladder"
+        );
+        assert_eq!(
+            app.arrangement_gel_preview.right_ladder_name,
+            "GeneRuler 100bp DNA Ladder Plus"
+        );
+        assert!(!app.arrangement_gel_preview.svg_uri.is_empty());
     }
 
     #[test]

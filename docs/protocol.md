@@ -679,7 +679,9 @@ Current draft operations:
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
-- `RenderPoolGelSvg { inputs, path, ladders? }`
+- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id? }`
+- `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
+- `SetArrangementLadders { arrangement_id, ladders? }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ValidateProtocolCartoonTemplate { template_path }`
@@ -1654,11 +1656,29 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `RenderPoolGelSvg` semantics:
 
 - Accepts explicit `inputs` (sequence ids) and an output `path`.
+- Optional `container_ids` renders one lane per referenced stored container.
+- Optional `arrangement_id` renders one lane per stored serial-arrangement lane.
 - Computes pool molecular-weight proxy from sequence bp lengths.
 - Chooses one or two ladders to span pool range:
   - from explicit `ladders` list when provided
+  - otherwise from saved arrangement ladders when `arrangement_id` is present
+    and the arrangement stores a ladder choice
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lane as SVG artifact.
+
+`CreateArrangementSerial` semantics:
+
+- Persists an ordered serial-lane setup over stored containers.
+- Optional `ladders` can store one symmetric ladder or one left/right ladder
+  pair for later gel preview/export reuse.
+
+`SetArrangementLadders` semantics:
+
+- Mutates an existing serial arrangement in place.
+- `ladders = null` clears back to shared engine auto ladder selection.
+- one ladder name means the same ladder is used on both sides during
+  arrangement-based gel preview/export.
+- two ladder names mean explicit left/right ladder selection.
 
 `RenderDotplotSvg` semantics:
 
