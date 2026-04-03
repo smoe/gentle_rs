@@ -55,6 +55,9 @@ Rack-placement rule (target model):
   - reserved/blocked positions
 - Built-in rack profiles should explicitly include common bench carriers such
   as small tube racks, 96-well plates, and 384-well plates.
+- Custom rack geometries should layer on the same persisted snapshot model
+  (`rows`, `columns`, coordinate scheme, fill direction) rather than forcing a
+  second physical-placement abstraction.
 - Multiple arrangements may share one physical rack; rack placement must
   therefore stay separate from experiment identity.
 - Where GENtle already has plate-coordinate conventions (for example existing

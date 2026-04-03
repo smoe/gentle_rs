@@ -729,6 +729,8 @@ Semantic interpretation:
     - `small_tube_4x6`
     - `plate_96`
     - `plate_384`
+  - persisted custom snapshots use:
+    - `custom`
 - `RackProfileSnapshot`
   - persisted row/column/fill-direction snapshot used by one saved rack
 - `Rack`
@@ -828,6 +830,7 @@ Current draft operations:
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
 - `SetRackProfile { rack_id, profile }`
+- `SetRackProfileCustom { rack_id, rows, columns }`
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
@@ -1867,6 +1870,15 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Reprojects one saved rack onto another built-in profile.
 - Existing arrangement order is preserved while coordinates are reflowed under
   the target profile's row-major geometry.
+
+`SetRackProfileCustom` semantics:
+
+- Reprojects one saved rack onto one custom A1-style geometry.
+- `rows` and `columns` are persisted directly in the rack profile snapshot.
+- Existing arrangement order is preserved while coordinates are reflowed under
+  the custom row-major geometry.
+- Current baseline supports at most `26` rows because coordinates remain in
+  single-letter A1 form.
 
 `ExportRackLabelsSvg` semantics:
 

@@ -1070,6 +1070,7 @@ Shared shell command:
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+    - `racks set-custom-profile RACK_ID ROWS COLUMNS`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -1580,6 +1581,11 @@ Rendering export commands:
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
     preserving arrangement order.
+- `racks set-custom-profile RACK_ID ROWS COLUMNS`
+  - Calls engine operation `SetRackProfileCustom`.
+  - Reflows occupied positions onto one custom A1-style rack geometry.
+  - Current baseline supports up to `26` rows because coordinates stay in
+    single-letter A1 form.
 
 RNA secondary-structure text command:
 
@@ -1822,6 +1828,9 @@ Helper convenience commands:
     same engine path as GUI `Labels SVG`.
 - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
   - Reflows one saved rack onto another built-in profile.
+- `racks set-custom-profile RACK_ID ROWS COLUMNS`
+  - Reflows one saved rack onto a custom A1-style geometry while preserving
+    arrangement order.
 - `helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]`
   - Same behavior as `genomes remove-catalog-entry`, with helper-catalog default.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`

@@ -492,6 +492,20 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "SetRackProfileCustom"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-custom-profile",
+         "summary": "Reflow one saved rack onto a custom A1-style rows-by-columns geometry.",
+         "usage": "racks set-custom-profile RACK_ID ROWS COLUMNS"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",

@@ -894,6 +894,9 @@ pub struct GENtleApp {
     arrangement_gel_preview: ArrangementGelPreviewState,
     rack_view_rack_id: String,
     rack_view_status: String,
+    rack_profile_editor_kind: RackProfileKind,
+    rack_custom_profile_rows: String,
+    rack_custom_profile_columns: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
     rack_view_selected_coordinate: Option<String>,
     rack_view_selected_arrangement_id: Option<String>,
@@ -2358,6 +2361,9 @@ impl Default for GENtleApp {
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
+            rack_profile_editor_kind: RackProfileKind::SmallTube4x6,
+            rack_custom_profile_rows: String::new(),
+            rack_custom_profile_columns: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
             rack_view_selected_coordinate: None,
             rack_view_selected_arrangement_id: None,
@@ -6797,6 +6803,20 @@ Error: `{err}`"
         self.rack_view_selected_arrangement_id = None;
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
+        if let Some(rack) = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+        {
+            self.rack_profile_editor_kind = rack.profile.kind;
+            self.rack_custom_profile_rows = rack.profile.rows.to_string();
+            self.rack_custom_profile_columns = rack.profile.columns.to_string();
+        }
         self.show_rack_dialog = true;
         self.mark_viewport_open_requested(Self::rack_viewport_id());
         self.queue_focus_viewport(Self::rack_viewport_id());
@@ -7167,30 +7187,42 @@ Error: `{err}`"
             ui.label("Rack");
             ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
             ui.label("Profile");
-            let mut selected_profile = rack.profile.kind;
+            let previous_profile_kind = self.rack_profile_editor_kind;
             egui::ComboBox::from_id_salt("rack_profile_combo")
-                .selected_text(Self::rack_profile_label(selected_profile))
+                .selected_text(Self::rack_profile_label(self.rack_profile_editor_kind))
                 .show_ui(ui, |ui| {
                     for profile in [
                         RackProfileKind::SmallTube4x6,
                         RackProfileKind::Plate96,
                         RackProfileKind::Plate384,
+                        RackProfileKind::Custom,
                     ] {
                         ui.selectable_value(
-                            &mut selected_profile,
+                            &mut self.rack_profile_editor_kind,
                             profile,
                             Self::rack_profile_label(profile),
                         );
                     }
                 });
-            if selected_profile != rack.profile.kind {
+            if self.rack_profile_editor_kind != previous_profile_kind
+                && self.rack_profile_editor_kind == RackProfileKind::Custom
+            {
+                self.rack_custom_profile_rows = rack.profile.rows.to_string();
+                self.rack_custom_profile_columns = rack.profile.columns.to_string();
+                self.rack_view_status =
+                    "Custom rack profile selected. Edit rows/columns and click Apply Custom."
+                        .to_string();
+            }
+            if self.rack_profile_editor_kind != rack.profile.kind
+                && self.rack_profile_editor_kind != RackProfileKind::Custom
+            {
                 let result = self
                     .engine
                     .write()
                     .unwrap()
                     .apply(Operation::SetRackProfile {
                         rack_id: rack.rack_id.clone(),
-                        profile: selected_profile,
+                        profile: self.rack_profile_editor_kind,
                     });
                 match result {
                     Ok(op_result) => {
@@ -7201,10 +7233,17 @@ Error: `{err}`"
                             .unwrap_or_else(|| "Updated rack profile".to_string());
                         self.lineage_cache_valid = false;
                         self.refresh_lineage_cache_if_needed();
+                        if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_custom_profile_rows = updated_rack.profile.rows.to_string();
+                            self.rack_custom_profile_columns =
+                                updated_rack.profile.columns.to_string();
+                            self.rack_profile_editor_kind = updated_rack.profile.kind;
+                        }
                     }
                     Err(err) => {
                         self.rack_view_status =
                             format!("Could not change rack profile: {}", err.message);
+                        self.rack_profile_editor_kind = rack.profile.kind;
                     }
                 }
             }
@@ -7259,6 +7298,87 @@ Error: `{err}`"
                 }
             }
         });
+        if self.rack_profile_editor_kind == RackProfileKind::Custom {
+            ui.horizontal(|ui| {
+                ui.label("Custom rows");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.rack_custom_profile_rows)
+                        .desired_width(56.0),
+                )
+                .on_hover_text(
+                    "Number of rack rows for the custom A1-style profile",
+                );
+                ui.label("Columns");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.rack_custom_profile_columns)
+                        .desired_width(56.0),
+                )
+                .on_hover_text("Number of rack columns for the custom profile");
+                if ui
+                    .button("Apply Custom")
+                    .on_hover_text(
+                        "Apply the custom rack geometry and reflow existing occupied positions under the same order-preserving rules",
+                    )
+                    .clicked()
+                {
+                    let parsed_rows = self
+                        .rack_custom_profile_rows
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|e| e.to_string());
+                    let parsed_columns = self
+                        .rack_custom_profile_columns
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|e| e.to_string());
+                    match (parsed_rows, parsed_columns) {
+                        (Ok(rows), Ok(columns)) => {
+                            let result = self
+                                .engine
+                                .write()
+                                .unwrap()
+                                .apply(Operation::SetRackProfileCustom {
+                                    rack_id: rack.rack_id.clone(),
+                                    rows,
+                                    columns,
+                                });
+                            match result {
+                                Ok(op_result) => {
+                                    self.rack_view_status = op_result
+                                        .messages
+                                        .first()
+                                        .cloned()
+                                        .unwrap_or_else(|| {
+                                            format!(
+                                                "Updated rack '{}' to custom {}x{}",
+                                                rack.rack_id, rows, columns
+                                            )
+                                        });
+                                    self.lineage_cache_valid = false;
+                                    self.refresh_lineage_cache_if_needed();
+                                    self.rack_profile_editor_kind = RackProfileKind::Custom;
+                                }
+                                Err(err) => {
+                                    self.rack_view_status = format!(
+                                        "Could not apply custom rack profile: {}",
+                                        err.message
+                                    );
+                                }
+                            }
+                        }
+                        (Err(err), _) => {
+                            self.rack_view_status =
+                                format!("Could not parse custom rows: {err}");
+                        }
+                        (_, Err(err)) => {
+                            self.rack_view_status =
+                                format!("Could not parse custom columns: {err}");
+                        }
+                    }
+                }
+                ui.small("Use A1-style coordinates; multi-letter row labels such as AA/AB are supported for larger custom racks.");
+            });
+        }
         let sorted_entries = Self::rack_sorted_entries(&rack);
         let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
@@ -35328,6 +35448,7 @@ mod tests {
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
             LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+            Rack, RackProfileKind, RackProfileSnapshot,
             ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
             RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
             RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
@@ -39512,6 +39633,32 @@ mod tests {
                 .racks
                 .contains_key(&app.rack_view_rack_id)
         );
+    }
+
+    #[test]
+    fn open_rack_dialog_prefills_custom_profile_editor_from_snapshot() {
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert(
+            "rack-custom".to_string(),
+            Rack {
+                rack_id: "rack-custom".to_string(),
+                name: "Bench".to_string(),
+                profile: RackProfileSnapshot::custom(3, 10),
+                placements: vec![],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_rack_dialog("rack-custom");
+
+        assert!(app.show_rack_dialog);
+        assert_eq!(app.rack_view_rack_id, "rack-custom");
+        assert_eq!(app.rack_profile_editor_kind, RackProfileKind::Custom);
+        assert_eq!(app.rack_custom_profile_rows, "3");
+        assert_eq!(app.rack_custom_profile_columns, "10");
     }
 
     #[test]

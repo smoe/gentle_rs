@@ -10681,7 +10681,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, set-custom-profile".to_string(),
                 );
             }
             match tokens[1].as_str() {

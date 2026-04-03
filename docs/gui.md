@@ -2214,6 +2214,13 @@ Rack view is the first physical-placement layer on top of arrangements.
   - `Small tube rack (4 x 6)`
   - `Plate 96`
   - `Plate 384`
+- `Custom` profile authoring is now available directly in the rack window:
+  - pick `Custom`
+  - edit `rows` / `columns`
+  - click `Apply Custom`
+  - occupied positions are reflowed under the same order-preserving rules
+- Current custom-profile baseline supports up to `26` rows because coordinates
+  stay in single-letter A1 form.
 - Coordinates are A1-style everywhere.
 
 Interaction model:

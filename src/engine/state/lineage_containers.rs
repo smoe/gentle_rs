@@ -207,6 +207,19 @@ impl GentleEngine {
         })
     }
 
+    fn validate_custom_rack_profile_dimensions(
+        rows: usize,
+        columns: usize,
+    ) -> Result<(), EngineError> {
+        if rows == 0 || columns == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Custom rack profiles require rows >= 1 and columns >= 1".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) fn rack_coordinate_from_index(
         profile: &RackProfileSnapshot,
         index: usize,
@@ -931,16 +944,6 @@ impl GentleEngine {
             true,
         )?;
         self.reproject_rack_with_profile(rack_id, new_profile)
-    }
-
-    fn validate_custom_rack_profile_dimensions(rows: usize, columns: usize) -> Result<(), EngineError> {
-        if rows == 0 || columns == 0 {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "Custom rack profile requires positive rows and columns".to_string(),
-            });
-        }
-        Ok(())
     }
 
     fn reproject_rack_with_profile(
