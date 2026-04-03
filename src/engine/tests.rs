@@ -6212,6 +6212,8 @@ fn test_set_arrangement_ladders_operation_updates_arrangement() {
             name: Some("Digest run".to_string()),
             lane_container_ids: vec!["container-1".to_string()],
             ladders: vec!["NEB 1kb DNA Ladder".to_string()],
+            lane_role_labels: vec!["lane_1".to_string()],
+            default_rack_id: None,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -6246,6 +6248,316 @@ fn test_set_arrangement_ladders_operation_updates_arrangement() {
 }
 
 #[test]
+fn create_arrangement_serial_auto_creates_default_rack_small_tube() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["seq_a", "seq_b", "seq_c"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(40 + idx * 5)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Lane {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+            ],
+            arrangement_id: Some("arr-rack".to_string()),
+            name: Some("Rack demo".to_string()),
+            ladders: Some(vec!["NEB 100bp DNA Ladder".to_string()]),
+        })
+        .expect("create arrangement");
+    assert!(result
+        .messages
+        .iter()
+        .any(|message| message.contains("Created serial arrangement 'arr-rack'")));
+    let arrangement = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-rack")
+        .expect("arrangement");
+    let rack_id = arrangement
+        .default_rack_id
+        .as_ref()
+        .expect("default rack id")
+        .clone();
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    assert_eq!(rack.profile.kind, RackProfileKind::SmallTube4x6);
+    assert_eq!(rack.placements.len(), 5);
+    assert_eq!(rack.placements[0].role_label, "ladder_left");
+    assert_eq!(rack.placements[1].role_label, "lane_1");
+    assert_eq!(rack.placements[4].role_label, "ladder_right");
+}
+
+#[test]
+fn create_rack_profile_selection_picks_96_then_384() {
+    let mut state = ProjectState::default();
+    for idx in 0..100usize {
+        let seq_id = format!("seq_{idx}");
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ATGC".repeat(30 + (idx % 5))));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(container_id.clone()),
+                members: vec![seq_id],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-96".to_string(),
+        Arrangement {
+            arrangement_id: "arr-96".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Needs 96".to_string()),
+            lane_container_ids: (1..=25)
+                .map(|idx| format!("container-{idx}"))
+                .collect(),
+            ladders: vec![],
+            lane_role_labels: (1..=25).map(|idx| format!("lane_{idx}")).collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-384".to_string(),
+        Arrangement {
+            arrangement_id: "arr-384".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Needs 384".to_string()),
+            lane_container_ids: (1..=97)
+                .map(|idx| format!("container-{idx}"))
+                .collect(),
+            ladders: vec![],
+            lane_role_labels: (1..=97).map(|idx| format!("lane_{idx}")).collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let rack_96 = engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-96".to_string(),
+            rack_id: Some("rack-96".to_string()),
+            name: None,
+            profile: None,
+        })
+        .expect("create rack 96");
+    assert!(rack_96.messages.iter().any(|message| message.contains("rack-96")));
+    assert_eq!(
+        engine
+            .state()
+            .container_state
+            .racks
+            .get("rack-96")
+            .expect("rack 96")
+            .profile
+            .kind,
+        RackProfileKind::Plate96
+    );
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-384".to_string(),
+            rack_id: Some("rack-384".to_string()),
+            name: None,
+            profile: None,
+        })
+        .expect("create rack 384");
+    assert_eq!(
+        engine
+            .state()
+            .container_state
+            .racks
+            .get("rack-384")
+            .expect("rack 384")
+            .profile
+            .kind,
+        RackProfileKind::Plate384
+    );
+}
+
+#[test]
+fn move_rack_sample_within_same_block_shifts_neighbors() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(50 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+            ],
+            arrangement_id: Some("arr-move".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-move")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::MoveRackPlacement {
+            rack_id: rack_id.clone(),
+            from_coordinate: "A1".to_string(),
+            to_coordinate: "A3".to_string(),
+            move_block: false,
+        })
+        .expect("move sample");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    let ids = rack
+        .placements
+        .iter()
+        .filter_map(|entry| match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => Some(container_id.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![
+            "container-2".to_string(),
+            "container-3".to_string(),
+            "container-1".to_string()
+        ]
+    );
+}
+
+#[test]
+fn place_arrangement_on_existing_rack_appends_second_block_and_exports_labels() {
+    let mut state = ProjectState::default();
+    for idx in 0..4usize {
+        let seq_id = format!("seq_{idx}");
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ATGC".repeat(25 + idx)));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(container_id.clone()),
+                members: vec![seq_id],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+            arrangement_id: Some("arr-a".to_string()),
+            name: Some("A".to_string()),
+            ladders: None,
+        })
+        .expect("arr a");
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-3".to_string(), "container-4".to_string()],
+            arrangement_id: Some("arr-b".to_string()),
+            name: Some("B".to_string()),
+            ladders: None,
+        })
+        .expect("arr b");
+    let rack_a = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-a")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("rack a");
+    engine
+        .apply(Operation::PlaceArrangementOnRack {
+            arrangement_id: "arr-b".to_string(),
+            rack_id: rack_a.clone(),
+        })
+        .expect("place arrangement b");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_a)
+        .expect("rack");
+    assert_eq!(
+        rack.placements
+            .iter()
+            .map(|entry| entry.arrangement_id.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            "arr-a".to_string(),
+            "arr-a".to_string(),
+            "arr-b".to_string(),
+            "arr-b".to_string()
+        ]
+    );
+    let tmp = tempfile::NamedTempFile::new().expect("temp");
+    let label_path = tmp.path().with_extension("labels.svg");
+    engine
+        .apply(Operation::ExportRackLabelsSvg {
+            rack_id: rack_a.clone(),
+            path: label_path.display().to_string(),
+            arrangement_id: Some("arr-b".to_string()),
+        })
+        .expect("export labels");
+    let svg = std::fs::read_to_string(&label_path).expect("labels svg");
+    assert!(svg.contains("rack-"));
+    assert!(svg.contains("arrangement: B"));
+    assert!(svg.contains("role: lane_1"));
+}
+
+#[test]
 fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangement_ladders() {
     let mut state = ProjectState::default();
     state
@@ -6270,6 +6582,8 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
             name: Some("Run Auto".to_string()),
             lane_container_ids: vec!["container-1".to_string()],
             ladders: vec!["Missing Ladder".to_string()],
+            lane_role_labels: vec!["lane_1".to_string()],
+            default_rack_id: None,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -6325,6 +6639,8 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             name: Some("Run 1".to_string()),
             lane_container_ids: vec!["container-1".to_string(), "container-2".to_string()],
             ladders: vec!["NEB 100bp DNA Ladder".to_string()],
+            lane_role_labels: vec!["lane_1".to_string(), "lane_2".to_string()],
+            default_rack_id: None,
             created_by_op: None,
             created_at_unix_ms: 0,
         },

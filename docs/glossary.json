@@ -1,5 +1,5 @@
 {
-   "command_count": 262,
+   "command_count": 275,
    "commands": [
       {
          "aliases": [
@@ -407,6 +407,88 @@
          "path": "arrange-set-ladders",
          "summary": "Persist one or two ladder names on an existing serial arrangement.",
          "usage": "arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateRackFromArrangement"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks create-from-arrangement",
+         "summary": "Create one deterministic physical rack draft from a stored arrangement.",
+         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlaceArrangementOnRack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks place-arrangement",
+         "summary": "Append one arrangement as a contiguous block onto an existing saved rack.",
+         "usage": "racks place-arrangement ARR_ID --rack RACK_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MoveRackPlacement"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move",
+         "summary": "Move one rack sample or one whole arrangement block using shift-neighbor semantics.",
+         "usage": "racks move RACK_ID --from A1 --to B1 [--block]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks show",
+         "summary": "Inspect one saved rack and its occupied coordinates as structured JSON.",
+         "usage": "racks show RACK_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackLabelsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks labels-svg",
+         "summary": "Export a deterministic rack or arrangement-scoped label sheet as SVG.",
+         "usage": "racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetRackProfile"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-profile",
+         "summary": "Reflow one saved rack onto another built-in rack or plate profile.",
+         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384"
       },
       {
          "aliases": [],

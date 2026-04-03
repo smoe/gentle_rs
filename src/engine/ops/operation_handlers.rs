@@ -63,7 +63,8 @@ impl GentleEngine {
         }
 
         let mut lane_seq_ids = vec![destination_seq_id.to_string()];
-        lane_seq_ids.extend(Self::gibson_arrangement_insert_seq_ids(plan));
+        let insert_seq_ids = Self::gibson_arrangement_insert_seq_ids(plan);
+        lane_seq_ids.extend(insert_seq_ids.clone());
         lane_seq_ids.push(product_seq_id.trim().to_string());
 
         let mut lane_container_ids: Vec<String> = vec![];
@@ -75,11 +76,20 @@ impl GentleEngine {
 
         let ladders = self.choose_gibson_arrangement_ladders(&lane_seq_ids);
         let arrangement_name = Some(format!("Gibson lane set: {}", product_seq_id.trim()));
+        let mut role_labels = vec!["vector".to_string()];
+        role_labels.extend(
+            insert_seq_ids
+                .iter()
+                .enumerate()
+                .map(|(idx, _)| format!("insert_{}", idx + 1)),
+        );
+        role_labels.push("product".to_string());
         let arrangement_id = self.add_serial_arrangement(
             &lane_container_ids,
             None,
             arrangement_name,
             Some(ladders),
+            Some(role_labels),
             None,
         )?;
         Ok(Some(arrangement_id))
@@ -3205,18 +3215,18 @@ impl GentleEngine {
                     match self.maybe_create_gibson_arrangement(&plan, product_seq_id, &result.op_id)
                     {
                         Ok(Some(arrangement_id)) => {
-                            let lane_count = self
+                            let arrangement = self
                                 .state
                                 .container_state
                                 .arrangements
                                 .get(&arrangement_id)
+                                .cloned();
+                            let lane_count = arrangement
+                                .as_ref()
                                 .map(|arrangement| arrangement.lane_container_ids.len())
                                 .unwrap_or(0);
-                            let ladders = self
-                                .state
-                                .container_state
-                                .arrangements
-                                .get(&arrangement_id)
+                            let ladders = arrangement
+                                .as_ref()
                                 .map(|arrangement| {
                                     if arrangement.ladders.is_empty() {
                                         "auto".to_string()
@@ -3225,9 +3235,12 @@ impl GentleEngine {
                                     }
                                 })
                                 .unwrap_or_else(|| "auto".to_string());
+                            let rack_id = arrangement
+                                .and_then(|arrangement| arrangement.default_rack_id)
+                                .unwrap_or_else(|| "draft-on-demand".to_string());
                             result.messages.push(format!(
-                                "Created Gibson serial arrangement '{}' with {} sample lane(s) and ladders '{}'",
-                                arrangement_id, lane_count, ladders
+                                "Created Gibson serial arrangement '{}' with {} sample lane(s), ladders '{}', and rack draft '{}'",
+                                arrangement_id, lane_count, ladders, rack_id
                             ));
                         }
                         Ok(None) => {}
@@ -3251,6 +3264,7 @@ impl GentleEngine {
                     arrangement_id,
                     name,
                     ladders,
+                    None,
                     Some(&result.op_id),
                 )?;
                 result.messages.push(format!(
@@ -3278,6 +3292,88 @@ impl GentleEngine {
                     "Updated arrangement '{}' ladders to {}",
                     arrangement_id.trim(),
                     ladder_text
+                ));
+            }
+            Operation::CreateRackFromArrangement {
+                arrangement_id,
+                rack_id,
+                name,
+                profile,
+            } => {
+                let created_id = self.create_rack_from_arrangement(
+                    &arrangement_id,
+                    rack_id,
+                    name,
+                    profile,
+                    Some(&result.op_id),
+                    true,
+                )?;
+                result.messages.push(format!(
+                    "Created rack '{}' from arrangement '{}'",
+                    created_id,
+                    arrangement_id.trim()
+                ));
+            }
+            Operation::PlaceArrangementOnRack {
+                arrangement_id,
+                rack_id,
+            } => {
+                let start_index = self.place_arrangement_on_rack(&arrangement_id, &rack_id)?;
+                result.messages.push(format!(
+                    "Placed arrangement '{}' onto rack '{}' starting at slot {}",
+                    arrangement_id.trim(),
+                    rack_id.trim(),
+                    start_index + 1
+                ));
+            }
+            Operation::MoveRackPlacement {
+                rack_id,
+                from_coordinate,
+                to_coordinate,
+                move_block,
+            } => {
+                self.move_rack_placement(
+                    &rack_id,
+                    &from_coordinate,
+                    &to_coordinate,
+                    move_block,
+                )?;
+                result.messages.push(if move_block {
+                    format!(
+                        "Moved arrangement block on rack '{}' from '{}' to '{}'",
+                        rack_id.trim(),
+                        from_coordinate.trim(),
+                        to_coordinate.trim()
+                    )
+                } else {
+                    format!(
+                        "Moved rack placement on '{}' from '{}' to '{}'",
+                        rack_id.trim(),
+                        from_coordinate.trim(),
+                        to_coordinate.trim()
+                    )
+                });
+            }
+            Operation::SetRackProfile { rack_id, profile } => {
+                self.set_rack_profile(&rack_id, profile)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' profile to '{}'",
+                    rack_id.trim(),
+                    profile.as_str()
+                ));
+            }
+            Operation::ExportRackLabelsSvg {
+                rack_id,
+                path,
+                arrangement_id,
+            } => {
+                let count =
+                    self.export_rack_labels_svg(&rack_id, arrangement_id.as_deref(), &path)?;
+                result.messages.push(format!(
+                    "Wrote {} rack label(s) for '{}' to '{}'",
+                    count,
+                    rack_id.trim(),
+                    path
                 ));
             }
             Operation::RenderPoolGelSvg {

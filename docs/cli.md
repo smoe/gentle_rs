@@ -922,6 +922,13 @@ cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --containers 
 cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --arrangement arrangement-2
 cargo run --bin gentle_cli -- render-gel-svg - digest.gel.svg --arrangement arrangement-2
 cargo run --bin gentle_cli -- arrange-serial container-3,container-8 --id arrangement-2 --name "Digest run A" --ladders "NEB 100bp DNA Ladder"
+cargo run --bin gentle_cli -- racks create-from-arrangement arrangement-2 --rack-id rack-1 --name "Bench day A"
+cargo run --bin gentle_cli -- racks place-arrangement arrangement-3 --rack rack-1
+cargo run --bin gentle_cli -- racks move rack-1 --from A2 --to A4
+cargo run --bin gentle_cli -- racks move rack-1 --from A1 --to B1 --block
+cargo run --bin gentle_cli -- racks show rack-1
+cargo run --bin gentle_cli -- racks labels-svg rack-1 arrangement-2.labels.svg --arrangement arrangement-2
+cargo run --bin gentle_cli -- racks set-profile rack-1 plate_96
 cargo run --bin gentle_cli -- ladders list
 cargo run --bin gentle_cli -- ladders list --filter NEB
 cargo run --bin gentle_cli -- ladders list --molecule rna
@@ -1056,6 +1063,12 @@ Shared shell command:
     - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
     - `arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]`
+    - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+    - `racks place-arrangement ARR_ID --rack RACK_ID`
+    - `racks move RACK_ID --from A1 --to B1 [--block]`
+    - `racks show RACK_ID`
+    - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+    - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -1521,6 +1534,32 @@ Rendering export commands:
   - Calls engine operation `SetArrangementLadders`.
   - Persists one or two ladder names on an existing serial arrangement.
   - Omit `--ladders` to clear back to shared engine auto ladder selection.
+- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+  - Calls engine operation `CreateRackFromArrangement`.
+  - Creates one deterministic physical rack draft from one stored arrangement.
+  - If `--profile` is omitted, engine chooses the smallest built-in profile
+    that fits the arrangement payload plus ladder-reference slots.
+- `racks place-arrangement ARR_ID --rack RACK_ID`
+  - Calls engine operation `PlaceArrangementOnRack`.
+  - Appends the arrangement as one contiguous block onto the next free region
+    in the target rack.
+- `racks move RACK_ID --from A1 --to B1 [--block]`
+  - Calls engine operation `MoveRackPlacement`.
+  - Without `--block`, moves one sample within its arrangement block using
+    shift-neighbor semantics.
+  - With `--block`, moves the whole arrangement block and shifts later
+    occupied positions in fill order.
+- `racks show RACK_ID`
+  - Returns `gentle.rack_state.v1` JSON with the saved rack record and resolved
+    occupied positions.
+- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+  - Calls engine operation `ExportRackLabelsSvg`.
+  - Writes one deterministic label sheet for the whole rack or one selected
+    arrangement block on that rack.
+- `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+  - Calls engine operation `SetRackProfile`.
+  - Reflows occupied positions onto another built-in rack/plate profile while
+    preserving arrangement order.
 
 RNA secondary-structure text command:
 
@@ -1750,6 +1789,19 @@ Helper convenience commands:
     reindex-from-cached-files remains possible.
   - Catalog JSON, `.gentle_state.json`, MCP/runtime files, backdrop/runtime
     caches, and `target/` are not treated as cache.
+- `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
+  - Same shared rack-draft creation path used by GUI `Open Rack`.
+- `racks place-arrangement ARR_ID --rack RACK_ID`
+  - Same shared rack-append path used by GUI `Place on Existing Rack...`.
+- `racks move RACK_ID --from A1 --to B1 [--block]`
+  - Same shared rack move/reorder contract used by the rack editor.
+- `racks show RACK_ID`
+  - Emits structured rack placement JSON (`gentle.rack_state.v1`).
+- `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]`
+  - Exports deterministic rack or arrangement-scoped label SVG through the
+    same engine path as GUI `Labels SVG`.
+- `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
+  - Reflows one saved rack onto another built-in profile.
 - `helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]`
   - Same behavior as `genomes remove-catalog-entry`, with helper-catalog default.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`

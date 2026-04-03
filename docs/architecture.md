@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-27
+Last updated: 2026-04-03
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -60,6 +60,18 @@ Rack-placement rule (target model):
 - Where GENtle already has plate-coordinate conventions (for example existing
   `Plate384` CSV export support), rack placement should reuse the same
   coordinate vocabulary instead of inventing a parallel naming scheme.
+- Physical rack placement should consume arrangement order rather than
+  re-describing sample meaning in a second disconnected structure.
+  Persisted rack entries therefore point back to:
+  - `arrangement_id`
+  - arrangement-local order index
+  - one occupant (`container` or `ladder_reference`)
+- Serial arrangements may keep one canonical `default_rack_id` so the same
+  experiment order has a deterministic draft physical placement without
+  preventing later reuse on shared racks.
+- Rack editing should remain order-preserving by default:
+  moving one sample or one arrangement block shifts neighboring occupied
+  positions in fill order rather than encouraging arbitrary free-floating holes.
 
 Strategic aims:
 

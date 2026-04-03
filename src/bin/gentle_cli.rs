@@ -471,7 +471,13 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
   gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
   gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]\n\n  \
+  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]\n  \
+  gentle_cli [--state PATH|--project PATH] racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]\n  \
+  gentle_cli [--state PATH|--project PATH] racks place-arrangement ARR_ID --rack RACK_ID\n  \
+  gentle_cli [--state PATH|--project PATH] racks move RACK_ID --from A1 --to B1 [--block]\n  \
+  gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
+  gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384\n\n  \
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
@@ -614,6 +620,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "resources",
     "import-pool",
     "ladders",
+    "racks",
     "guides",
     "primers",
     "dotplot",

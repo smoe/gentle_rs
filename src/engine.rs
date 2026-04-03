@@ -816,6 +816,116 @@ pub enum ArrangementMode {
     Plate,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Built-in physical carrier shapes for rack/plate placement.
+pub enum RackProfileKind {
+    #[default]
+    SmallTube4x6,
+    Plate96,
+    Plate384,
+}
+
+impl RackProfileKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SmallTube4x6 => "small_tube_4x6",
+            Self::Plate96 => "plate_96",
+            Self::Plate384 => "plate_384",
+        }
+    }
+
+    pub fn dimensions(self) -> (usize, usize) {
+        match self {
+            Self::SmallTube4x6 => (4, 6),
+            Self::Plate96 => (8, 12),
+            Self::Plate384 => (16, 24),
+        }
+    }
+
+    pub fn capacity(self) -> usize {
+        let (rows, columns) = self.dimensions();
+        rows * columns
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Deterministic fill policy for physical rack/plate placement.
+pub enum RackFillDirection {
+    #[default]
+    RowMajor,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Snapshot of the physical carrier profile used when a rack was created.
+pub struct RackProfileSnapshot {
+    pub kind: RackProfileKind,
+    pub rows: usize,
+    pub columns: usize,
+    pub coordinate_scheme: String,
+    pub fill_direction: RackFillDirection,
+}
+
+impl Default for RackProfileSnapshot {
+    fn default() -> Self {
+        Self::from_kind(RackProfileKind::SmallTube4x6)
+    }
+}
+
+impl RackProfileSnapshot {
+    pub fn from_kind(kind: RackProfileKind) -> Self {
+        let (rows, columns) = kind.dimensions();
+        Self {
+            kind,
+            rows,
+            columns,
+            coordinate_scheme: "a1".to_string(),
+            fill_direction: RackFillDirection::RowMajor,
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.rows.saturating_mul(self.columns)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+/// Physical occupant placed in one rack coordinate.
+pub enum RackOccupant {
+    Container {
+        container_id: ContainerId,
+    },
+    LadderReference {
+        ladder_name: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// One occupied physical coordinate in a saved rack.
+pub struct RackPlacementEntry {
+    pub coordinate: String,
+    pub occupant: Option<RackOccupant>,
+    pub arrangement_id: String,
+    pub order_index: usize,
+    pub role_label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Saved physical rack/plate draft that can host one or more arrangements.
+pub struct Rack {
+    pub rack_id: String,
+    pub name: String,
+    pub profile: RackProfileSnapshot,
+    pub placements: Vec<RackPlacementEntry>,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named arrangement definition referencing container lanes.
 pub struct Arrangement {
@@ -825,6 +935,10 @@ pub struct Arrangement {
     pub lane_container_ids: Vec<ContainerId>,
     #[serde(default)]
     pub ladders: Vec<String>,
+    #[serde(default)]
+    pub lane_role_labels: Vec<String>,
+    #[serde(default)]
+    pub default_rack_id: Option<String>,
     pub created_by_op: Option<OpId>,
     pub created_at_unix_ms: u128,
 }
@@ -835,9 +949,11 @@ pub struct Arrangement {
 pub struct ContainerState {
     pub containers: HashMap<ContainerId, Container>,
     pub arrangements: HashMap<String, Arrangement>,
+    pub racks: HashMap<String, Rack>,
     pub seq_to_latest_container: HashMap<SeqId, ContainerId>,
     pub next_container_counter: u64,
     pub next_arrangement_counter: u64,
+    pub next_rack_counter: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3732,6 +3848,36 @@ pub enum Operation {
         #[serde(default)]
         ladders: Option<Vec<String>>,
     },
+    CreateRackFromArrangement {
+        arrangement_id: String,
+        #[serde(default)]
+        rack_id: Option<String>,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        profile: Option<RackProfileKind>,
+    },
+    PlaceArrangementOnRack {
+        arrangement_id: String,
+        rack_id: String,
+    },
+    MoveRackPlacement {
+        rack_id: String,
+        from_coordinate: String,
+        to_coordinate: String,
+        #[serde(default)]
+        move_block: bool,
+    },
+    SetRackProfile {
+        rack_id: String,
+        profile: RackProfileKind,
+    },
+    ExportRackLabelsSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        arrangement_id: Option<String>,
+    },
     ExportDnaLadders {
         path: String,
         #[serde(default)]
@@ -5608,6 +5754,11 @@ impl GentleEngine {
                 "ApplyGibsonAssemblyPlan".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "SetArrangementLadders".to_string(),
+                "CreateRackFromArrangement".to_string(),
+                "PlaceArrangementOnRack".to_string(),
+                "MoveRackPlacement".to_string(),
+                "SetRackProfile".to_string(),
+                "ExportRackLabelsSvg".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
@@ -6914,6 +7065,7 @@ impl GentleEngine {
                 | Operation::ValidateProtocolCartoonTemplate { .. }
                 | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { .. }
                 | Operation::ExportProtocolCartoonTemplateJson { .. }
+                | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }

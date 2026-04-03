@@ -11,7 +11,10 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
-use crate::engine::{Arrangement, ArrangementMode, Container, ContainerKind};
+use crate::engine::{
+    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackOccupant,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+};
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
     write_demo_workflow_with_shebang,
@@ -1197,6 +1200,8 @@ fn execute_arrange_set_ladders_updates_existing_arrangement() {
             name: Some("Demo".to_string()),
             lane_container_ids: vec!["container-1".to_string()],
             ladders: vec!["Old ladder".to_string()],
+            lane_role_labels: vec!["lane_1".to_string()],
+            default_rack_id: None,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -1229,6 +1234,114 @@ fn execute_arrange_set_ladders_updates_existing_arrangement() {
             "GeneRuler 100bp DNA Ladder Plus".to_string()
         ]
     );
+}
+
+#[test]
+fn parse_racks_create_from_arrangement_command() {
+    let cmd = parse_shell_line(
+        "racks create-from-arrangement arr-x --rack-id rack-x --name Bench --profile plate_96",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksCreateFromArrangement {
+            arrangement_id,
+            rack_id,
+            name,
+            profile,
+        } => {
+            assert_eq!(arrangement_id, "arr-x".to_string());
+            assert_eq!(rack_id, Some("rack-x".to_string()));
+            assert_eq!(name, Some("Bench".to_string()));
+            assert_eq!(profile, Some(RackProfileKind::Plate96));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_move_command() {
+    let cmd = parse_shell_line("racks move rack-1 --from A1 --to B2 --block")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RacksMove {
+            rack_id,
+            from_coordinate,
+            to_coordinate,
+            move_block,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(from_coordinate, "A1".to_string());
+            assert_eq!(to_coordinate, "B2".to_string());
+            assert!(move_block);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_racks_show_returns_structured_rack_state() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-x".to_string(),
+        Arrangement {
+            arrangement_id: "arr-x".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Demo".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec!["NEB 1kb DNA Ladder".to_string()],
+            lane_role_labels: vec!["vector".to_string()],
+            default_rack_id: Some("rack-1".to_string()),
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.racks.insert(
+        "rack-1".to_string(),
+        Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".to_string(),
+                occupant: Some(RackOccupant::Container {
+                    container_id: "container-1".to_string(),
+                }),
+                arrangement_id: "arr-x".to_string(),
+                order_index: 0,
+                role_label: "vector".to_string(),
+            }],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksShow {
+            rack_id: "rack-1".to_string(),
+        },
+    )
+    .expect("show rack");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["schema"], "gentle.rack_state.v1");
+    assert_eq!(out.output["rack"]["rack_id"], "rack-1");
+    assert_eq!(out.output["placements"][0]["coordinate"], "A1");
+    assert_eq!(out.output["placements"][0]["occupant"]["kind"], "container");
 }
 
 #[test]

@@ -697,7 +697,12 @@ Cleanup rules:
   "display": {"ui_visibility_tfbs_and_linear_viewport_state": "..."},
   "lineage": {"nodes": {}, "edges": []},
   "parameters": {"max_fragments_per_container": 80000},
-  "container_state": {"containers": {}, "seq_to_latest_container": {}}
+  "container_state": {
+    "containers": {},
+    "arrangements": {},
+    "racks": {},
+    "seq_to_latest_container": {}
+  }
 }
 ```
 
@@ -707,6 +712,73 @@ Semantic interpretation:
 - A container may map to multiple candidate sequences/fragments.
 - Explicit container objects are first-class state (`container_state`) and are
   indexed from sequence ids via `seq_to_latest_container`.
+- Arrangements stay the semantic experiment-order layer.
+- Racks are the linked physical placement layer and may host one or more
+  arrangements without changing arrangement identity.
+
+### Rack placement entities
+
+- `RackProfileKind`
+  - built-in physical carriers:
+    - `small_tube_4x6`
+    - `plate_96`
+    - `plate_384`
+- `RackProfileSnapshot`
+  - persisted row/column/fill-direction snapshot used by one saved rack
+- `Rack`
+  - one saved physical rack/plate draft
+- `RackPlacementEntry`
+  - one occupied A1-style coordinate on that rack
+  - points back to:
+    - `arrangement_id`
+    - arrangement-local `order_index`
+    - one `occupant`
+- `RackOccupant`
+  - `container`
+  - `ladder_reference`
+
+Rack-placement invariants:
+
+- rack placement consumes arrangement order instead of duplicating experiment
+  meaning in a second free-form list
+- default placement is deterministic:
+  - choose the smallest fitting built-in profile
+  - fill row-major
+  - use A1-style coordinates
+- moving one sample or arrangement block is shift-neighbor by default; it
+  preserves occupied order instead of creating arbitrary holes
+
+### `gentle.rack_state.v1`
+
+Purpose:
+
+- provide one deterministic inspection payload for saved rack state
+- keep GUI rack view and CLI/shell inspection on one shared state contract
+
+Current shared entry point:
+
+- `racks show RACK_ID`
+
+Top-level structure:
+
+- `schema`
+- `rack`
+- `placements[]`
+
+Placement payload:
+
+- `coordinate`
+- `arrangement_id`
+- `order_index`
+- `role_label`
+- `occupant`
+  - `kind = container`
+    - `container_id`
+    - `container_name?`
+    - `seq_id?`
+  - `kind = ladder_reference`
+    - `ladder_name`
+  - `kind = empty`
 
 ### Operation
 
@@ -730,6 +802,11 @@ Current draft operations:
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
 - `SetArrangementLadders { arrangement_id, ladders? }`
+- `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
+- `PlaceArrangementOnRack { arrangement_id, rack_id }`
+- `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
+- `SetRackProfile { rack_id, profile }`
+- `ExportRackLabelsSvg { rack_id, path, arrangement_id? }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ValidateProtocolCartoonTemplate { template_path }`
@@ -1719,6 +1796,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Persists an ordered serial-lane setup over stored containers.
 - Optional `ladders` can store one symmetric ladder or one left/right ladder
   pair for later gel preview/export reuse.
+- Also materializes one default physical rack draft:
+  - choose the smallest built-in rack/plate profile that fits the arrangement
+    payload plus ladder-reference positions
+  - place the arrangement block row-major in that rack
+  - link the arrangement back to the resulting `default_rack_id`
 
 `SetArrangementLadders` semantics:
 
@@ -1727,6 +1809,55 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - one ladder name means the same ladder is used on both sides during
   arrangement-based gel preview/export.
 - two ladder names mean explicit left/right ladder selection.
+
+`CreateRackFromArrangement` semantics:
+
+- Creates one new physical rack/plate draft from one stored arrangement.
+- Optional `profile` overrides the default smallest-fitting profile choice.
+- If `profile` is omitted, the engine chooses in this order:
+  - `small_tube_4x6`
+  - `plate_96`
+  - `plate_384`
+- Placement is row-major and preserves arrangement order.
+- Ladder-bearing arrangements reserve left/right ladder-reference positions in
+  the same contiguous block.
+
+`PlaceArrangementOnRack` semantics:
+
+- Places one arrangement onto an existing rack as one contiguous block at the
+  next free region in fill order.
+- Existing rack occupants stay in order; the appended arrangement does not
+  reorder earlier blocks.
+- Shared racks are therefore possible without losing arrangement identity.
+
+`MoveRackPlacement` semantics:
+
+- Moves one occupied rack coordinate within one saved rack.
+- `move_block=false` means move one sample within its arrangement block and
+  shift neighboring occupied positions to preserve order.
+- `move_block=true` means move the whole arrangement block and shift later
+  occupied blocks in fill order.
+- The operation is order-preserving by design; it does not treat arbitrary
+  holes as the primary editing model.
+
+`SetRackProfile` semantics:
+
+- Reprojects one saved rack onto another built-in profile.
+- Existing arrangement order is preserved while coordinates are reflowed under
+  the target profile's row-major geometry.
+
+`ExportRackLabelsSvg` semantics:
+
+- Writes one deterministic SVG label sheet for a saved rack.
+- Optional `arrangement_id` restricts output to labels belonging to one
+  arrangement block on that rack.
+- Label rows currently include:
+  - rack id
+  - position
+  - role
+  - container/ladder display name
+  - sequence id when sequence-backed
+  - bp length/topology when sequence-backed
 
 `RenderDotplotSvg` semantics:
 

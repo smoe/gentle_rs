@@ -69,7 +69,8 @@ use crate::{
         GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState, Rack,
+        RackOccupant, RackProfileKind,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RestrictionEnzymeDisplayMode,
         RoutineDecisionTrace, RoutineDecisionTraceComparison,
@@ -741,6 +742,7 @@ pub struct GENtleApp {
     lineage_node_remove_target_id: Option<String>,
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
+    lineage_racks: Vec<RackRow>,
     clean_state_fingerprint: u64,
     dirty_cache_stamp: u64,
     last_display_sync_stamp: u64,
@@ -860,6 +862,8 @@ pub struct GENtleApp {
     show_genome_bed_track_dialog: bool,
     show_gibson_dialog: bool,
     show_arrangement_gel_preview_dialog: bool,
+    show_rack_dialog: bool,
+    show_place_arrangement_rack_dialog: bool,
     show_pcr_design_dialog: bool,
     show_sequencing_confirmation_dialog: bool,
     show_planning_dialog: bool,
@@ -888,6 +892,13 @@ pub struct GENtleApp {
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
     arrangement_gel_preview: ArrangementGelPreviewState,
+    rack_view_rack_id: String,
+    rack_view_status: String,
+    rack_view_selected_coordinate: Option<String>,
+    rack_view_selected_arrangement_id: Option<String>,
+    place_arrangement_source_id: String,
+    place_arrangement_target_rack_id: String,
+    place_arrangement_status: String,
     genome_track_seq_id: String,
     genome_track_source_selection: GenomeTrackSourceSelection,
     genome_track_path: String,
@@ -1839,6 +1850,16 @@ struct ArrangementRow {
     lane_count: usize,
     lane_container_ids: Vec<String>,
     ladders: Vec<String>,
+    default_rack_id: Option<String>,
+}
+
+#[derive(Clone)]
+struct RackRow {
+    rack_id: String,
+    name: String,
+    profile: String,
+    occupied_positions: usize,
+    arrangement_ids: Vec<String>,
 }
 
 #[derive(Clone, Default)]
@@ -2162,6 +2183,7 @@ impl Default for GENtleApp {
             lineage_node_remove_target_id: None,
             lineage_containers: vec![],
             lineage_arrangements: vec![],
+            lineage_racks: vec![],
             clean_state_fingerprint: 0,
             dirty_cache_stamp: 0,
             last_display_sync_stamp: 0,
@@ -2283,6 +2305,8 @@ impl Default for GENtleApp {
             show_genome_bed_track_dialog: false,
             show_gibson_dialog: false,
             show_arrangement_gel_preview_dialog: false,
+            show_rack_dialog: false,
+            show_place_arrangement_rack_dialog: false,
             show_pcr_design_dialog: false,
             show_sequencing_confirmation_dialog: false,
             show_planning_dialog: false,
@@ -2311,6 +2335,13 @@ impl Default for GENtleApp {
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
+            rack_view_rack_id: String::new(),
+            rack_view_status: String::new(),
+            rack_view_selected_coordinate: None,
+            rack_view_selected_arrangement_id: None,
+            place_arrangement_source_id: String::new(),
+            place_arrangement_target_rack_id: String::new(),
+            place_arrangement_status: String::new(),
             genome_track_seq_id: String::new(),
             genome_track_source_selection: GenomeTrackSourceSelection::Auto,
             genome_track_path: String::new(),
@@ -4394,6 +4425,7 @@ Error: `{err}`"
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
+        self.lineage_racks.clear();
         self.load_bed_track_subscriptions_from_state();
         self.tracked_autosync_last_op_count = None;
         self.genome_track_autosync_status.clear();
@@ -5501,6 +5533,7 @@ Error: `{err}`"
         state.lineage.edges.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
         state.container_state.arrangements.len().hash(&mut hasher);
+        state.container_state.racks.len().hash(&mut hasher);
         state.metadata.len().hash(&mut hasher);
 
         let mut metadata_keys: Vec<&String> = state.metadata.keys().collect();
@@ -5641,6 +5674,7 @@ Error: `{err}`"
         state.lineage.macro_instances.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
         state.container_state.arrangements.len().hash(&mut hasher);
+        state.container_state.racks.len().hash(&mut hasher);
         for report in GentleEngine::sequencing_confirmation_reports_from_state(state) {
             report.report_id.hash(&mut hasher);
             report.expected_seq_id.hash(&mut hasher);
@@ -5662,6 +5696,7 @@ Error: `{err}`"
             || !state.lineage.nodes.is_empty()
             || !state.container_state.containers.is_empty()
             || !state.container_state.arrangements.is_empty()
+            || !state.container_state.racks.is_empty()
     }
 
     fn can_close_project(&self) -> bool {
@@ -5707,6 +5742,7 @@ Error: `{err}`"
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
+        self.lineage_racks.clear();
         self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
@@ -5744,6 +5780,8 @@ Error: `{err}`"
         self.show_genome_bed_track_dialog = false;
         self.show_gibson_dialog = false;
         self.show_arrangement_gel_preview_dialog = false;
+        self.show_rack_dialog = false;
+        self.show_place_arrangement_rack_dialog = false;
         self.show_pcr_design_dialog = false;
         self.show_sequencing_confirmation_dialog = false;
         self.show_routine_assistant_dialog = false;
@@ -5763,6 +5801,13 @@ Error: `{err}`"
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
+        self.rack_view_rack_id.clear();
+        self.rack_view_status.clear();
+        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_arrangement_id = None;
+        self.place_arrangement_source_id.clear();
+        self.place_arrangement_target_rack_id.clear();
+        self.place_arrangement_status.clear();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -6514,6 +6559,716 @@ Error: `{err}`"
                     format!("Could not update arrangement ladders: {}", err.message);
             }
         }
+    }
+
+    fn rack_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("gentle_rack_view")
+    }
+
+    fn rack_profile_label(kind: RackProfileKind) -> &'static str {
+        match kind {
+            RackProfileKind::SmallTube4x6 => "Small tube rack (4 x 6)",
+            RackProfileKind::Plate96 => "Plate 96",
+            RackProfileKind::Plate384 => "Plate 384",
+        }
+    }
+
+    fn rack_coordinate_for_slot(row: usize, column: usize) -> String {
+        format!("{}{}", (b'A' + row as u8) as char, column + 1)
+    }
+
+    fn rack_color_for_arrangement(arrangement_id: &str) -> egui::Color32 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        arrangement_id.hash(&mut hasher);
+        let hash = hasher.finish();
+        egui::Color32::from_rgb(
+            (80 + (hash & 0x3f) as u8).min(220),
+            (110 + ((hash >> 8) & 0x5f) as u8).min(225),
+            (130 + ((hash >> 16) & 0x5f) as u8).min(235),
+        )
+    }
+
+    fn rack_short_role_label(role_label: &str) -> String {
+        let trimmed = role_label.trim();
+        if trimmed.eq_ignore_ascii_case("ladder_left") {
+            "L".to_string()
+        } else if trimmed.eq_ignore_ascii_case("ladder_right") {
+            "R".to_string()
+        } else if trimmed.eq_ignore_ascii_case("vector") {
+            "Vec".to_string()
+        } else if trimmed.eq_ignore_ascii_case("product") {
+            "Prod".to_string()
+        } else if let Some(suffix) = trimmed.strip_prefix("insert_") {
+            format!("I{}", suffix)
+        } else if let Some(suffix) = trimmed.strip_prefix("lane_") {
+            format!("Ln{}", suffix)
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn arrangement_default_rack_id_from_state(&self, arrangement_id: &str) -> Option<String> {
+        let engine = self.engine.read().unwrap();
+        engine
+            .state()
+            .container_state
+            .arrangements
+            .get(arrangement_id.trim())
+            .and_then(|arrangement| arrangement.default_rack_id.clone())
+            .filter(|rack_id| engine.state().container_state.racks.contains_key(rack_id))
+    }
+
+    fn ensure_default_rack_for_arrangement_ui(&mut self, arrangement_id: &str) -> Option<String> {
+        if let Some(rack_id) = self.arrangement_default_rack_id_from_state(arrangement_id) {
+            return Some(rack_id);
+        }
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::CreateRackFromArrangement {
+                arrangement_id: arrangement_id.trim().to_string(),
+                rack_id: None,
+                name: None,
+                profile: None,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        format!(
+                            "Created default rack draft for arrangement '{}'",
+                            arrangement_id.trim()
+                        )
+                    });
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+                self.arrangement_default_rack_id_from_state(arrangement_id)
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not create default rack for arrangement '{}': {}",
+                    arrangement_id.trim(),
+                    err.message
+                );
+                None
+            }
+        }
+    }
+
+    fn open_rack_dialog(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack view requires a non-empty rack id".to_string();
+            return;
+        }
+        self.rack_view_rack_id = rack_id.to_string();
+        self.rack_view_status.clear();
+        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_arrangement_id = None;
+        self.show_rack_dialog = true;
+        self.mark_viewport_open_requested(Self::rack_viewport_id());
+        self.queue_focus_viewport(Self::rack_viewport_id());
+    }
+
+    fn open_arrangement_rack_dialog(&mut self, arrangement_id: &str) {
+        if let Some(rack_id) = self.ensure_default_rack_for_arrangement_ui(arrangement_id) {
+            self.open_rack_dialog(&rack_id);
+        }
+    }
+
+    fn prompt_export_arrangement_labels_svg(&mut self, arrangement_id: &str) {
+        let Some(rack_id) = self.ensure_default_rack_for_arrangement_ui(arrangement_id) else {
+            return;
+        };
+        let stem = Self::sanitize_file_stem(arrangement_id, "rack_labels");
+        let default_file_name = format!("{stem}.labels.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack label SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackLabelsSvg {
+                rack_id: rack_id.clone(),
+                path: path_text.clone(),
+                arrangement_id: Some(arrangement_id.trim().to_string()),
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote rack labels SVG to '{path_text}'"));
+            }
+            Err(err) => {
+                self.app_status = format!("Could not export rack labels SVG: {}", err.message);
+            }
+        }
+    }
+
+    fn current_rack_snapshot(&self) -> Option<Rack> {
+        let rack_id = self.rack_view_rack_id.trim();
+        if rack_id.is_empty() {
+            return None;
+        }
+        self.engine
+            .read()
+            .unwrap()
+            .state()
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+    }
+
+    fn rack_sorted_entries(
+        rack: &Rack,
+    ) -> Vec<(usize, String, crate::engine::RackPlacementEntry)> {
+        let mut out = rack
+            .placements
+            .iter()
+            .filter_map(|entry| {
+                GentleEngine::rack_index_from_coordinate(&rack.profile, &entry.coordinate)
+                    .ok()
+                    .map(|index| (index, entry.coordinate.clone(), entry.clone()))
+            })
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.order_index.cmp(&b.2.order_index)));
+        out
+    }
+
+    fn render_rack_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        let close_hover = Self::specialist_window_close_hover_text("Rack");
+        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+            close_requested = true;
+        }
+        let Some(rack) = self.current_rack_snapshot() else {
+            ui.small("No rack is currently selected.");
+            return close_requested;
+        };
+        ui.label("Physical rack/plate placement linked to one or more arrangements. Click one sample slot to select it, or click an arrangement chip to select a whole block, then click a target position to shift neighbors.");
+        ui.horizontal(|ui| {
+            ui.label("Rack");
+            ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
+            ui.label("Profile");
+            let mut selected_profile = rack.profile.kind;
+            egui::ComboBox::from_id_salt("rack_profile_combo")
+                .selected_text(Self::rack_profile_label(selected_profile))
+                .show_ui(ui, |ui| {
+                    for profile in [
+                        RackProfileKind::SmallTube4x6,
+                        RackProfileKind::Plate96,
+                        RackProfileKind::Plate384,
+                    ] {
+                        ui.selectable_value(
+                            &mut selected_profile,
+                            profile,
+                            Self::rack_profile_label(profile),
+                        );
+                    }
+                });
+            if selected_profile != rack.profile.kind {
+                let result = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .apply(Operation::SetRackProfile {
+                        rack_id: rack.rack_id.clone(),
+                        profile: selected_profile,
+                    });
+                match result {
+                    Ok(op_result) => {
+                        self.rack_view_status = op_result
+                            .messages
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Updated rack profile".to_string());
+                        self.lineage_cache_valid = false;
+                        self.refresh_lineage_cache_if_needed();
+                    }
+                    Err(err) => {
+                        self.rack_view_status =
+                            format!("Could not change rack profile: {}", err.message);
+                    }
+                }
+            }
+        });
+        let sorted_entries = Self::rack_sorted_entries(&rack);
+        let mut entry_by_coordinate: HashMap<String, crate::engine::RackPlacementEntry> =
+            HashMap::new();
+        for (_, coordinate, entry) in &sorted_entries {
+            entry_by_coordinate.insert(coordinate.clone(), entry.clone());
+        }
+        let arrangement_ids = sorted_entries
+            .iter()
+            .map(|(_, _, entry)| entry.arrangement_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Arrangement blocks");
+            for arrangement_id in &arrangement_ids {
+                let selected = self
+                    .rack_view_selected_arrangement_id
+                    .as_deref()
+                    .map(|value| value == arrangement_id)
+                    .unwrap_or(false);
+                let color = Self::rack_color_for_arrangement(arrangement_id);
+                let button = egui::Button::new(
+                    egui::RichText::new(arrangement_id.clone()).color(color).strong(),
+                )
+                .selected(selected);
+                if ui
+                    .add(button)
+                    .on_hover_text("Select this whole arrangement block for shifting on the rack")
+                    .clicked()
+                {
+                    if selected {
+                        self.rack_view_selected_arrangement_id = None;
+                    } else {
+                        self.rack_view_selected_arrangement_id = Some(arrangement_id.clone());
+                        self.rack_view_selected_coordinate = None;
+                    }
+                }
+            }
+            if ui
+                .button("Clear selection")
+                .on_hover_text("Clear current sample/block selection")
+                .clicked()
+            {
+                self.rack_view_selected_coordinate = None;
+                self.rack_view_selected_arrangement_id = None;
+            }
+        });
+
+        if !self.rack_view_status.trim().is_empty() {
+            ui.small(self.rack_view_status.clone());
+        }
+        ui.separator();
+        egui::ScrollArea::both().show(ui, |ui| {
+            egui::Grid::new("rack_grid")
+                .spacing(egui::vec2(6.0, 6.0))
+                .show(ui, |ui| {
+                    ui.label("");
+                    for column in 0..rack.profile.columns {
+                        ui.monospace((column + 1).to_string());
+                    }
+                    ui.end_row();
+                    for row in 0..rack.profile.rows {
+                        ui.monospace(((b'A' + row as u8) as char).to_string());
+                        for column in 0..rack.profile.columns {
+                            let coordinate = Self::rack_coordinate_for_slot(row, column);
+                            if let Some(entry) = entry_by_coordinate.get(&coordinate).cloned() {
+                                let arrangement_color =
+                                    Self::rack_color_for_arrangement(&entry.arrangement_id);
+                                let role_text = Self::rack_short_role_label(&entry.role_label);
+                                let display = match entry.occupant.as_ref() {
+                                    Some(RackOccupant::Container { container_id }) => {
+                                        format!("{role_text}\n{container_id}")
+                                    }
+                                    Some(RackOccupant::LadderReference { ladder_name }) => {
+                                        format!("{role_text}\n{ladder_name}")
+                                    }
+                                    None => role_text.clone(),
+                                };
+                                let selected = self
+                                    .rack_view_selected_coordinate
+                                    .as_deref()
+                                    .map(|value| value == coordinate)
+                                    .unwrap_or(false);
+                                let response = ui.add_sized(
+                                    egui::vec2(96.0, 44.0),
+                                    egui::Button::new(
+                                        egui::RichText::new(display)
+                                            .color(arrangement_color)
+                                            .small(),
+                                    )
+                                    .selected(selected),
+                                );
+                                if response.clicked() {
+                                    if let Some(arrangement_id) =
+                                        self.rack_view_selected_arrangement_id.clone()
+                                    {
+                                        let first_coordinate = sorted_entries
+                                            .iter()
+                                            .find(|(_, _, row)| row.arrangement_id == arrangement_id)
+                                            .map(|(_, coordinate, _)| coordinate.clone());
+                                        if let Some(from_coordinate) = first_coordinate {
+                                            let result = self
+                                                .engine
+                                                .write()
+                                                .unwrap()
+                                                .apply(Operation::MoveRackPlacement {
+                                                    rack_id: rack.rack_id.clone(),
+                                                    from_coordinate,
+                                                    to_coordinate: coordinate.clone(),
+                                                    move_block: true,
+                                                });
+                                            match result {
+                                                Ok(op_result) => {
+                                                    self.rack_view_status = op_result
+                                                        .messages
+                                                        .first()
+                                                        .cloned()
+                                                        .unwrap_or_else(|| {
+                                                            "Moved arrangement block".to_string()
+                                                        });
+                                                    self.lineage_cache_valid = false;
+                                                    self.refresh_lineage_cache_if_needed();
+                                                }
+                                                Err(err) => {
+                                                    self.rack_view_status = format!(
+                                                        "Could not move arrangement block: {}",
+                                                        err.message
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        self.rack_view_selected_arrangement_id = None;
+                                    } else if let Some(from_coordinate) =
+                                        self.rack_view_selected_coordinate.clone()
+                                    {
+                                        if from_coordinate == coordinate {
+                                            self.rack_view_selected_coordinate = None;
+                                        } else {
+                                            let result = self
+                                                .engine
+                                                .write()
+                                                .unwrap()
+                                                .apply(Operation::MoveRackPlacement {
+                                                    rack_id: rack.rack_id.clone(),
+                                                    from_coordinate,
+                                                    to_coordinate: coordinate.clone(),
+                                                    move_block: false,
+                                                });
+                                            match result {
+                                                Ok(op_result) => {
+                                                    self.rack_view_status = op_result
+                                                        .messages
+                                                        .first()
+                                                        .cloned()
+                                                        .unwrap_or_else(|| {
+                                                            "Moved sample on rack".to_string()
+                                                        });
+                                                        self.lineage_cache_valid = false;
+                                                        self.refresh_lineage_cache_if_needed();
+                                                }
+                                                Err(err) => {
+                                                    self.rack_view_status = format!(
+                                                        "Could not move sample: {}",
+                                                        err.message
+                                                    );
+                                                }
+                                            }
+                                            self.rack_view_selected_coordinate = None;
+                                        }
+                                    } else {
+                                        self.rack_view_selected_coordinate = Some(coordinate);
+                                        self.rack_view_selected_arrangement_id = None;
+                                    }
+                                }
+                            } else {
+                                let response = ui.add_sized(
+                                    egui::vec2(96.0, 44.0),
+                                    egui::Button::new(egui::RichText::new(coordinate.clone()).weak()),
+                                );
+                                if response.clicked() {
+                                    if let Some(arrangement_id) =
+                                        self.rack_view_selected_arrangement_id.clone()
+                                    {
+                                        let first_coordinate = sorted_entries
+                                            .iter()
+                                            .find(|(_, _, row)| row.arrangement_id == arrangement_id)
+                                            .map(|(_, coordinate, _)| coordinate.clone());
+                                        if let Some(from_coordinate) = first_coordinate {
+                                            let result = self
+                                                .engine
+                                                .write()
+                                                .unwrap()
+                                                .apply(Operation::MoveRackPlacement {
+                                                    rack_id: rack.rack_id.clone(),
+                                                    from_coordinate,
+                                                    to_coordinate: coordinate.clone(),
+                                                    move_block: true,
+                                                });
+                                            match result {
+                                                Ok(op_result) => {
+                                                    self.rack_view_status = op_result
+                                                        .messages
+                                                        .first()
+                                                        .cloned()
+                                                        .unwrap_or_else(|| {
+                                                            "Moved arrangement block".to_string()
+                                                        });
+                                                    self.lineage_cache_valid = false;
+                                                    self.refresh_lineage_cache_if_needed();
+                                                }
+                                                Err(err) => {
+                                                    self.rack_view_status = format!(
+                                                        "Could not move arrangement block: {}",
+                                                        err.message
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        self.rack_view_selected_arrangement_id = None;
+                                    } else if let Some(from_coordinate) =
+                                        self.rack_view_selected_coordinate.clone()
+                                    {
+                                        let result = self
+                                            .engine
+                                            .write()
+                                            .unwrap()
+                                            .apply(Operation::MoveRackPlacement {
+                                                rack_id: rack.rack_id.clone(),
+                                                from_coordinate,
+                                                to_coordinate: coordinate.clone(),
+                                                move_block: false,
+                                            });
+                                        match result {
+                                            Ok(op_result) => {
+                                                self.rack_view_status = op_result
+                                                    .messages
+                                                    .first()
+                                                    .cloned()
+                                                    .unwrap_or_else(|| {
+                                                        "Moved sample on rack".to_string()
+                                                    });
+                                                self.lineage_cache_valid = false;
+                                                self.refresh_lineage_cache_if_needed();
+                                            }
+                                            Err(err) => {
+                                                self.rack_view_status = format!(
+                                                    "Could not move sample: {}",
+                                                    err.message
+                                                );
+                                            }
+                                        }
+                                        self.rack_view_selected_coordinate = None;
+                                    }
+                                }
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui
+                .button("Labels SVG...")
+                .on_hover_text("Export one deterministic label sheet for the currently shown rack")
+                .clicked()
+            {
+                let stem = Self::sanitize_file_stem(&rack.name, "rack_labels");
+                let default_file_name = format!("{stem}.labels.svg");
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name(&default_file_name)
+                    .add_filter("SVG", &["svg"])
+                    .save_file()
+                {
+                    let path_text = path.display().to_string();
+                    match self
+                        .engine
+                        .write()
+                        .unwrap()
+                        .apply(Operation::ExportRackLabelsSvg {
+                            rack_id: rack.rack_id.clone(),
+                            path: path_text.clone(),
+                            arrangement_id: None,
+                        }) {
+                        Ok(op_result) => {
+                            self.rack_view_status = op_result
+                                .messages
+                                .first()
+                                .cloned()
+                                .unwrap_or_else(|| format!("Wrote rack labels SVG to '{path_text}'"));
+                        }
+                        Err(err) => {
+                            self.rack_view_status =
+                                format!("Could not export rack labels SVG: {}", err.message);
+                        }
+                    }
+                }
+            }
+        });
+        close_requested
+    }
+
+    fn render_rack_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_rack_dialog {
+            return;
+        }
+        let mut open = self.show_rack_dialog;
+        let title = if self.rack_view_rack_id.trim().is_empty() {
+            "Rack".to_string()
+        } else {
+            format!("Rack — {}", self.rack_view_rack_id.trim())
+        };
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1000.0, 760.0])
+            .with_min_inner_size([760.0, 520.0]);
+        ctx.show_viewport_immediate(Self::rack_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::rack_viewport_id());
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                egui::Window::new(title.clone())
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(1000.0, 760.0))
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+                            close_requested = self.render_rack_contents(ui);
+                        });
+                    });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(
+                    ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        close_requested = self.render_rack_contents(ui);
+                    },
+                );
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_rack_dialog = open;
+    }
+
+    fn open_place_arrangement_on_rack_dialog(&mut self, arrangement_id: &str) {
+        self.place_arrangement_source_id = arrangement_id.trim().to_string();
+        if self.place_arrangement_target_rack_id.trim().is_empty() {
+            if let Some(first_rack) = self.lineage_racks.first() {
+                self.place_arrangement_target_rack_id = first_rack.rack_id.clone();
+            }
+        }
+        self.place_arrangement_status.clear();
+        self.show_place_arrangement_rack_dialog = true;
+    }
+
+    fn submit_place_arrangement_on_rack(&mut self) {
+        let arrangement_id = self.place_arrangement_source_id.trim().to_string();
+        let rack_id = self.place_arrangement_target_rack_id.trim().to_string();
+        if arrangement_id.is_empty() || rack_id.is_empty() {
+            self.place_arrangement_status =
+                "Choose both an arrangement and a target rack.".to_string();
+            return;
+        }
+        let result = {
+            self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::PlaceArrangementOnRack {
+                arrangement_id: arrangement_id.clone(),
+                rack_id: rack_id.clone(),
+            })
+        };
+        match result {
+            Ok(op_result) => {
+                self.place_arrangement_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        format!("Placed arrangement '{}' onto '{}'", arrangement_id, rack_id)
+                    });
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+                self.show_place_arrangement_rack_dialog = false;
+            }
+            Err(err) => {
+                self.place_arrangement_status = format!(
+                    "Could not place arrangement '{}' onto rack '{}': {}",
+                    arrangement_id, rack_id, err.message
+                );
+            }
+        }
+    }
+
+    fn render_place_arrangement_on_rack_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_place_arrangement_rack_dialog {
+            return;
+        }
+        let mut open = self.show_place_arrangement_rack_dialog;
+        let mut close_requested = false;
+        egui::Window::new("Place Arrangement on Existing Rack")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(560.0, 220.0))
+            .show(ctx, |ui| {
+                ui.label("Append one arrangement as a contiguous block onto an existing rack. Existing blocks stay intact.");
+                ui.horizontal(|ui| {
+                    ui.label("Arrangement");
+                    ui.monospace(self.place_arrangement_source_id.clone());
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Target rack");
+                    egui::ComboBox::from_id_salt("place_arrangement_rack_combo")
+                        .selected_text(if self.place_arrangement_target_rack_id.trim().is_empty() {
+                            "(choose rack)".to_string()
+                        } else {
+                            self.place_arrangement_target_rack_id.clone()
+                        })
+                        .show_ui(ui, |ui| {
+                            for rack in &self.lineage_racks {
+                                ui.selectable_value(
+                                    &mut self.place_arrangement_target_rack_id,
+                                    rack.rack_id.clone(),
+                                    format!(
+                                        "{} — {} ({}, {} occupied, {} arrangement block(s))",
+                                        rack.rack_id,
+                                        rack.name,
+                                        rack.profile,
+                                        rack.occupied_positions,
+                                        rack.arrangement_ids.len()
+                                    ),
+                                );
+                            }
+                        });
+                });
+                if !self.place_arrangement_status.trim().is_empty() {
+                    ui.small(self.place_arrangement_status.clone());
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Place").clicked() {
+                        self.submit_place_arrangement_on_rack();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close_requested = true;
+                    }
+                });
+            });
+        if close_requested {
+            open = false;
+        }
+        self.show_place_arrangement_rack_dialog = open;
     }
 
     fn set_scope_genome_paths(&mut self, scope: GenomeDialogScope, catalog: String, cache: String) {
@@ -22655,6 +23410,7 @@ Error: `{err}`"
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
+        self.lineage_racks.clear();
         self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
@@ -22679,6 +23435,8 @@ Error: `{err}`"
         self.pending_focus_viewports.clear();
         self.show_gibson_dialog = false;
         self.show_arrangement_gel_preview_dialog = false;
+        self.show_rack_dialog = false;
+        self.show_place_arrangement_rack_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.gibson_destination_seq_id.clear();
         self.gibson_show_all_unique_cutters = false;
@@ -22691,6 +23449,13 @@ Error: `{err}`"
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
+        self.rack_view_rack_id.clear();
+        self.rack_view_status.clear();
+        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_arrangement_id = None;
+        self.place_arrangement_source_id.clear();
+        self.place_arrangement_target_rack_id.clear();
+        self.place_arrangement_status.clear();
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -23974,6 +24739,7 @@ Error: `{err}`"
             reopenable_gibson_op_ids,
             containers,
             arrangements,
+            racks,
         ) = {
             let engine = self.engine.read().unwrap();
             let state = engine.state();
@@ -24837,9 +25603,33 @@ Error: `{err}`"
                     lane_count: arrangement.lane_container_ids.len(),
                     lane_container_ids: arrangement.lane_container_ids.clone(),
                     ladders: arrangement.ladders.clone(),
+                    default_rack_id: arrangement.default_rack_id.clone(),
                 })
                 .collect();
             arrangements.sort_by(|a, b| a.arrangement_id.cmp(&b.arrangement_id));
+            let mut racks: Vec<RackRow> = state
+                .container_state
+                .racks
+                .iter()
+                .map(|(id, rack)| RackRow {
+                    rack_id: id.clone(),
+                    name: rack.name.clone(),
+                    profile: rack.profile.kind.as_str().to_string(),
+                    occupied_positions: rack.placements.len(),
+                    arrangement_ids: {
+                        let mut arrangement_ids = rack
+                            .placements
+                            .iter()
+                            .map(|entry| entry.arrangement_id.clone())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                        arrangement_ids.sort();
+                        arrangement_ids
+                    },
+                })
+                .collect();
+            racks.sort_by(|a, b| a.rack_id.cmp(&b.rack_id));
             (
                 out,
                 lineage_edges,
@@ -24847,6 +25637,7 @@ Error: `{err}`"
                 reopenable_gibson_op_ids,
                 containers,
                 arrangements,
+                racks,
             )
         };
 
@@ -24856,6 +25647,7 @@ Error: `{err}`"
         self.lineage_reopenable_gibson_op_ids = reopenable_gibson_op_ids;
         self.lineage_containers = containers;
         self.lineage_arrangements = arrangements;
+        self.lineage_racks = racks;
         self.lineage_cache_stamp = stamp;
         self.lineage_cache_valid = true;
     }
@@ -29661,6 +30453,7 @@ Error: `{err}`"
                         if self.lineage_arrangements.is_empty() {
                             ui.label("No arrangements recorded");
                         } else {
+                            let arrangement_rows = self.lineage_arrangements.clone();
                             egui::Grid::new("arrangement_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
@@ -29670,9 +30463,10 @@ Error: `{err}`"
                                     ui.strong("Lanes");
                                     ui.strong("Lane containers");
                                     ui.strong("Ladders");
+                                    ui.strong("Rack");
                                     ui.strong("Action");
                                     ui.end_row();
-                                    for arrangement in &self.lineage_arrangements {
+                                    for arrangement in &arrangement_rows {
                                         ui.monospace(&arrangement.arrangement_id);
                                         ui.label(&arrangement.mode);
                                         ui.label(if arrangement.name.trim().is_empty() {
@@ -29691,6 +30485,12 @@ Error: `{err}`"
                                         } else {
                                             arrangement.ladders.join(", ")
                                         });
+                                        ui.label(
+                                            arrangement
+                                                .default_rack_id
+                                                .clone()
+                                                .unwrap_or_else(|| "draft on demand".to_string()),
+                                        );
                                         ui.horizontal(|ui| {
                                             if ui
                                                 .button("Preview Gel")
@@ -29724,6 +30524,40 @@ Error: `{err}`"
                                                     ui,
                                                     &arrangement.lane_container_ids,
                                                     &mut open_lane_containers,
+                                                );
+                                            }
+                                            if ui
+                                                .button("Open Rack")
+                                                .on_hover_text(
+                                                    "Open the linked physical rack draft for this arrangement, creating the default one when needed",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.open_arrangement_rack_dialog(
+                                                    &arrangement.arrangement_id,
+                                                );
+                                            }
+                                            if ui
+                                                .button("Labels SVG")
+                                                .on_hover_text(
+                                                    "Export one deterministic label sheet for this arrangement from its linked rack draft",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.prompt_export_arrangement_labels_svg(
+                                                    &arrangement.arrangement_id,
+                                                );
+                                            }
+                                            if !self.lineage_racks.is_empty()
+                                                && ui
+                                                    .button("Place on Existing Rack...")
+                                                    .on_hover_text(
+                                                        "Append this arrangement as one contiguous block onto another saved rack",
+                                                    )
+                                                    .clicked()
+                                            {
+                                                self.open_place_arrangement_on_rack_dialog(
+                                                    &arrangement.arrangement_id,
                                                 );
                                             }
                                         });
@@ -33334,6 +34168,53 @@ Error: `{err}`"
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "auto".to_string())
             ),
+            Operation::CreateRackFromArrangement {
+                arrangement_id,
+                rack_id,
+                name,
+                profile,
+            } => format!(
+                "Create rack from arrangement: arrangement_id={}, rack_id={}, name={}, profile={}",
+                arrangement_id.trim(),
+                rack_id.as_deref().unwrap_or("auto"),
+                name.as_deref().unwrap_or("-"),
+                profile.map(|kind| kind.as_str()).unwrap_or("auto")
+            ),
+            Operation::PlaceArrangementOnRack {
+                arrangement_id,
+                rack_id,
+            } => format!(
+                "Place arrangement on rack: arrangement_id={}, rack_id={}",
+                arrangement_id.trim(),
+                rack_id.trim()
+            ),
+            Operation::MoveRackPlacement {
+                rack_id,
+                from_coordinate,
+                to_coordinate,
+                move_block,
+            } => format!(
+                "Move rack {}: rack_id={}, from={}, to={}",
+                if *move_block { "block" } else { "placement" },
+                rack_id.trim(),
+                from_coordinate.trim(),
+                to_coordinate.trim()
+            ),
+            Operation::SetRackProfile { rack_id, profile } => format!(
+                "Set rack profile: rack_id={}, profile={}",
+                rack_id.trim(),
+                profile.as_str()
+            ),
+            Operation::ExportRackLabelsSvg {
+                rack_id,
+                path,
+                arrangement_id,
+            } => format!(
+                "Export rack labels SVG: rack_id={}, arrangement_id={}, path={}",
+                rack_id.trim(),
+                arrangement_id.as_deref().unwrap_or("all"),
+                path
+            ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
                 "Export DNA ladders: path={}, filter={}",
                 path,
@@ -33739,6 +34620,8 @@ impl GENtleApp {
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
             self.render_arrangement_gel_preview_dialog(ctx);
+            self.render_place_arrangement_on_rack_dialog(ctx);
+            self.render_rack_dialog(ctx);
             self.render_pcr_design_dialog(ctx);
             self.render_sequencing_confirmation_dialog(ctx);
             self.render_planning_dialog(ctx);
@@ -37943,6 +38826,8 @@ mod tests {
                     "NEB 1kb DNA Ladder".to_string(),
                     "GeneRuler 100bp DNA Ladder Plus".to_string(),
                 ],
+                lane_role_labels: vec!["vector".to_string(), "insert_1".to_string()],
+                default_rack_id: None,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -37964,6 +38849,54 @@ mod tests {
             "GeneRuler 100bp DNA Ladder Plus"
         );
         assert!(!app.arrangement_gel_preview.svg_uri.is_empty());
+    }
+
+    #[test]
+    fn open_arrangement_rack_dialog_materializes_default_rack_for_legacy_arrangement() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), DNAsequence::from_sequence("ATGCATGC").unwrap());
+        state.container_state.containers.insert(
+            "container-1".to_string(),
+            Container {
+                container_id: "container-1".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Vector".to_string()),
+                members: vec!["seq_a".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.arrangements.insert(
+            "arr-legacy".to_string(),
+            Arrangement {
+                arrangement_id: "arr-legacy".to_string(),
+                mode: ArrangementMode::Serial,
+                name: Some("Legacy".to_string()),
+                lane_container_ids: vec!["container-1".to_string()],
+                ladders: vec![],
+                lane_role_labels: vec!["vector".to_string()],
+                default_rack_id: None,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_arrangement_rack_dialog("arr-legacy");
+
+        assert!(app.show_rack_dialog);
+        assert!(!app.rack_view_rack_id.is_empty());
+        let engine = app.engine.read().unwrap();
+        assert!(
+            engine
+                .state()
+                .container_state
+                .racks
+                .contains_key(&app.rack_view_rack_id)
+        );
     }
 
     #[test]

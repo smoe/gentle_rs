@@ -182,7 +182,11 @@ The project main window (lineage page) supports two views:
   also materialized as lineage analysis nodes, linked by operation edges for
   provenance/script parity
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
-- `Arrangements`: serial lane setups across containers, with arrangement-level gel export
+- `Arrangements`: serial lane setups across containers, with arrangement-level gel export and linked physical rack drafts
+- Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
+  - arrangements keep the semantic sample order
+  - racks/plates keep the physical A1-slot placement
+- Every new serial arrangement now gets one default draft rack automatically.
 - `Open Lanes` now opens a chooser menu rather than immediately opening every lane window:
   - choose one lane container, or `All`
   - lane windows opened from arrangements start in a compact map-first layout with the sequence text panel hidden by default
@@ -2139,6 +2143,13 @@ Serial gel export is available in two places:
     arrangement, using the arrangement's saved ladder pair when present or auto
     ladder selection otherwise.
   - `Arrangements` table: `Open Lanes` lets you open one chosen lane or all lanes as compact DNA windows instead of always opening every lane at once.
+  - `Arrangements` table: `Open Rack` opens the linked physical rack draft for
+    that arrangement, creating the default rack on demand for older/legacy
+    arrangements that do not yet have one.
+  - `Arrangements` table: `Labels SVG` exports one deterministic label sheet
+    scoped to that arrangement on its linked rack draft.
+  - `Arrangements` table: `Place on Existing Rack...` appends the arrangement
+    as one contiguous block onto another saved rack.
 
 Tutorial companion:
 
@@ -2171,6 +2182,39 @@ Controls:
     selection
   - `Save to Arrangement` persists the currently selected ladder pair for later
     `Export Gel` reuse
+
+## Rack View
+
+Rack view is the first physical-placement layer on top of arrangements.
+
+- `Open Rack` opens one saved rack/plate draft linked to one or more
+  arrangements.
+- The rack header shows:
+  - rack name / rack id
+  - current profile
+  - arrangement chips for each contiguous arrangement block on the rack
+- Built-in profiles:
+  - `Small tube rack (4 x 6)`
+  - `Plate 96`
+  - `Plate 384`
+- Coordinates are A1-style everywhere.
+
+Interaction model:
+
+- Click one occupied sample position, then click another position to move that
+  sample within its arrangement block.
+- Click one arrangement chip, then click a target position to move the whole
+  arrangement block.
+- Both operations use shift-neighbor semantics:
+  - later occupied positions move to keep the rack block contiguous
+  - free-floating holes are not the primary editing model in this baseline
+
+Exports:
+
+- `Labels SVG...` in the rack window exports one deterministic rack label
+  sheet.
+- `Labels SVG` from the arrangement table exports the same label style but
+  filtered to the selected arrangement only.
 
 ## Engine Settings (Engine Ops)
 

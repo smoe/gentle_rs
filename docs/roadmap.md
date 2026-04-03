@@ -1071,12 +1071,21 @@ order. Durable architecture constraints and decisions remain in
   hide container/arrangement sections.
 - Main lineage pane now supports a draggable split between the
   `Table`/`Graph` area and the `Containers`/`Arrangements` area.
-- Next arrangement-adjacent planning layer should separate:
-  - semantic experiment arrangements
-  - physical rack/plate profiles
-  - concrete rack placements and printable labels
-  - built-in physical profiles should include at least small tube racks,
-    96-well plates, and 384-well plates
+- Arrangement-linked physical placement baseline is now available:
+  - arrangements remain the semantic experiment-order layer
+  - saved racks/plates now provide the linked physical placement layer
+  - every new serial arrangement gets one default draft rack automatically
+  - built-in physical profiles now include:
+    - small tube racks (`4 x 6`)
+    - 96-well plates
+    - 384-well plates
+  - rack placements consume arrangement order rather than duplicating it
+  - arrangement-scoped and rack-wide SVG label export are now available from
+    the same shared engine path
+  - follow-up work should focus on richer authoring rather than a second model:
+    - true drag/drop UX instead of click-select/click-target moves
+    - custom rack-profile authoring beyond the current built-ins
+    - broader label-sheet presets and print-oriented layouts
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows
@@ -2448,9 +2457,12 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       - assembled product
     - lineage operation reopen behavior for Gibson apply
     - protocol-cartoon preview/export from the same resolved plan
-    - arrangement reuse now makes Gibson a good first candidate for future
-      rack-placement and label-printing support, including dense plate formats
-      such as 384-well layouts when one bench day/project shares a carrier
+    - arrangement reuse now extends into the first rack/label baseline:
+      - Gibson-derived serial arrangements automatically receive one default
+        rack draft
+      - arrangement order now drives physical rack placement and label export,
+        including dense plate formats such as 384-well layouts when one bench
+        day/project shares a carrier
   - next:
     - multi-fragment Gibson planning, preview, and cartoon generation
     - broader user influence over Gibson PCR/primer design beyond the current

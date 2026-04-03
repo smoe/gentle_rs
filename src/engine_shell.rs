@@ -46,6 +46,7 @@ use crate::{
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
+        RackOccupant, RackProfileKind,
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
         SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
         SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
@@ -693,6 +694,34 @@ pub enum ShellCommand {
     SetArrangementLadders {
         arrangement_id: String,
         ladders: Option<Vec<String>>,
+    },
+    RacksCreateFromArrangement {
+        arrangement_id: String,
+        rack_id: Option<String>,
+        name: Option<String>,
+        profile: Option<RackProfileKind>,
+    },
+    RacksPlaceArrangement {
+        arrangement_id: String,
+        rack_id: String,
+    },
+    RacksMove {
+        rack_id: String,
+        from_coordinate: String,
+        to_coordinate: String,
+        move_block: bool,
+    },
+    RacksShow {
+        rack_id: String,
+    },
+    RacksLabelsSvg {
+        rack_id: String,
+        output: String,
+        arrangement_id: Option<String>,
+    },
+    RacksSetProfile {
+        rack_id: String,
+        profile: RackProfileKind,
     },
     LaddersList {
         molecule: LadderMolecule,
@@ -4658,6 +4687,56 @@ impl ShellCommand {
                     arrangement_id.trim()
                 )
             }
+            Self::RacksCreateFromArrangement {
+                arrangement_id,
+                rack_id,
+                name,
+                profile,
+            } => format!(
+                "create rack from arrangement '{}' (rack_id={}, name={}, profile={})",
+                arrangement_id.trim(),
+                rack_id.as_deref().unwrap_or("auto"),
+                name.as_deref().unwrap_or("auto"),
+                profile.map(|kind| kind.as_str()).unwrap_or("auto")
+            ),
+            Self::RacksPlaceArrangement {
+                arrangement_id,
+                rack_id,
+            } => format!(
+                "place arrangement '{}' onto rack '{}'",
+                arrangement_id.trim(),
+                rack_id.trim()
+            ),
+            Self::RacksMove {
+                rack_id,
+                from_coordinate,
+                to_coordinate,
+                move_block,
+            } => format!(
+                "move {} on rack '{}' from '{}' to '{}'",
+                if *move_block { "arrangement block" } else { "sample" },
+                rack_id.trim(),
+                from_coordinate.trim(),
+                to_coordinate.trim()
+            ),
+            Self::RacksShow { rack_id } => {
+                format!("inspect rack '{}'", rack_id.trim())
+            }
+            Self::RacksLabelsSvg {
+                rack_id,
+                output,
+                arrangement_id,
+            } => format!(
+                "export rack labels SVG for '{}' to '{}' (arrangement={})",
+                rack_id.trim(),
+                output,
+                arrangement_id.as_deref().unwrap_or("all")
+            ),
+            Self::RacksSetProfile { rack_id, profile } => format!(
+                "set rack '{}' profile to '{}'",
+                rack_id.trim(),
+                profile.as_str()
+            ),
             Self::LaddersList {
                 molecule,
                 name_filter,
@@ -7675,6 +7754,19 @@ fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String
     }
 }
 
+fn parse_rack_profile_kind(value: &str) -> Result<RackProfileKind, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "small_tube_4x6" | "tube" | "rack" | "4x6" | "tube4x6" => {
+            Ok(RackProfileKind::SmallTube4x6)
+        }
+        "plate_96" | "96" | "plate96" | "p96" => Ok(RackProfileKind::Plate96),
+        "plate_384" | "384" | "plate384" | "p384" => Ok(RackProfileKind::Plate384),
+        other => Err(format!(
+            "Unsupported rack profile '{other}' (expected small_tube_4x6|plate_96|plate_384)"
+        )),
+    }
+}
+
 fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(PrimerDesignBackend::Auto),
@@ -10490,6 +10582,237 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 ladders: ladders.filter(|values| !values.is_empty()),
             })
         }
+        "racks" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile".to_string(),
+                );
+            }
+            match tokens[1].as_str() {
+                "create-from-arrangement" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "racks create-from-arrangement requires ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]".to_string(),
+                        );
+                    }
+                    let arrangement_id = tokens[2].trim().to_string();
+                    if arrangement_id.is_empty() {
+                        return Err(
+                            "racks create-from-arrangement requires a non-empty ARR_ID"
+                                .to_string(),
+                        );
+                    }
+                    let mut rack_id: Option<String> = None;
+                    let mut name: Option<String> = None;
+                    let mut profile: Option<RackProfileKind> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--rack-id" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --rack-id".to_string());
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if !value.is_empty() {
+                                    rack_id = Some(value.to_string());
+                                }
+                                idx += 2;
+                            }
+                            "--name" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --name".to_string());
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if !value.is_empty() {
+                                    name = Some(value.to_string());
+                                }
+                                idx += 2;
+                            }
+                            "--profile" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --profile".to_string());
+                                }
+                                profile = Some(parse_rack_profile_kind(&tokens[idx + 1])?);
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks create-from-arrangement"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksCreateFromArrangement {
+                        arrangement_id,
+                        rack_id,
+                        name,
+                        profile,
+                    })
+                }
+                "place-arrangement" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "racks place-arrangement requires ARR_ID --rack RACK_ID".to_string(),
+                        );
+                    }
+                    let arrangement_id = tokens[2].trim().to_string();
+                    if arrangement_id.is_empty() {
+                        return Err(
+                            "racks place-arrangement requires a non-empty ARR_ID".to_string(),
+                        );
+                    }
+                    let mut rack_id = String::new();
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--rack" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --rack".to_string());
+                                }
+                                rack_id = tokens[idx + 1].trim().to_string();
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks place-arrangement"
+                                ));
+                            }
+                        }
+                    }
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks place-arrangement requires --rack RACK_ID".to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::RacksPlaceArrangement {
+                        arrangement_id,
+                        rack_id,
+                    })
+                }
+                "move" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "racks move requires RACK_ID --from A1 --to B1 [--block]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks move requires a non-empty RACK_ID".to_string());
+                    }
+                    let mut from_coordinate = String::new();
+                    let mut to_coordinate = String::new();
+                    let mut move_block = false;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--from" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --from".to_string());
+                                }
+                                from_coordinate = tokens[idx + 1].trim().to_string();
+                                idx += 2;
+                            }
+                            "--to" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --to".to_string());
+                                }
+                                to_coordinate = tokens[idx + 1].trim().to_string();
+                                idx += 2;
+                            }
+                            "--block" => {
+                                move_block = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!("Unknown argument '{other}' for racks move"));
+                            }
+                        }
+                    }
+                    if from_coordinate.is_empty() || to_coordinate.is_empty() {
+                        return Err(
+                            "racks move requires both --from COORD and --to COORD".to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::RacksMove {
+                        rack_id,
+                        from_coordinate,
+                        to_coordinate,
+                        move_block,
+                    })
+                }
+                "show" => {
+                    if tokens.len() != 3 {
+                        return Err("racks show requires RACK_ID".to_string());
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks show requires a non-empty RACK_ID".to_string());
+                    }
+                    Ok(ShellCommand::RacksShow { rack_id })
+                }
+                "labels-svg" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks labels-svg requires a non-empty RACK_ID".to_string());
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks labels-svg requires a non-empty OUTPUT.svg".to_string(),
+                        );
+                    }
+                    let mut arrangement_id: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--arrangement" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --arrangement".to_string());
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if !value.is_empty() {
+                                    arrangement_id = Some(value.to_string());
+                                }
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks labels-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksLabelsSvg {
+                        rack_id,
+                        output,
+                        arrangement_id,
+                    })
+                }
+                "set-profile" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "racks set-profile requires RACK_ID PROFILE".to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks set-profile requires a non-empty RACK_ID".to_string());
+                    }
+                    let profile = parse_rack_profile_kind(&tokens[3])?;
+                    Ok(ShellCommand::RacksSetProfile { rack_id, profile })
+                }
+                other => Err(format!(
+                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile)"
+                )),
+            }
+        }
         "ladders" => {
             if tokens.len() < 2 {
                 return Err("ladders requires a subcommand: list or export".to_string());
@@ -12839,6 +13162,139 @@ fn execute_shell_command_with_options_inner(
                 .apply(Operation::SetArrangementLadders {
                     arrangement_id: arrangement_id.clone(),
                     ladders: ladders.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksCreateFromArrangement {
+            arrangement_id,
+            rack_id,
+            name,
+            profile,
+        } => {
+            let op_result = engine
+                .apply(Operation::CreateRackFromArrangement {
+                    arrangement_id: arrangement_id.clone(),
+                    rack_id: rack_id.clone(),
+                    name: name.clone(),
+                    profile: *profile,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksPlaceArrangement {
+            arrangement_id,
+            rack_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::PlaceArrangementOnRack {
+                    arrangement_id: arrangement_id.clone(),
+                    rack_id: rack_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksMove {
+            rack_id,
+            from_coordinate,
+            to_coordinate,
+            move_block,
+        } => {
+            let op_result = engine
+                .apply(Operation::MoveRackPlacement {
+                    rack_id: rack_id.clone(),
+                    from_coordinate: from_coordinate.clone(),
+                    to_coordinate: to_coordinate.clone(),
+                    move_block: *move_block,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksShow { rack_id } => {
+            let rack = engine
+                .state()
+                .container_state
+                .racks
+                .get(rack_id.trim())
+                .cloned()
+                .ok_or_else(|| format!("Rack '{}' not found", rack_id.trim()))?;
+            let placements = rack
+                .placements
+                .iter()
+                .map(|entry| {
+                    let occupant = match entry.occupant.as_ref() {
+                        Some(RackOccupant::Container { container_id }) => {
+                            let container = engine
+                                .state()
+                                .container_state
+                                .containers
+                                .get(container_id);
+                            let seq_id = container.and_then(|row| row.members.first()).cloned();
+                            json!({
+                                "kind": "container",
+                                "container_id": container_id,
+                                "container_name": container.and_then(|row| row.name.clone()),
+                                "seq_id": seq_id,
+                            })
+                        }
+                        Some(RackOccupant::LadderReference { ladder_name }) => json!({
+                            "kind": "ladder_reference",
+                            "ladder_name": ladder_name,
+                        }),
+                        None => json!({ "kind": "empty" }),
+                    };
+                    json!({
+                        "coordinate": entry.coordinate,
+                        "arrangement_id": entry.arrangement_id,
+                        "order_index": entry.order_index,
+                        "role_label": entry.role_label,
+                        "occupant": occupant,
+                    })
+                })
+                .collect::<Vec<_>>();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rack_state.v1",
+                    "rack": rack,
+                    "placements": placements,
+                }),
+            }
+        }
+        ShellCommand::RacksLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackLabelsSvg {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    arrangement_id: arrangement_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksSetProfile { rack_id, profile } => {
+            let op_result = engine
+                .apply(Operation::SetRackProfile {
+                    rack_id: rack_id.clone(),
+                    profile: *profile,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
