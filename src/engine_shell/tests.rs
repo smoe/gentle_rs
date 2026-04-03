@@ -2400,6 +2400,27 @@ fn parse_features_query_with_filters() {
 }
 
 #[test]
+fn parse_features_tfbs_summary_with_context_filters() {
+    let cmd = parse_shell_line(
+        "features tfbs-summary seq_a --focus 2900..3100 --context 0..6001 --min-focus-count 2 --min-context-count 3 --limit 25",
+    )
+    .expect("parse features tfbs-summary");
+    match cmd {
+        ShellCommand::FeaturesTfbsSummary { request } => {
+            assert_eq!(request.seq_id, "seq_a");
+            assert_eq!(request.focus_start_0based, 2900);
+            assert_eq!(request.focus_end_0based_exclusive, 3100);
+            assert_eq!(request.context_start_0based, Some(0));
+            assert_eq!(request.context_end_0based_exclusive, Some(6001));
+            assert_eq!(request.min_focus_occurrences, 2);
+            assert_eq!(request.min_context_occurrences, 3);
+            assert_eq!(request.limit, Some(25));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_tracks_import_bed() {
     let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -6247,6 +6268,73 @@ fn execute_features_query_returns_structured_rows() {
     assert_eq!(run.output["returned_count"].as_u64(), Some(1));
     assert_eq!(run.output["rows"][0]["kind"].as_str(), Some("CDS"));
     assert_eq!(run.output["rows"][0]["strand"].as_str(), Some("reverse"));
+}
+
+#[test]
+fn execute_features_tfbs_summary_returns_grouped_counts_and_densities() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(250)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(95, 105),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(150, 160),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.4".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(400, 410),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(210, 220),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("CTCF".to_string())),
+            ("tf_id".into(), Some("MA0139.1".to_string())),
+        ],
+    });
+    state.sequences.insert("promoter".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsSummary {
+            request: TfbsRegionSummaryRequest {
+                seq_id: "promoter".to_string(),
+                focus_start_0based: 90,
+                focus_end_0based_exclusive: 200,
+                context_start_0based: Some(0),
+                context_end_0based_exclusive: Some(500),
+                ..TfbsRegionSummaryRequest::default()
+            },
+        },
+    )
+    .expect("features tfbs-summary");
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.tfbs_region_summary.v1")
+    );
+    assert_eq!(run.output["matched_tf_count"].as_u64(), Some(1));
+    assert_eq!(run.output["rows"][0]["tf_name"].as_str(), Some("SP1"));
+    assert_eq!(run.output["rows"][0]["focus_occurrences"].as_u64(), Some(2));
+    assert_eq!(
+        run.output["rows"][0]["outside_focus_occurrences"].as_u64(),
+        Some(1)
+    );
 }
 
 #[cfg(unix)]

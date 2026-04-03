@@ -20,6 +20,33 @@
       }
     },
     {
+      "AnnotateTfbs": {
+        "seq_id": "vkorc1_rs9923231_context",
+        "motifs": [
+          "SP1",
+          "CTCF",
+          "HNF4A"
+        ],
+        "min_llr_quantile": 0.998,
+        "per_tf_thresholds": [
+          {
+            "tf": "SP1",
+            "min_llr_quantile": 0.999
+          },
+          {
+            "tf": "CTCF",
+            "min_llr_quantile": 0.9995
+          },
+          {
+            "tf": "HNF4A",
+            "min_llr_quantile": 0.999
+          }
+        ],
+        "clear_existing": true,
+        "max_hits": 0
+      }
+    },
+    {
       "SetDisplayVisibility": {
         "target": "SequencePanel",
         "visible": false
@@ -58,7 +85,31 @@
     {
       "SetDisplayVisibility": {
         "target": "Tfbs",
-        "visible": false
+        "visible": true
+      }
+    },
+    {
+      "SetParameter": {
+        "name": "tfbs_display_use_llr_bits",
+        "value": false
+      }
+    },
+    {
+      "SetParameter": {
+        "name": "tfbs_display_min_llr_quantile",
+        "value": 0.999
+      }
+    },
+    {
+      "SetParameter": {
+        "name": "tfbs_display_use_true_log_odds_quantile",
+        "value": true
+      }
+    },
+    {
+      "SetParameter": {
+        "name": "tfbs_display_min_true_log_odds_quantile",
+        "value": 0.998
       }
     },
     {

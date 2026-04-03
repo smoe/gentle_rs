@@ -221,6 +221,9 @@ const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
+const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
+const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
+const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
 
 // Private decomposition slices of the engine implementation. Shared public
 // contracts stay in this file; heavy helpers and operation families live in the
@@ -8625,6 +8628,260 @@ impl GentleEngine {
         } else {
             Some(trimmed.to_ascii_uppercase())
         }
+    }
+
+    fn tfbs_summary_group_name(feature: &gb_io::seq::Feature, feature_id: usize) -> String {
+        Self::first_nonempty_feature_qualifier(
+            feature,
+            &["bound_moiety", "standard_name", "gene", "name"],
+        )
+        .or_else(|| Self::feature_qualifier_text(feature, "tf_id"))
+        .unwrap_or_else(|| Self::feature_display_label(feature, feature_id))
+    }
+
+    pub fn summarize_tfbs_region(
+        &self,
+        mut request: TfbsRegionSummaryRequest,
+    ) -> Result<TfbsRegionSummary, EngineError> {
+        #[derive(Default)]
+        struct TfbsSummaryAccumulator {
+            tf_name: String,
+            motif_ids: BTreeSet<String>,
+            focus_occurrences: usize,
+            context_occurrences: usize,
+        }
+
+        request.seq_id = request.seq_id.trim().to_string();
+        if request.seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "summarize_tfbs_region requires non-empty seq_id".to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(&request.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", request.seq_id),
+            })?;
+        let sequence_length_bp = dna.len();
+        if sequence_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "TFBS region summary cannot be computed on an empty sequence".to_string(),
+            });
+        }
+
+        let focus_start = request.focus_start_0based;
+        let focus_end = request.focus_end_0based_exclusive;
+        if focus_end <= focus_start {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid TFBS focus range {}..{}: end must be > start",
+                    focus_start, focus_end
+                ),
+            });
+        }
+        if focus_start >= sequence_length_bp || focus_end > sequence_length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "TFBS focus range {}..{} is outside sequence length {}",
+                    focus_start, focus_end, sequence_length_bp
+                ),
+            });
+        }
+
+        if request.context_start_0based.is_some() != request.context_end_0based_exclusive.is_some()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "TFBS context range requires both context_start_0based and context_end_0based_exclusive"
+                        .to_string(),
+            });
+        }
+        let (context_start, context_end) = match (
+            request.context_start_0based,
+            request.context_end_0based_exclusive,
+        ) {
+            (Some(start), Some(end)) => (start, end),
+            (None, None) => (0, sequence_length_bp),
+            _ => unreachable!("context range presence already validated"),
+        };
+        if context_end <= context_start {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid TFBS context range {}..{}: end must be > start",
+                    context_start, context_end
+                ),
+            });
+        }
+        if context_start >= sequence_length_bp || context_end > sequence_length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "TFBS context range {}..{} is outside sequence length {}",
+                    context_start, context_end, sequence_length_bp
+                ),
+            });
+        }
+        if context_start > focus_start || context_end < focus_end {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "TFBS context range {}..{} must contain focus range {}..{}",
+                    context_start, context_end, focus_start, focus_end
+                ),
+            });
+        }
+
+        if request.limit.is_some_and(|limit| limit == 0) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "TFBS region summary limit must be >= 1".to_string(),
+            });
+        }
+        let limit = request
+            .limit
+            .unwrap_or(TFBS_REGION_SUMMARY_DEFAULT_LIMIT)
+            .clamp(1, TFBS_REGION_SUMMARY_MAX_LIMIT);
+        request.limit = Some(limit);
+        request.context_start_0based = Some(context_start);
+        request.context_end_0based_exclusive = Some(context_end);
+
+        let focus_width_bp = focus_end.saturating_sub(focus_start);
+        let context_width_bp = context_end.saturating_sub(context_start);
+        let outside_focus_width_bp = context_width_bp.saturating_sub(focus_width_bp);
+        let total_tfbs_feature_count = dna
+            .features()
+            .iter()
+            .filter(|feature| Self::is_tfbs_feature(feature))
+            .count();
+
+        let mut grouped: BTreeMap<String, TfbsSummaryAccumulator> = BTreeMap::new();
+        let mut focus_hit_count = 0usize;
+        let mut context_hit_count = 0usize;
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if !Self::is_tfbs_feature(feature) {
+                continue;
+            }
+            let overlaps_context = Self::feature_overlaps_span(feature, context_start, context_end);
+            if !overlaps_context {
+                continue;
+            }
+            let overlaps_focus = Self::feature_overlaps_span(feature, focus_start, focus_end);
+            context_hit_count += 1;
+            if overlaps_focus {
+                focus_hit_count += 1;
+            }
+
+            let tf_name = Self::tfbs_summary_group_name(feature, feature_id);
+            let group_key = tf_name.to_ascii_uppercase();
+            let entry = grouped.entry(group_key).or_default();
+            if entry.tf_name.is_empty() {
+                entry.tf_name = tf_name;
+            }
+            entry.context_occurrences += 1;
+            if overlaps_focus {
+                entry.focus_occurrences += 1;
+            }
+            for tf_id in feature.qualifier_values("tf_id") {
+                let trimmed = tf_id.trim();
+                if !trimmed.is_empty() {
+                    entry.motif_ids.insert(trimmed.to_string());
+                }
+            }
+        }
+
+        let mut rows = grouped
+            .into_values()
+            .filter(|row| {
+                row.focus_occurrences >= request.min_focus_occurrences
+                    && row.context_occurrences >= request.min_context_occurrences
+            })
+            .map(|row| {
+                let outside_focus_occurrences = row
+                    .context_occurrences
+                    .saturating_sub(row.focus_occurrences);
+                let focus_density_per_kb =
+                    row.focus_occurrences as f64 * 1000.0 / focus_width_bp as f64;
+                let context_density_per_kb =
+                    row.context_occurrences as f64 * 1000.0 / context_width_bp as f64;
+                let outside_focus_density_per_kb = if outside_focus_width_bp > 0 {
+                    outside_focus_occurrences as f64 * 1000.0 / outside_focus_width_bp as f64
+                } else {
+                    0.0
+                };
+                let focus_share_of_context_occurrences = if row.context_occurrences > 0 {
+                    row.focus_occurrences as f64 / row.context_occurrences as f64
+                } else {
+                    0.0
+                };
+                TfbsRegionSummaryRow {
+                    tf_name: row.tf_name,
+                    motif_ids: row.motif_ids.into_iter().collect(),
+                    focus_occurrences: row.focus_occurrences,
+                    context_occurrences: row.context_occurrences,
+                    outside_focus_occurrences,
+                    focus_density_per_kb,
+                    context_density_per_kb,
+                    outside_focus_density_per_kb,
+                    focus_share_of_context_occurrences,
+                    focus_vs_context_density_ratio: (context_density_per_kb > 0.0)
+                        .then_some(focus_density_per_kb / context_density_per_kb),
+                    focus_vs_outside_density_ratio: (outside_focus_width_bp > 0
+                        && outside_focus_density_per_kb > 0.0)
+                        .then_some(focus_density_per_kb / outside_focus_density_per_kb),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|a, b| {
+            b.focus_occurrences
+                .cmp(&a.focus_occurrences)
+                .then(b.context_occurrences.cmp(&a.context_occurrences))
+                .then(
+                    b.outside_focus_occurrences
+                        .cmp(&a.outside_focus_occurrences),
+                )
+                .then(
+                    a.tf_name
+                        .to_ascii_uppercase()
+                        .cmp(&b.tf_name.to_ascii_uppercase()),
+                )
+        });
+
+        let matched_tf_count = rows.len();
+        rows.truncate(limit);
+        let returned_tf_count = rows.len();
+
+        Ok(TfbsRegionSummary {
+            schema: TFBS_REGION_SUMMARY_SCHEMA.to_string(),
+            seq_id: request.seq_id,
+            sequence_length_bp,
+            focus_start_0based: focus_start,
+            focus_end_0based_exclusive: focus_end,
+            context_start_0based: context_start,
+            context_end_0based_exclusive: context_end,
+            focus_width_bp,
+            context_width_bp,
+            outside_focus_width_bp,
+            total_tfbs_feature_count,
+            focus_hit_count,
+            context_hit_count,
+            matched_tf_count,
+            returned_tf_count,
+            min_focus_occurrences: request.min_focus_occurrences,
+            min_context_occurrences: request.min_context_occurrences,
+            limit,
+            rows,
+        })
     }
 
     pub fn query_sequence_features(

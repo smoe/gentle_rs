@@ -88,6 +88,52 @@ cargo run --bin gentle_examples_docs -- tutorial-manifest-generate
 cargo run --bin gentle_examples_docs -- tutorial-manifest-check
 ```
 
+## TFBS region summary contract
+
+GENtle now exposes a portable grouped TFBS summary contract for comparing one
+focus window against a wider context window on the same sequence.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]'
+```
+
+Portable schema:
+
+- `gentle.tfbs_region_summary.v1`
+
+Request fields:
+
+- `seq_id`
+- `focus_start_0based`
+- `focus_end_0based_exclusive`
+- optional `context_start_0based`
+- optional `context_end_0based_exclusive`
+- `min_focus_occurrences`
+- `min_context_occurrences`
+- optional `limit`
+
+Result fields:
+
+- sequence/focus/context bounds and widths
+- total TFBS hit counts in the focus and context spans
+- grouped rows keyed by TF name with:
+  - `motif_ids`
+  - `focus_occurrences`
+  - `context_occurrences`
+  - `outside_focus_occurrences`
+  - focus/context/outside densities per kb
+  - focus-vs-context and focus-vs-outside density ratios
+
+Grouping policy:
+
+- prefer `bound_moiety`
+- otherwise `standard_name`
+- otherwise `gene`
+- otherwise `name`
+- otherwise `tf_id`
+
 ## Draft design resources
 
 ### `gentle.gibson_assembly_plan.v1`
@@ -672,6 +718,8 @@ Current draft operations:
   - linear exports honor the current stored linear viewport in `display`
     (`linear_view_start_bp` / `linear_view_span_bp`) when that viewport is a
     proper subsequence crop
+  - single-base `variation` features render as baseline markers in linear SVG
+    output rather than as generic detached feature blocks
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports

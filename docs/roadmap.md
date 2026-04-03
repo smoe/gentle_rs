@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-02
+Last updated: 2026-04-03
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -437,6 +437,9 @@ order. Durable architecture constraints and decisions remain in
   and scripting adapters.
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
+- Shared engine/shell TFBS region summary path now reports grouped factor
+  counts for one focus window versus a wider context window, including
+  outside-focus counts and density ratios for quick SNP-neighborhood triage.
 - Feature expert-view pipeline for selected TFBS, restriction sites, and
   splicing groups, plus curated isoform architecture panels:
   - shared expert payload generation in engine
@@ -721,6 +724,9 @@ order. Durable architecture constraints and decisions remain in
       - that figure/export path now honors stored linear viewport crops, so
         asymmetric context-map workflows render the intended local window
         instead of silently falling back to whole-sequence SVGs
+      - the context-map figure now also includes a focused JASPAR TFBS overlay
+        (`SP1` / `CTCF` / `HNF4A`) and renders the dbSNP marker directly on the
+        DNA baseline for cleaner promoter-context reading
     - planned exact workflow skeleton:
       1. retrieve `VKORC1` from prepared `Human GRCh38 Ensembl 116`
       2. extend the anchored view far enough to include `rs9923231` plus local

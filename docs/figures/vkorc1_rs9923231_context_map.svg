@@ -1,33 +1,82 @@
-<svg height="208" viewBox="0 0 1200 208" width="1200" xmlns="http://www.w3.org/2000/svg">
-<rect fill="#ffffff" height="208" width="1200" x="0" y="0"/>
-<line stroke="#000000" stroke-width="2" x1="60" x2="1140" y1="99" y2="99"/>
-<rect fill="#b4640a" height="10" width="138.50143" x="60" y="142"/>
-<rect fill="#6e6e6e" height="10" width="138.50143" x="60" y="155"/>
-<rect fill="#6e6e6e" height="10" width="361.03748" x="60" y="72"/>
-<rect fill="#b4640a" height="10" width="361.03748" x="60" y="59"/>
-<rect fill="#b4640a" height="10" width="389.04898" x="60" y="116"/>
-<rect fill="#6e6e6e" height="10" width="389.04898" x="60" y="129"/>
-<rect fill="#6e6e6e" height="10" width="1" x="750.1729" y="72"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="163">
+<svg height="224" viewBox="0 0 1200 224" width="1200" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#ffffff" height="224" width="1200" x="0" y="0"/>
+<line stroke="#000000" stroke-width="2" x1="60" x2="1140" y1="115" y2="115"/>
+<rect fill="#b4640a" height="10" width="138.50143" x="60" y="158"/>
+<rect fill="#6e6e6e" height="10" width="138.50143" x="60" y="171"/>
+<rect fill="#6e6e6e" height="10" width="361.03748" x="60" y="88"/>
+<rect fill="#b4640a" height="10" width="361.03748" x="60" y="75"/>
+<rect fill="#b4640a" height="10" width="389.04898" x="60" y="132"/>
+<rect fill="#6e6e6e" height="10" width="389.04898" x="60" y="145"/>
+<rect fill="#238023" height="6" width="11.671471" x="120.69164" y="62"/>
+<rect fill="#238023" height="6" width="10.893372" x="158.04034" y="62"/>
+<rect fill="#238023" height="6" width="11.671478" x="479.3948" y="62"/>
+<rect fill="#238023" height="6" width="10.893372" x="587.5504" y="56"/>
+<rect fill="#238023" height="6" width="11.671448" x="587.5504" y="62"/>
+<rect fill="#238023" height="6" width="11.671509" x="636.5706" y="62"/>
+<rect fill="#238023" height="6" width="7.0028687" x="743.17004" y="62"/>
+<line stroke="#e17f0f" stroke-width="2" x1="750.6729" x2="750.6729" y1="110" y2="120"/>
+<circle cx="750.6729" cy="115" fill="#ffffff" r="2.5" stroke="#e17f0f" stroke-width="1.5"/>
+<rect fill="#238023" height="6" width="10.893372" x="792.1902" y="62"/>
+<rect fill="#238023" height="6" width="11.671448" x="834.9856" y="62"/>
+<rect fill="#238023" height="6" width="10.893433" x="936.1383" y="62"/>
+<rect fill="#238023" height="6" width="10.893372" x="942.3631" y="56"/>
+<rect fill="#238023" height="6" width="10.893433" x="1027.1758" y="62"/>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="179">
 ENST00000420057
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="176">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="192">
 VKORC1
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="67">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="83">
 359..2577
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="54">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="70">
 ENST00000624508
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="137">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="153">
 ENST00000498155
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="150">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="166">
 VKORC1
 </text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="750.1729" y="67">
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="120.69164" y="60">
+CTCF
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="158.04034" y="60">
+HNF4A
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="479.3948" y="60">
+CTCF
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="587.5504" y="54">
+HNF4A
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="587.5504" y="60">
+CTCF
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="636.5706" y="60">
+CTCF
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="743.17004" y="60">
+SP1
+</text>
+<text fill="#111111" font-family="monospace" font-size="9" text-anchor="middle" x="750.6729" y="105">
 rs9923231
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="792.1902" y="60">
+HNF4A
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="834.9856" y="60">
+CTCF
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="936.1383" y="60">
+HNF4A
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="942.3631" y="54">
+HNF4A
+</text>
+<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="1027.1758" y="60">
+HNF4A
 </text>
 <text fill="#111111" font-family="monospace" font-size="16" x="12" y="24">
 vkorc1_rs9923231_context

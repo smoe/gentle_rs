@@ -199,8 +199,9 @@ cargo run --quiet --bin gentle_examples_docs -- \
 `vkorc1_rs9923231_context_map.workflow.json` is the first concrete
 ClawBio-facing genomic-context asset. It resolves dbSNP `rs9923231` against
 prepared `Human GRCh38 Ensembl 116`, extracts `+/- 3000 bp`, keeps full locus
-annotation, hides non-context tracks such as restriction enzymes/GC/ORFs, and
-writes the map-first SVG `vkorc1_rs9923231_context_map.svg`.
+annotation, overlays a focused JASPAR motif panel (`SP1`, `CTCF`, `HNF4A`),
+hides non-context tracks such as restriction enzymes/GC/ORFs, and writes the
+map-first SVG `vkorc1_rs9923231_context_map.svg`.
 
 For legibility, the exported figure is an mRNA-focused asymmetric crop of that
 larger retrieval rather than a full 6 kb viewport:
@@ -210,6 +211,11 @@ larger retrieval rather than a full 6 kb viewport:
   the SNP in this prepared Ensembl 116 context
 - transcript (`mRNA`) features remain visible, while gene-level lanes are
   hidden to reduce redundancy in the exported figure
+- the SNP itself is rendered as a baseline marker on the DNA rather than as a
+  floating feature block
+- the TFBS overlay is intentionally figure-focused rather than exhaustive: it
+  uses a small JASPAR PSSM panel with stricter per-motif thresholds and
+  quantile-based display filtering so the promoter context stays legible
 
 So the retrieval stays tutorial/replay-friendly while the figure itself stays
 focused on the local `VKORC1` regulatory neighborhood.
