@@ -2,10 +2,16 @@
 <rect fill="#ffffff" height="224" width="1200" x="0" y="0"/>
 <line stroke="#000000" stroke-width="2" x1="60" x2="1140" y1="115" y2="115"/>
 <rect fill="#b4640a" height="10" width="138.50143" x="60" y="158"/>
+<line data-gentle-role="linear-transcription-start-tick" stroke="#b4640a" stroke-width="2" x1="198.50143" x2="198.50143" y1="155" y2="171"/>
+<path d="M190.80144,163 L204.80144,158.5 L204.80144,167.5 z" data-gentle-role="linear-transcription-start-arrow" fill="#b4640a" stroke="none"/>
 <rect fill="#6e6e6e" height="10" width="138.50143" x="60" y="171"/>
-<rect fill="#6e6e6e" height="10" width="361.03748" x="60" y="88"/>
-<rect fill="#b4640a" height="10" width="361.03748" x="60" y="75"/>
+<rect fill="#b4640a" height="10" width="361.03748" x="60" y="88"/>
+<line data-gentle-role="linear-transcription-start-tick" stroke="#b4640a" stroke-width="2" x1="60" x2="60" y1="85" y2="101"/>
+<path d="M67.7,93 L53.7,88.5 L53.7,97.5 z" data-gentle-role="linear-transcription-start-arrow" fill="#b4640a" stroke="none"/>
+<rect fill="#6e6e6e" height="10" width="361.03748" x="60" y="75"/>
 <rect fill="#b4640a" height="10" width="389.04898" x="60" y="132"/>
+<line data-gentle-role="linear-transcription-start-tick" stroke="#b4640a" stroke-width="2" x1="449.04898" x2="449.04898" y1="129" y2="145"/>
+<path d="M441.34897,137 L455.34897,132.5 L455.34897,141.5 z" data-gentle-role="linear-transcription-start-arrow" fill="#b4640a" stroke="none"/>
 <rect fill="#6e6e6e" height="10" width="389.04898" x="60" y="145"/>
 <rect fill="#238023" height="6" width="11.671471" x="120.69164" y="62"/>
 <rect fill="#238023" height="6" width="10.893372" x="158.04034" y="62"/>
@@ -22,21 +28,6 @@
 <rect fill="#238023" height="6" width="10.893372" x="942.3631" y="56"/>
 <rect fill="#238023" height="6" width="10.893433" x="1027.1758" y="62"/>
 <text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="179">
-ENST00000420057
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="192">
-VKORC1
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="83">
-359..2577
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="70">
-ENST00000624508
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="153">
-ENST00000498155
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="60" y="166">
 VKORC1
 </text>
 <text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="120.69164" y="60">
@@ -70,9 +61,6 @@ HNF4A
 CTCF
 </text>
 <text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="936.1383" y="60">
-HNF4A
-</text>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="942.3631" y="54">
 HNF4A
 </text>
 <text fill="#111111" font-family="monospace" font-size="10" text-anchor="start" x="1027.1758" y="60">

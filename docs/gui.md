@@ -1483,6 +1483,12 @@ Controls:
      always exporting the full sequence length.
    - Single-base `variation` features are exported as direct DNA-baseline
      markers instead of generic feature blocks on separate lanes.
+   - Linear exports now also add transcription-start ticks/arrows for
+     strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
+     coordinate text that would otherwise clutter figure-oriented exports.
+   - Accession-only transcript labels are demoted in favor of gene-style labels
+     when possible, and nearby repeated non-gene labels are compacted so locus
+     exports read more like figures than raw annotation dumps.
    - In circular mode, the SVG now uses a transparent canvas, renders
      single-base `variation` features as explicit radial markers on the DNA
      ring, and marks transcription starts for strand-bearing `gene`/`mRNA`/`CDS`

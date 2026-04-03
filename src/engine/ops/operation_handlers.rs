@@ -3333,12 +3333,7 @@ impl GentleEngine {
                 to_coordinate,
                 move_block,
             } => {
-                self.move_rack_placement(
-                    &rack_id,
-                    &from_coordinate,
-                    &to_coordinate,
-                    move_block,
-                )?;
+                self.move_rack_placement(&rack_id, &from_coordinate, &to_coordinate, move_block)?;
                 result.messages.push(if move_block {
                     format!(
                         "Moved arrangement block on rack '{}' from '{}' to '{}'",

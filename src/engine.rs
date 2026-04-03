@@ -899,12 +899,8 @@ impl RackProfileSnapshot {
 #[serde(tag = "kind", rename_all = "snake_case")]
 /// Physical occupant placed in one rack coordinate.
 pub enum RackOccupant {
-    Container {
-        container_id: ContainerId,
-    },
-    LadderReference {
-        ladder_name: String,
-    },
+    Container { container_id: ContainerId },
+    LadderReference { ladder_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

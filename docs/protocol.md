@@ -798,6 +798,11 @@ Current draft operations:
     proper subsequence crop
   - single-base `variation` features render as baseline markers in linear SVG
     output rather than as generic detached feature blocks
+  - linear exports now also mark transcription starts/directions for
+    strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
+    coordinate text that would otherwise clutter figure-oriented exports
+  - linear exports also prefer gene-style labels over accession-only transcript
+    ids when possible and compact nearby repeated non-gene labels
   - circular exports now use a transparent canvas and render single-base
     `variation` features as explicit radial markers on the DNA ring
   - circular exports also mark transcription starts for strand-bearing

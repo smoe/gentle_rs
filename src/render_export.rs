@@ -35,6 +35,11 @@ const SVG_TEXT_DESCENT: f32 = 4.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
 const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
 const VARIATION_MARKER_RADIUS: f32 = 2.5;
+const LINEAR_TSS_TICK_HALF_HEIGHT: f32 = 8.0;
+const LINEAR_TSS_ARROW_LENGTH: f32 = 14.0;
+const LINEAR_TSS_ARROW_HALF_HEIGHT: f32 = 4.5;
+const REGULATORY_LABEL_DEDUP_DISTANCE_PX: f32 = 18.0;
+const FEATURE_LABEL_DEDUP_DISTANCE_PX: f32 = 26.0;
 const CIRCULAR_FEATURE_STROKE_WIDTH: f32 = 5.0;
 const CIRCULAR_VARIATION_MARKER_STROKE_WIDTH: f32 = 2.5;
 const CIRCULAR_VARIATION_MARKER_RADIUS: f32 = 4.0;
@@ -55,6 +60,7 @@ struct FeatureVm {
     is_regulatory: bool,
     is_variation: bool,
     has_transcription_direction: bool,
+    is_fallback_label: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -76,21 +82,32 @@ struct LinearExportViewport {
     span_bp: usize,
 }
 
-fn feature_name(feature: &Feature) -> String {
+fn feature_name(feature: &Feature) -> (String, bool) {
+    let kind = feature.kind.to_string().to_ascii_uppercase();
     if is_regulatory_feature(feature) {
         if let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class") {
             let note = feature_qualifier_text(feature, "note");
-            return if let Some(note) = note {
-                format!("{reg_class}: {note}")
-            } else {
-                reg_class
-            };
+            return (
+                if let Some(note) = note {
+                    format!("{reg_class}: {note}")
+                } else {
+                    reg_class
+                },
+                false,
+            );
         }
     }
     if is_tfbs_feature(feature) {
         for key in ["bound_moiety", "standard_name", "name", "tf_id", "label"] {
             if let Some(value) = feature_qualifier_text(feature, key) {
-                return value;
+                return (value, false);
+            }
+        }
+    }
+    if matches!(kind.as_str(), "GENE" | "MRNA" | "CDS") {
+        for key in ["gene", "gene_name", "standard_name", "name", "locus_tag"] {
+            if let Some(value) = feature_qualifier_text(feature, key) {
+                return (value, false);
             }
         }
     }
@@ -99,6 +116,7 @@ fn feature_name(feature: &Feature) -> String {
         "name",
         "standard_name",
         "gene",
+        "gene_name",
         "protein_id",
         "product",
         "region_name",
@@ -107,14 +125,51 @@ fn feature_name(feature: &Feature) -> String {
         if let Some(s) = feature.qualifier_values(k).next() {
             let label_text = s.to_string();
             if !label_text.trim().is_empty() {
-                return label_text;
+                if matches!(kind.as_str(), "GENE" | "MRNA" | "CDS")
+                    && looks_like_accession_label(&label_text)
+                {
+                    return (String::new(), false);
+                }
+                return (label_text, false);
             }
         }
     }
-    match feature.location.find_bounds() {
-        Ok((from, to)) => format!("{from}..{to}"),
-        Err(_) => String::new(),
+    (
+        match feature.location.find_bounds() {
+            Ok((from, to)) => format!("{from}..{to}"),
+            Err(_) => String::new(),
+        },
+        true,
+    )
+}
+
+fn feature_has_visible_export_label(feature: &FeatureVm) -> bool {
+    !feature.label.trim().is_empty() && !feature.is_fallback_label
+}
+
+fn should_skip_nearby_repeated_label(
+    placed_labels: &[(String, f32)],
+    label: &str,
+    x: f32,
+    distance_px: f32,
+) -> bool {
+    placed_labels.iter().any(|(placed_label, placed_x)| {
+        placed_label == label && (placed_x - x).abs() <= distance_px
+    })
+}
+
+fn looks_like_accession_label(label: &str) -> bool {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return false;
     }
+    let upper = trimmed.to_ascii_uppercase();
+    [
+        "ENST", "ENSG", "ENSP", "ENSE", "NM_", "NR_", "XM_", "XR_", "NP_", "XP_", "YP_", "WP_",
+        "NC_", "NG_", "NT_", "NW_", "AP_",
+    ]
+    .iter()
+    .any(|prefix| upper.starts_with(prefix))
 }
 
 fn feature_color(feature: &Feature) -> &'static str {
@@ -537,10 +592,11 @@ fn collect_features(
             continue;
         };
         let is_variation = is_variation_feature(feature);
+        let (label, is_fallback_label) = feature_name(feature);
         ret.push(FeatureVm {
             from,
             to,
-            label: feature_name(feature),
+            label,
             color: feature_color(feature),
             is_gene: kind == "GENE",
             is_reverse: feature_is_reverse(feature),
@@ -548,6 +604,7 @@ fn collect_features(
             is_regulatory: is_regulatory_feature(feature),
             is_variation,
             has_transcription_direction: has_transcription_direction(feature),
+            is_fallback_label,
         });
     }
     ret.sort_by(|a, b| {
@@ -576,6 +633,51 @@ fn lane_allocate(lanes: &mut Vec<f32>, start: f32, end: f32, padding: f32) -> us
     }
     lanes.push(end);
     lanes.len() - 1
+}
+
+fn linear_transcription_direction_glyph(
+    feature: &FeatureVm,
+    viewport: LinearExportViewport,
+    left: f32,
+    right: f32,
+    y: f32,
+) -> (Line, Path) {
+    let tss_pos = if feature.is_reverse {
+        feature.to
+    } else {
+        feature.from
+    };
+    let x = absolute_bp_to_view_x(tss_pos, viewport, left, right);
+    let tick = Line::new()
+        .set("x1", x)
+        .set("y1", y - LINEAR_TSS_TICK_HALF_HEIGHT)
+        .set("x2", x)
+        .set("y2", y + LINEAR_TSS_TICK_HALF_HEIGHT)
+        .set("stroke", feature.color)
+        .set("stroke-width", 2)
+        .set("data-gentle-role", "linear-transcription-start-tick");
+    let (tip_x, base_x) = if feature.is_reverse {
+        (
+            x - LINEAR_TSS_ARROW_LENGTH * 0.55,
+            x + LINEAR_TSS_ARROW_LENGTH * 0.45,
+        )
+    } else {
+        (
+            x + LINEAR_TSS_ARROW_LENGTH * 0.55,
+            x - LINEAR_TSS_ARROW_LENGTH * 0.45,
+        )
+    };
+    let tri = Data::new()
+        .move_to((tip_x, y))
+        .line_to((base_x, y - LINEAR_TSS_ARROW_HALF_HEIGHT))
+        .line_to((base_x, y + LINEAR_TSS_ARROW_HALF_HEIGHT))
+        .close();
+    let arrow = Path::new()
+        .set("d", tri)
+        .set("fill", feature.color)
+        .set("stroke", "none")
+        .set("data-gentle-role", "linear-transcription-start-arrow");
+    (tick, arrow)
 }
 
 fn estimate_text_width(label: &str) -> f32 {
@@ -1021,6 +1123,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let lane_regulatory_top_by_idx = &layout.lane_regulatory_top_by_idx;
             let top_regular_extent = layout.top_regular_extent;
             let regulatory_group_gap = layout.regulatory_group_gap;
+            let mut placed_regulatory_labels: Vec<(String, f32)> = Vec::new();
+            let mut placed_top_feature_labels: Vec<(String, f32)> = Vec::new();
+            let mut placed_bottom_feature_labels: Vec<(String, f32)> = Vec::new();
 
             for (idx, f) in features.iter().enumerate() {
                 let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
@@ -1045,7 +1150,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                             .set("stroke", f.color)
                             .set("stroke-width", 1.5),
                     );
-                    if !f.label.trim().is_empty() {
+                    if feature_has_visible_export_label(f) {
                         labels.push(
                             Text::new(f.label.clone())
                                 .set("x", x)
@@ -1117,7 +1222,14 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                     doc = doc.add(Path::new().set("d", data).set("fill", f.color));
                 }
 
-                if f.label.trim().is_empty() {
+                if f.has_transcription_direction {
+                    let (tick, arrow) =
+                        linear_transcription_direction_glyph(f, viewport, left, right, y);
+                    doc = doc.add(tick);
+                    doc = doc.add(arrow);
+                }
+
+                if !feature_has_visible_export_label(f) {
                     continue;
                 }
                 if f.is_gene {
@@ -1141,6 +1253,31 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 } else {
                     (y - 10.0, "start")
                 };
+                if f.is_regulatory
+                    && should_skip_nearby_repeated_label(
+                        &placed_regulatory_labels,
+                        &f.label,
+                        x1,
+                        REGULATORY_LABEL_DEDUP_DISTANCE_PX,
+                    )
+                {
+                    continue;
+                }
+                if !f.is_regulatory
+                    && !f.is_gene
+                    && should_skip_nearby_repeated_label(
+                        if f.is_reverse {
+                            &placed_bottom_feature_labels
+                        } else {
+                            &placed_top_feature_labels
+                        },
+                        &f.label,
+                        x1,
+                        FEATURE_LABEL_DEDUP_DISTANCE_PX,
+                    )
+                {
+                    continue;
+                }
                 labels.push(
                     Text::new(f.label.clone())
                         .set("x", x1)
@@ -1150,6 +1287,15 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("font-size", 10)
                         .set("fill", "#111111"),
                 );
+                if f.is_regulatory {
+                    placed_regulatory_labels.push((f.label.clone(), x1));
+                } else if !f.is_gene {
+                    if f.is_reverse {
+                        placed_bottom_feature_labels.push((f.label.clone(), x1));
+                    } else {
+                        placed_top_feature_labels.push((f.label.clone(), x1));
+                    }
+                }
             }
         }
     }
@@ -1317,13 +1463,7 @@ fn circular_tangent_unit_vector(
     }
 }
 
-fn circular_radial_unit_vector(
-    pos: usize,
-    len: usize,
-    cx: f32,
-    cy: f32,
-    r: f32,
-) -> (f32, f32) {
+fn circular_radial_unit_vector(pos: usize, len: usize, cx: f32, cy: f32, r: f32) -> (f32, f32) {
     let (x, y) = pos2xy(pos, len, cx, cy, r);
     let dx = x - cx;
     let dy = y - cy;
@@ -1494,15 +1634,17 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("stroke-width", 2)
                         .set("data-gentle-role", "variation-marker-dot"),
                 );
-                doc = doc.add(
-                    Text::new(f.label)
-                        .set("x", label_x)
-                        .set("y", label_y)
-                        .set("text-anchor", "middle")
-                        .set("font-family", "monospace")
-                        .set("font-size", 10)
-                        .set("fill", "#111111"),
-                );
+                if feature_has_visible_export_label(&f) {
+                    doc = doc.add(
+                        Text::new(f.label)
+                            .set("x", label_x)
+                            .set("y", label_y)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 10)
+                            .set("fill", "#111111"),
+                    );
+                }
                 continue;
             }
             if let Some(path_d) = circular_arc_path(f.from, f.to, len, cx, cy, band_radius) {
@@ -1520,22 +1662,10 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 let (tick_x, tick_y) = pos2xy(tss_pos, len, cx, cy, band_radius);
                 doc = doc.add(
                     Line::new()
-                        .set(
-                            "x1",
-                            tick_x - tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH,
-                        )
-                        .set(
-                            "y1",
-                            tick_y - tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH,
-                        )
-                        .set(
-                            "x2",
-                            tick_x + tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH,
-                        )
-                        .set(
-                            "y2",
-                            tick_y + tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH,
-                        )
+                        .set("x1", tick_x - tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH)
+                        .set("y1", tick_y - tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH)
+                        .set("x2", tick_x + tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH)
+                        .set("y2", tick_y + tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH)
                         .set("stroke", f.color)
                         .set("stroke-width", 2)
                         .set("data-gentle-role", "transcription-start-tick"),
@@ -1571,16 +1701,18 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
             } else {
                 band_radius + 18.0
             };
-            let (lx, ly) = pos2xy(mid, len, cx, cy, label_radius.max(0.0));
-            doc = doc.add(
-                Text::new(f.label)
-                    .set("x", lx)
-                    .set("y", ly)
-                    .set("text-anchor", "middle")
-                    .set("font-family", "monospace")
-                    .set("font-size", 10)
-                    .set("fill", "#111111"),
-            );
+            if feature_has_visible_export_label(&f) {
+                let (lx, ly) = pos2xy(mid, len, cx, cy, label_radius.max(0.0));
+                doc = doc.add(
+                    Text::new(f.label)
+                        .set("x", lx)
+                        .set("y", ly)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#111111"),
+                );
+            }
         }
     }
 
@@ -1949,6 +2081,88 @@ mod tests {
         assert!(svg.contains("<circle"));
         assert!(svg.contains("stroke=\"#e17f0f\""));
         assert!(!svg.contains("<rect fill=\"#e17f0f\""));
+    }
+
+    #[test]
+    fn linear_svg_export_marks_transcription_start_and_direction() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("label".into(), Some("luc2".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::Complement(Box::new(Location::simple_range(120, 180))),
+            qualifiers: vec![("label".into(), Some("VKORC1".to_string()))],
+        });
+
+        let svg = export_linear_svg(&dna, &DisplaySettings::default());
+        assert!(
+            svg.matches("data-gentle-role=\"linear-transcription-start-tick\"")
+                .count()
+                >= 2
+        );
+        assert!(
+            svg.matches("data-gentle-role=\"linear-transcription-start-arrow\"")
+                .count()
+                >= 2
+        );
+    }
+
+    #[test]
+    fn linear_svg_export_hides_fallback_coordinate_labels_and_compacts_nearby_tfbs_names() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(120)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(30, 90),
+            qualifiers: vec![],
+        });
+        push_tfbs_feature(&mut dna, "HNF4A", 40, 45, 2.0);
+        push_tfbs_feature(&mut dna, "HNF4A", 42, 47, 2.0);
+
+        let mut display = DisplaySettings::default();
+        display.show_tfbs = true;
+        let svg = export_linear_svg(&dna, &display);
+        assert!(!svg.contains("30..90"));
+        assert_eq!(svg.matches("HNF4A").count(), 1);
+    }
+
+    #[test]
+    fn linear_svg_export_prefers_gene_symbols_over_accession_like_transcript_labels() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(160)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::Complement(Box::new(Location::simple_range(40, 120))),
+            qualifiers: vec![
+                ("label".into(), Some("ENST00000498155".to_string())),
+                ("transcript_id".into(), Some("ENST00000498155".to_string())),
+                ("gene".into(), Some("VKORC1".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::Complement(Box::new(Location::simple_range(44, 118))),
+            qualifiers: vec![
+                ("label".into(), Some("ENST00000420057".to_string())),
+                ("transcript_id".into(), Some("ENST00000420057".to_string())),
+                ("gene".into(), Some("VKORC1".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(10, 70),
+            qualifiers: vec![
+                ("label".into(), Some("ENST00000624508".to_string())),
+                ("transcript_id".into(), Some("ENST00000624508".to_string())),
+            ],
+        });
+
+        let svg = export_linear_svg(&dna, &DisplaySettings::default());
+        assert_eq!(svg.matches("VKORC1").count(), 1);
+        assert!(!svg.contains("ENST00000498155"));
+        assert!(!svg.contains("ENST00000420057"));
+        assert!(!svg.contains("ENST00000624508"));
     }
 
     #[test]

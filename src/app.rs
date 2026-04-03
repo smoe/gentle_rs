@@ -69,11 +69,10 @@ use crate::{
         GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState, Rack,
-        RackOccupant, RackProfileKind,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode, RestrictionEnzymeDisplayMode,
-        RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackOccupant, RackProfileKind, RenderSvgMode,
+        RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
@@ -6670,16 +6669,12 @@ Error: `{err}`"
             });
         match result {
             Ok(op_result) => {
-                self.app_status = op_result
-                    .messages
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        format!(
-                            "Created default rack draft for arrangement '{}'",
-                            arrangement_id.trim()
-                        )
-                    });
+                self.app_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    format!(
+                        "Created default rack draft for arrangement '{}'",
+                        arrangement_id.trim()
+                    )
+                });
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
                 self.arrangement_default_rack_id_from_state(arrangement_id)
@@ -6770,9 +6765,7 @@ Error: `{err}`"
             .cloned()
     }
 
-    fn rack_sorted_entries(
-        rack: &Rack,
-    ) -> Vec<(usize, String, crate::engine::RackPlacementEntry)> {
+    fn rack_sorted_entries(rack: &Rack) -> Vec<(usize, String, crate::engine::RackPlacementEntry)> {
         let mut out = rack
             .placements
             .iter()
@@ -6806,16 +6799,11 @@ Error: `{err}`"
             } => match drop_target {
                 Some(target) => format!(
                     "Dragging sample '{}' from {} in arrangement '{}' to {}. Release to shift neighboring slots.",
-                    role_label,
-                    from_coordinate,
-                    arrangement_id,
-                    target
+                    role_label, from_coordinate, arrangement_id, target
                 ),
                 None => format!(
                     "Dragging sample '{}' from {} in arrangement '{}'. Hover a rack slot and release to shift neighboring slots.",
-                    role_label,
-                    from_coordinate,
-                    arrangement_id
+                    role_label, from_coordinate, arrangement_id
                 ),
             },
             RackDragState::ArrangementBlock {
@@ -6824,14 +6812,11 @@ Error: `{err}`"
             } => match drop_target {
                 Some(target) => format!(
                     "Dragging arrangement block '{}' from {} to {}. Release to move the whole block and shift later occupied slots.",
-                    arrangement_id,
-                    from_coordinate,
-                    target
+                    arrangement_id, from_coordinate, target
                 ),
                 None => format!(
                     "Dragging arrangement block '{}' from {}. Hover a rack slot and release to move the whole block.",
-                    arrangement_id,
-                    from_coordinate
+                    arrangement_id, from_coordinate
                 ),
             },
         }
@@ -6845,13 +6830,13 @@ Error: `{err}`"
         move_block: bool,
     ) {
         if from_coordinate.trim().is_empty() || to_coordinate.trim().is_empty() {
-            self.rack_view_status = "Rack move requires both a source and target coordinate."
-                .to_string();
+            self.rack_view_status =
+                "Rack move requires both a source and target coordinate.".to_string();
             return;
         }
         if from_coordinate.trim() == to_coordinate.trim() {
-            self.rack_view_status = "Rack move canceled because the source and target are the same slot."
-                .to_string();
+            self.rack_view_status =
+                "Rack move canceled because the source and target are the same slot.".to_string();
             return;
         }
         let result = self
@@ -6866,17 +6851,13 @@ Error: `{err}`"
             });
         match result {
             Ok(op_result) => {
-                self.rack_view_status = op_result
-                    .messages
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        if move_block {
-                            "Moved arrangement block".to_string()
-                        } else {
-                            "Moved sample on rack".to_string()
-                        }
-                    });
+                self.rack_view_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    if move_block {
+                        "Moved arrangement block".to_string()
+                    } else {
+                        "Moved sample on rack".to_string()
+                    }
+                });
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
             }
@@ -7204,7 +7185,9 @@ Error: `{err}`"
                             self.apply_rack_move(&rack.rack_id, &from_coordinate, target, false);
                         }
                     }
-                    RackDragState::ArrangementBlock { from_coordinate, .. } => {
+                    RackDragState::ArrangementBlock {
+                        from_coordinate, ..
+                    } => {
                         if let Some(target) = drop_target_coordinate.as_deref() {
                             self.apply_rack_move(&rack.rack_id, &from_coordinate, target, true);
                         }
@@ -7238,11 +7221,10 @@ Error: `{err}`"
                             arrangement_id: None,
                         }) {
                         Ok(op_result) => {
-                            self.rack_view_status = op_result
-                                .messages
-                                .first()
-                                .cloned()
-                                .unwrap_or_else(|| format!("Wrote rack labels SVG to '{path_text}'"));
+                            self.rack_view_status =
+                                op_result.messages.first().cloned().unwrap_or_else(|| {
+                                    format!("Wrote rack labels SVG to '{path_text}'")
+                                });
                         }
                         Err(err) => {
                             self.rack_view_status =
@@ -7279,22 +7261,20 @@ Error: `{err}`"
                     .resizable(true)
                     .default_size(Vec2::new(1000.0, 760.0))
                     .show(ctx, |ui| {
-                        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                            close_requested = self.render_rack_contents(ui);
-                        });
+                        egui::ScrollArea::both()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self.render_rack_contents(ui);
+                            });
                     });
                 if close_requested {
                     open = false;
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default(),
-                    |ui| {
-                        close_requested = self.render_rack_contents(ui);
-                    },
-                );
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    close_requested = self.render_rack_contents(ui);
+                });
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -7326,22 +7306,18 @@ Error: `{err}`"
             return;
         }
         let result = {
-            self
-            .engine
-            .write()
-            .unwrap()
-            .apply(Operation::PlaceArrangementOnRack {
-                arrangement_id: arrangement_id.clone(),
-                rack_id: rack_id.clone(),
-            })
+            self.engine
+                .write()
+                .unwrap()
+                .apply(Operation::PlaceArrangementOnRack {
+                    arrangement_id: arrangement_id.clone(),
+                    rack_id: rack_id.clone(),
+                })
         };
         match result {
             Ok(op_result) => {
-                self.place_arrangement_status = op_result
-                    .messages
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| {
+                self.place_arrangement_status =
+                    op_result.messages.first().cloned().unwrap_or_else(|| {
                         format!("Placed arrangement '{}' onto '{}'", arrangement_id, rack_id)
                     });
                 self.lineage_cache_valid = false;
@@ -34876,9 +34852,8 @@ mod tests {
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
         PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery, PrepareGenomeUiStepStatus,
         PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
-        RackDragState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RetryCleanupAuditActionFilter,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
@@ -39029,9 +39004,10 @@ mod tests {
     #[test]
     fn open_arrangement_rack_dialog_materializes_default_rack_for_legacy_arrangement() {
         let mut state = ProjectState::default();
-        state
-            .sequences
-            .insert("seq_a".to_string(), DNAsequence::from_sequence("ATGCATGC").unwrap());
+        state.sequences.insert(
+            "seq_a".to_string(),
+            DNAsequence::from_sequence("ATGCATGC").unwrap(),
+        );
         state.container_state.containers.insert(
             "container-1".to_string(),
             Container {

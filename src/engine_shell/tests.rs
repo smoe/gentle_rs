@@ -12,8 +12,8 @@
 use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackOccupant,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackOccupant, RackPlacementEntry,
+    RackProfileKind, RackProfileSnapshot,
 };
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
@@ -1260,8 +1260,8 @@ fn parse_racks_create_from_arrangement_command() {
 
 #[test]
 fn parse_racks_move_command() {
-    let cmd = parse_shell_line("racks move rack-1 --from A1 --to B2 --block")
-        .expect("parse command");
+    let cmd =
+        parse_shell_line("racks move rack-1 --from A1 --to B2 --block").expect("parse command");
     match cmd {
         ShellCommand::RacksMove {
             rack_id,

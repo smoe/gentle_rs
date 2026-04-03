@@ -6281,10 +6281,12 @@ fn create_arrangement_serial_auto_creates_default_rack_small_tube() {
             ladders: Some(vec!["NEB 100bp DNA Ladder".to_string()]),
         })
         .expect("create arrangement");
-    assert!(result
-        .messages
-        .iter()
-        .any(|message| message.contains("Created serial arrangement 'arr-rack'")));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("Created serial arrangement 'arr-rack'"))
+    );
     let arrangement = engine
         .state()
         .container_state
@@ -6336,9 +6338,7 @@ fn create_rack_profile_selection_picks_96_then_384() {
             arrangement_id: "arr-96".to_string(),
             mode: ArrangementMode::Serial,
             name: Some("Needs 96".to_string()),
-            lane_container_ids: (1..=25)
-                .map(|idx| format!("container-{idx}"))
-                .collect(),
+            lane_container_ids: (1..=25).map(|idx| format!("container-{idx}")).collect(),
             ladders: vec![],
             lane_role_labels: (1..=25).map(|idx| format!("lane_{idx}")).collect(),
             default_rack_id: None,
@@ -6352,9 +6352,7 @@ fn create_rack_profile_selection_picks_96_then_384() {
             arrangement_id: "arr-384".to_string(),
             mode: ArrangementMode::Serial,
             name: Some("Needs 384".to_string()),
-            lane_container_ids: (1..=97)
-                .map(|idx| format!("container-{idx}"))
-                .collect(),
+            lane_container_ids: (1..=97).map(|idx| format!("container-{idx}")).collect(),
             ladders: vec![],
             lane_role_labels: (1..=97).map(|idx| format!("lane_{idx}")).collect(),
             default_rack_id: None,
@@ -6371,7 +6369,12 @@ fn create_rack_profile_selection_picks_96_then_384() {
             profile: None,
         })
         .expect("create rack 96");
-    assert!(rack_96.messages.iter().any(|message| message.contains("rack-96")));
+    assert!(
+        rack_96
+            .messages
+            .iter()
+            .any(|message| message.contains("rack-96"))
+    );
     assert_eq!(
         engine
             .state()

@@ -740,6 +740,12 @@ order. Durable architecture constraints and decisions remain in
         transparent canvas, explicit radial SNP markers for `variation`
         features, and transcription-start direction markers for
         strand-bearing `gene`/`mRNA`/`CDS` arcs
+      - shared linear SVG export now also contributes directly to the genomic
+        context side of the story: transcription-start direction markers are
+        rendered there too, fallback coordinate labels are suppressed,
+        accession-only transcript labels are demoted in favor of gene-style
+        names when possible, and nearby duplicate labels are compacted for
+        cleaner figure output
       - it is intended to replace TP73 as the showcase opener for reporter
         design while keeping the TP73 tutorial as a GUI/CLI parity reference
       - that figure/export path now honors stored linear viewport crops, so

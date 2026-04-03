@@ -186,7 +186,9 @@ impl GentleEngine {
         }
     }
 
-    fn choose_smallest_rack_profile_for_slots(slot_count: usize) -> Result<RackProfileKind, EngineError> {
+    fn choose_smallest_rack_profile_for_slots(
+        slot_count: usize,
+    ) -> Result<RackProfileKind, EngineError> {
         for kind in [
             RackProfileKind::SmallTube4x6,
             RackProfileKind::Plate96,
@@ -408,7 +410,11 @@ impl GentleEngine {
             lane_container_ids,
             ladders: Self::normalize_serial_gel_ladders_owned(ladders),
             lane_role_labels: Self::normalize_arrangement_lane_role_labels(
-                &container_ids.iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect::<Vec<_>>(),
+                &container_ids
+                    .iter()
+                    .map(|id| id.trim().to_string())
+                    .filter(|id| !id.is_empty())
+                    .collect::<Vec<_>>(),
                 lane_role_labels,
             ),
             default_rack_id: None,
@@ -419,9 +425,14 @@ impl GentleEngine {
             .container_state
             .arrangements
             .insert(arrangement_id.clone(), arrangement);
-        if let Err(err) =
-            self.create_rack_from_arrangement(&arrangement_id, None, None, None, created_by_op, true)
-        {
+        if let Err(err) = self.create_rack_from_arrangement(
+            &arrangement_id,
+            None,
+            None,
+            None,
+            created_by_op,
+            true,
+        ) {
             self.state
                 .container_state
                 .arrangements
@@ -503,9 +514,10 @@ impl GentleEngine {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .or_else(|| {
-                arrangement.name.as_ref().map(|name| {
-                    format!("Rack draft: {}", name.trim())
-                })
+                arrangement
+                    .name
+                    .as_ref()
+                    .map(|name| format!("Rack draft: {}", name.trim()))
             })
             .unwrap_or_else(|| format!("Rack draft: {arrangement_id}"));
         self.state.container_state.racks.insert(
@@ -520,7 +532,11 @@ impl GentleEngine {
             },
         );
         if set_as_default {
-            if let Some(arrangement) = self.state.container_state.arrangements.get_mut(arrangement_id)
+            if let Some(arrangement) = self
+                .state
+                .container_state
+                .arrangements
+                .get_mut(arrangement_id)
             {
                 arrangement.default_rack_id = Some(rack_id.clone());
             }
@@ -586,7 +602,12 @@ impl GentleEngine {
                 role_label,
             });
         }
-        if let Some(arrangement) = self.state.container_state.arrangements.get_mut(arrangement_id) {
+        if let Some(arrangement) = self
+            .state
+            .container_state
+            .arrangements
+            .get_mut(arrangement_id)
+        {
             arrangement
                 .default_rack_id
                 .get_or_insert_with(|| rack_id.to_string());
@@ -787,7 +808,9 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
             })?;
-        let arrangement_filter = arrangement_id.map(str::trim).filter(|value| !value.is_empty());
+        let arrangement_filter = arrangement_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let rows = self
             .sorted_rack_placements(rack)?
             .into_iter()
@@ -817,9 +840,7 @@ impl GentleEngine {
         let mut svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width}\" height=\"{svg_height}\" viewBox=\"0 0 {svg_width} {svg_height}\">"
         );
-        svg.push_str(
-            "<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>",
-        );
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
         for (idx, entry) in rows.iter().enumerate() {
             let col = idx % columns;
             let row = idx / columns;
@@ -832,14 +853,23 @@ impl GentleEngine {
             match entry.occupant.as_ref() {
                 Some(RackOccupant::Container { container_id }) => {
                     lines.push(format!("container: {container_id}"));
-                    if let Some(container) = self.state.container_state.containers.get(container_id) {
-                        if let Some(name) = container.name.as_ref().filter(|name| !name.trim().is_empty()) {
+                    if let Some(container) = self.state.container_state.containers.get(container_id)
+                    {
+                        if let Some(name) = container
+                            .name
+                            .as_ref()
+                            .filter(|name| !name.trim().is_empty())
+                        {
                             lines.push(name.clone());
                         }
                         if let Some(seq_id) = container.members.first() {
                             lines.push(format!("seq: {seq_id}"));
                             if let Some(dna) = self.state.sequences.get(seq_id) {
-                                let topology = if dna.is_circular() { "circular" } else { "linear" };
+                                let topology = if dna.is_circular() {
+                                    "circular"
+                                } else {
+                                    "linear"
+                                };
                                 lines.push(format!("{} bp | {}", dna.len(), topology));
                             }
                         }
@@ -853,7 +883,12 @@ impl GentleEngine {
                 }
                 None => lines.push("empty".to_string()),
             }
-            if let Some(arrangement) = self.state.container_state.arrangements.get(&entry.arrangement_id) {
+            if let Some(arrangement) = self
+                .state
+                .container_state
+                .arrangements
+                .get(&entry.arrangement_id)
+            {
                 lines.push(format!(
                     "arrangement: {}",
                     arrangement

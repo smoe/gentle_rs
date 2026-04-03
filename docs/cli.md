@@ -1409,6 +1409,12 @@ Rendering export commands:
     so workflow-driven `SetLinearViewport` crops carry through into the SVG.
   - Single-base `variation` features render as DNA-baseline markers, which is
     useful for dbSNP-driven context figures.
+  - Linear exports now also add transcription-start ticks/arrows for
+    strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
+    coordinate labels that would otherwise clutter figure exports.
+  - When transcript/gene features only carry accession-like ids, exports now
+    prefer gene-style labels when available and suppress redundant nearby
+    duplicates for cleaner communication figures.
   - Circular exports now use a transparent canvas, show single-base
     `variation` features as radial DNA-ring markers, and add transcription-start
     ticks/arrows for strand-bearing `gene`/`mRNA`/`CDS` features.

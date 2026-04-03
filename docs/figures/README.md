@@ -211,6 +211,9 @@ larger retrieval rather than a full 6 kb viewport:
   the SNP in this prepared Ensembl 116 context
 - transcript (`mRNA`) features remain visible, while gene-level lanes are
   hidden to reduce redundancy in the exported figure
+- export-time label pruning now prefers gene-style names over raw accession
+  labels where possible and compacts nearby repeats so the context figure reads
+  as a communication asset instead of an annotation dump
 - the SNP itself is rendered as a baseline marker on the DNA rather than as a
   floating feature block
 - the TFBS overlay is intentionally figure-focused rather than exhaustive: it
@@ -262,8 +265,8 @@ hero figure for the same story. It is now a hybrid asset:
 Its job is to show, in one panel, that:
 
 - `VKORC1` must be read on the reverse strand
-- the study fragment runs from the `VKORC1` `5'` boundary through
-  `rs9923231` and keeps `200 bp` of local context beyond the SNP
+- the study fragment should be a TSS-centered reverse-strand `VKORC1` promoter
+  window that keeps `rs9923231` inside the insert rather than on its edge
 - matched reporter builds differ only at the SNP allele
 - that fragment is placed upstream of luciferase for the follow-up assay
 
@@ -288,9 +291,9 @@ cargo run --quiet --bin gentle_examples_docs -- \
 ```
 
 The current construct source deliberately keeps `rs9923231` inside the cloned
-insert rather than on its exact edge (`+200 bp` right-side context) and flips
-`bla` onto the opposite strand so the circular export can demonstrate the new
-transcription-start/direction markers clearly.
+insert rather than on its exact edge, and flips `bla` onto the opposite strand
+so the circular export can demonstrate the transcription-start/direction
+markers clearly.
 
 ## Planned VKORC1/rs9923231 PGx-Alert-to-Construct Showcase
 

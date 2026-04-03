@@ -41,12 +41,11 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RackOccupant, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        RackOccupant, RackProfileKind,
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
         SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
         SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
@@ -4714,7 +4713,11 @@ impl ShellCommand {
                 move_block,
             } => format!(
                 "move {} on rack '{}' from '{}' to '{}'",
-                if *move_block { "arrangement block" } else { "sample" },
+                if *move_block {
+                    "arrangement block"
+                } else {
+                    "sample"
+                },
                 rack_id.trim(),
                 from_coordinate.trim(),
                 to_coordinate.trim()
@@ -7756,9 +7759,7 @@ fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String
 
 fn parse_rack_profile_kind(value: &str) -> Result<RackProfileKind, String> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "small_tube_4x6" | "tube" | "rack" | "4x6" | "tube4x6" => {
-            Ok(RackProfileKind::SmallTube4x6)
-        }
+        "small_tube_4x6" | "tube" | "rack" | "4x6" | "tube4x6" => Ok(RackProfileKind::SmallTube4x6),
         "plate_96" | "96" | "plate96" | "p96" => Ok(RackProfileKind::Plate96),
         "plate_384" | "384" | "plate384" | "p384" => Ok(RackProfileKind::Plate384),
         other => Err(format!(
@@ -10598,8 +10599,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let arrangement_id = tokens[2].trim().to_string();
                     if arrangement_id.is_empty() {
                         return Err(
-                            "racks create-from-arrangement requires a non-empty ARR_ID"
-                                .to_string(),
+                            "racks create-from-arrangement requires a non-empty ARR_ID".to_string()
                         );
                     }
                     let mut rack_id: Option<String> = None;
@@ -10652,13 +10652,13 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "place-arrangement" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "racks place-arrangement requires ARR_ID --rack RACK_ID".to_string(),
+                            "racks place-arrangement requires ARR_ID --rack RACK_ID".to_string()
                         );
                     }
                     let arrangement_id = tokens[2].trim().to_string();
                     if arrangement_id.is_empty() {
                         return Err(
-                            "racks place-arrangement requires a non-empty ARR_ID".to_string(),
+                            "racks place-arrangement requires a non-empty ARR_ID".to_string()
                         );
                     }
                     let mut rack_id = String::new();
@@ -10680,9 +10680,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                     }
                     if rack_id.is_empty() {
-                        return Err(
-                            "racks place-arrangement requires --rack RACK_ID".to_string(),
-                        );
+                        return Err("racks place-arrangement requires --rack RACK_ID".to_string());
                     }
                     Ok(ShellCommand::RacksPlaceArrangement {
                         arrangement_id,
@@ -10692,8 +10690,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "move" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "racks move requires RACK_ID --from A1 --to B1 [--block]"
-                                .to_string(),
+                            "racks move requires RACK_ID --from A1 --to B1 [--block]".to_string()
                         );
                     }
                     let rack_id = tokens[2].trim().to_string();
@@ -10731,7 +10728,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     if from_coordinate.is_empty() || to_coordinate.is_empty() {
                         return Err(
-                            "racks move requires both --from COORD and --to COORD".to_string(),
+                            "racks move requires both --from COORD and --to COORD".to_string()
                         );
                     }
                     Ok(ShellCommand::RacksMove {
@@ -10764,9 +10761,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let output = tokens[3].trim().to_string();
                     if output.is_empty() {
-                        return Err(
-                            "racks labels-svg requires a non-empty OUTPUT.svg".to_string(),
-                        );
+                        return Err("racks labels-svg requires a non-empty OUTPUT.svg".to_string());
                     }
                     let mut arrangement_id: Option<String> = None;
                     let mut idx = 4usize;
@@ -10797,9 +10792,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "set-profile" => {
                     if tokens.len() != 4 {
-                        return Err(
-                            "racks set-profile requires RACK_ID PROFILE".to_string(),
-                        );
+                        return Err("racks set-profile requires RACK_ID PROFILE".to_string());
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
@@ -13236,11 +13229,8 @@ fn execute_shell_command_with_options_inner(
                 .map(|entry| {
                     let occupant = match entry.occupant.as_ref() {
                         Some(RackOccupant::Container { container_id }) => {
-                            let container = engine
-                                .state()
-                                .container_state
-                                .containers
-                                .get(container_id);
+                            let container =
+                                engine.state().container_state.containers.get(container_id);
                             let seq_id = container.and_then(|row| row.members.first()).cloned();
                             json!({
                                 "kind": "container",
