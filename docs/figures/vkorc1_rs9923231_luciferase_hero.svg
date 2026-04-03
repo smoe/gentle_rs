@@ -11,9 +11,6 @@
     <marker id="arrowHead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
       <path d="M 0 0 L 12 6 L 0 12 z" fill="#33424f"/>
     </marker>
-    <clipPath id="constructClip">
-      <rect x="850" y="308" width="674" height="414" rx="24"/>
-    </clipPath>
     <style>
       text {
         font-family: "Helvetica Neue", Arial, sans-serif;
@@ -73,8 +70,12 @@
       .transcriptAlt {
         fill: #8cb2f0;
       }
+      .transcriptArrow {
+        stroke: none;
+      }
       .insert {
         fill: #43aaa1;
+        fill-opacity: 0.88;
       }
       .insertLabel {
         font-size: 18px;
@@ -105,7 +106,7 @@
   </defs>
 
   <rect x="0" y="0" width="1600" height="920" fill="url(#bg)"/>
-  <rect x="56" y="50" width="318" height="36" rx="18" fill="#f0dfbf"/>
+  <rect x="56" y="50" width="430" height="36" rx="18" fill="#f0dfbf"/>
   <text x="78" y="74" class="kicker">ClawBio alert to GENtle reporter design</text>
   <text x="60" y="128" class="title">VKORC1 upstream fragment to luciferase reporter</text>
   <text x="60" y="162" class="subtitle">Use a reverse-strand VKORC1 promoter fragment that keeps rs9923231 inside the insert, then inspect the cloned reporter as a real GENtle map.</text>
@@ -114,64 +115,89 @@
     <rect class="panel" width="690" height="640"/>
     <circle cx="44" cy="48" r="22" class="badge"/>
     <text x="44" y="48" class="badgeText">1</text>
-    <text x="84" y="56" class="panelTitle">Select a TSS-centered VKORC1 fragment at the locus</text>
-    <text x="36" y="102" class="body">VKORC1 is on the reverse strand, so upstream promoter context lies to the right.</text>
-    <text x="36" y="126" class="body">The transcript itself runs right to left.</text>
+    <text x="84" y="52" class="panelTitle" font-size="22">Isolation of promoter region of VKORC1</text>
+    <text x="84" y="82" class="panelTitle" font-size="22">entailing the Warfarin-sensitivity locus</text>
+    <text x="36" y="138" class="body">Reverse-strand promoter context lies right of the TSS.</text>
 
-    <text x="36" y="156" class="small">Local GRCh38 view around rs9923231</text>
-    <text x="36" y="178" class="small">31,094,600</text>
-    <text x="560" y="178" class="small">31,096,600</text>
-    <line x1="72" y1="250" x2="612" y2="250" class="axis"/>
-    <text x="72" y="282" class="small">genomic coordinates increase to the right</text>
+    <text x="36" y="188" class="small">Local GRCh38 view around rs9923231</text>
+    <g transform="translate(0,28)">
+      <text x="140" y="298" class="small">31,094,600</text>
+      <text x="570" y="298" class="small" text-anchor="end">31,096,600</text>
+      <text x="392" y="244" class="small" text-anchor="middle">Chromosome 16</text>
+      <line x1="140" y1="270" x2="570" y2="270" class="axis"/>
 
-    <rect x="124" y="226" width="176" height="24" rx="12" class="transcriptAlt"/>
-    <rect x="124" y="296" width="228" height="28" rx="14" class="transcript"/>
-    <rect x="124" y="344" width="150" height="24" rx="12" class="transcriptAlt"/>
-    <text x="134" y="222" class="small">reverse-strand VKORC1 transcript context</text>
-    <text x="190" y="314" font-size="18" font-weight="700" fill="#ffffff">VKORC1</text>
-    <text x="132" y="390" class="small">Transcription runs right to left</text>
-    <path d="M 342 312 L 284 312" class="connector"/>
+      <path d="M176 214 H286 L304 226 L286 238 H176 Q164 238 164 226 Q164 214 176 214 Z" class="transcriptAlt transcriptArrow"/>
+      <text x="236" y="192" class="small" text-anchor="middle">LOC124903680</text>
 
-    <rect x="300" y="286" width="246" height="48" rx="20" class="insert"/>
-    <text x="324" y="315" class="insertLabel">clone this window</text>
-    <text x="324" y="338" class="small">VKORC1 TSS context + rs9923231</text>
+      <path d="M160 340 L178 326 H316 Q330 326 330 340 Q330 354 316 354 H178 Z" class="transcript transcriptArrow"/>
+      <text x="244" y="344" font-size="18" font-weight="700" fill="#ffffff">VKORC1</text>
 
-    <rect x="548" y="300" width="42" height="20" rx="10" class="muted"/>
-    <text x="474" y="362" class="small">keep additional upstream context beyond the SNP</text>
+      <rect x="330" y="320" width="214" height="40" rx="18" class="insert"/>
+      <text x="356" y="346" class="insertLabel">source interval</text>
+      <text x="350" y="386" class="small">selected genomic coordinates</text>
 
-    <line x1="300" y1="204" x2="300" y2="368" stroke="#8fa3b5" stroke-width="3" stroke-dasharray="8 7"/>
-    <text x="222" y="196" class="small">VKORC1 TSS neighborhood</text>
+      <rect x="548" y="330" width="22" height="20" rx="10" class="muted"/>
+      <text x="452" y="406" class="small">keep 500 bp beyond rs9923231</text>
 
-    <line x1="470" y1="198" x2="470" y2="286" stroke="#ef8f2f" stroke-width="5"/>
-    <circle cx="470" cy="182" r="14" class="snp"/>
-    <text x="430" y="150" class="body">rs9923231</text>
+      <line x1="330" y1="220" x2="330" y2="404" stroke="#8fa3b5" stroke-width="3" stroke-dasharray="8 7"/>
+      <text x="330" y="206" class="small" text-anchor="middle">VKORC1 TSS</text>
 
-    <rect x="36" y="456" width="618" height="108" class="callout"/>
+      <line x1="468" y1="224" x2="468" y2="316" stroke="#ef8f2f" stroke-width="5"/>
+      <circle cx="468" cy="208" r="14" class="snp"/>
+      <text x="426" y="182" class="body">rs9923231</text>
+    </g>
+
+    <rect x="36" y="456" width="618" height="122" class="callout"/>
     <text x="60" y="492" class="body">Figure rule for the default reporter insert</text>
     <text x="60" y="524" class="small">1. Keep a little transcribed VKORC1 context near the TSS.</text>
     <text x="60" y="548" class="small">2. Keep rs9923231 inside the insert, not at the edge.</text>
     <text x="60" y="572" class="small">3. After cloning, compare allele-matched luciferase reporters.</text>
 
-    <rect x="36" y="592" width="618" height="28" rx="14" fill="#e7efe9"/>
-    <text x="56" y="611" class="small">Left panel stays schematic so the selection logic reads cleanly.</text>
+    <rect x="36" y="604" width="618" height="28" rx="14" fill="#e7efe9"/>
+    <text x="56" y="623" class="small">Left panel stays schematic so the selection logic reads cleanly.</text>
   </g>
 
-  <path d="M 770 530 C 800 530 810 530 832 530" class="connector"/>
+  <path d="M 758 530 C 772 530 786 530 800 530" class="connector"/>
 
   <g transform="translate(810,210)">
     <rect class="panel" width="730" height="640"/>
     <circle cx="44" cy="48" r="22" class="badge"/>
     <text x="44" y="48" class="badgeText">2</text>
-    <text x="84" y="56" class="panelTitle">Inspect the cloned reporter as a real GENtle map</text>
-    <text x="36" y="102" class="body">The right panel is a real GENtle circular export.</text>
-    <text x="36" y="126" class="body">That keeps the figure aligned with the actual tool output.</text>
+    <text x="84" y="56" class="panelTitle">GENtle derives parameters for functional studies</text>
+    <text x="36" y="102" class="body">Luciferase reports promoter output as light.</text>
+    <text x="36" y="126" class="body">Stronger transcription makes more luciferase enzyme and a brighter assay signal.</text>
 
-    <rect x="28" y="152" width="674" height="560" rx="26" fill="#ffffff" stroke="#e2d6c4" stroke-width="1.5"/>
+    <rect x="28" y="152" width="674" height="452" rx="26" fill="#ffffff" stroke="#e2d6c4" stroke-width="1.5"/>
   </g>
 
-  <g clip-path="url(#constructClip)">
-    <image href="vkorc1_rs9923231_luciferase_construct.png" x="622" y="238" width="1040" height="607" preserveAspectRatio="xMidYMid meet"/>
-  </g>
+  <svg x="840" y="378" width="674" height="393" viewBox="0 0 1200 700">
+    <text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">VKRSLUC1</text>
+    <text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">4952 bp</text>
+    <circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+    <path d="M 672.000 107.831 A 256.169 256.169 0 0 1 859.459 538.591" fill="none" stroke="#43aaa1" stroke-width="6"/>
+    <line x1="940" y1="422" x2="1002" y2="422" stroke="#43aaa1" stroke-width="3" stroke-linecap="round"/>
+    <text fill="#43aaa1" font-family="Helvetica Neue, Arial, sans-serif" font-size="26" font-weight="700" text-anchor="start" x="1014" y="430">Insert</text>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="926.9931" y="252.83934">VKORC1 promoter insert</text>
+    <line data-gentle-role="variation-marker-line" stroke="#e17f0f" stroke-width="2.5" x1="782.07764" x2="798.47217" y1="176.82974" y2="148.95332"/>
+    <circle cx="798.47217" cy="148.95332" data-gentle-role="variation-marker-dot" fill="#ffffff" r="4" stroke="#e17f0f" stroke-width="2"/>
+    <line x1="818" y1="126" x2="874" y2="102" stroke="#e17f0f" stroke-width="3" stroke-linecap="round"/>
+    <text fill="#e17f0f" font-family="Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" text-anchor="start" x="888" y="108">Variation</text>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="809.62494" y="129.98976">rs9923231</text>
+    <path d="M 859.955 539.053 A 256.847 256.847 0 0 1 425.919 437.584" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+    <path d="M859.9548,539.05286 L867.2725,545.8683 L862.771,550.6949" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    <path d="M861.5433,552.0112 L869.38116,549.47205 L863.5269,544.01965 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+    <line x1="612" y1="632" x2="612" y2="664" stroke="#cc1f1f" stroke-width="3" stroke-linecap="round"/>
+    <text fill="#cc1f1f" font-family="Helvetica Neue, Arial, sans-serif" font-size="28" font-weight="700" text-anchor="middle" x="612" y="692">Luciferase</text>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="608.5225" y="635.526">luc2</text>
+    <path d="M 418.122 432.257 A 262.893 262.893 0 0 1 410.974 395.281" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="392.31952" y="418.2498">SV40 polyA</text>
+    <path d="M 470.064 370.408 A 202.038 202.038 0 0 1 573.358 187.679" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+    <path d="M573.3584,187.6791 L568.4761,178.95197 L562.71814,182.17784" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    <path d="M561.1478,183.05762 L565.47626,176.04764 L569.38214,183.02933 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="515.2145" y="275.5021">bla</text>
+    <path d="M 567.576 123.628 A 262.074 262.074 0 0 1 671.667 101.926" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+    <text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="614.01917" y="85.90564">ColE1 ori</text>
+  </svg>
 
   <rect x="60" y="868" width="1480" height="28" rx="14" fill="#ede3cf"/>
   <text x="84" y="887" class="small">Intended use: community-facing hero figure for the VKORC1/rs9923231 reporter story, with a simplified locus explainer on the left and a real post-cloning construct export on the right.</text>

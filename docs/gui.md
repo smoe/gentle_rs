@@ -1483,16 +1483,22 @@ Controls:
      always exporting the full sequence length.
    - Single-base `variation` features are exported as direct DNA-baseline
      markers instead of generic feature blocks on separate lanes.
-   - Linear exports now also add transcription-start ticks/arrows for
-     strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
-     coordinate text that would otherwise clutter figure-oriented exports.
+   - Linear exports now also add transcription-start hooked arrows for
+     strand-bearing `gene`/`mRNA`/`CDS`/`promoter` features and suppress
+     unlabeled fallback coordinate text that would otherwise clutter
+     figure-oriented exports.
    - Accession-only transcript labels are demoted in favor of gene-style labels
      when possible, and nearby repeated non-gene labels are compacted so locus
      exports read more like figures than raw annotation dumps.
+   - `mRNA`/`promoter` bars now render with pointed ends and use a short
+     hooked transcription-start arrow so strand direction reads from shape as
+     well as color/position.
    - In circular mode, the SVG now uses a transparent canvas, renders
      single-base `variation` features as explicit radial markers on the DNA
-     ring, and marks transcription starts for strand-bearing `gene`/`mRNA`/`CDS`
-     features with a start tick + direction arrow.
+     ring, and marks transcription starts for strand-bearing
+     `gene`/`mRNA`/`CDS`/`promoter` features with a short arrow shaft plus
+     direction arrowhead. Circular figure exports also use a slightly larger
+     ring and larger label fonts for readability.
 21. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).

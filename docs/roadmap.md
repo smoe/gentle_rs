@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -727,6 +727,10 @@ order. Durable architecture constraints and decisions remain in
         / `docs/figures/vkorc1_rs9923231_context_map.svg`
       - the first luciferase-facing hero figure on this track now also exists
         as `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`
+      - its raster derivative
+        `docs/figures/vkorc1_rs9923231_luciferase_hero.png`
+        is now also a documented hero image for ongoing work on the ClawBio
+        integration track
       - that hero asset is now a hybrid rather than a pure cartoon:
         the left side explains the reverse-strand promoter geometry and the
         upstream fragment bounded by the `VKORC1 5'` edge and `rs9923231`,
@@ -746,6 +750,11 @@ order. Durable architecture constraints and decisions remain in
         accession-only transcript labels are demoted in favor of gene-style
         names when possible, and nearby duplicate labels are compacted for
         cleaner figure output
+      - the linear export idiom is now closer to classical promoter cartoons:
+        `mRNA`/`promoter` bars use pointed ends and TSS markers use short
+        hooked arrows so strand direction reads without extra explanatory text
+      - circular construct exports now also use a larger ring and larger label
+        fonts so embedded documentation figures remain readable
       - it is intended to replace TP73 as the showcase opener for reporter
         design while keeping the TP73 tutorial as a GUI/CLI parity reference
       - that figure/export path now honors stored linear viewport crops, so

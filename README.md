@@ -233,6 +233,22 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+### Ongoing Work With ClawBio
+
+![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)
+
+Ongoing integration work with ClawBio now also has a dedicated hero image:
+ClawBio raises the pharmacogenomic alert around `VKORC1` / `rs9923231`, and
+GENtle turns that into a concrete promoter-fragment and luciferase-reporter
+design story. The left panel explains the reverse-strand promoter interval to
+take forward, while the right panel shows the study construct as a real GENtle
+circular-map export rather than a standalone illustration.
+
+The figure asset lives in
+[`docs/figures/vkorc1_rs9923231_luciferase_hero.svg`](docs/figures/vkorc1_rs9923231_luciferase_hero.svg)
+with the README-friendly raster at
+[`docs/figures/vkorc1_rs9923231_luciferase_hero.png`](docs/figures/vkorc1_rs9923231_luciferase_hero.png).
+
 ### Guided GUI Tutorials
 
 ![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)

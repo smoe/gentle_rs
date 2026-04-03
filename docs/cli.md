@@ -1409,15 +1409,21 @@ Rendering export commands:
     so workflow-driven `SetLinearViewport` crops carry through into the SVG.
   - Single-base `variation` features render as DNA-baseline markers, which is
     useful for dbSNP-driven context figures.
-  - Linear exports now also add transcription-start ticks/arrows for
-    strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
-    coordinate labels that would otherwise clutter figure exports.
+  - Linear exports now also add transcription-start hooked arrows for
+    strand-bearing `gene`/`mRNA`/`CDS`/`promoter` features and suppress
+    unlabeled fallback coordinate labels that would otherwise clutter figure
+    exports.
   - When transcript/gene features only carry accession-like ids, exports now
     prefer gene-style labels when available and suppress redundant nearby
     duplicates for cleaner communication figures.
+  - Direction-bearing `mRNA`/`promoter` bars now render with arrowed ends, and
+    the linear transcription-start cue uses a short hooked arrow rather than
+    only a flat triangle marker.
   - Circular exports now use a transparent canvas, show single-base
-    `variation` features as radial DNA-ring markers, and add transcription-start
-    ticks/arrows for strand-bearing `gene`/`mRNA`/`CDS` features.
+    `variation` features as radial DNA-ring markers, and add
+    transcription-start arrow shafts/arrowheads for strand-bearing
+    `gene`/`mRNA`/`CDS`/`promoter` features. Circular figure exports also use
+    a slightly larger ring and larger label fonts for readability.
 - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).

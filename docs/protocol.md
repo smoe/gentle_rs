@@ -799,14 +799,21 @@ Current draft operations:
   - single-base `variation` features render as baseline markers in linear SVG
     output rather than as generic detached feature blocks
   - linear exports now also mark transcription starts/directions for
-    strand-bearing `gene`/`mRNA`/`CDS` features and suppress unlabeled fallback
-    coordinate text that would otherwise clutter figure-oriented exports
+    strand-bearing `gene`/`mRNA`/`CDS`/`promoter` features and suppress
+    unlabeled fallback coordinate text that would otherwise clutter
+    figure-oriented exports
   - linear exports also prefer gene-style labels over accession-only transcript
     ids when possible and compact nearby repeated non-gene labels
+  - direction-bearing `mRNA`/`promoter` bars render with arrowed ends, and the
+    linear TSS cue uses a short hooked arrow so direction survives
+    figure-oriented contexts
   - circular exports now use a transparent canvas and render single-base
     `variation` features as explicit radial markers on the DNA ring
   - circular exports also mark transcription starts for strand-bearing
-    `gene`/`mRNA`/`CDS` features with a start tick + direction arrow
+    `gene`/`mRNA`/`CDS`/`promoter` features with a short arrow shaft plus
+    direction arrowhead
+  - circular exports also use a slightly larger ring and larger label fonts so
+    figure-oriented construct maps stay readable when embedded in docs
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports

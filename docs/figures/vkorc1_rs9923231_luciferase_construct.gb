@@ -15,14 +15,16 @@ FEATURES             Location/Qualifiers
      source          1..4952
                      /organism="synthetic construct"
                      /mol_type="other DNA"
-     misc_feature    1..1770
-                     /label="VKORC1 upstream to rs9923231"
-                     /note="Illustrative reverse-strand VKORC1 promoter-side
-                     insert spanning the VKORC1 5' boundary to rs9923231 plus
-                     200 bp of downstream local context"
-     variation       1570
+     promoter        1..1829
+                     /label="VKORC1 promoter insert"
+                     /note="Illustrative reporter-oriented VKORC1 promoter
+                     fragment carrying rs9923231 inside the insert and facing
+                     into luc2 for the hero-figure construct export"
+                     /gentle_export_tss_marker="none"
+     variation       420
                      /label="rs9923231"
-                     /note="Reference allele shown in illustrative construct"
+                     /note="Reference allele shown on the promoter-distal side
+                     of the illustrative reporter insert"
                      /db_xref="dbSNP:rs9923231"
      CDS             1830..3485
                      /gene="luc2"

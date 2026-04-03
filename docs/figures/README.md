@@ -260,7 +260,8 @@ hero figure for the same story. It is now a hybrid asset:
 - the left panel is a hand-authored editorial explainer for the reverse-strand
   locus logic
 - the right panel is a real circular DNA-window export from
-  `vkorc1_rs9923231_luciferase_construct.svg`, rasterized only for composition
+  `vkorc1_rs9923231_luciferase_construct.svg`, now embedded inline so the hero
+  SVG stays self-contained in viewers that do not resolve external image refs
 
 Its job is to show, in one panel, that:
 
@@ -273,6 +274,19 @@ Its job is to show, in one panel, that:
 Use that SVG as the luciferase showcase opener for the ClawBio handoff story.
 Keep the existing TP73 tutorial for GUI/CLI parity walkthroughs and detailed
 stepwise testing.
+
+For ongoing work on a ClawBio integration, also treat this asset as another
+hero image:
+
+- SVG source:
+  `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`
+- raster derivative for slides/docs:
+  `docs/figures/vkorc1_rs9923231_luciferase_hero.png`
+- role in the story:
+  show the handoff from a ClawBio pharmacogenomic alert into a GENtle-guided
+  functional-study design, with the left panel explaining the reverse-strand
+  `VKORC1` promoter interval and the right panel showing the luciferase
+  construct context
 
 `vkorc1_rs9923231_luciferase_construct.gb` is the synthetic source used to get
 that real circular export style without requiring a live luciferase-cloning

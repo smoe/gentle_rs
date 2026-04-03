@@ -1,38 +1,38 @@
 <svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
-<text fill="#111111" font-family="monospace" font-size="16" x="20" y="34">
+<text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">
 VKRSLUC1
 </text>
-<text fill="#444444" font-family="monospace" font-size="12" x="20" y="54">
+<text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">
 4952 bp
 </text>
-<circle cx="672" cy="364" fill="none" r="196" stroke="#000000" stroke-width="2"/>
-<path d="M 672.000 146.448 A 217.552 217.552 0 0 1 841.843 499.949" fill="none" stroke="#6e6e6e" stroke-width="5"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="884.3175" y="261.99023">
-VKORC1 upstream to rs9923231
+<circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+<path d="M 672.000 107.831 A 256.169 256.169 0 0 1 859.459 538.591" fill="none" stroke="#43aaa1" stroke-width="6"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="926.9931" y="252.83934">
+VKORC1 promoter insert
 </text>
-<line data-gentle-role="variation-marker-line" stroke="#e17f0f" stroke-width="2.5" x1="840.2291" x2="865.28455" y1="439.1222" y2="450.3106"/>
-<circle cx="865.28455" cy="450.3106" data-gentle-role="variation-marker-dot" fill="#ffffff" r="4" stroke="#e17f0f" stroke-width="2"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="885.3727" y="459.28094">
+<line data-gentle-role="variation-marker-line" stroke="#e17f0f" stroke-width="2.5" x1="782.07764" x2="798.47217" y1="176.82974" y2="148.95332"/>
+<circle cx="798.47217" cy="148.95332" data-gentle-role="variation-marker-dot" fill="#ffffff" r="4" stroke="#e17f0f" stroke-width="2"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="809.62494" y="129.98976">
 rs9923231
 </text>
-<path d="M 831.477 512.530 A 217.931 217.931 0 0 1 463.204 426.435" fill="none" stroke="#cc1f1f" stroke-width="5"/>
-<line data-gentle-role="transcription-start-tick" stroke="#cc1f1f" stroke-width="2" x1="826.3543" x2="836.5992" y1="507.75885" y2="517.3005"/>
-<path d="M826.9758,517.3569 L838.0864,511.3063 L832.2322,505.85397 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="618.29205" y="593.7365">
+<path d="M 859.955 539.053 A 256.847 256.847 0 0 1 425.919 437.584" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+<path d="M859.9548,539.05286 L867.2725,545.8683 L862.771,550.6949" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M861.5433,552.0112 L869.38116,549.47205 L863.5269,544.01965 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="608.5225" y="635.526">
 luc2
 </text>
-<path d="M 456.589 421.915 A 223.061 223.061 0 0 1 450.524 390.541" fill="none" stroke="#6e6e6e" stroke-width="5"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="435.34985" y="409.90317">
+<path d="M 418.122 432.257 A 262.893 262.893 0 0 1 410.974 395.281" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="392.31952" y="418.2498">
 SV40 polyA
 </text>
-<path d="M 500.660 369.437 A 171.426 171.426 0 0 1 588.304 214.394" fill="none" stroke="#cc1f1f" stroke-width="5"/>
-<line data-gentle-role="transcription-start-tick" stroke="#cc1f1f" stroke-width="2" x1="591.72174" x2="584.8864" y1="220.50339" y2="208.2854"/>
-<path d="M582.5466,217.62097 L591.0618,208.26363 L594.9677,215.24532 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="538.38934" y="288.5832">
+<path d="M 470.064 370.408 A 202.038 202.038 0 0 1 573.358 187.679" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+<path d="M573.3584,187.6791 L568.4761,178.95197 L562.71814,182.17784" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M561.1478,183.05762 L565.47626,176.04764 L569.38214,183.02933 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="515.2145" y="275.5021">
 bla
 </text>
-<path d="M 583.398 160.048 A 222.366 222.366 0 0 1 671.718 141.634" fill="none" stroke="#6e6e6e" stroke-width="5"/>
-<text fill="#111111" font-family="monospace" font-size="10" text-anchor="middle" x="622.94025" y="128.6938">
+<path d="M 567.576 123.628 A 262.074 262.074 0 0 1 671.667 101.926" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="614.01917" y="85.90564">
 ColE1 ori
 </text>
 </svg>

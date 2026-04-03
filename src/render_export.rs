@@ -40,13 +40,16 @@ const LINEAR_TSS_ARROW_LENGTH: f32 = 14.0;
 const LINEAR_TSS_ARROW_HALF_HEIGHT: f32 = 4.5;
 const REGULATORY_LABEL_DEDUP_DISTANCE_PX: f32 = 18.0;
 const FEATURE_LABEL_DEDUP_DISTANCE_PX: f32 = 26.0;
-const CIRCULAR_FEATURE_STROKE_WIDTH: f32 = 5.0;
+const CIRCULAR_FEATURE_STROKE_WIDTH: f32 = 6.0;
 const CIRCULAR_VARIATION_MARKER_STROKE_WIDTH: f32 = 2.5;
 const CIRCULAR_VARIATION_MARKER_RADIUS: f32 = 4.0;
 const CIRCULAR_VARIATION_MARKER_LABEL_OFFSET: f32 = 22.0;
-const CIRCULAR_TSS_TICK_HALF_LENGTH: f32 = 7.0;
+const CIRCULAR_TSS_STEM_LENGTH: f32 = 10.0;
 const CIRCULAR_TSS_ARROW_LENGTH: f32 = 12.0;
 const CIRCULAR_TSS_ARROW_HALF_WIDTH: f32 = 4.0;
+const CIRCULAR_TITLE_FONT_SIZE: usize = 18;
+const CIRCULAR_SUBTITLE_FONT_SIZE: usize = 14;
+const CIRCULAR_FEATURE_LABEL_FONT_SIZE: usize = 12;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -55,6 +58,7 @@ struct FeatureVm {
     label: String,
     color: &'static str,
     is_gene: bool,
+    is_promoter: bool,
     is_reverse: bool,
     is_pointy: bool,
     is_regulatory: bool,
@@ -200,6 +204,7 @@ fn feature_color(feature: &Feature) -> &'static str {
         "CDS" => "#cc1f1f",
         "GENE" => "#1f4fcc",
         "MRNA" => "#b4640a",
+        "PROMOTER" => "#43aaa1",
         "VARIATION" => "#e17f0f",
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
@@ -209,15 +214,30 @@ fn feature_color(feature: &Feature) -> &'static str {
 fn feature_pointy(feature: &Feature) -> bool {
     matches!(
         feature.kind.to_string().to_ascii_uppercase().as_str(),
-        "CDS" | "GENE"
+        "CDS" | "GENE" | "MRNA" | "PROMOTER"
     )
 }
 
 fn has_transcription_direction(feature: &Feature) -> bool {
     matches!(
         feature.kind.to_string().to_ascii_uppercase().as_str(),
-        "CDS" | "GENE" | "MRNA"
+        "CDS" | "GENE" | "MRNA" | "PROMOTER"
     )
+}
+
+fn suppress_transcription_direction_marker(feature: &Feature) -> bool {
+    for key in ["gentle_export_tss_marker", "gentle_hide_tss_marker"] {
+        for value in feature.qualifier_values(key) {
+            let normalized = value.trim().to_ascii_lowercase();
+            if matches!(
+                normalized.as_str(),
+                "none" | "hide" | "hidden" | "off" | "false"
+            ) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn is_tfbs_feature(feature: &Feature) -> bool {
@@ -229,6 +249,10 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
 
 fn is_variation_feature(feature: &Feature) -> bool {
     feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+}
+
+fn is_promoter_feature(feature: &Feature) -> bool {
+    feature.kind.to_string().to_ascii_uppercase() == "PROMOTER"
 }
 
 fn is_track_feature(feature: &Feature) -> bool {
@@ -599,11 +623,13 @@ fn collect_features(
             label,
             color: feature_color(feature),
             is_gene: kind == "GENE",
+            is_promoter: is_promoter_feature(feature),
             is_reverse: feature_is_reverse(feature),
             is_pointy: feature_pointy(feature),
             is_regulatory: is_regulatory_feature(feature),
             is_variation,
-            has_transcription_direction: has_transcription_direction(feature),
+            has_transcription_direction: has_transcription_direction(feature)
+                && !suppress_transcription_direction_marker(feature),
             is_fallback_label,
         });
     }
@@ -641,36 +667,69 @@ fn linear_transcription_direction_glyph(
     left: f32,
     right: f32,
     y: f32,
-) -> (Line, Path) {
-    let tss_pos = if feature.is_reverse {
-        feature.to
+) -> (Path, Path) {
+    let tss_pos = if feature.is_promoter {
+        if feature.is_reverse {
+            feature.from
+        } else {
+            feature.to
+        }
     } else {
-        feature.from
+        if feature.is_reverse {
+            feature.to
+        } else {
+            feature.from
+        }
     };
     let x = absolute_bp_to_view_x(tss_pos, viewport, left, right);
-    let tick = Line::new()
-        .set("x1", x)
-        .set("y1", y - LINEAR_TSS_TICK_HALF_HEIGHT)
-        .set("x2", x)
-        .set("y2", y + LINEAR_TSS_TICK_HALF_HEIGHT)
+    let stem_y = if feature.is_reverse {
+        y + LINEAR_TSS_TICK_HALF_HEIGHT
+    } else {
+        y - LINEAR_TSS_TICK_HALF_HEIGHT
+    };
+    let hook_y = if feature.is_reverse {
+        stem_y + LINEAR_TSS_ARROW_HALF_HEIGHT * 1.3
+    } else {
+        stem_y - LINEAR_TSS_ARROW_HALF_HEIGHT * 1.3
+    };
+    let elbow_x = if feature.is_reverse {
+        x - LINEAR_TSS_ARROW_LENGTH * 0.22
+    } else {
+        x + LINEAR_TSS_ARROW_LENGTH * 0.22
+    };
+    let tip_x = if feature.is_reverse {
+        x - LINEAR_TSS_ARROW_LENGTH
+    } else {
+        x + LINEAR_TSS_ARROW_LENGTH
+    };
+    let shaft = Data::new()
+        .move_to((x, y))
+        .line_to((x, stem_y))
+        .quadratic_curve_to((x, hook_y, elbow_x, hook_y))
+        .line_to((tip_x, hook_y));
+    let tick = Path::new()
+        .set("d", shaft)
+        .set("fill", "none")
         .set("stroke", feature.color)
         .set("stroke-width", 2)
+        .set("stroke-linecap", "round")
+        .set("stroke-linejoin", "round")
         .set("data-gentle-role", "linear-transcription-start-tick");
-    let (tip_x, base_x) = if feature.is_reverse {
+    let (head_tip_x, base_x) = if feature.is_reverse {
         (
-            x - LINEAR_TSS_ARROW_LENGTH * 0.55,
-            x + LINEAR_TSS_ARROW_LENGTH * 0.45,
+            tip_x - LINEAR_TSS_ARROW_LENGTH * 0.14,
+            tip_x + LINEAR_TSS_ARROW_LENGTH * 0.18,
         )
     } else {
         (
-            x + LINEAR_TSS_ARROW_LENGTH * 0.55,
-            x - LINEAR_TSS_ARROW_LENGTH * 0.45,
+            tip_x + LINEAR_TSS_ARROW_LENGTH * 0.14,
+            tip_x - LINEAR_TSS_ARROW_LENGTH * 0.18,
         )
     };
     let tri = Data::new()
-        .move_to((tip_x, y))
-        .line_to((base_x, y - LINEAR_TSS_ARROW_HALF_HEIGHT))
-        .line_to((base_x, y + LINEAR_TSS_ARROW_HALF_HEIGHT))
+        .move_to((head_tip_x, hook_y))
+        .line_to((base_x, hook_y - LINEAR_TSS_ARROW_HALF_HEIGHT))
+        .line_to((base_x, hook_y + LINEAR_TSS_ARROW_HALF_HEIGHT))
         .close();
     let arrow = Path::new()
         .set("d", tri)
@@ -1517,7 +1576,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     let len = dna.len();
     let cx = W * 0.56;
     let cy = H * 0.52;
-    let r = H.min(W) * 0.28;
+    let r = H.min(W) * 0.33;
 
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, H))
@@ -1533,7 +1592,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
         .set("x", 20)
         .set("y", 34)
         .set("font-family", "monospace")
-        .set("font-size", 16)
+        .set("font-size", CIRCULAR_TITLE_FONT_SIZE)
         .set("fill", "#111111"),
     );
     doc = doc.add(
@@ -1541,7 +1600,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
             .set("x", 20)
             .set("y", 54)
             .set("font-family", "monospace")
-            .set("font-size", 12)
+            .set("font-size", CIRCULAR_SUBTITLE_FONT_SIZE)
             .set("fill", "#444444"),
     );
 
@@ -1641,7 +1700,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                             .set("y", label_y)
                             .set("text-anchor", "middle")
                             .set("font-family", "monospace")
-                            .set("font-size", 10)
+                            .set("font-size", CIRCULAR_FEATURE_LABEL_FONT_SIZE)
                             .set("fill", "#111111"),
                     );
                 }
@@ -1657,26 +1716,40 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 );
             }
             if f.has_transcription_direction {
-                let tss_pos = if f.is_reverse { f.to } else { f.from }.min(len.saturating_sub(1));
+                let tss_pos = if f.is_promoter {
+                    if f.is_reverse { f.from } else { f.to }
+                } else if f.is_reverse {
+                    f.to
+                } else {
+                    f.from
+                }
+                .min(len.saturating_sub(1));
                 let (tick_dx, tick_dy) = circular_radial_unit_vector(tss_pos, len, cx, cy, r);
                 let (tick_x, tick_y) = pos2xy(tss_pos, len, cx, cy, band_radius);
-                doc = doc.add(
-                    Line::new()
-                        .set("x1", tick_x - tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH)
-                        .set("y1", tick_y - tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH)
-                        .set("x2", tick_x + tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH)
-                        .set("y2", tick_y + tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH)
-                        .set("stroke", f.color)
-                        .set("stroke-width", 2)
-                        .set("data-gentle-role", "transcription-start-tick"),
-                );
-
                 let (dir_x, dir_y) =
                     circular_tangent_unit_vector(tss_pos, f.is_reverse, len, cx, cy, band_radius);
-                let tip_x = tick_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
-                let tip_y = tick_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
-                let back_x = tick_x - dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.45);
-                let back_y = tick_y - dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.45);
+                let stem_x = tick_x + tick_dx * CIRCULAR_TSS_STEM_LENGTH;
+                let stem_y = tick_y + tick_dy * CIRCULAR_TSS_STEM_LENGTH;
+                let shaft_tip_x = stem_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
+                let shaft_tip_y = stem_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
+                let shaft = Data::new()
+                    .move_to((tick_x, tick_y))
+                    .line_to((stem_x, stem_y))
+                    .line_to((shaft_tip_x, shaft_tip_y));
+                doc = doc.add(
+                    Path::new()
+                        .set("d", shaft)
+                        .set("fill", "none")
+                        .set("stroke", f.color)
+                        .set("stroke-width", 2)
+                        .set("stroke-linecap", "round")
+                        .set("stroke-linejoin", "round")
+                        .set("data-gentle-role", "transcription-start-arrow-shaft"),
+                );
+                let tip_x = stem_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.7);
+                let tip_y = stem_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.7);
+                let back_x = stem_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.1);
+                let back_y = stem_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.1);
                 let tri = Data::new()
                     .move_to((tip_x, tip_y))
                     .line_to((
@@ -1697,9 +1770,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 );
             }
             let label_radius = if f.is_reverse {
-                band_radius - 18.0
+                band_radius - 22.0
             } else {
-                band_radius + 18.0
+                band_radius + 22.0
             };
             if feature_has_visible_export_label(&f) {
                 let (lx, ly) = pos2xy(mid, len, cx, cy, label_radius.max(0.0));
@@ -1709,7 +1782,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("y", ly)
                         .set("text-anchor", "middle")
                         .set("font-family", "monospace")
-                        .set("font-size", 10)
+                        .set("font-size", CIRCULAR_FEATURE_LABEL_FONT_SIZE)
                         .set("fill", "#111111"),
                 );
             }
@@ -2166,6 +2239,46 @@ mod tests {
     }
 
     #[test]
+    fn mrna_features_are_rendered_with_directional_pointed_bars() {
+        let mrna = gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![],
+        };
+        assert!(feature_pointy(&mrna));
+    }
+
+    #[test]
+    fn promoter_features_are_rendered_with_directional_pointed_bars() {
+        let promoter = gb_io::seq::Feature {
+            kind: "promoter".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![],
+        };
+        assert!(feature_pointy(&promoter));
+        assert!(has_transcription_direction(&promoter));
+    }
+
+    #[test]
+    fn promoter_can_hide_export_tss_marker_via_qualifier() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "promoter".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![
+                ("label".into(), Some("insert".to_string())),
+                ("gentle_export_tss_marker".into(), Some("none".to_string())),
+            ],
+        });
+        dna.set_circular(true);
+
+        let svg = export_circular_svg(&dna, &DisplaySettings::default());
+        assert!(!svg.contains("data-gentle-role=\"transcription-start-arrow-shaft\""));
+        assert!(!svg.contains("data-gentle-role=\"transcription-start-arrow\""));
+        assert!(svg.contains("insert"));
+    }
+
+    #[test]
     fn circular_svg_export_uses_transparent_background_and_marks_variation_and_tss() {
         let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
         dna.features_mut().push(gb_io::seq::Feature {
@@ -2192,7 +2305,7 @@ mod tests {
                 >= 2
         );
         assert!(
-            svg.matches("data-gentle-role=\"transcription-start-tick\"")
+            svg.matches("data-gentle-role=\"transcription-start-arrow-shaft\"")
                 .count()
                 >= 2
         );
