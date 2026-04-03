@@ -499,6 +499,8 @@ pub struct OpResult {
     pub sequencing_primer_overlay_report: Option<SequencingPrimerOverlayReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfbs_region_summary: Option<TfbsRegionSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

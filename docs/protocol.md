@@ -99,6 +99,12 @@ Current shared-shell route:
 gentle_cli shell 'features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]'
 ```
 
+First-class operation route:
+
+```json
+{"SummarizeTfbsRegion":{"seq_id":"SEQ_ID","focus_start_0based":2900,"focus_end_0based_exclusive":3100,"context_start_0based":0,"context_end_0based_exclusive":6001,"min_focus_occurrences":1,"min_context_occurrences":0,"limit":25}}
+```
+
 Portable schema:
 
 - `gentle.tfbs_region_summary.v1`
@@ -792,6 +798,10 @@ Current draft operations:
     proper subsequence crop
   - single-base `variation` features render as baseline markers in linear SVG
     output rather than as generic detached feature blocks
+  - circular exports now use a transparent canvas and render single-base
+    `variation` features as explicit radial markers on the DNA ring
+  - circular exports also mark transcription starts for strand-bearing
+    `gene`/`mRNA`/`CDS` features with a start tick + direction arrow
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports

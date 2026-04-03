@@ -1160,8 +1160,8 @@ fn parse_arrange_serial_command() {
 
 #[test]
 fn parse_arrange_set_ladders_command() {
-    let cmd = parse_shell_line("arrange-set-ladders arr-x --ladders 100bp,1kb")
-        .expect("parse command");
+    let cmd =
+        parse_shell_line("arrange-set-ladders arr-x --ladders 100bp,1kb").expect("parse command");
     match cmd {
         ShellCommand::SetArrangementLadders {
             arrangement_id,

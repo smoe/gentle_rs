@@ -225,6 +225,10 @@ const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
 
+fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
+    1
+}
+
 // Private decomposition slices of the engine implementation. Shared public
 // contracts stay in this file; heavy helpers and operation families live in the
 // corresponding `src/engine/*` module so future edits can land in one focused
@@ -4384,6 +4388,23 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeTfbsRegion {
+        seq_id: String,
+        focus_start_0based: usize,
+        focus_end_0based_exclusive: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_end_0based_exclusive: Option<usize>,
+        #[serde(default = "default_tfbs_region_summary_min_focus_occurrences")]
+        min_focus_occurrences: usize,
+        #[serde(default)]
+        min_context_occurrences: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ExportRnaReadReport {
         report_id: String,
         path: String,
@@ -5810,6 +5831,7 @@ impl GentleEngine {
                 "ListRnaReadReports".to_string(),
                 "ShowRnaReadReport".to_string(),
                 "SummarizeRnaReadGeneSupport".to_string(),
+                "SummarizeTfbsRegion".to_string(),
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
                 "ExportRnaReadSampleSheet".to_string(),
@@ -7073,6 +7095,7 @@ impl GentleEngine {
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
+                | Operation::SummarizeTfbsRegion { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
@@ -9033,6 +9056,24 @@ impl GentleEngine {
             min_context_occurrences: request.min_context_occurrences,
             limit,
             rows,
+        })
+    }
+
+    pub(crate) fn write_tfbs_region_summary_json(
+        &self,
+        summary: &TfbsRegionSummary,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(summary).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize TFBS region summary '{}' for '{}': {e}",
+                summary.seq_id, path
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write TFBS region summary to '{path}': {e}"),
         })
     }
 

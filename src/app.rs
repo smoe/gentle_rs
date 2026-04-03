@@ -6363,7 +6363,12 @@ Error: `{err}`"
     }
 
     fn arrangement_gel_preview_title(&self) -> String {
-        if self.arrangement_gel_preview.arrangement_title.trim().is_empty() {
+        if self
+            .arrangement_gel_preview
+            .arrangement_title
+            .trim()
+            .is_empty()
+        {
             "Arrangement Gel".to_string()
         } else {
             format!(
@@ -6411,8 +6416,16 @@ Error: `{err}`"
     }
 
     fn coerce_arrangement_gel_preview_pair(&mut self) {
-        let left = self.arrangement_gel_preview.left_ladder_name.trim().to_string();
-        let right = self.arrangement_gel_preview.right_ladder_name.trim().to_string();
+        let left = self
+            .arrangement_gel_preview
+            .left_ladder_name
+            .trim()
+            .to_string();
+        let right = self
+            .arrangement_gel_preview
+            .right_ladder_name
+            .trim()
+            .to_string();
         if left.is_empty() && !right.is_empty() {
             self.arrangement_gel_preview.left_ladder_name = right.clone();
         } else if !left.is_empty() && right.is_empty() {
@@ -6423,8 +6436,8 @@ Error: `{err}`"
     fn open_arrangement_gel_preview_dialog(&mut self, arrangement_id: &str) {
         let arrangement_id = arrangement_id.trim();
         if arrangement_id.is_empty() {
-            self.app_status = "Arrangement gel preview requires a non-empty arrangement id"
-                .to_string();
+            self.app_status =
+                "Arrangement gel preview requires a non-empty arrangement id".to_string();
             return;
         }
         if self.show_arrangement_gel_preview_dialog
@@ -6465,7 +6478,11 @@ Error: `{err}`"
     }
 
     fn refresh_arrangement_gel_preview_svg(&mut self) {
-        let arrangement_id = self.arrangement_gel_preview.arrangement_id.trim().to_string();
+        let arrangement_id = self
+            .arrangement_gel_preview
+            .arrangement_id
+            .trim()
+            .to_string();
         if arrangement_id.is_empty() {
             self.arrangement_gel_preview.status =
                 "No arrangement is selected for gel preview.".to_string();
@@ -6542,7 +6559,11 @@ Error: `{err}`"
     }
 
     fn save_arrangement_gel_preview_ladders(&mut self) {
-        let arrangement_id = self.arrangement_gel_preview.arrangement_id.trim().to_string();
+        let arrangement_id = self
+            .arrangement_gel_preview
+            .arrangement_id
+            .trim()
+            .to_string();
         if arrangement_id.is_empty() {
             self.arrangement_gel_preview.status =
                 "No arrangement is selected for ladder updates.".to_string();
@@ -6559,11 +6580,10 @@ Error: `{err}`"
             });
         match op_result {
             Ok(result) => {
-                self.app_status = result
-                    .messages
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| format!("Updated arrangement '{arrangement_id}' ladders"));
+                self.app_status =
+                    result.messages.first().cloned().unwrap_or_else(|| {
+                        format!("Updated arrangement '{arrangement_id}' ladders")
+                    });
                 self.arrangement_gel_preview.status = self.app_status.clone();
                 self.set_arrangement_gel_preview_controls_from_ladders(&ladders);
                 self.lineage_cache_valid = false;
@@ -11959,6 +11979,7 @@ Error: `{err}`"
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
+                tfbs_region_summary: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -19657,11 +19678,18 @@ Error: `{err}`"
         ui.horizontal(|ui| {
             ui.label("Left ladder");
             egui::ComboBox::from_id_salt("arrangement_gel_left_ladder")
-                .selected_text(if self.arrangement_gel_preview.left_ladder_name.trim().is_empty() {
-                    "Auto".to_string()
-                } else {
-                    self.arrangement_gel_preview.left_ladder_name.clone()
-                })
+                .selected_text(
+                    if self
+                        .arrangement_gel_preview
+                        .left_ladder_name
+                        .trim()
+                        .is_empty()
+                    {
+                        "Auto".to_string()
+                    } else {
+                        self.arrangement_gel_preview.left_ladder_name.clone()
+                    },
+                )
                 .show_ui(ui, |ui| {
                     selection_changed |= ui
                         .selectable_value(
@@ -19682,11 +19710,18 @@ Error: `{err}`"
                 });
             ui.label("Right ladder");
             egui::ComboBox::from_id_salt("arrangement_gel_right_ladder")
-                .selected_text(if self.arrangement_gel_preview.right_ladder_name.trim().is_empty() {
-                    "Auto".to_string()
-                } else {
-                    self.arrangement_gel_preview.right_ladder_name.clone()
-                })
+                .selected_text(
+                    if self
+                        .arrangement_gel_preview
+                        .right_ladder_name
+                        .trim()
+                        .is_empty()
+                    {
+                        "Auto".to_string()
+                    } else {
+                        self.arrangement_gel_preview.right_ladder_name.clone()
+                    },
+                )
                 .show_ui(ui, |ui| {
                     selection_changed |= ui
                         .selectable_value(
@@ -19707,7 +19742,9 @@ Error: `{err}`"
                 });
             if ui
                 .button("Auto")
-                .on_hover_text("Reset both flanking ladders to automatic selection for this preview")
+                .on_hover_text(
+                    "Reset both flanking ladders to automatic selection for this preview",
+                )
                 .clicked()
             {
                 self.arrangement_gel_preview.left_ladder_name.clear();
@@ -19785,7 +19822,10 @@ Error: `{err}`"
             Self::arrangement_gel_preview_viewport_id(),
             builder,
             |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::arrangement_gel_preview_viewport_id());
+                self.note_viewport_focus_if_active(
+                    ctx,
+                    Self::arrangement_gel_preview_viewport_id(),
+                );
                 if class == egui::ViewportClass::EmbeddedWindow {
                     let mut close_requested = false;
                     egui::Window::new(title.clone())
@@ -24954,7 +24994,9 @@ Error: `{err}`"
                         flex_track_op_by_id
                             .insert(track_id, (rec.result.op_id.clone(), seq_id.clone()));
                     }
-                    Operation::ConfirmConstructReads { expected_seq_id, .. } => {
+                    Operation::ConfirmConstructReads {
+                        expected_seq_id, ..
+                    } => {
                         if let Some(report) = rec.result.sequencing_confirmation_report.as_ref() {
                             sequencing_confirmation_op_by_report_id.insert(
                                 report.report_id.clone(),
@@ -27696,7 +27738,10 @@ Error: `{err}`"
                 return Some(id.to_string());
             }
         }
-        if let Some(rest) = row.node_id.strip_prefix("analysis:sequencing_confirmation:") {
+        if let Some(rest) = row
+            .node_id
+            .strip_prefix("analysis:sequencing_confirmation:")
+        {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -34841,13 +34886,12 @@ mod tests {
         engine::{
             Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance,
             Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
-            DotplotMode, Engine, FlexibilityModel,
-            GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
-            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation,
-            PairwiseAlignmentMode, ProjectState, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            SequenceOrigin,
+            DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
+            GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+            ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
+            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
@@ -38916,12 +38960,14 @@ mod tests {
     #[test]
     fn open_arrangement_gel_preview_dialog_seeds_ladder_controls_and_preview() {
         let mut state = ProjectState::default();
-        state
-            .sequences
-            .insert("seq_a".to_string(), DNAsequence::from_sequence(&"ATGC".repeat(90)).unwrap());
-        state
-            .sequences
-            .insert("seq_b".to_string(), DNAsequence::from_sequence(&"ATGC".repeat(35)).unwrap());
+        state.sequences.insert(
+            "seq_a".to_string(),
+            DNAsequence::from_sequence(&"ATGC".repeat(90)).unwrap(),
+        );
+        state.sequences.insert(
+            "seq_b".to_string(),
+            DNAsequence::from_sequence(&"ATGC".repeat(35)).unwrap(),
+        );
         state.container_state.containers.insert(
             "container-1".to_string(),
             Container {
@@ -40366,6 +40412,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
+                tfbs_region_summary: None,
             }),
         })
         .expect("send prepare done");
@@ -40423,6 +40470,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
+                tfbs_region_summary: None,
             }),
         })
         .expect("send track import done");
@@ -40465,6 +40513,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
+                tfbs_region_summary: None,
             }),
         })
         .expect("send track import done");
@@ -40512,6 +40561,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
+            tfbs_region_summary: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

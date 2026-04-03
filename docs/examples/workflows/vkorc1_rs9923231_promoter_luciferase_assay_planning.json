@@ -1,0 +1,95 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
+  "title": "VKORC1 rs9923231 promoter luciferase assay planning (GUI-first parity skeleton)",
+  "summary": "Plans a VKORC1 / rs9923231 promoter -> luciferase reporter workflow from dbSNP-driven locus retrieval through TSS-centered fragment extraction, vector import, assembly preview, and junction-PCR planning.",
+  "test_mode": "skip",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "tutorial",
+    "vkorc1",
+    "rs9923231",
+    "warfarin",
+    "promoter",
+    "luciferase",
+    "gui",
+    "parity",
+    "online",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_vkorc1_rs9923231_promoter_luciferase_assay_planning",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "FetchDbSnpRegion": {
+          "rs_id": "rs9923231",
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "flank_bp": 3000,
+          "output_id": "vkorc1_rs9923231_context",
+          "annotation_scope": "full",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "vkorc1_rs9923231_context",
+          "from": 2412,
+          "to": 3501,
+          "output_id": "vkorc1_rs9923231_promoter_ref"
+        }
+      },
+      {
+        "FetchGenBankAccession": {
+          "accession": "AY738222",
+          "as_id": "promega_luciferase_ay738222"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "vkorc1_rs9923231_promoter_ref",
+            "promega_luciferase_ay738222"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "vkorc1_rs9923231_luc_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "vkorc1_rs9923231_luc_assembly_1",
+          "output_id": "vkorc1_rs9923231_luc_construct_preview"
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      },
+      {
+        "DesignPrimerPairs": {
+          "template": "vkorc1_rs9923231_luc_construct_preview",
+          "roi_start_0based": 900,
+          "roi_end_0based": 1300,
+          "min_amplicon_bp": 120,
+          "max_amplicon_bp": 700,
+          "max_tm_delta_c": 2.0,
+          "max_pairs": 48,
+          "report_id": "vkorc1_rs9923231_luc_junction_primers_v1"
+        }
+      }
+    ]
+  }
+}

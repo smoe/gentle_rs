@@ -1,17 +1,18 @@
 {
   "schema": "gentle.tutorial_source.v2",
-  "id": "tp73_promoter_luciferase_gui",
-  "title": "TP73 Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+  "id": "vkorc1_warfarin_promoter_luciferase_gui",
+  "title": "VKORC1 / rs9923231 Warfarin-Response Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
   "catalog": {
     "order": 2,
-    "path": "docs/tutorial/tp73_promoter_luciferase_gui.md",
+    "path": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
     "type": "gui_walkthrough",
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": [
       "gui_first",
-      "cloning_planning"
+      "cloning_planning",
+      "pharmacogenomics"
     ],
-    "notes": "Hand-written GUI-first tutorial with explicit engine and CLI mapping."
+    "notes": "Hand-written GUI-first tutorial for VKORC1/rs9923231 promoter reporter planning with explicit engine and CLI mapping."
   }
 }

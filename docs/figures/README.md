@@ -251,6 +251,47 @@ cargo run --quiet --bin gentle_cli -- \
   workflow @docs/figures/vkorc1_rs9923231_context_map.workflow.json
 ```
 
+`vkorc1_rs9923231_luciferase_hero.svg` is the complementary community-facing
+hero figure for the same story. It is now a hybrid asset:
+
+- the left panel is a hand-authored editorial explainer for the reverse-strand
+  locus logic
+- the right panel is a real circular DNA-window export from
+  `vkorc1_rs9923231_luciferase_construct.svg`, rasterized only for composition
+
+Its job is to show, in one panel, that:
+
+- `VKORC1` must be read on the reverse strand
+- the study fragment runs from the `VKORC1` `5'` boundary through
+  `rs9923231` and keeps `200 bp` of local context beyond the SNP
+- matched reporter builds differ only at the SNP allele
+- that fragment is placed upstream of luciferase for the follow-up assay
+
+Use that SVG as the luciferase showcase opener for the ClawBio handoff story.
+Keep the existing TP73 tutorial for GUI/CLI parity walkthroughs and detailed
+stepwise testing.
+
+`vkorc1_rs9923231_luciferase_construct.gb` is the synthetic source used to get
+that real circular export style without requiring a live luciferase-cloning
+workflow during figure generation. It is intentionally illustrative rather than
+wet-lab-ready. Regenerate the construct-map assets with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/vkorc1_rs9923231_luciferase_construct.state.json \
+  workflow @docs/figures/vkorc1_rs9923231_luciferase_construct.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/vkorc1_rs9923231_luciferase_construct.svg \
+  docs/figures/vkorc1_rs9923231_luciferase_construct.png
+```
+
+The current construct source deliberately keeps `rs9923231` inside the cloned
+insert rather than on its exact edge (`+200 bp` right-side context) and flips
+`bla` onto the opposite strand so the circular export can demonstrate the new
+transcription-start/direction markers clearly.
+
 ## Planned VKORC1/rs9923231 PGx-Alert-to-Construct Showcase
 
 The next README/community-facing showcase should be a
@@ -281,31 +322,45 @@ The intended asset set is:
    - shows the local `rs9923231` / `VKORC1` / `LOC124903680` neighborhood
    - should make the assembly/build and reverse-strand promoter orientation
      explicit
-3. `vkorc1_rs9923231_promoter_fragments.*`
-   - planned GENtle figure showing the exact promoter fragment(s) taken forward
-     for study
-   - likely one of:
-     - allele-paired promoter fragment schematic
-     - bounded regional annotation map
-     - anchor/feature expert export
-4. `vkorc1_rs9923231_luciferase_protocol_cartoon.svg`
+3. `vkorc1_rs9923231_luciferase_hero.svg`
+   - now implemented as the preferred luciferase showcase opener
+   - hybrid explainer figure showing the exact reverse-strand promoter
+     fragment taken from the `VKORC1 5'` boundary up to `rs9923231`
+   - right panel now uses a real circular DNA-window export rather than a
+     pure construct cartoon
+   - still explains the reporter design, with the reference and variant
+     constructs differing only at the SNP allele
+   - intended to replace TP73 as the community-facing luciferase opener while
+     keeping TP73 as the parity/tutorial walkthrough
+4. `vkorc1_rs9923231_luciferase_construct.svg`
+   - now implemented as the actual circular DNA-window export used inside the
+     right panel of the hero figure
+   - generated from `docs/figures/vkorc1_rs9923231_luciferase_construct.gb`
+     through `docs/figures/vkorc1_rs9923231_luciferase_construct.workflow.json`
+   - intentionally illustrative: it provides real GENtle map styling for the
+     communication asset before the full luciferase-cloning workflow is wired
+     end to end
+5. `vkorc1_rs9923231_luciferase_protocol_cartoon.svg`
    - planned VKORC1-targeted promoter->luciferase cloning mechanism strip
    - should come from the same protocol-cartoon engine family already used for
      Gibson README figures, but presented as a reporter-assay build rather than
      as a generic cloning strip
-5. `vkorc1_rs9923231_luciferase_lineage.svg`
+6. `vkorc1_rs9923231_luciferase_lineage.svg`
    - planned lineage/provenance export showing allele-specific inserts,
      primers, and assembled reporter construct(s) from the same project state
-6. `vkorc1_rs9923231_clawbio_bundle_panel.*`
+7. `vkorc1_rs9923231_clawbio_bundle_panel.*`
    - compact visual summary of `report.md`, `result.json`, and reproducibility
      bundle contents from the ClawBio/OpenClaw wrapper
 
 The existing repository assets that should anchor the first implementation are:
 
+- `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
+  - current VKORC1/warfarin promoter->luciferase planning skeleton already
+    covering dbSNP-driven locus retrieval, TSS-centered fragment extraction,
+    vector import, assembly preview, and junction-PCR reporting
 - `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
-  - promoter->luciferase planning skeleton already covering extraction,
-    candidate generation, vector import, assembly preview, and primer/qPCR
-    reporting
+  - older promoter->luciferase planning skeleton retained as historical
+    precedent rather than the canonical community-facing tutorial path
 - `docs/examples/workflows/tp63_extend_anchor_online.json`
   - anchored-region extension baseline for genome-context expansion
 - `docs/examples/workflows/digest_ligation_extract_region_minimal.json`
@@ -336,5 +391,9 @@ Current status:
   `docs/figures/vkorc1_rs9923231_context_map.workflow.json`
 - the corresponding genomic-context SVG is now part of the repository:
   `docs/figures/vkorc1_rs9923231_context_map.svg`
-- promoter fragments, luciferase construct/cartoon exports, lineage/provenance
-  exports, and the ClawBio bundle panel remain planned
+- the community-facing luciferase hero figure now also exists:
+  `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`
+- the hero figure now also has a real circular construct-map companion export:
+  `docs/figures/vkorc1_rs9923231_luciferase_construct.svg`
+- protocol-cartoon exports, lineage/provenance exports, and the ClawBio bundle
+  panel remain planned

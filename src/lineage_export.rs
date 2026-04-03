@@ -863,8 +863,10 @@ pub fn build_lineage_svg_graph(
 ) -> (Vec<LineageSvgNode>, Vec<LineageSvgEdge>) {
     let mut op_created_count: HashMap<String, usize> = HashMap::new();
     let mut op_label_by_id: HashMap<String, String> = HashMap::new();
-    let mut sequencing_confirmation_op_by_report_id: HashMap<String, (String, String, Option<String>)> =
-        HashMap::new();
+    let mut sequencing_confirmation_op_by_report_id: HashMap<
+        String,
+        (String, String, Option<String>),
+    > = HashMap::new();
     let mut hub_op_ids = infer_gibson_like_operation_ids_from_state(state);
     let mut individually_rendered_multi_output_ops = hub_op_ids.clone();
     for record in operation_log {
@@ -1145,11 +1147,7 @@ pub fn build_lineage_svg_graph(
                 continue;
             };
             if seen_sources.insert(source_node_id.clone()) {
-                projected_edges.push((
-                    source_node_id.clone(),
-                    node_id.clone(),
-                    edge_op_id.clone(),
-                ));
+                projected_edges.push((source_node_id.clone(), node_id.clone(), edge_op_id.clone()));
             }
         }
     }

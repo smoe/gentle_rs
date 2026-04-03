@@ -7172,6 +7172,7 @@ impl GentleEngine {
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
+            tfbs_region_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
@@ -7215,6 +7216,7 @@ impl GentleEngine {
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
+            tfbs_region_summary: None,
         };
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {

@@ -1483,6 +1483,10 @@ Controls:
      always exporting the full sequence length.
    - Single-base `variation` features are exported as direct DNA-baseline
      markers instead of generic feature blocks on separate lanes.
+   - In circular mode, the SVG now uses a transparent canvas, renders
+     single-base `variation` features as explicit radial markers on the DNA
+     ring, and marks transcription starts for strand-bearing `gene`/`mRNA`/`CDS`
+     features with a start tick + direction arrow.
 21. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
@@ -3084,11 +3088,17 @@ Tutorial projects:
   (`.../gentle_tutorial_projects`) and opened without adding those temp files
   to the `Open Recent Project...` list.
 - Additional GUI-first manual tutorial:
-  - `docs/tutorial/tp73_promoter_luciferase_gui.md`
-  - includes a stepwise GUI workflow for TP73 promoter -> luciferase planning
-    using Promega AY738222 input, plus per-step GUI/CLI parity mapping.
+  - `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
+  - includes a stepwise GUI workflow for `VKORC1` / `rs9923231`
+    promoter-luciferase planning using the dbSNP fetch path plus Promega
+    AY738222 input, with per-step GUI/CLI parity mapping.
+  - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
+    keeps `rs9923231` inside the cloned insert instead of on its edge.
+  - the preferred community-facing opener for that story is the
+    `VKORC1/rs9923231` hero figure in
+    `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`.
   - canonical workflow skeleton:
-    `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
+    `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
     (`test_mode: skip`, online GenBank retrieval involved by design).
   - `docs/tutorial/gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`

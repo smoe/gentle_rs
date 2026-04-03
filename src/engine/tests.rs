@@ -6228,10 +6228,12 @@ fn test_set_arrangement_ladders_operation_updates_arrangement() {
             ]),
         })
         .unwrap();
-    assert!(result
-        .messages
-        .iter()
-        .any(|m| m.contains("Updated arrangement 'arr-test' ladders")));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| m.contains("Updated arrangement 'arr-test' ladders"))
+    );
     let arrangement = engine
         .state()
         .container_state
@@ -12928,27 +12930,20 @@ fn test_build_lineage_svg_graph_projects_sequencing_confirmation_artifact() {
     let analysis_node = nodes
         .iter()
         .find(|node| {
-            node.kind == LineageSvgNodeKind::Analysis && node.node_id == "analysis:seq_confirm:lineage_confirm"
+            node.kind == LineageSvgNodeKind::Analysis
+                && node.node_id == "analysis:seq_confirm:lineage_confirm"
         })
         .expect("sequencing-confirmation analysis node");
     assert_eq!(analysis_node.title, "lineage_confirm");
     assert!(analysis_node.subtitle.contains("status=confirmed"));
     assert!(analysis_node.subtitle.contains("reads=1"));
     assert!(analysis_node.subtitle.contains("variants=1"));
-    assert!(
-        edges
-            .iter()
-            .any(|edge| edge.from_node_id == "n_expected"
-                && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
-                && edge.label.contains("Sequencing confirmation"))
-    );
-    assert!(
-        edges
-            .iter()
-            .any(|edge| edge.from_node_id == "n_baseline"
-                && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
-                && edge.label.contains("Sequencing confirmation"))
-    );
+    assert!(edges.iter().any(|edge| edge.from_node_id == "n_expected"
+        && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+        && edge.label.contains("Sequencing confirmation")));
+    assert!(edges.iter().any(|edge| edge.from_node_id == "n_baseline"
+        && edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+        && edge.label.contains("Sequencing confirmation")));
 
     let svg = export_lineage_svg(engine.state(), engine.operation_log());
     assert!(svg.contains("lineage_confirm"));
@@ -12964,18 +12959,14 @@ fn test_build_lineage_svg_graph_projects_sequencing_confirmation_artifact() {
     let reloaded_state =
         ProjectState::load_from_path(state_path.to_string_lossy().as_ref()).expect("reload state");
     let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
-    assert!(
-        reloaded_nodes.iter().any(|node| {
-            node.kind == LineageSvgNodeKind::Analysis
-                && node.node_id == "analysis:seq_confirm:lineage_confirm"
-        })
-    );
-    assert!(
-        reloaded_edges.iter().any(|edge| {
-            edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
-                && edge.label.contains("Sequencing confirmation")
-        })
-    );
+    assert!(reloaded_nodes.iter().any(|node| {
+        node.kind == LineageSvgNodeKind::Analysis
+            && node.node_id == "analysis:seq_confirm:lineage_confirm"
+    }));
+    assert!(reloaded_edges.iter().any(|edge| {
+        edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
+            && edge.label.contains("Sequencing confirmation")
+    }));
 }
 
 #[test]
@@ -18846,4 +18837,61 @@ fn summarize_tfbs_region_groups_focus_hits_and_compares_context_density() {
             .abs()
             < 1e-9
     );
+}
+
+#[test]
+fn apply_summarize_tfbs_region_operation_returns_summary_payload() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(250)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(95, 105),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(150, 160),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.4".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(400, 410),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let op = Operation::SummarizeTfbsRegion {
+        seq_id: "promoter".to_string(),
+        focus_start_0based: 90,
+        focus_end_0based_exclusive: 200,
+        context_start_0based: Some(0),
+        context_end_0based_exclusive: Some(500),
+        min_focus_occurrences: 1,
+        min_context_occurrences: 0,
+        limit: Some(25),
+        path: None,
+    };
+    let result = engine.apply(op).expect("apply tfbs summary op");
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.changed_seq_ids.is_empty());
+    let summary = result
+        .tfbs_region_summary
+        .expect("TFBS summary payload should be attached");
+    assert_eq!(summary.seq_id, "promoter");
+    assert_eq!(summary.focus_hit_count, 2);
+    assert_eq!(summary.context_hit_count, 3);
+    assert_eq!(summary.rows.len(), 1);
+    assert_eq!(summary.rows[0].tf_name, "SP1");
+    assert_eq!(engine.state().sequences.len(), 1);
 }

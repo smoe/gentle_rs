@@ -1,0 +1,126 @@
+LOCUS       VKRSLUC1                4952 bp    DNA     circular SYN 03-APR-2026
+DEFINITION  Illustrative VKORC1 rs9923231 upstream fragment to luciferase
+            reporter construct for GENtle hero figure export.
+ACCESSION   VKRSLUC1
+VERSION     VKRSLUC1.1
+KEYWORDS    synthetic construct; luciferase reporter; VKORC1; rs9923231.
+SOURCE      synthetic construct
+  ORGANISM  synthetic construct
+            artificial sequences; vectors.
+COMMENT     Synthetic documentation asset used to obtain a real circular DNA
+            sequence-window SVG export for the VKORC1/rs9923231 luciferase
+            hero figure. Sequence content is illustrative; feature geometry is
+            curated for communication rather than wet-lab execution.
+FEATURES             Location/Qualifiers
+     source          1..4952
+                     /organism="synthetic construct"
+                     /mol_type="other DNA"
+     misc_feature    1..1770
+                     /label="VKORC1 upstream to rs9923231"
+                     /note="Illustrative reverse-strand VKORC1 promoter-side
+                     insert spanning the VKORC1 5' boundary to rs9923231 plus
+                     200 bp of downstream local context"
+     variation       1570
+                     /label="rs9923231"
+                     /note="Reference allele shown in illustrative construct"
+                     /db_xref="dbSNP:rs9923231"
+     CDS             1830..3485
+                     /gene="luc2"
+                     /product="luciferase 2"
+                     /note="Reporter coding sequence"
+     misc_feature    3508..3620
+                     /label="SV40 polyA"
+                     /note="Polyadenylation signal"
+     CDS             complement(3690..4550)
+                     /gene="bla"
+                     /product="beta-lactamase"
+                     /note="Ampicillin resistance marker on opposite strand for
+                     export-direction illustration"
+     rep_origin      4630..4952
+                     /label="ColE1 ori"
+                     /note="Illustrative plasmid origin"
+ORIGIN
+        1 agcttatcga ctgcacggtg caccaatgct tctggcgtca ggcagccatc ggaagctgtg
+       61 gtatggctgt gcaggtcgta aatcactgca taattcgtgt cgctcaaggc gcactcccgt
+      121 tctggataat gttttttgcg ccgacatcat aacggttctg gcaaatattc tgaaatgagc
+      181 tgttgacaat taatcatcgg ctcgtataat gtgtggaatt gtgagcggat aacaatttca
+      241 cacaggaaac agtattcatg tcccctatac taggttattg gaaaattaag ggccttgtgc
+      301 aacccactcg acttcttttg gaatatcttg aagaaaaata tgaagagcat ttgtatgagc
+      361 gcgatgaagg tgataaatgg cgaaacaaaa agtttgaatt gggtttggag tttcccaatc
+      421 ttccttatta tattgatggt gatgttaaat taacacagtc tatggccatc atacgttata
+      481 tagctgacaa gcacaacatg ttgggtggtt gtccaaaaga gcgtgcagag atttcaatgc
+      541 ttgaaggagc ggttttggat attagatacg gtgtttcgag aattgcatat agtaaagact
+      601 ttgaaactct caaagttgat tttcttagca agctacctga aatgctgaaa atgttcgaag
+      661 atcgtttatg tcataaaaca tatttaaatg gtgatcatgt aacccatcct gacttcatgt
+      721 tgtatgacgc tcttgatgtt gttttataca tggacccaat gtgcctggat gcgttcccaa
+      781 aattagtttg ttttaaaaaa cgtattgaag ctatcccaca aattgataag tacttgaaat
+      841 ccagcaagta tatagcatgg cctttgcagg gctggcaagc cacgtttggt ggtggcgacc
+      901 atcctccaaa atcggatctg atcgaaggtc gtgggatccc cgggaattca tcgtgactga
+      961 ctgacgatct gcctcgcgcg tttcggtgat gacggtgaaa acctctgaca catgcagctc
+     1021 ccggagacgg tcacagcttg tctgtaagcg gatgccggga gcagacaagc ccgtcagggc
+     1081 gcgtcagcgg gtgttggcgg gtgtcggggc gcagccatga cccagtcacg tagcgatagc
+     1141 ggagtgtata attcttgaag acgaaagggc ctcgtgatac gcctattttt ataggttaat
+     1201 gtcatgataa taatggtttc ttagacgtca ggtggcactt ttcggggaaa tgtgcgcgga
+     1261 acccctattt gtttattttt ctaaatacat tcaaatatgt atccgctcat gagacaataa
+     1321 ccctgataaa tgcttcaata atattgaaaa aggaagagta tgagtattca acatttccgt
+     1381 gtcgccctta ttcccttttt tgcggcattt tgccttcctg tttttgctca cccagaaacg
+     1441 ctggtgaaag taaaagatgc tgaagatcag ttgggtgcac gagtgggtta catcgaactg
+     1501 gatctcaaca gcggtaagat ccttgagagt tttcgccccg aagaacgttt tccaatgatg
+     1561 agcactttta aagttctgct atgtggcgcg gtattatccc gtgttgacgc cgggcaagag
+     1621 caactcggtc gccgcataca ctattctcag aatgacttgg ttgagtactc accagtcaca
+     1681 gaaaagcatc ttacggatgg catgacagta agagaattat gcagtgctgc cataaccatg
+     1741 agtgataaca ctgcggccaa cttacttctg acaacgatcg gaggaccgaa ggagctaacc
+     1801 gcttttttgc acaacatggg ggatcatgta actcgccttg atcgttggga accggagctg
+     1861 aatgaagcca taccaaacga cgagcgtgac accacgatgc ctgcagcaat ggcaacaacg
+     1921 ttgcgcaaac tattaactgg cgaactactt actctagctt cccggcaaca attaatagac
+     1981 tggatggagg cggataaagt tgcaggacca cttctgcgct cggcccttcc ggctggctgg
+     2041 tttattgctg ataaatctgg agccggtgag cgtgggtctc gcggtatcat tgcagcactg
+     2101 gggccagatg gtaagccctc ccgtatcgta gttatctaca cgacggggag tcaggcaact
+     2161 atggatgaac gaaatagaca gatcgctgag ataggtgcct cactgattaa gcattggtaa
+     2221 ctgtcagacc aagtttactc atatatactt tagattgatt taaaacttca tttttaattt
+     2281 aaaaggatct aggtgaagat cctttttgat aatctcatga ccaaaatccc ttaacgtgag
+     2341 ttttcgttcc actgagcgtc agaccccgta gaaaagatca aaggatcttc ttgagatcct
+     2401 ttttttctgc gcgtaatctg ctgcttgcaa acaaaaaaac caccgctacc agcggtggtt
+     2461 tgtttgccgg atcaagagct accaactctt tttccgaagg taactggctt cagcagagcg
+     2521 cagataccaa atactgtcct tctagtgtag ccgtagttag gccaccactt caagaactct
+     2581 gtagcaccgc ctacatacct cgctctgcta atcctgttac cagtggctgc tgccagtggc
+     2641 gataagtcgt gtcttaccgg gttggactca agacgatagt taccggataa ggcgcagcgg
+     2701 tcgggctgaa cggggggttc gtgcacacag cccagcttgg agcgaacgac ctacaccgaa
+     2761 ctgagatacc tacagcgtga gctatgagaa agcgccacgc ttcccgaagg gagaaaggcg
+     2821 gacaggtatc cggtaagcgg cagggtcgga acaggagagc gcacgaggga gcttccaggg
+     2881 ggaaacgcct ggtatcttta tagtcctgtc gggtttcgcc acctctgact tgagcgtcga
+     2941 tttttgtgat gctcgtcagg ggggcggagc ctatggaaaa acgccagcaa cgcggccttt
+     3001 ttacggttcc tggccttttg ctggcctttt gctcacatgt tctttcctgc gttatcccct
+     3061 gattctgtgg ataaccgtat taccgccttt gagtgagctg ataccgctcg ccgcagccga
+     3121 acgaccgagc gcagcgagtc agtgagcgag gaagcggaag agcgcctgat gcggtatttt
+     3181 ctccttacgc atctgtgcgg tatttcacac cgcataaatt ccgacaccat cgaatggtgc
+     3241 aaaacctttc gcggtatggc atgatagcgc ccggaagaga gtcaattcag ggtggtgaat
+     3301 gtgaaaccag taacgttata cgatgtcgca gagtatgccg gtgtctctta tcagaccgtt
+     3361 tcccgcgtgg tgaaccaggc cagccacgtt tctgcgaaaa cgcgggaaaa agtggaagcg
+     3421 gcgatggcgg agctgaatta cattcccaac cgcgtggcac aacaactggc gggcaaacag
+     3481 tcgttgctga ttggcgttgc cacctccagt ctggccctgc acgcgccgtc gcaaattgtc
+     3541 gcggcgatta aatctcgcgc cgatcaactg ggtgccagcg tggtggtgtc gatggtagaa
+     3601 cgaagcggcg tcgaagcctg taaagcggcg gtgcacaatc ttctcgcgca acgcgtcagt
+     3661 gggctgatca ttaactatcc gctggatgac caggatgcca ttgctgtgga agctgcctgc
+     3721 actaatgttc cggcgttatt tcttgatgtc tctgaccaga cacccatcaa cagtattatt
+     3781 ttctcccatg aagacggtac gcgactgggc gtggagcatc tggtcgcatt gggtcaccag
+     3841 caaatcgcgc tgttagcggg cccattaagt tctgtctcgg cgcgtctgcg tctggctggc
+     3901 tggcataaat atctcactcg caatcaaatt cagccgatag cggaacggga aggcgactgg
+     3961 agtgccatgt ccggttttca acaaaccatg caaatgctga atgagggcat cgttcccact
+     4021 gcgatgctgg ttgccaacga tcagatggcg ctgggcgcaa tgcgcgccat taccgagtcc
+     4081 gggctgcgcg ttggtgcgga tatctcggta gtgggatacg acgataccga agacagctca
+     4141 tgttatatcc cgccgttaac caccatcaaa caggattttc gcctgctggg gcaaaccagc
+     4201 gtggaccgct tgctgcaact ctctcagggc caggcggtga agggcaatca gctgttgccc
+     4261 gtctcactgg tgaaaagaaa aaccaccctg gcgcccaata cgcaaaccgc ctctccccgc
+     4321 gcgttggccg attcattaat gcagctggca cgacaggttt cccgactgga aagcgggcag
+     4381 tgagcgcaac gcaattaatg tgagttagct cactcattag gcaccccagg ctttacactt
+     4441 tatgcttccg gctcgtatgt tgtgtggaat tgtgagcgga taacaatttc acacaggaaa
+     4501 cagctatgac catgattacg gattcactgg ccgtcgtttt acaacgtcgt gactgggaaa
+     4561 accctggcgt tacccaactt aatcgccttg cagcacatcc ccctttcgcc agctggcgta
+     4621 atagcgaaga ggcccgcacc gatcgccctt cccaacagtt gcgcagcctg aatggcgaat
+     4681 ggcgctttgc ctggtttccg gcaccagaag cggtgccgga aagctggctg gagtgcgatc
+     4741 ttcctgaggc cgatactgtc gtcgtcccct caaactggca gatgcacggt tacgatgcgc
+     4801 ccatctacac caacgtaacc tatcccatta cggtcaatcc gccgtttgtt cccacggaga
+     4861 atccgacggg ttgttactcg ctcacattta atgttgatga aagctggcta caggaaggcc
+     4921 agacgcgaat tatttttgat ggcgttggaa tt
+//

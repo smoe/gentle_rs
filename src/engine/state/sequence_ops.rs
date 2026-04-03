@@ -243,60 +243,57 @@ impl GentleEngine {
         let mut ladder_names = ladder_override
             .map(Self::normalize_serial_gel_ladders_slice)
             .unwrap_or_default();
-        let samples: Vec<GelSampleInput> = if let Some(arrangement_id) =
-            arrangement_id.map(str::trim)
-        {
-            if arrangement_id.is_empty() {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "arrangement_id cannot be empty".to_string(),
-                });
-            }
-            let (arrangement_samples, arrangement_ladders) =
-                self.gel_samples_from_arrangement(arrangement_id)?;
-            if ladder_override.is_none() {
-                ladder_names = arrangement_ladders;
-            }
-            arrangement_samples
-        } else if let Some(container_ids) = container_ids {
-            if container_ids.is_empty() {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "container_ids was provided but empty".to_string(),
-                });
-            }
-            self.gel_samples_from_container_ids(container_ids)?
-        } else {
-            if inputs.is_empty() {
-                return Err(EngineError {
+        let samples: Vec<GelSampleInput> =
+            if let Some(arrangement_id) = arrangement_id.map(str::trim) {
+                if arrangement_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "arrangement_id cannot be empty".to_string(),
+                    });
+                }
+                let (arrangement_samples, arrangement_ladders) =
+                    self.gel_samples_from_arrangement(arrangement_id)?;
+                if ladder_override.is_none() {
+                    ladder_names = arrangement_ladders;
+                }
+                arrangement_samples
+            } else if let Some(container_ids) = container_ids {
+                if container_ids.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "container_ids was provided but empty".to_string(),
+                    });
+                }
+                self.gel_samples_from_container_ids(container_ids)?
+            } else {
+                if inputs.is_empty() {
+                    return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message:
                         "RenderPoolGelSvg requires either inputs, container_ids, or arrangement_id"
                             .to_string(),
                 });
-            }
-            let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
-            for seq_id in inputs {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                members.push((seq_id.clone(), dna.len()));
-            }
-            vec![GelSampleInput {
-                name: format!("Input tube (n={})", members.len()),
-                members,
-            }]
-        };
-        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names).map_err(|e| {
-            EngineError {
-                code: ErrorCode::InvalidInput,
-                message: e,
-            }
+                }
+                let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
+                for seq_id in inputs {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    members.push((seq_id.clone(), dna.len()));
+                }
+                vec![GelSampleInput {
+                    name: format!("Input tube (n={})", members.len()),
+                    members,
+                }]
+            };
+        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: e,
         })
     }
 

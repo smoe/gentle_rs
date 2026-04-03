@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8f4ec"/>
+      <stop offset="100%" stop-color="#efe5d4"/>
+    </linearGradient>
+    <linearGradient id="panelFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fffdf9"/>
+      <stop offset="100%" stop-color="#f8f2e7"/>
+    </linearGradient>
+    <marker id="arrowHead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#33424f"/>
+    </marker>
+    <clipPath id="constructClip">
+      <rect x="850" y="308" width="674" height="414" rx="24"/>
+    </clipPath>
+    <style>
+      text {
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        fill: #24313d;
+      }
+      .title {
+        font-size: 42px;
+        font-weight: 700;
+      }
+      .subtitle {
+        font-size: 20px;
+        fill: #536372;
+      }
+      .kicker {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 1.0px;
+        text-transform: uppercase;
+        fill: #8b6747;
+      }
+      .panel {
+        fill: url(#panelFill);
+        stroke: #dccfb8;
+        stroke-width: 1.5;
+        rx: 30;
+      }
+      .panelTitle {
+        font-size: 26px;
+        font-weight: 700;
+      }
+      .body {
+        font-size: 18px;
+        fill: #55626f;
+      }
+      .small {
+        font-size: 15px;
+        fill: #6b7884;
+      }
+      .badge {
+        fill: #24313d;
+      }
+      .badgeText {
+        font-size: 18px;
+        font-weight: 700;
+        fill: #ffffff;
+        text-anchor: middle;
+        dominant-baseline: middle;
+      }
+      .axis {
+        stroke: #33424f;
+        stroke-width: 4;
+        stroke-linecap: round;
+      }
+      .transcript {
+        fill: #2e6fda;
+      }
+      .transcriptAlt {
+        fill: #8cb2f0;
+      }
+      .insert {
+        fill: #43aaa1;
+      }
+      .insertLabel {
+        font-size: 18px;
+        font-weight: 700;
+        fill: #ffffff;
+      }
+      .muted {
+        fill: #d8dcdf;
+      }
+      .snp {
+        fill: #ef8f2f;
+        stroke: #b05b00;
+        stroke-width: 2;
+      }
+      .connector {
+        stroke: #33424f;
+        stroke-width: 4;
+        fill: none;
+        marker-end: url(#arrowHead);
+      }
+      .callout {
+        fill: #edf3f6;
+        stroke: #d8e4eb;
+        stroke-width: 1.5;
+        rx: 18;
+      }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="920" fill="url(#bg)"/>
+  <rect x="56" y="50" width="318" height="36" rx="18" fill="#f0dfbf"/>
+  <text x="78" y="74" class="kicker">ClawBio alert to GENtle reporter design</text>
+  <text x="60" y="128" class="title">VKORC1 upstream fragment to luciferase reporter</text>
+  <text x="60" y="162" class="subtitle">Use the reverse-strand promoter region ending at rs9923231 as the regulatory insert, then inspect the resulting reporter as a real GENtle circular map export.</text>
+
+  <g transform="translate(60,210)">
+    <rect class="panel" width="690" height="640"/>
+    <circle cx="44" cy="48" r="22" class="badge"/>
+    <text x="44" y="48" class="badgeText">1</text>
+    <text x="84" y="56" class="panelTitle">Select the promoter-side fragment at the locus</text>
+    <text x="36" y="102" class="body">VKORC1 is on the reverse strand, so the biologically upstream promoter context lies toward larger genomic coordinates.</text>
+
+    <text x="36" y="156" class="small">Local GRCh38 view around rs9923231</text>
+    <text x="36" y="178" class="small">31,094,600</text>
+    <text x="560" y="178" class="small">31,096,600</text>
+    <line x1="72" y1="250" x2="612" y2="250" class="axis"/>
+    <text x="72" y="282" class="small">genomic coordinates increase to the right</text>
+
+    <rect x="124" y="226" width="176" height="24" rx="12" class="transcriptAlt"/>
+    <rect x="124" y="296" width="228" height="28" rx="14" class="transcript"/>
+    <rect x="124" y="344" width="150" height="24" rx="12" class="transcriptAlt"/>
+    <text x="134" y="222" class="small">alternative VKORC1 transcript context</text>
+    <text x="190" y="314" font-size="18" font-weight="700" fill="#ffffff">VKORC1</text>
+    <text x="132" y="390" class="small">Transcription runs right to left</text>
+    <path d="M 342 312 L 284 312" class="connector"/>
+
+    <rect x="300" y="286" width="246" height="48" rx="20" class="insert"/>
+    <text x="324" y="315" class="insertLabel">taken forward</text>
+    <text x="324" y="338" class="small">VKORC1 5' boundary -> rs9923231 + 200 bp</text>
+
+    <rect x="548" y="300" width="42" height="20" rx="10" class="muted"/>
+    <text x="474" y="362" class="small">extra low-information sequence beyond the cloned right edge</text>
+
+    <line x1="300" y1="204" x2="300" y2="368" stroke="#8fa3b5" stroke-width="3" stroke-dasharray="8 7"/>
+    <text x="238" y="196" class="small">VKORC1 5' boundary</text>
+
+    <line x1="470" y1="198" x2="470" y2="286" stroke="#ef8f2f" stroke-width="5"/>
+    <circle cx="470" cy="182" r="14" class="snp"/>
+    <text x="430" y="150" class="body">rs9923231</text>
+
+    <rect x="36" y="456" width="618" height="108" class="callout"/>
+    <text x="60" y="492" class="body">Figure rule for the follow-up reporter assay</text>
+    <text x="60" y="524" class="small">1. Start at the reverse-strand VKORC1 5' edge.</text>
+    <text x="60" y="548" class="small">2. Keep the fragment all the way to the SNP.</text>
+    <text x="60" y="572" class="small">3. After cloning, compare allele-matched luciferase reporters.</text>
+
+    <rect x="36" y="592" width="618" height="28" rx="14" fill="#e7efe9"/>
+    <text x="56" y="611" class="small">This left panel stays schematic on purpose so the selection logic reads cleanly without TFBS-label collisions.</text>
+  </g>
+
+  <path d="M 770 530 C 800 530 810 530 832 530" class="connector"/>
+
+  <g transform="translate(810,210)">
+    <rect class="panel" width="730" height="640"/>
+    <circle cx="44" cy="48" r="22" class="badge"/>
+    <text x="44" y="48" class="badgeText">2</text>
+    <text x="84" y="56" class="panelTitle">Inspect the cloned reporter as a real GENtle map</text>
+    <text x="36" y="102" class="body">The post-cloning panel is no longer a cartoon. It uses the circular DNA-window export style directly so the communication asset matches what GENtle actually renders.</text>
+
+    <rect x="28" y="152" width="674" height="560" rx="26" fill="#ffffff" stroke="#e2d6c4" stroke-width="1.5"/>
+  </g>
+
+  <g clip-path="url(#constructClip)">
+    <image href="vkorc1_rs9923231_luciferase_construct.png" x="622" y="238" width="1040" height="607" preserveAspectRatio="xMidYMid meet"/>
+  </g>
+
+  <rect x="930" y="760" width="532" height="52" class="callout"/>
+  <text x="952" y="790" class="small">Right panel source: `docs/figures/vkorc1_rs9923231_luciferase_construct.svg`, exported through the shared circular DNA-window SVG route and then rasterized only for composition.</text>
+
+  <rect x="60" y="868" width="1480" height="28" rx="14" fill="#ede3cf"/>
+  <text x="84" y="887" class="small">Intended use: community-facing hero figure for the VKORC1/rs9923231 reporter story, with a simplified locus explainer on the left and a real post-cloning construct export on the right.</text>
+</svg>

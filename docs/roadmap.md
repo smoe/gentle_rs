@@ -440,6 +440,9 @@ order. Durable architecture constraints and decisions remain in
 - Shared engine/shell TFBS region summary path now reports grouped factor
   counts for one focus window versus a wider context window, including
   outside-focus counts and density ratios for quick SNP-neighborhood triage.
+  The same summary is now also exposed as a first-class read-only engine
+  operation (`SummarizeTfbsRegion`) so workflows/CLI `op` calls can consume the
+  exact same payload.
 - Feature expert-view pipeline for selected TFBS, restriction sites, and
   splicing groups, plus curated isoform architecture panels:
   - shared expert payload generation in engine
@@ -660,8 +663,8 @@ order. Durable architecture constraints and decisions remain in
       (`docs/examples/workflows/pcr_overlap_extension_substitution_offline.json`)
     - guide export and protocol handoff
       (`docs/examples/workflows/guides_export_csv_and_protocol.json`)
-    - TP73 promoter luciferase assay planning
-      (`docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`)
+    - VKORC1 / rs9923231 promoter luciferase assay planning
+      (`docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`)
   - planned ClawBio-facing showcase moved out of the top-level README until the
     assets exist:
     - working title: `From PGx Alert To Reporter Construct`
@@ -699,8 +702,9 @@ order. Durable architecture constraints and decisions remain in
         `rs9923231` in a warfarin-sensitivity interpretation
       - one GENtle context figure showing the local `VKORC1`/`LOC124903680`
         genomic neighborhood and the SNP position
-      - one derived-fragment figure showing the exact promoter fragment(s)
-        taken forward for study
+      - one luciferase hero figure showing the exact promoter fragment taken
+        from the reverse-strand `VKORC1` `5'` boundary up to `rs9923231`, plus
+        the paired reporter design taken forward for study
       - one promoter->luciferase assembly cartoon showing the planned cloning
         mechanism
       - one lineage/provenance graph showing the workflow inputs and assembled
@@ -721,6 +725,23 @@ order. Durable architecture constraints and decisions remain in
         `docs/examples/workflows/vkorc1_rs9923231_context_map_online.json`
         plus `docs/figures/vkorc1_rs9923231_context_map.workflow.json`
         / `docs/figures/vkorc1_rs9923231_context_map.svg`
+      - the first luciferase-facing hero figure on this track now also exists
+        as `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`
+      - that hero asset is now a hybrid rather than a pure cartoon:
+        the left side explains the reverse-strand promoter geometry and the
+        upstream fragment bounded by the `VKORC1 5'` edge and `rs9923231`,
+        while the right side uses a real circular DNA-window export
+      - the companion construct export now also exists as
+        `docs/figures/vkorc1_rs9923231_luciferase_construct.svg`
+        (generated from a synthetic illustrative construct record so the
+        communication figure can use real GENtle circular-map styling before
+        the end-to-end luciferase workflow is fully wired)
+      - shared circular SVG export now contributes directly to that figure:
+        transparent canvas, explicit radial SNP markers for `variation`
+        features, and transcription-start direction markers for
+        strand-bearing `gene`/`mRNA`/`CDS` arcs
+      - it is intended to replace TP73 as the showcase opener for reporter
+        design while keeping the TP73 tutorial as a GUI/CLI parity reference
       - that figure/export path now honors stored linear viewport crops, so
         asymmetric context-map workflows render the intended local window
         instead of silently falling back to whole-sequence SVGs

@@ -110,7 +110,8 @@ impl WindowDna {
                 self.main_area.focus_flexibility_track_analysis(&track_id);
             }
             DeferredAnalysisFocus::SequencingConfirmation(report_id) => {
-                self.main_area.focus_sequencing_confirmation_report(&report_id);
+                self.main_area
+                    .focus_sequencing_confirmation_report(&report_id);
             }
         }
     }
@@ -409,7 +410,8 @@ impl WindowDna {
             ));
             return;
         }
-        self.main_area.focus_sequencing_confirmation_report(report_id);
+        self.main_area
+            .focus_sequencing_confirmation_report(report_id);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

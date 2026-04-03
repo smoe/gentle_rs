@@ -695,7 +695,9 @@
       },
       {
          "aliases": [],
-         "engine_operations": [],
+         "engine_operations": [
+            "SummarizeTfbsRegion"
+         ],
          "interfaces": [
             "cli-shell",
             "gui-shell"

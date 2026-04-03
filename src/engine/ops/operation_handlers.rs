@@ -2749,6 +2749,7 @@ impl GentleEngine {
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
+            tfbs_region_summary: None,
         };
 
         match op {
@@ -7985,6 +7986,45 @@ impl GentleEngine {
                     summary.complete_rule.as_str()
                 ));
                 result.rna_read_gene_support_summary = Some(summary);
+            }
+            Operation::SummarizeTfbsRegion {
+                seq_id,
+                focus_start_0based,
+                focus_end_0based_exclusive,
+                context_start_0based,
+                context_end_0based_exclusive,
+                min_focus_occurrences,
+                min_context_occurrences,
+                limit,
+                path,
+            } => {
+                let summary = self.summarize_tfbs_region(TfbsRegionSummaryRequest {
+                    seq_id: seq_id.clone(),
+                    focus_start_0based,
+                    focus_end_0based_exclusive,
+                    context_start_0based,
+                    context_end_0based_exclusive,
+                    min_focus_occurrences,
+                    min_context_occurrences,
+                    limit,
+                })?;
+                if let Some(path) = path.as_deref() {
+                    self.write_tfbs_region_summary_json(&summary, path)?;
+                    result.messages.push(format!(
+                        "Wrote TFBS region summary for '{}' to '{}'",
+                        summary.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS region summary for '{}' matched {} factor(s) in focus {}..{} against context {}..{}",
+                    summary.seq_id,
+                    summary.matched_tf_count,
+                    summary.focus_start_0based,
+                    summary.focus_end_0based_exclusive,
+                    summary.context_start_0based,
+                    summary.context_end_0based_exclusive,
+                ));
+                result.tfbs_region_summary = Some(summary);
             }
             Operation::ExportRnaReadReport { report_id, path } => {
                 let report = self.export_rna_read_report(&report_id, &path)?;

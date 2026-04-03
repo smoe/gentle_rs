@@ -35,6 +35,13 @@ const SVG_TEXT_DESCENT: f32 = 4.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
 const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
 const VARIATION_MARKER_RADIUS: f32 = 2.5;
+const CIRCULAR_FEATURE_STROKE_WIDTH: f32 = 5.0;
+const CIRCULAR_VARIATION_MARKER_STROKE_WIDTH: f32 = 2.5;
+const CIRCULAR_VARIATION_MARKER_RADIUS: f32 = 4.0;
+const CIRCULAR_VARIATION_MARKER_LABEL_OFFSET: f32 = 22.0;
+const CIRCULAR_TSS_TICK_HALF_LENGTH: f32 = 7.0;
+const CIRCULAR_TSS_ARROW_LENGTH: f32 = 12.0;
+const CIRCULAR_TSS_ARROW_HALF_WIDTH: f32 = 4.0;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -47,6 +54,7 @@ struct FeatureVm {
     is_pointy: bool,
     is_regulatory: bool,
     is_variation: bool,
+    has_transcription_direction: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -147,6 +155,13 @@ fn feature_pointy(feature: &Feature) -> bool {
     matches!(
         feature.kind.to_string().to_ascii_uppercase().as_str(),
         "CDS" | "GENE"
+    )
+}
+
+fn has_transcription_direction(feature: &Feature) -> bool {
+    matches!(
+        feature.kind.to_string().to_ascii_uppercase().as_str(),
+        "CDS" | "GENE" | "MRNA"
     )
 }
 
@@ -532,6 +547,7 @@ fn collect_features(
             is_pointy: feature_pointy(feature),
             is_regulatory: is_regulatory_feature(feature),
             is_variation,
+            has_transcription_direction: has_transcription_direction(feature),
         });
     }
     ret.sort_by(|a, b| {
@@ -1257,6 +1273,68 @@ fn pos2xy(pos: usize, len: usize, cx: f32, cy: f32, r: f32) -> (f32, f32) {
     (cx + r * angle.cos(), cy + r * angle.sin())
 }
 
+fn circular_feature_band_radius(base_radius: f32, feature: &FeatureVm, seq_len: usize) -> f32 {
+    let span = feature.to.saturating_sub(feature.from).saturating_add(1);
+    let length_fraction = if seq_len == 0 {
+        0.0
+    } else {
+        (span as f32 / seq_len as f32).clamp(0.0, 1.0)
+    };
+    let offset = (0.14 * (1.0 - 0.6 * length_fraction)).clamp(0.05, 0.14);
+    let band = if feature.is_reverse {
+        1.0 - offset
+    } else {
+        1.0 + offset
+    };
+    base_radius * band
+}
+
+fn circular_tangent_unit_vector(
+    pos: usize,
+    is_reverse: bool,
+    len: usize,
+    cx: f32,
+    cy: f32,
+    r: f32,
+) -> (f32, f32) {
+    if len == 0 {
+        return (1.0, 0.0);
+    }
+    let next_pos = if is_reverse {
+        pos.checked_sub(1).unwrap_or(len.saturating_sub(1))
+    } else {
+        (pos + 1) % len
+    };
+    let (x1, y1) = pos2xy(pos, len, cx, cy, r);
+    let (x2, y2) = pos2xy(next_pos, len, cx, cy, r);
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let norm = (dx * dx + dy * dy).sqrt();
+    if norm <= f32::EPSILON {
+        (1.0, 0.0)
+    } else {
+        (dx / norm, dy / norm)
+    }
+}
+
+fn circular_radial_unit_vector(
+    pos: usize,
+    len: usize,
+    cx: f32,
+    cy: f32,
+    r: f32,
+) -> (f32, f32) {
+    let (x, y) = pos2xy(pos, len, cx, cy, r);
+    let dx = x - cx;
+    let dy = y - cy;
+    let norm = (dx * dx + dy * dy).sqrt();
+    if norm <= f32::EPSILON {
+        (0.0, -1.0)
+    } else {
+        (dx / norm, dy / norm)
+    }
+}
+
 fn circular_arc_path(
     from: usize,
     to: usize,
@@ -1304,15 +1382,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, H))
         .set("width", W)
-        .set("height", H)
-        .add(
-            Rectangle::new()
-                .set("x", 0)
-                .set("y", 0)
-                .set("width", W)
-                .set("height", H)
-                .set("fill", "#ffffff"),
-        );
+        .set("height", H);
 
     doc = doc.add(
         Text::new(
@@ -1391,34 +1461,117 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
             len,
             normalize_linear_export_viewport(dna, display),
         ) {
+            let band_radius = circular_feature_band_radius(r, &f, len);
             let mid = (f.from + f.to) / 2;
-            let span = f.to.saturating_sub(f.from).saturating_add(1);
-            let length_fraction = if len == 0 {
-                0.0
-            } else {
-                (span as f32 / len as f32).clamp(0.0, 1.0)
-            };
-            let offset = (0.14 * (1.0 - 0.6 * length_fraction)).clamp(0.05, 0.14);
-            let band = if f.is_reverse {
-                1.0 - offset
-            } else {
-                1.0 + offset
-            };
-            if let Some(path_d) = circular_arc_path(f.from, f.to, len, cx, cy, r * band) {
+            if f.is_variation {
+                let marker_pos = mid.min(len.saturating_sub(1));
+                let (inner_x, inner_y) = pos2xy(marker_pos, len, cx, cy, r * 0.94);
+                let (outer_x, outer_y) = pos2xy(marker_pos, len, cx, cy, r * 1.08);
+                let (label_x, label_y) = pos2xy(
+                    marker_pos,
+                    len,
+                    cx,
+                    cy,
+                    r * 1.08 + CIRCULAR_VARIATION_MARKER_LABEL_OFFSET,
+                );
+                doc = doc.add(
+                    Line::new()
+                        .set("x1", inner_x)
+                        .set("y1", inner_y)
+                        .set("x2", outer_x)
+                        .set("y2", outer_y)
+                        .set("stroke", f.color)
+                        .set("stroke-width", CIRCULAR_VARIATION_MARKER_STROKE_WIDTH)
+                        .set("data-gentle-role", "variation-marker-line"),
+                );
+                doc = doc.add(
+                    Circle::new()
+                        .set("cx", outer_x)
+                        .set("cy", outer_y)
+                        .set("r", CIRCULAR_VARIATION_MARKER_RADIUS)
+                        .set("fill", "#ffffff")
+                        .set("stroke", f.color)
+                        .set("stroke-width", 2)
+                        .set("data-gentle-role", "variation-marker-dot"),
+                );
+                doc = doc.add(
+                    Text::new(f.label)
+                        .set("x", label_x)
+                        .set("y", label_y)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#111111"),
+                );
+                continue;
+            }
+            if let Some(path_d) = circular_arc_path(f.from, f.to, len, cx, cy, band_radius) {
                 doc = doc.add(
                     Path::new()
                         .set("d", path_d)
                         .set("fill", "none")
                         .set("stroke", f.color)
-                        .set("stroke-width", 5),
+                        .set("stroke-width", CIRCULAR_FEATURE_STROKE_WIDTH),
                 );
             }
-            let label_band = if f.is_reverse {
-                1.0 - (offset + 0.08)
+            if f.has_transcription_direction {
+                let tss_pos = if f.is_reverse { f.to } else { f.from }.min(len.saturating_sub(1));
+                let (tick_dx, tick_dy) = circular_radial_unit_vector(tss_pos, len, cx, cy, r);
+                let (tick_x, tick_y) = pos2xy(tss_pos, len, cx, cy, band_radius);
+                doc = doc.add(
+                    Line::new()
+                        .set(
+                            "x1",
+                            tick_x - tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH,
+                        )
+                        .set(
+                            "y1",
+                            tick_y - tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH,
+                        )
+                        .set(
+                            "x2",
+                            tick_x + tick_dx * CIRCULAR_TSS_TICK_HALF_LENGTH,
+                        )
+                        .set(
+                            "y2",
+                            tick_y + tick_dy * CIRCULAR_TSS_TICK_HALF_LENGTH,
+                        )
+                        .set("stroke", f.color)
+                        .set("stroke-width", 2)
+                        .set("data-gentle-role", "transcription-start-tick"),
+                );
+
+                let (dir_x, dir_y) =
+                    circular_tangent_unit_vector(tss_pos, f.is_reverse, len, cx, cy, band_radius);
+                let tip_x = tick_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
+                let tip_y = tick_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.55);
+                let back_x = tick_x - dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.45);
+                let back_y = tick_y - dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.45);
+                let tri = Data::new()
+                    .move_to((tip_x, tip_y))
+                    .line_to((
+                        back_x + tick_dx * CIRCULAR_TSS_ARROW_HALF_WIDTH,
+                        back_y + tick_dy * CIRCULAR_TSS_ARROW_HALF_WIDTH,
+                    ))
+                    .line_to((
+                        back_x - tick_dx * CIRCULAR_TSS_ARROW_HALF_WIDTH,
+                        back_y - tick_dy * CIRCULAR_TSS_ARROW_HALF_WIDTH,
+                    ))
+                    .close();
+                doc = doc.add(
+                    Path::new()
+                        .set("d", tri)
+                        .set("fill", f.color)
+                        .set("stroke", "none")
+                        .set("data-gentle-role", "transcription-start-arrow"),
+                );
+            }
+            let label_radius = if f.is_reverse {
+                band_radius - 18.0
             } else {
-                1.0 + (offset + 0.08)
+                band_radius + 18.0
             };
-            let (lx, ly) = pos2xy(mid, len, cx, cy, r * label_band);
+            let (lx, ly) = pos2xy(mid, len, cx, cy, label_radius.max(0.0));
             doc = doc.add(
                 Text::new(f.label)
                     .set("x", lx)
@@ -1796,6 +1949,39 @@ mod tests {
         assert!(svg.contains("<circle"));
         assert!(svg.contains("stroke=\"#e17f0f\""));
         assert!(!svg.contains("<rect fill=\"#e17f0f\""));
+    }
+
+    #[test]
+    fn circular_svg_export_uses_transparent_background_and_marks_variation_and_tss() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("label".into(), Some("luc2".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::Complement(Box::new(Location::simple_range(120, 180))),
+            qualifiers: vec![("label".into(), Some("bla".to_string()))],
+        });
+        push_variation_feature(&mut dna, "rs9923231", 130, 131);
+        dna.set_circular(true);
+
+        let svg = export_circular_svg(&dna, &DisplaySettings::default());
+        assert!(!svg.contains("<rect fill=\"#ffffff\""));
+        assert!(svg.contains("data-gentle-role=\"variation-marker-line\""));
+        assert!(svg.contains("data-gentle-role=\"variation-marker-dot\""));
+        assert!(svg.contains("rs9923231"));
+        assert!(
+            svg.matches("data-gentle-role=\"transcription-start-arrow\"")
+                .count()
+                >= 2
+        );
+        assert!(
+            svg.matches("data-gentle-role=\"transcription-start-tick\"")
+                .count()
+                >= 2
+        );
     }
 
     #[test]

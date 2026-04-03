@@ -35,8 +35,9 @@ Structured workflow examples:
 - canonical source files: `docs/examples/workflows/*.json`
 - schema: `gentle.workflow_example.v1`
 - includes GUI-first parity skeleton:
-  - `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
-  - merged canonical tutorial: `docs/tutorial/tp73_promoter_luciferase_gui.md`
+  - `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
+  - merged canonical tutorial:
+    `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
 - on-demand snippet generation (CLI/shell/JS/Lua):
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
@@ -1408,6 +1409,9 @@ Rendering export commands:
     so workflow-driven `SetLinearViewport` crops carry through into the SVG.
   - Single-base `variation` features render as DNA-baseline markers, which is
     useful for dbSNP-driven context figures.
+  - Circular exports now use a transparent canvas, show single-base
+    `variation` features as radial DNA-ring markers, and add transcription-start
+    ticks/arrows for strand-bearing `gene`/`mRNA`/`CDS` features.
 - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
@@ -2216,6 +2220,12 @@ Notes:
   comparison window.
 - `--min-focus-count` defaults to `1`, so the command naturally lists TFs that
   are actually present in the requested focus window.
+
+The same summary is also available as a first-class JSON operation:
+
+```json
+{"SummarizeTfbsRegion":{"seq_id":"vkorc1_rs9923231_context","focus_start_0based":2900,"focus_end_0based_exclusive":3100,"context_start_0based":0,"context_end_0based_exclusive":6001,"min_focus_occurrences":1,"min_context_occurrences":0,"limit":25}}
+```
 
 Select one candidate in-silico (explicit provenance step):
 
