@@ -2219,9 +2219,17 @@ Rack view is the first physical-placement layer on top of arrangements.
   - edit `rows` / `columns`
   - click `Apply Custom`
   - occupied positions are reflowed under the same order-preserving rules
-- Current custom-profile baseline supports up to `26` rows because coordinates
-  stay in single-letter A1 form.
-- Coordinates are A1-style everywhere.
+- Rack snapshots now also carry:
+  - `Fill`
+    - `Row-major`
+    - `Column-major`
+  - `Blocked`
+    - comma- or whitespace-separated reserved coordinates
+    - `Apply Blocked` / `Clear Blocked`
+- Blocked slots render directly in the rack grid and are excluded from
+  placement/drop targets.
+- Coordinates are A1-style everywhere, and row labels continue beyond `Z` as
+  `AA`, `AB`, ...
 
 Interaction model:
 
@@ -2236,6 +2244,8 @@ Interaction model:
 - All rack moves use shift-neighbor semantics:
   - later occupied positions move to keep the rack block contiguous
   - free-floating holes are not the primary editing model in this baseline
+- Changing `Fill` or `Blocked` reflows occupied positions through the same
+  shared order-preserving engine path instead of editing coordinates ad hoc.
 
 Exports:
 

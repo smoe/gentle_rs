@@ -478,7 +478,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
   gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]\n  \
   gentle_cli [--state PATH|--project PATH] racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384\n  \
+  gentle_cli [--state PATH|--project PATH] racks set-fill-direction RACK_ID row_major|column_major\n  \
   gentle_cli [--state PATH|--project PATH] racks set-custom-profile RACK_ID ROWS COLUMNS\n\n  \
+  gentle_cli [--state PATH|--project PATH] racks set-blocked RACK_ID COORD[,COORD...]...|--clear\n\n  \
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \

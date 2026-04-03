@@ -6551,6 +6551,178 @@ fn set_custom_rack_profile_reflows_placements_and_marks_snapshot_custom() {
 }
 
 #[test]
+fn rack_coordinates_support_multi_letter_rows() {
+    let profile = RackProfileSnapshot::custom(28, 2);
+    assert_eq!(
+        GentleEngine::rack_coordinate_from_index(&profile, 52).expect("AA1"),
+        "AA1"
+    );
+    assert_eq!(
+        GentleEngine::rack_coordinate_from_index(&profile, 55).expect("AB2"),
+        "AB2"
+    );
+    assert_eq!(
+        GentleEngine::rack_index_from_coordinate(&profile, "AB2").expect("index"),
+        55
+    );
+}
+
+#[test]
+fn set_rack_fill_direction_column_major_reflows_placements() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(40 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+                "container-4".to_string(),
+            ],
+            arrangement_id: Some("arr-fill".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-fill")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::SetRackProfileCustom {
+            rack_id: rack_id.clone(),
+            rows: 2,
+            columns: 3,
+        })
+        .expect("set custom profile");
+    engine
+        .apply(Operation::SetRackFillDirection {
+            rack_id: rack_id.clone(),
+            fill_direction: RackFillDirection::ColumnMajor,
+        })
+        .expect("set fill direction");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    assert_eq!(rack.profile.fill_direction, RackFillDirection::ColumnMajor);
+    let coords = rack
+        .placements
+        .iter()
+        .map(|entry| entry.coordinate.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        coords,
+        vec![
+            "A1".to_string(),
+            "B1".to_string(),
+            "A2".to_string(),
+            "B2".to_string()
+        ]
+    );
+}
+
+#[test]
+fn set_rack_blocked_coordinates_reflows_and_skips_reserved_slots() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(30 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+                "container-4".to_string(),
+            ],
+            arrangement_id: Some("arr-blocked".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-blocked")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::SetRackProfileCustom {
+            rack_id: rack_id.clone(),
+            rows: 2,
+            columns: 3,
+        })
+        .expect("set custom profile");
+    engine
+        .apply(Operation::SetRackBlockedCoordinates {
+            rack_id: rack_id.clone(),
+            blocked_coordinates: vec!["A2".to_string(), "B1".to_string()],
+        })
+        .expect("set blocked coordinates");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    assert_eq!(
+        rack.profile.blocked_coordinates,
+        vec!["A2".to_string(), "B1".to_string()]
+    );
+    let coords = rack
+        .placements
+        .iter()
+        .map(|entry| entry.coordinate.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        coords,
+        vec![
+            "A1".to_string(),
+            "A3".to_string(),
+            "B2".to_string(),
+            "B3".to_string()
+        ]
+    );
+}
+
+#[test]
 fn place_arrangement_on_existing_rack_appends_second_block_and_exports_labels() {
     let mut state = ProjectState::default();
     for idx in 0..4usize {

@@ -63,6 +63,9 @@ Rack-placement rule (target model):
 - Where GENtle already has plate-coordinate conventions (for example existing
   `Plate384` CSV export support), rack placement should reuse the same
   coordinate vocabulary instead of inventing a parallel naming scheme.
+- A1-style row labels may extend beyond `Z` as `AA`, `AB`, ... when custom
+  carriers exceed 26 rows; this is still the same coordinate vocabulary, not a
+  second naming scheme.
 - Physical rack placement should consume arrangement order rather than
   re-describing sample meaning in a second disconnected structure.
   Persisted rack entries therefore point back to:

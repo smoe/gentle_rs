@@ -895,8 +895,10 @@ pub struct GENtleApp {
     rack_view_rack_id: String,
     rack_view_status: String,
     rack_profile_editor_kind: RackProfileKind,
+    rack_fill_direction_editor: RackFillDirection,
     rack_custom_profile_rows: String,
     rack_custom_profile_columns: String,
+    rack_blocked_coordinates_text: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
     rack_view_selected_coordinate: Option<String>,
     rack_view_selected_arrangement_id: Option<String>,
@@ -2362,8 +2364,10 @@ impl Default for GENtleApp {
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
             rack_profile_editor_kind: RackProfileKind::SmallTube4x6,
+            rack_fill_direction_editor: RackFillDirection::RowMajor,
             rack_custom_profile_rows: String::new(),
             rack_custom_profile_columns: String::new(),
+            rack_blocked_coordinates_text: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
             rack_view_selected_coordinate: None,
             rack_view_selected_arrangement_id: None,
@@ -5833,6 +5837,8 @@ Error: `{err}`"
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.rack_view_rack_id.clear();
         self.rack_view_status.clear();
+        self.rack_fill_direction_editor = RackFillDirection::RowMajor;
+        self.rack_blocked_coordinates_text.clear();
         self.rack_view_selected_coordinate = None;
         self.rack_view_selected_arrangement_id = None;
         self.rack_view_drag_state = None;
@@ -6634,6 +6640,13 @@ Error: `{err}`"
         }
     }
 
+    fn rack_fill_direction_label(fill_direction: RackFillDirection) -> &'static str {
+        match fill_direction {
+            RackFillDirection::RowMajor => "Row-major",
+            RackFillDirection::ColumnMajor => "Column-major",
+        }
+    }
+
     fn rack_label_sheet_preset_label(preset: RackLabelSheetPreset) -> &'static str {
         match preset {
             RackLabelSheetPreset::CompactCards => "Compact cards",
@@ -6711,6 +6724,14 @@ Error: `{err}`"
                 }
             }
         }
+    }
+
+    fn parse_blocked_coordinate_text(raw: &str) -> Vec<String> {
+        raw.split(|ch: char| ch == ',' || ch == ';' || ch.is_whitespace())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect()
     }
 
     fn rack_color_for_arrangement(arrangement_id: &str) -> egui::Color32 {
@@ -6814,8 +6835,10 @@ Error: `{err}`"
             .cloned()
         {
             self.rack_profile_editor_kind = rack.profile.kind;
+            self.rack_fill_direction_editor = rack.profile.fill_direction;
             self.rack_custom_profile_rows = rack.profile.rows.to_string();
             self.rack_custom_profile_columns = rack.profile.columns.to_string();
+            self.rack_blocked_coordinates_text = rack.profile.blocked_coordinates.join(", ");
         }
         self.show_rack_dialog = true;
         self.mark_viewport_open_requested(Self::rack_viewport_id());
@@ -7204,6 +7227,24 @@ Error: `{err}`"
                         );
                     }
                 });
+            ui.label("Fill");
+            let previous_fill_direction = self.rack_fill_direction_editor;
+            egui::ComboBox::from_id_salt("rack_fill_direction_combo")
+                .selected_text(Self::rack_fill_direction_label(
+                    self.rack_fill_direction_editor,
+                ))
+                .show_ui(ui, |ui| {
+                    for fill_direction in [
+                        RackFillDirection::RowMajor,
+                        RackFillDirection::ColumnMajor,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rack_fill_direction_editor,
+                            fill_direction,
+                            Self::rack_fill_direction_label(fill_direction),
+                        );
+                    }
+                });
             if self.rack_profile_editor_kind != previous_profile_kind
                 && self.rack_profile_editor_kind == RackProfileKind::Custom
             {
@@ -7238,12 +7279,46 @@ Error: `{err}`"
                             self.rack_custom_profile_columns =
                                 updated_rack.profile.columns.to_string();
                             self.rack_profile_editor_kind = updated_rack.profile.kind;
+                            self.rack_fill_direction_editor = updated_rack.profile.fill_direction;
+                            self.rack_blocked_coordinates_text =
+                                updated_rack.profile.blocked_coordinates.join(", ");
                         }
                     }
                     Err(err) => {
                         self.rack_view_status =
                             format!("Could not change rack profile: {}", err.message);
                         self.rack_profile_editor_kind = rack.profile.kind;
+                    }
+                }
+            }
+            if self.rack_fill_direction_editor != previous_fill_direction {
+                let result = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .apply(Operation::SetRackFillDirection {
+                        rack_id: rack.rack_id.clone(),
+                        fill_direction: self.rack_fill_direction_editor,
+                    });
+                match result {
+                    Ok(op_result) => {
+                        self.rack_view_status = op_result
+                            .messages
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Updated rack fill direction".to_string());
+                        self.lineage_cache_valid = false;
+                        self.refresh_lineage_cache_if_needed();
+                        if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_fill_direction_editor = updated_rack.profile.fill_direction;
+                            self.rack_blocked_coordinates_text =
+                                updated_rack.profile.blocked_coordinates.join(", ");
+                        }
+                    }
+                    Err(err) => {
+                        self.rack_view_status =
+                            format!("Could not change rack fill direction: {}", err.message);
+                        self.rack_fill_direction_editor = rack.profile.fill_direction;
                     }
                 }
             }
@@ -7357,6 +7432,18 @@ Error: `{err}`"
                                     self.lineage_cache_valid = false;
                                     self.refresh_lineage_cache_if_needed();
                                     self.rack_profile_editor_kind = RackProfileKind::Custom;
+                                    if let Some(updated_rack) = self.current_rack_snapshot() {
+                                        self.rack_custom_profile_rows =
+                                            updated_rack.profile.rows.to_string();
+                                        self.rack_custom_profile_columns =
+                                            updated_rack.profile.columns.to_string();
+                                        self.rack_fill_direction_editor =
+                                            updated_rack.profile.fill_direction;
+                                        self.rack_blocked_coordinates_text = updated_rack
+                                            .profile
+                                            .blocked_coordinates
+                                            .join(", ");
+                                    }
                                 }
                                 Err(err) => {
                                     self.rack_view_status = format!(
@@ -7376,10 +7463,93 @@ Error: `{err}`"
                         }
                     }
                 }
-                ui.small("Use A1-style coordinates; multi-letter row labels such as AA/AB are supported for larger custom racks.");
+                ui.small("Use A1-style coordinates; row labels continue beyond Z as AA, AB, ...");
             });
         }
+        ui.horizontal(|ui| {
+            ui.label("Blocked");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.rack_blocked_coordinates_text)
+                    .desired_width(340.0),
+            )
+            .on_hover_text(
+                "Comma- or whitespace-separated rack coordinates to reserve from placement, for example A1 B2 AA3",
+            );
+            if ui
+                .button("Apply Blocked")
+                .on_hover_text(
+                    "Persist the blocked rack coordinates and reflow occupied positions onto the remaining available slots",
+                )
+                .clicked()
+            {
+                let blocked_coordinates =
+                    Self::parse_blocked_coordinate_text(&self.rack_blocked_coordinates_text);
+                let result = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .apply(Operation::SetRackBlockedCoordinates {
+                        rack_id: rack.rack_id.clone(),
+                        blocked_coordinates,
+                    });
+                match result {
+                    Ok(op_result) => {
+                        self.rack_view_status = op_result
+                            .messages
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Updated blocked rack coordinates".to_string());
+                        self.lineage_cache_valid = false;
+                        self.refresh_lineage_cache_if_needed();
+                        if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_blocked_coordinates_text =
+                                updated_rack.profile.blocked_coordinates.join(", ");
+                        }
+                    }
+                    Err(err) => {
+                        self.rack_view_status =
+                            format!("Could not update blocked rack coordinates: {}", err.message);
+                    }
+                }
+            }
+            if ui
+                .button("Clear Blocked")
+                .on_hover_text("Clear all blocked rack coordinates for this rack")
+                .clicked()
+            {
+                let result = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .apply(Operation::SetRackBlockedCoordinates {
+                        rack_id: rack.rack_id.clone(),
+                        blocked_coordinates: vec![],
+                    });
+                match result {
+                    Ok(op_result) => {
+                        self.rack_view_status = op_result
+                            .messages
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Cleared blocked rack coordinates".to_string());
+                        self.lineage_cache_valid = false;
+                        self.refresh_lineage_cache_if_needed();
+                        self.rack_blocked_coordinates_text.clear();
+                    }
+                    Err(err) => {
+                        self.rack_view_status =
+                            format!("Could not clear blocked rack coordinates: {}", err.message);
+                    }
+                }
+            }
+        });
         let sorted_entries = Self::rack_sorted_entries(&rack);
+        let blocked_coordinates = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
         let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
         let escape_pressed = ui.ctx().input(|i| i.key_pressed(Key::Escape));
@@ -7475,12 +7645,29 @@ Error: `{err}`"
                         for column in 0..rack.profile.columns {
                             let coordinate =
                                 Self::rack_coordinate_for_slot(&rack.profile, row, column);
+                            if blocked_coordinates.contains(&coordinate) {
+                                ui.add_sized(
+                                    egui::vec2(96.0, 44.0),
+                                    egui::Button::new(
+                                        egui::RichText::new(format!("Blocked\n{coordinate}"))
+                                            .weak()
+                                            .small(),
+                                    )
+                                    .sense(egui::Sense::hover()),
+                                )
+                                .on_hover_text(
+                                    "This rack position is blocked/reserved and is excluded from placement order",
+                                );
+                                continue;
+                            }
+
                             let preview_cell =
                                 ghost_preview.as_ref().and_then(|map| map.get(&coordinate));
                             let current_entry = entry_by_coordinate.get(&coordinate).cloned();
                             let effective_entry = preview_cell
                                 .and_then(|cell| cell.predicted_entry.clone())
                                 .or(current_entry.clone());
+
                             if let Some(entry) = effective_entry {
                                 let arrangement_color =
                                     Self::rack_color_for_arrangement(&entry.arrangement_id);
@@ -7527,7 +7714,10 @@ Error: `{err}`"
                                     ui.painter().rect_stroke(
                                         response.rect.expand(1.0),
                                         6.0,
-                                        egui::Stroke::new(1.5, arrangement_color.gamma_multiply(0.85)),
+                                        egui::Stroke::new(
+                                            1.5,
+                                            arrangement_color.gamma_multiply(0.85),
+                                        ),
                                         egui::StrokeKind::Outside,
                                     );
                                 }
@@ -35448,7 +35638,7 @@ mod tests {
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
             LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            Rack, RackProfileKind, RackProfileSnapshot,
+            Rack, RackFillDirection, RackProfileKind, RackProfileSnapshot,
             ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
             RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
             RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
@@ -39643,7 +39833,11 @@ mod tests {
             Rack {
                 rack_id: "rack-custom".to_string(),
                 name: "Bench".to_string(),
-                profile: RackProfileSnapshot::custom(3, 10),
+                profile: RackProfileSnapshot {
+                    fill_direction: RackFillDirection::ColumnMajor,
+                    blocked_coordinates: vec!["B2".to_string(), "AA3".to_string()],
+                    ..RackProfileSnapshot::custom(28, 10)
+                },
                 placements: vec![],
                 created_by_op: None,
                 created_at_unix_ms: 0,
@@ -39657,8 +39851,10 @@ mod tests {
         assert!(app.show_rack_dialog);
         assert_eq!(app.rack_view_rack_id, "rack-custom");
         assert_eq!(app.rack_profile_editor_kind, RackProfileKind::Custom);
-        assert_eq!(app.rack_custom_profile_rows, "3");
+        assert_eq!(app.rack_fill_direction_editor, RackFillDirection::ColumnMajor);
+        assert_eq!(app.rack_custom_profile_rows, "28");
         assert_eq!(app.rack_custom_profile_columns, "10");
+        assert_eq!(app.rack_blocked_coordinates_text, "B2, AA3");
     }
 
     #[test]
@@ -39883,6 +40079,13 @@ mod tests {
                 .map(|entry| entry.arrangement_id.as_str()),
             Some("arr-a")
         );
+    }
+
+    #[test]
+    fn rack_coordinate_for_slot_supports_multi_letter_rows() {
+        let profile = RackProfileSnapshot::custom(28, 3);
+        assert_eq!(GENtleApp::rack_coordinate_for_slot(&profile, 26, 0), "AA1");
+        assert_eq!(GENtleApp::rack_coordinate_for_slot(&profile, 27, 2), "AB3");
     }
 
     #[test]

@@ -7850,7 +7850,6 @@ fn parse_rack_authoring_template(value: &str) -> Result<RackAuthoringTemplate, S
         )),
     }
 }
-
 fn parse_rack_label_sheet_preset(value: &str) -> Result<RackLabelSheetPreset, String> {
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
@@ -10681,7 +10680,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, set-custom-profile".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
                 );
             }
             match tokens[1].as_str() {

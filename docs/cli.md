@@ -1581,11 +1581,20 @@ Rendering export commands:
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
     preserving arrangement order.
+- `racks set-fill-direction RACK_ID row_major|column_major`
+  - Calls engine operation `SetRackFillDirection`.
+  - Reflows occupied positions onto the same rack geometry under a different
+    deterministic fill order.
 - `racks set-custom-profile RACK_ID ROWS COLUMNS`
   - Calls engine operation `SetRackProfileCustom`.
   - Reflows occupied positions onto one custom A1-style rack geometry.
-  - Current baseline supports up to `26` rows because coordinates stay in
-    single-letter A1 form.
+  - A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+- `racks set-blocked RACK_ID COORD[,COORD...]...`
+  - Calls engine operation `SetRackBlockedCoordinates`.
+  - Reserves one normalized blocked-coordinate set on the rack and reflows
+    occupied positions across the remaining available slots.
+- `racks set-blocked RACK_ID --clear`
+  - Clears all blocked rack coordinates.
 
 RNA secondary-structure text command:
 
@@ -1823,6 +1832,8 @@ Helper convenience commands:
   - Same shared rack move/reorder contract used by the rack editor.
 - `racks show RACK_ID`
   - Emits structured rack placement JSON (`gentle.rack_state.v1`).
+  - Rack profile payload includes current `fill_direction` and
+    `blocked_coordinates`.
 - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Exports deterministic rack or arrangement-scoped label SVG through the
     same engine path as GUI `Labels SVG`.

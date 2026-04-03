@@ -1298,6 +1298,41 @@ fn parse_racks_set_custom_profile_command() {
 }
 
 #[test]
+fn parse_racks_set_fill_direction_command() {
+    let cmd = parse_shell_line("racks set-fill-direction rack-1 column_major")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RacksSetFillDirection {
+            rack_id,
+            fill_direction,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(fill_direction, RackFillDirection::ColumnMajor);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_set_blocked_command() {
+    let cmd = parse_shell_line("racks set-blocked rack-1 A1 B2,AA3")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::RacksSetBlocked {
+            rack_id,
+            blocked_coordinates,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(
+                blocked_coordinates,
+                vec!["A1".to_string(), "B2".to_string(), "AA3".to_string()]
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_racks_labels_svg_command_with_preset() {
     let cmd = parse_shell_line(
         "racks labels-svg rack-1 labels.svg --arrangement arr-x --preset print_a4",
@@ -1333,19 +1368,73 @@ fn parse_racks_apply_template_command() {
 }
 
 #[test]
-fn parse_racks_set_fill_direction_command() {
-    let cmd = parse_shell_line("racks set-fill-direction rack-1 column_major")
-        .expect("parse command");
-    match cmd {
-        ShellCommand::RacksSetFillDirection {
-            rack_id,
-            fill_direction,
-        } => {
-            assert_eq!(rack_id, "rack-1".to_string());
-            assert_eq!(fill_direction, RackFillDirection::ColumnMajor);
-        }
-        other => panic!("unexpected command: {other:?}"),
-    }
+fn execute_racks_set_fill_direction_updates_snapshot() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-x".to_string(),
+        Arrangement {
+            arrangement_id: "arr-x".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Demo".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["vector".to_string()],
+            default_rack_id: Some("rack-1".to_string()),
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.racks.insert(
+        "rack-1".to_string(),
+        Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".to_string(),
+                occupant: Some(RackOccupant::Container {
+                    container_id: "container-1".to_string(),
+                }),
+                arrangement_id: "arr-x".to_string(),
+                order_index: 0,
+                role_label: "vector".to_string(),
+            }],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksSetFillDirection {
+            rack_id: "rack-1".to_string(),
+            fill_direction: RackFillDirection::ColumnMajor,
+        },
+    )
+    .expect("set fill direction");
+    assert!(out.state_changed);
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get("rack-1")
+        .expect("rack");
+    assert_eq!(rack.profile.fill_direction, RackFillDirection::ColumnMajor);
 }
 
 #[test]
@@ -1419,6 +1508,79 @@ fn execute_racks_set_custom_profile_updates_snapshot() {
     assert_eq!(rack.profile.kind, RackProfileKind::Custom);
     assert_eq!(rack.profile.rows, 3);
     assert_eq!(rack.profile.columns, 10);
+}
+
+#[test]
+fn execute_racks_set_blocked_updates_snapshot() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-x".to_string(),
+        Arrangement {
+            arrangement_id: "arr-x".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Demo".to_string()),
+            lane_container_ids: vec!["container-1".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["vector".to_string()],
+            default_rack_id: Some("rack-1".to_string()),
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.racks.insert(
+        "rack-1".to_string(),
+        Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: RackProfileSnapshot::custom(28, 3),
+            placements: vec![RackPlacementEntry {
+                coordinate: "A1".to_string(),
+                occupant: Some(RackOccupant::Container {
+                    container_id: "container-1".to_string(),
+                }),
+                arrangement_id: "arr-x".to_string(),
+                order_index: 0,
+                role_label: "vector".to_string(),
+            }],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksSetBlocked {
+            rack_id: "rack-1".to_string(),
+            blocked_coordinates: vec!["B2".to_string(), "AA3".to_string()],
+        },
+    )
+    .expect("set blocked");
+    assert!(out.state_changed);
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get("rack-1")
+        .expect("rack");
+    assert_eq!(
+        rack.profile.blocked_coordinates,
+        vec!["B2".to_string(), "AA3".to_string()]
+    );
 }
 
 #[test]

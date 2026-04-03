@@ -238,15 +238,14 @@ impl GentleEngine {
     }
 
     pub(crate) fn rack_row_label_from_index(mut row: usize) -> String {
-        let mut chars = Vec::new();
-        loop {
-            chars.push((b'A' + (row % 26) as u8) as char);
-            if row < 26 {
-                break;
-            }
-            row = row / 26 - 1;
+        let mut out = String::new();
+        row += 1;
+        while row > 0 {
+            let rem = ((row - 1) % 26) as u8;
+            out.push((b'A' + rem) as char);
+            row = (row - 1) / 26;
         }
-        chars.iter().rev().collect()
+        out.chars().rev().collect()
     }
 
     fn rack_row_index_from_label(label: &str) -> Result<usize, EngineError> {
@@ -261,13 +260,13 @@ impl GentleEngine {
         for ch in trimmed.chars() {
             value = value
                 .checked_mul(26)
-                .and_then(|v| v.checked_add((ch as u8 - b'A' + 1) as usize))
+                .and_then(|acc| acc.checked_add((ch as u8 - b'A' + 1) as usize))
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
-                    message: format!("Rack row label '{label}' is too large"),
+                    message: format!("Rack row label '{}' is too large", label),
                 })?;
         }
-        Ok(value - 1)
+        Ok(value.saturating_sub(1))
     }
 
     fn rack_parse_row_column_label(coordinate: &str) -> Result<(usize, usize), EngineError> {
@@ -299,17 +298,17 @@ impl GentleEngine {
             });
         }
         let row = Self::rack_row_index_from_label(&letters)?;
-        let column_1based = digits.parse::<usize>().map_err(|e| EngineError {
+        let column = digits.parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Invalid rack coordinate '{coordinate}': {e}"),
         })?;
-        if column_1based == 0 {
+        if column == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
             });
         }
-        Ok((row, column_1based - 1))
+        Ok((row, column - 1))
     }
 
     pub(crate) fn rack_coordinate_from_row_column(
@@ -467,6 +466,53 @@ impl GentleEngine {
         for (idx, entry) in entries.iter_mut().enumerate() {
             entry.coordinate = available[idx].clone();
         }
+        Ok(())
+    }
+
+    fn reproject_rack_with_profile(
+        &mut self,
+        rack_id: &str,
+        new_profile: RackProfileSnapshot,
+    ) -> Result<(), EngineError> {
+        let existing_rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let mut placements = self
+            .sorted_rack_placements(&existing_rack)?
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect::<Vec<_>>();
+        let available_capacity = Self::rack_available_coordinates_in_fill_order(&new_profile)?.len();
+        if placements.len() > available_capacity {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Rack '{}' cannot switch to the requested profile because {} positions are occupied but only {} remain available",
+                    rack_id,
+                    placements.len(),
+                    available_capacity
+                ),
+            });
+        }
+        Self::reflow_rack_placements(&new_profile, &mut placements)?;
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get_mut(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        rack.profile = new_profile;
+        rack.placements = placements;
         Ok(())
     }
 
@@ -944,34 +990,6 @@ impl GentleEngine {
             true,
         )?;
         self.reproject_rack_with_profile(rack_id, new_profile)
-    }
-
-    fn reproject_rack_with_profile(
-        &mut self,
-        rack_id: &str,
-        new_profile: RackProfileSnapshot,
-    ) -> Result<(), EngineError> {
-        let existing_rack = self
-            .state
-            .container_state
-            .racks
-            .get(rack_id)
-            .cloned()
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!("Rack '{rack_id}' not found"),
-            })?;
-        let mut placements = self
-            .sorted_rack_placements(&existing_rack)?
-            .into_iter()
-            .map(|(_, entry)| entry)
-            .collect::<Vec<_>>();
-        Self::reflow_rack_placements(&new_profile, &mut placements)?;
-        if let Some(rack) = self.state.container_state.racks.get_mut(rack_id) {
-            rack.profile = new_profile;
-            rack.placements = placements;
-        }
-        Ok(())
     }
 
     pub(super) fn set_rack_profile_custom(

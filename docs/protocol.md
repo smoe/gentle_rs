@@ -732,7 +732,12 @@ Semantic interpretation:
   - persisted custom snapshots use:
     - `custom`
 - `RackProfileSnapshot`
-  - persisted row/column/fill-direction snapshot used by one saved rack
+  - persisted row/column/fill-direction/blocked-slot snapshot used by one saved rack
+  - `fill_direction`
+    - `row_major`
+    - `column_major`
+  - `blocked_coordinates[]`
+    - normalized A1-style coordinate list
 - `Rack`
   - one saved physical rack/plate draft
 - `RackPlacementEntry`
@@ -753,6 +758,10 @@ Rack-placement invariants:
   - choose the smallest fitting built-in profile
   - fill row-major
   - use A1-style coordinates
+- saved rack snapshots may then refine physical layout with:
+  - `fill_direction = row_major|column_major`
+  - `blocked_coordinates[]`
+- A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
 - moving one sample or arrangement block is shift-neighbor by default; it
   preserves occupied order instead of creating arbitrary holes
 
@@ -830,7 +839,9 @@ Current draft operations:
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
 - `SetRackProfile { rack_id, profile }`
+- `SetRackFillDirection { rack_id, fill_direction }`
 - `SetRackProfileCustom { rack_id, rows, columns }`
+- `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
@@ -1869,16 +1880,39 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 - Reprojects one saved rack onto another built-in profile.
 - Existing arrangement order is preserved while coordinates are reflowed under
-  the target profile's row-major geometry.
+  the target profile geometry.
+- Existing fill direction is preserved.
+- Existing blocked coordinates are preserved when still in-bounds for the new
+  geometry; out-of-bounds blocked coordinates are dropped deterministically.
+
+`SetRackFillDirection` semantics:
+
+- Reprojects one saved rack onto the same geometry with a different fill order.
+- Supported values:
+  - `row_major`
+  - `column_major`
+- Existing arrangement order is preserved while occupied coordinates are
+  reassigned under the new fill order.
 
 `SetRackProfileCustom` semantics:
 
 - Reprojects one saved rack onto one custom A1-style geometry.
 - `rows` and `columns` are persisted directly in the rack profile snapshot.
+- Existing fill direction is preserved.
+- Existing blocked coordinates are preserved when still in-bounds for the new
+  geometry; out-of-bounds blocked coordinates are dropped deterministically.
 - Existing arrangement order is preserved while coordinates are reflowed under
-  the custom row-major geometry.
-- Current baseline supports at most `26` rows because coordinates remain in
-  single-letter A1 form.
+  the custom geometry.
+- A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+
+`SetRackBlockedCoordinates` semantics:
+
+- Persists one normalized blocked/reserved coordinate set on the rack profile.
+- Blocked coordinates are excluded from placement capacity and fill-order
+  reflow.
+- Existing arrangement order is preserved while occupied coordinates are
+  reassigned onto the remaining available positions.
+- Duplicate blocked coordinates are removed deterministically.
 
 `ExportRackLabelsSvg` semantics:
 
