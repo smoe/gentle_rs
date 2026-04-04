@@ -244,11 +244,6 @@ design story. The left panel explains the reverse-strand promoter interval to
 take forward, while the right panel shows the study construct as a real GENtle
 circular-map export rather than a standalone illustration.
 
-The figure asset lives in
-[`docs/figures/vkorc1_rs9923231_luciferase_hero.svg`](docs/figures/vkorc1_rs9923231_luciferase_hero.svg)
-with the README-friendly raster at
-[`docs/figures/vkorc1_rs9923231_luciferase_hero.png`](docs/figures/vkorc1_rs9923231_luciferase_hero.png).
-
 ### Guided GUI Tutorials
 
 ![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)

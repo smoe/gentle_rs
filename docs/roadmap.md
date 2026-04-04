@@ -740,6 +740,10 @@ order. Durable architecture constraints and decisions remain in
         (generated from a synthetic illustrative construct record so the
         communication figure can use real GENtle circular-map styling before
         the end-to-end luciferase workflow is fully wired)
+      - the GUI-first VKORC1 / warfarin reporter tutorial and its workflow
+        skeleton now also end with a shared-engine circular construct SVG
+        export, so the walkthrough produces a readable endpoint artifact
+        instead of stopping at a preview sequence id
       - shared circular SVG export now contributes directly to that figure:
         transparent canvas, explicit radial SNP markers for `variation`
         features, and transcription-start direction markers for
