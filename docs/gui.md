@@ -2222,6 +2222,11 @@ Rack view is the first physical-placement layer on top of arrangements.
   - rack name / rack id
   - current profile
   - arrangement chips for each contiguous arrangement block on the rack
+- The rack window also includes a compact in-place help strip so the sample
+  move, block move, preview, and keyboard-cancel modes stay visible while you
+  work.
+  - the strip now also shows tiny arrangement-color chips and can be collapsed
+    with `Hide help` / `Show help`
 - Built-in profiles:
   - `Small tube rack (4 x 6)`
   - `Plate 96`

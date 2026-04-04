@@ -907,6 +907,7 @@ pub struct GENtleApp {
     rack_view_drag_state: Option<RackDragState>,
     rack_view_hover_target_coordinate: Option<String>,
     rack_view_recent_drop_ghost: Option<RackDropGhostState>,
+    rack_help_strip_collapsed: bool,
     place_arrangement_source_id: String,
     place_arrangement_target_rack_id: String,
     place_arrangement_status: String,
@@ -2394,6 +2395,7 @@ impl Default for GENtleApp {
             rack_view_drag_state: None,
             rack_view_hover_target_coordinate: None,
             rack_view_recent_drop_ghost: None,
+            rack_help_strip_collapsed: false,
             place_arrangement_source_id: String::new(),
             place_arrangement_target_rack_id: String::new(),
             place_arrangement_status: String::new(),
@@ -7101,6 +7103,100 @@ Error: `{err}`"
         }
     }
 
+    fn rack_help_strip_items() -> &'static [(&'static str, &'static str)] {
+        &[
+            (
+                "Samples",
+                "Drag one slot, or Cmd/Ctrl-click same-arrangement samples to move them together.",
+            ),
+            (
+                "Blocks",
+                "Drag arrangement chips, or Cmd/Ctrl-click chips to move whole experiment blocks.",
+            ),
+            (
+                "Preview",
+                "Pulsing ghosts show the predicted drop order; changed slots fade briefly after drop.",
+            ),
+            (
+                "Keys",
+                "Esc cancels the active drag, and click-select plus click-target still works.",
+            ),
+        ]
+    }
+
+    fn rack_help_toggle_label(collapsed: bool) -> &'static str {
+        if collapsed {
+            "Show help"
+        } else {
+            "Hide help"
+        }
+    }
+
+    fn render_rack_help_strip(
+        &mut self,
+        ui: &mut Ui,
+        arrangement_ids: &[String],
+    ) {
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.small(egui::RichText::new("Rack help").strong());
+                    let toggle = Self::rack_help_toggle_label(self.rack_help_strip_collapsed);
+                    if ui
+                        .small_button(toggle)
+                        .on_hover_text("Collapse or reopen the rack interaction help strip")
+                        .clicked()
+                    {
+                        self.rack_help_strip_collapsed = !self.rack_help_strip_collapsed;
+                    }
+                });
+                if self.rack_help_strip_collapsed {
+                    return;
+                }
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    if !arrangement_ids.is_empty() {
+                        ui.small("Arrangement colors");
+                        for arrangement_id in arrangement_ids.iter().take(4) {
+                            let color = Self::rack_color_for_arrangement(arrangement_id);
+                            egui::Frame::group(ui.style())
+                                .fill(color.gamma_multiply(0.14))
+                                .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.85)))
+                                .inner_margin(egui::Margin::symmetric(6, 3))
+                                .show(ui, |ui| {
+                                    ui.small(
+                                        egui::RichText::new(arrangement_id.clone())
+                                            .color(color)
+                                            .strong(),
+                                    );
+                                });
+                        }
+                        if arrangement_ids.len() > 4 {
+                            ui.small(format!("+{} more", arrangement_ids.len() - 4));
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for (idx, (title, body)) in Self::rack_help_strip_items().iter().enumerate() {
+                        let chip_color = arrangement_ids
+                            .get(idx % arrangement_ids.len().max(1))
+                            .map(|arrangement_id| Self::rack_color_for_arrangement(arrangement_id))
+                            .unwrap_or(ui.visuals().strong_text_color());
+                        ui.group(|ui| {
+                            ui.set_max_width(220.0);
+                            ui.horizontal(|ui| {
+                                ui.small(egui::RichText::new("■").color(chip_color));
+                                ui.small(egui::RichText::new(*title).strong());
+                            });
+                            ui.small(*body);
+                        });
+                    }
+                });
+            });
+    }
+
     fn rack_available_coordinates(profile: &crate::engine::RackProfileSnapshot) -> Vec<String> {
         let blocked = profile
             .blocked_coordinates
@@ -8033,6 +8129,7 @@ Error: `{err}`"
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        self.render_rack_help_strip(ui, &arrangement_ids);
         ui.horizontal_wrapped(|ui| {
             ui.label("Arrangement blocks");
             for arrangement_id in &arrangement_ids {
@@ -40821,6 +40918,21 @@ mod tests {
         assert!(multi_block_text.contains("4 arrangement blocks"));
         assert!(multi_block_text.contains("arr-a, arr-b, arr-c (+1 more)"));
         assert!(multi_block_text.contains("B2"));
+    }
+
+    #[test]
+    fn rack_help_strip_items_cover_sample_and_block_modes() {
+        let items = GENtleApp::rack_help_strip_items();
+        assert!(items.iter().any(|(title, _)| *title == "Samples"));
+        assert!(items.iter().any(|(title, _)| *title == "Blocks"));
+        assert!(items.iter().any(|(_, body)| body.contains("Cmd/Ctrl-click")));
+        assert!(items.iter().any(|(_, body)| body.contains("fade")));
+    }
+
+    #[test]
+    fn rack_help_toggle_label_reflects_collapsed_state() {
+        assert_eq!(GENtleApp::rack_help_toggle_label(false), "Hide help");
+        assert_eq!(GENtleApp::rack_help_toggle_label(true), "Show help");
     }
 
     #[test]
