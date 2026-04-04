@@ -838,6 +838,7 @@ Current draft operations:
 - `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
+- `MoveRackSamples { rack_id, from_coordinates[], to_coordinate }`
 - `MoveRackArrangementBlocks { rack_id, arrangement_ids[], to_coordinate }`
 - `SetRackProfile { rack_id, profile }`
 - `ApplyRackTemplate { rack_id, template }`
@@ -1877,6 +1878,21 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   occupied blocks in fill order.
 - The operation is order-preserving by design; it does not treat arbitrary
   holes as the primary editing model.
+
+`MoveRackSamples` semantics:
+
+- Moves two or more selected samples together within one saved rack.
+- `from_coordinates[]` must all resolve to occupied positions from the same
+  arrangement block.
+- The shared engine normalizes the selected samples against the rack's current
+  occupied order; it preserves that rack order even if the request lists the
+  source coordinates differently.
+- The selected samples move as one contiguous combined group within that same
+  arrangement block.
+- Neighboring occupied positions shift in fill order to keep the block
+  contiguous.
+- This is the shared engine contract behind rack-editor sample multi-select
+  moves.
 
 `MoveRackArrangementBlocks` semantics:
 

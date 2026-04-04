@@ -453,6 +453,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "MoveRackSamples"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move-samples",
+         "summary": "Move multiple selected rack samples together within one arrangement block using shared shift-neighbor semantics.",
+         "usage": "racks move-samples RACK_ID --from A1 [--from A2 ...] --to B1"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "MoveRackArrangementBlocks"
          ],
          "interfaces": [

@@ -945,6 +945,7 @@ cargo run --bin gentle_cli -- racks create-from-arrangement arrangement-2 --rack
 cargo run --bin gentle_cli -- racks place-arrangement arrangement-3 --rack rack-1
 cargo run --bin gentle_cli -- racks move rack-1 --from A2 --to A4
 cargo run --bin gentle_cli -- racks move rack-1 --from A1 --to B1 --block
+cargo run --bin gentle_cli -- racks move-samples rack-1 --from A1 --from A3 --to A2
 cargo run --bin gentle_cli -- racks move-blocks rack-1 --arrangement arrangement-2 --arrangement arrangement-3 --to B2
 cargo run --bin gentle_cli -- racks show rack-1
 cargo run --bin gentle_cli -- racks labels-svg rack-1 arrangement-2.labels.svg --arrangement arrangement-2
@@ -1597,6 +1598,12 @@ Rendering export commands:
     shift-neighbor semantics.
   - With `--block`, moves the whole arrangement block and shifts later
     occupied positions in fill order.
+- `racks move-samples RACK_ID --from A1 [--from A2 ...] --to B1`
+  - Calls engine operation `MoveRackSamples`.
+  - Moves multiple selected samples together as one contiguous group within a
+    single arrangement block.
+  - Shared engine preserves the selected samples in current rack order even if
+    the CLI request lists them in another order.
 - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
   - Calls engine operation `MoveRackArrangementBlocks`.
   - Moves the selected arrangement blocks together as one contiguous group.
@@ -1879,6 +1886,9 @@ Helper convenience commands:
   - Same shared rack-append path used by GUI `Place on Existing Rack...`.
 - `racks move RACK_ID --from A1 --to B1 [--block]`
   - Same shared rack move/reorder contract used by the rack editor.
+- `racks move-samples RACK_ID --from A1 [--from A2 ...] --to B1`
+  - Same shared multi-sample rack move contract used by rack-editor
+    `Command`/`Ctrl`-selected sample groups.
 - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
   - Same shared multi-block rack move contract used by rack-editor
     Command/Ctrl-selected arrangement chips.

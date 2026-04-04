@@ -3378,6 +3378,19 @@ impl GentleEngine {
                     )
                 });
             }
+            Operation::MoveRackSamples {
+                rack_id,
+                from_coordinates,
+                to_coordinate,
+            } => {
+                self.move_rack_samples(&rack_id, &from_coordinates, &to_coordinate)?;
+                result.messages.push(format!(
+                    "Moved {} rack sample(s) on '{}' to '{}'",
+                    from_coordinates.len(),
+                    rack_id.trim(),
+                    to_coordinate.trim()
+                ));
+            }
             Operation::MoveRackArrangementBlocks {
                 rack_id,
                 arrangement_ids,

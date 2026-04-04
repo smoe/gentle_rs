@@ -2252,14 +2252,23 @@ Interaction model:
 
 - Drag one occupied sample position onto another slot to move that sample
   within its arrangement block.
+- `Command`/`Ctrl`-click occupied sample positions to build a same-arrangement
+  multi-selection, then drag one selected sample or click a target slot to move
+  that selected sample group together.
 - Drag one arrangement chip onto a target slot to move the whole arrangement
   block.
 - `Command`/`Ctrl`-click arrangement chips to build a multi-selection, then
   drag one selected chip to move those selected arrangement blocks together.
+- Sample multi-selection and arrangement-chip multi-selection are intentionally
+  separate modes: clicking one mode clears the other so rack intent stays easy
+  to read.
 - Click-select plus click-target still exists as a fallback, but drag/drop is
   now the primary interaction.
 - While dragging, the rack grid now paints a ghost preview of the reordered
   sample/block positions before you release the mouse.
+- Ghost previews now pulse subtly while dragging, and successful drops briefly
+  fade-highlight the changed coordinates so the final reorder is easier to
+  spot.
 - While dragging near the rack viewport edge, the rack view now autoscrolls so
   larger racks remain editable without dropping and restarting the move.
 - All rack moves use shift-neighbor semantics:

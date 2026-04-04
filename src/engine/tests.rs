@@ -6651,6 +6651,78 @@ fn move_rack_arrangement_blocks_preserves_block_order_and_shifts_neighbors() {
 }
 
 #[test]
+fn move_rack_samples_preserves_selected_order_within_one_arrangement_block() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(50 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+                "container-4".to_string(),
+            ],
+            arrangement_id: Some("arr-a".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr a");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-a")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::MoveRackSamples {
+            rack_id: rack_id.clone(),
+            from_coordinates: vec!["A1".to_string(), "A3".to_string()],
+            to_coordinate: "A2".to_string(),
+        })
+        .expect("move samples");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    let ids = rack
+        .placements
+        .iter()
+        .filter_map(|entry| match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => Some(container_id.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![
+            "container-2".to_string(),
+            "container-1".to_string(),
+            "container-3".to_string(),
+            "container-4".to_string()
+        ]
+    );
+}
+
+#[test]
 fn set_custom_rack_profile_reflows_placements_and_marks_snapshot_custom() {
     let mut state = ProjectState::default();
     for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {

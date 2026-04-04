@@ -902,10 +902,11 @@ pub struct GENtleApp {
     rack_blocked_coordinates_text: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
     rack_view_scroll_offset: Vec2,
-    rack_view_selected_coordinate: Option<String>,
+    rack_view_selected_coordinates: BTreeSet<String>,
     rack_view_selected_arrangement_ids: BTreeSet<String>,
     rack_view_drag_state: Option<RackDragState>,
     rack_view_hover_target_coordinate: Option<String>,
+    rack_view_recent_drop_ghost: Option<RackDropGhostState>,
     place_arrangement_source_id: String,
     place_arrangement_target_rack_id: String,
     place_arrangement_status: String,
@@ -1879,6 +1880,10 @@ enum RackDragState {
         arrangement_id: String,
         role_label: String,
     },
+    Samples {
+        arrangement_id: String,
+        from_coordinates: Vec<String>,
+    },
     ArrangementBlock {
         arrangement_id: String,
         from_coordinate: String,
@@ -1892,6 +1897,13 @@ enum RackDragState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RackGhostPreviewCell {
     predicted_entry: Option<crate::engine::RackPlacementEntry>,
+}
+
+#[derive(Clone)]
+struct RackDropGhostState {
+    rack_id: String,
+    changed_coordinates: BTreeSet<String>,
+    started_at: Instant,
 }
 
 #[derive(Clone, Default)]
@@ -2377,10 +2389,11 @@ impl Default for GENtleApp {
             rack_blocked_coordinates_text: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
             rack_view_scroll_offset: Vec2::ZERO,
-            rack_view_selected_coordinate: None,
+            rack_view_selected_coordinates: BTreeSet::new(),
             rack_view_selected_arrangement_ids: BTreeSet::new(),
             rack_view_drag_state: None,
             rack_view_hover_target_coordinate: None,
+            rack_view_recent_drop_ghost: None,
             place_arrangement_source_id: String::new(),
             place_arrangement_target_rack_id: String::new(),
             place_arrangement_status: String::new(),
@@ -5849,10 +5862,11 @@ Error: `{err}`"
         self.rack_authoring_template_editor = RackAuthoringTemplate::BenchRows;
         self.rack_fill_direction_editor = RackFillDirection::RowMajor;
         self.rack_blocked_coordinates_text.clear();
-        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_coordinates.clear();
         self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
+        self.rack_view_recent_drop_ghost = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -6831,10 +6845,11 @@ Error: `{err}`"
         self.rack_view_rack_id = rack_id.to_string();
         self.rack_view_status.clear();
         self.rack_view_scroll_offset = Vec2::ZERO;
-        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_coordinates.clear();
         self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
+        self.rack_view_recent_drop_ghost = None;
         if let Some(rack) = self
             .engine
             .read()
@@ -6904,7 +6919,11 @@ Error: `{err}`"
     }
 
     fn current_rack_snapshot(&self) -> Option<Rack> {
-        let rack_id = self.rack_view_rack_id.trim();
+        self.rack_snapshot_by_id(&self.rack_view_rack_id)
+    }
+
+    fn rack_snapshot_by_id(&self, rack_id: &str) -> Option<Rack> {
+        let rack_id = rack_id.trim();
         if rack_id.is_empty() {
             return None;
         }
@@ -6943,6 +6962,39 @@ Error: `{err}`"
             .map(|(_, coordinate, _)| coordinate.clone())
     }
 
+    fn rack_selected_coordinates_in_order(
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        selected_coordinates: &BTreeSet<String>,
+    ) -> Vec<String> {
+        sorted_entries
+            .iter()
+            .filter_map(|(_, coordinate, _)| {
+                if selected_coordinates.contains(coordinate) {
+                    Some(coordinate.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn rack_selected_samples_arrangement_id(
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        selected_coordinates: &BTreeSet<String>,
+    ) -> Option<String> {
+        let mut arrangement_id: Option<String> = None;
+        for (_, coordinate, entry) in sorted_entries {
+            if selected_coordinates.contains(coordinate) {
+                match arrangement_id.as_deref() {
+                    Some(existing) if existing != entry.arrangement_id => return None,
+                    Some(_) => {}
+                    None => arrangement_id = Some(entry.arrangement_id.clone()),
+                }
+            }
+        }
+        arrangement_id
+    }
+
     fn rack_selected_arrangement_ids_in_order(
         sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
         selected_arrangement_ids: &BTreeSet<String>,
@@ -6975,6 +7027,35 @@ Error: `{err}`"
                     role_label, from_coordinate, arrangement_id
                 ),
             },
+            RackDragState::Samples {
+                arrangement_id,
+                from_coordinates,
+            } => {
+                let label = if from_coordinates.len() <= 3 {
+                    from_coordinates.join(", ")
+                } else {
+                    format!(
+                        "{} (+{} more)",
+                        from_coordinates[..3].join(", "),
+                        from_coordinates.len() - 3
+                    )
+                };
+                match drop_target {
+                    Some(target) => format!(
+                        "Dragging {} samples [{}] in arrangement '{}' to {}. Release to move the selected samples together within that arrangement block.",
+                        from_coordinates.len(),
+                        label,
+                        arrangement_id,
+                        target
+                    ),
+                    None => format!(
+                        "Dragging {} samples [{}] in arrangement '{}'. Hover a rack slot and release to move the selected samples together.",
+                        from_coordinates.len(),
+                        label,
+                        arrangement_id
+                    ),
+                }
+            }
             RackDragState::ArrangementBlock {
                 arrangement_id,
                 from_coordinate,
@@ -7070,6 +7151,31 @@ Error: `{err}`"
         ordered.len()
     }
 
+    fn rack_group_insertion_index_within_block(local_to: usize, remaining_len: usize) -> usize {
+        local_to.min(remaining_len)
+    }
+
+    fn rack_changed_coordinates(before: &Rack, after: &Rack) -> BTreeSet<String> {
+        let before_map = before
+            .placements
+            .iter()
+            .map(|entry| (entry.coordinate.clone(), entry.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let after_map = after
+            .placements
+            .iter()
+            .map(|entry| (entry.coordinate.clone(), entry.clone()))
+            .collect::<BTreeMap<_, _>>();
+        before_map
+            .keys()
+            .chain(after_map.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter(|coordinate| before_map.get(coordinate) != after_map.get(coordinate))
+            .collect::<BTreeSet<_>>()
+    }
+
     fn rack_preview_entries_for_drop(
         rack: &Rack,
         sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
@@ -7082,9 +7188,10 @@ Error: `{err}`"
             .map(|(index, _, entry)| (*index, entry.clone()))
             .collect::<Vec<_>>();
         let from_coordinate = match drag {
-            RackDragState::Sample {
-                from_coordinate, ..
-            }
+            RackDragState::Sample { from_coordinate, .. } => from_coordinate.as_str(),
+            RackDragState::Samples {
+                from_coordinates, ..
+            } => from_coordinates.first()?.as_str(),
             | RackDragState::ArrangementBlock {
                 from_coordinate, ..
             }
@@ -7094,10 +7201,11 @@ Error: `{err}`"
         };
         let from_index =
             GentleEngine::rack_index_from_coordinate(&rack.profile, from_coordinate).ok()?;
-        let to_index = GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
         let from_pos = ordered.iter().position(|(index, _)| *index == from_index)?;
         match drag {
             RackDragState::ArrangementBlocks { arrangement_ids, .. } => {
+                let to_index =
+                    GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
                 let selected = arrangement_ids.iter().cloned().collect::<HashSet<_>>();
                 let selected_entries = ordered
                     .iter()
@@ -7114,6 +7222,8 @@ Error: `{err}`"
                 }
             }
             RackDragState::ArrangementBlock { arrangement_id, .. } => {
+                let to_index =
+                    GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
                 let block_entries = ordered
                     .iter()
                     .filter(|(_, entry)| entry.arrangement_id == *arrangement_id)
@@ -7128,7 +7238,13 @@ Error: `{err}`"
                     ordered.insert(insertion_index + offset, (insertion_index + offset, entry));
                 }
             }
-            RackDragState::Sample { arrangement_id, .. } => {
+            RackDragState::Samples {
+                arrangement_id,
+                from_coordinates,
+            } => {
+                let target_pos = sorted_entries
+                    .iter()
+                    .position(|(_, coordinate, _)| coordinate == drop_target)?;
                 let block_positions = ordered
                     .iter()
                     .enumerate()
@@ -7142,7 +7258,80 @@ Error: `{err}`"
                     .collect::<Vec<_>>();
                 let block_start = *block_positions.first().unwrap_or(&from_pos);
                 let block_end = *block_positions.last().unwrap_or(&from_pos);
-                if to_index < block_start || to_index > block_end {
+                if target_pos < block_start || target_pos > block_end {
+                    return None;
+                }
+                let mut block_entries = ordered[block_start..=block_end]
+                    .iter()
+                    .map(|(_, entry)| entry.clone())
+                    .collect::<Vec<_>>();
+                let selected_coordinates = from_coordinates.iter().cloned().collect::<BTreeSet<_>>();
+                let selected_local_positions = ordered[block_start..=block_end]
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, (_, entry))| {
+                        if selected_coordinates.contains(&entry.coordinate) {
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let selected_local_set =
+                    selected_local_positions.iter().copied().collect::<BTreeSet<_>>();
+                let selected_entries = block_entries
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, entry)| {
+                        if selected_local_set.contains(&idx) {
+                            Some(entry.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let remaining_entries = block_entries
+                    .drain(..)
+                    .enumerate()
+                    .filter_map(|(idx, entry)| {
+                        if selected_local_set.contains(&idx) {
+                            None
+                        } else {
+                            Some(entry)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let local_to = target_pos - block_start;
+                let insertion_index = Self::rack_group_insertion_index_within_block(
+                    local_to,
+                    remaining_entries.len(),
+                );
+                let mut reordered_block = Vec::with_capacity(block_end - block_start + 1);
+                reordered_block.extend(remaining_entries[..insertion_index].iter().cloned());
+                reordered_block.extend(selected_entries);
+                reordered_block.extend(remaining_entries[insertion_index..].iter().cloned());
+                for (offset, entry) in reordered_block.into_iter().enumerate() {
+                    ordered[block_start + offset].1 = entry;
+                }
+            }
+            RackDragState::Sample { arrangement_id, .. } => {
+                let target_pos = sorted_entries
+                    .iter()
+                    .position(|(_, coordinate, _)| coordinate == drop_target)?;
+                let block_positions = ordered
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(pos, (_, entry))| {
+                        if entry.arrangement_id == *arrangement_id {
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let block_start = *block_positions.first().unwrap_or(&from_pos);
+                let block_end = *block_positions.last().unwrap_or(&from_pos);
+                if target_pos < block_start || target_pos > block_end {
                     return None;
                 }
                 let mut block_entries = ordered[block_start..=block_end]
@@ -7150,7 +7339,7 @@ Error: `{err}`"
                     .map(|(_, entry)| entry.clone())
                     .collect::<Vec<_>>();
                 let local_from = from_pos - block_start;
-                let local_to = to_index - block_start;
+                let local_to = target_pos - block_start;
                 let moved = block_entries.remove(local_from);
                 block_entries.insert(local_to, moved);
                 for (offset, entry) in block_entries.into_iter().enumerate() {
@@ -7245,6 +7434,32 @@ Error: `{err}`"
         Some(out)
     }
 
+    fn rack_drag_preview_animation_alpha(now_seconds: f64) -> f32 {
+        let oscillation = (((now_seconds * 5.0).sin() as f32) + 1.0) * 0.5;
+        0.08 + oscillation * 0.08
+    }
+
+    fn record_rack_drop_ghost(&mut self, rack_id: &str, before_rack: Option<Rack>) {
+        let Some(before_rack) = before_rack else {
+            self.rack_view_recent_drop_ghost = None;
+            return;
+        };
+        let Some(after_rack) = self.rack_snapshot_by_id(rack_id) else {
+            self.rack_view_recent_drop_ghost = None;
+            return;
+        };
+        let changed_coordinates = Self::rack_changed_coordinates(&before_rack, &after_rack);
+        if changed_coordinates.is_empty() {
+            self.rack_view_recent_drop_ghost = None;
+        } else {
+            self.rack_view_recent_drop_ghost = Some(RackDropGhostState {
+                rack_id: rack_id.trim().to_string(),
+                changed_coordinates,
+                started_at: Instant::now(),
+            });
+        }
+    }
+
     fn rack_entry_display(entry: &crate::engine::RackPlacementEntry) -> String {
         let role_text = Self::rack_short_role_label(&entry.role_label);
         match entry.occupant.as_ref() {
@@ -7275,6 +7490,7 @@ Error: `{err}`"
                 "Rack move canceled because the source and target are the same slot.".to_string();
             return;
         }
+        let before_rack = self.rack_snapshot_by_id(rack_id);
         let result = self
             .engine
             .write()
@@ -7296,6 +7512,7 @@ Error: `{err}`"
                 });
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
+                self.record_rack_drop_ghost(rack_id, before_rack);
             }
             Err(err) => {
                 self.rack_view_status = if move_block {
@@ -7319,6 +7536,7 @@ Error: `{err}`"
                     .to_string();
             return;
         }
+        let before_rack = self.rack_snapshot_by_id(rack_id);
         let result = self
             .engine
             .write()
@@ -7335,10 +7553,48 @@ Error: `{err}`"
                 });
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
+                self.record_rack_drop_ghost(rack_id, before_rack);
             }
             Err(err) => {
                 self.rack_view_status =
                     format!("Could not move arrangement blocks: {}", err.message);
+            }
+        }
+    }
+
+    fn apply_rack_move_samples(
+        &mut self,
+        rack_id: &str,
+        from_coordinates: &[String],
+        to_coordinate: &str,
+    ) {
+        if from_coordinates.is_empty() || to_coordinate.trim().is_empty() {
+            self.rack_view_status =
+                "Rack sample-group move requires selected samples and a target coordinate."
+                    .to_string();
+            return;
+        }
+        let before_rack = self.rack_snapshot_by_id(rack_id);
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::MoveRackSamples {
+                rack_id: rack_id.trim().to_string(),
+                from_coordinates: from_coordinates.to_vec(),
+                to_coordinate: to_coordinate.trim().to_string(),
+            });
+        match result {
+            Ok(op_result) => {
+                self.rack_view_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    format!("Moved {} samples on rack", from_coordinates.len())
+                });
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+                self.record_rack_drop_ghost(rack_id, before_rack);
+            }
+            Err(err) => {
+                self.rack_view_status = format!("Could not move selected samples: {}", err.message);
             }
         }
     }
@@ -7730,10 +7986,12 @@ Error: `{err}`"
         let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
         let escape_pressed = ui.ctx().input(|i| i.key_pressed(Key::Escape));
+        let now_seconds = ui.ctx().input(|i| i.time);
         let mut pending_drag_start: Option<RackDragState> = None;
         let mut drop_target_coordinate: Option<String> = None;
         let drag_highlight_color = self.rack_view_drag_state.as_ref().map(|drag| match drag {
             RackDragState::Sample { arrangement_id, .. }
+            | RackDragState::Samples { arrangement_id, .. }
             | RackDragState::ArrangementBlock { arrangement_id, .. } => {
                 Self::rack_color_for_arrangement(arrangement_id)
             }
@@ -7760,6 +8018,15 @@ Error: `{err}`"
             &sorted_entries,
             &self.rack_view_selected_arrangement_ids,
         );
+        let selected_sample_coordinates = Self::rack_selected_coordinates_in_order(
+            &sorted_entries,
+            &self.rack_view_selected_coordinates,
+        );
+        let selected_sample_arrangement_id = Self::rack_selected_samples_arrangement_id(
+            &sorted_entries,
+            &self.rack_view_selected_coordinates,
+        );
+        let preview_fill_alpha = Self::rack_drag_preview_animation_alpha(now_seconds);
         let arrangement_ids = sorted_entries
             .iter()
             .map(|(_, _, entry)| entry.arrangement_id.clone())
@@ -7820,7 +8087,7 @@ Error: `{err}`"
                                 .insert(arrangement_id.clone());
                         }
                     }
-                    self.rack_view_selected_coordinate = None;
+                    self.rack_view_selected_coordinates.clear();
                 }
             }
             if ui
@@ -7828,7 +8095,7 @@ Error: `{err}`"
                 .on_hover_text("Clear current sample/block selection or cancel an in-progress rack drag")
                 .clicked()
             {
-                self.rack_view_selected_coordinate = None;
+                self.rack_view_selected_coordinates.clear();
                 self.rack_view_selected_arrangement_ids.clear();
                 self.rack_view_drag_state = None;
             }
@@ -7883,11 +8150,8 @@ Error: `{err}`"
                                 let arrangement_color =
                                     Self::rack_color_for_arrangement(&entry.arrangement_id);
                                 let display = Self::rack_entry_display(&entry);
-                                let selected = self
-                                    .rack_view_selected_coordinate
-                                    .as_deref()
-                                    .map(|value| value == coordinate)
-                                    .unwrap_or(false);
+                                let selected =
+                                    self.rack_view_selected_coordinates.contains(&coordinate);
                                 let mut button = egui::Button::new(
                                     egui::RichText::new(display)
                                         .color(arrangement_color)
@@ -7896,7 +8160,8 @@ Error: `{err}`"
                                 .selected(selected)
                                 .sense(egui::Sense::click_and_drag());
                                 if preview_cell.is_some() {
-                                    button = button.fill(arrangement_color.gamma_multiply(0.12));
+                                    button =
+                                        button.fill(arrangement_color.gamma_multiply(preview_fill_alpha));
                                 }
                                 let hover_text = if preview_cell.is_some() {
                                     "Ghost preview after drop. Drag this sample to another rack slot, or click once to select it for a later target click"
@@ -7932,20 +8197,84 @@ Error: `{err}`"
                                         egui::StrokeKind::Outside,
                                     );
                                 }
+                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
+                                    if drop_ghost.rack_id == rack.rack_id
+                                        && drop_ghost.changed_coordinates.contains(&coordinate)
+                                    {
+                                        let fade = 1.0
+                                            - (drop_ghost.started_at.elapsed().as_secs_f32() / 0.7)
+                                                .clamp(0.0, 1.0);
+                                        if fade > 0.0 {
+                                            ui.painter().rect_filled(
+                                                response.rect.shrink(3.0),
+                                                5.0,
+                                                arrangement_color.gamma_multiply(0.05 + 0.10 * fade),
+                                            );
+                                            ui.painter().rect_stroke(
+                                                response.rect.expand(1.0),
+                                                6.0,
+                                                egui::Stroke::new(
+                                                    1.5,
+                                                    arrangement_color.gamma_multiply(0.35 + 0.45 * fade),
+                                                ),
+                                                egui::StrokeKind::Outside,
+                                            );
+                                            ui.ctx().request_repaint();
+                                        }
+                                    }
+                                }
                                 if current_entry.is_some() && response.drag_started() {
-                                    pending_drag_start = Some(RackDragState::Sample {
-                                        from_coordinate: coordinate.clone(),
-                                        arrangement_id: current_entry
+                                    let current_arrangement_id = current_entry
+                                        .as_ref()
+                                        .map(|value| value.arrangement_id.clone())
+                                        .unwrap_or_else(|| entry.arrangement_id.clone());
+                                    if selected
+                                        && selected_sample_coordinates.len() > 1
+                                        && selected_sample_arrangement_id
+                                            .as_deref()
+                                            .map(|value| value == current_arrangement_id)
+                                            .unwrap_or(false)
+                                    {
+                                        pending_drag_start = Some(RackDragState::Samples {
+                                            arrangement_id: current_arrangement_id,
+                                            from_coordinates: selected_sample_coordinates.clone(),
+                                        });
+                                    } else {
+                                        pending_drag_start = Some(RackDragState::Sample {
+                                            from_coordinate: coordinate.clone(),
+                                            arrangement_id: current_entry
+                                                .as_ref()
+                                                .map(|value| value.arrangement_id.clone())
+                                                .unwrap_or_else(|| entry.arrangement_id.clone()),
+                                            role_label: current_entry
+                                                .as_ref()
+                                                .map(|value| value.role_label.clone())
+                                                .unwrap_or_else(|| entry.role_label.clone()),
+                                        });
+                                    }
+                                } else if response.clicked() && self.rack_view_drag_state.is_none() {
+                                    let additive = ui.ctx().input(|i| i.modifiers.command || i.modifiers.ctrl);
+                                    if additive {
+                                        self.rack_view_selected_arrangement_ids.clear();
+                                        let current_arrangement_id = current_entry
                                             .as_ref()
                                             .map(|value| value.arrangement_id.clone())
-                                            .unwrap_or_else(|| entry.arrangement_id.clone()),
-                                        role_label: current_entry
-                                            .as_ref()
-                                            .map(|value| value.role_label.clone())
-                                            .unwrap_or_else(|| entry.role_label.clone()),
-                                    });
-                                } else if response.clicked() && self.rack_view_drag_state.is_none() {
-                                    if !selected_arrangement_ids.is_empty() {
+                                            .unwrap_or_else(|| entry.arrangement_id.clone());
+                                        if selected {
+                                            self.rack_view_selected_coordinates.remove(&coordinate);
+                                        } else if let Some(existing_arrangement_id) =
+                                            selected_sample_arrangement_id.as_deref()
+                                        {
+                                            if existing_arrangement_id != current_arrangement_id {
+                                                self.rack_view_selected_coordinates.clear();
+                                            }
+                                            self.rack_view_selected_coordinates
+                                                .insert(coordinate.clone());
+                                        } else {
+                                            self.rack_view_selected_coordinates
+                                                .insert(coordinate.clone());
+                                        }
+                                    } else if !selected_arrangement_ids.is_empty() {
                                         if selected_arrangement_ids.len() == 1 {
                                             if let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
                                                 &sorted_entries,
@@ -7966,22 +8295,31 @@ Error: `{err}`"
                                             );
                                         }
                                         self.rack_view_selected_arrangement_ids.clear();
-                                    } else if let Some(from_coordinate) =
-                                        self.rack_view_selected_coordinate.clone()
-                                    {
-                                        if from_coordinate == coordinate {
-                                            self.rack_view_selected_coordinate = None;
-                                        } else {
+                                    } else if !selected_sample_coordinates.is_empty() {
+                                        if selected_sample_coordinates.len() == 1
+                                            && selected_sample_coordinates[0] == coordinate
+                                        {
+                                            self.rack_view_selected_coordinates.clear();
+                                        } else if selected_sample_coordinates.len() == 1 {
                                             self.apply_rack_move(
                                                 &rack.rack_id,
-                                                &from_coordinate,
+                                                &selected_sample_coordinates[0],
                                                 &coordinate,
                                                 false,
                                             );
-                                            self.rack_view_selected_coordinate = None;
+                                            self.rack_view_selected_coordinates.clear();
+                                        } else {
+                                            self.apply_rack_move_samples(
+                                                &rack.rack_id,
+                                                &selected_sample_coordinates,
+                                                &coordinate,
+                                            );
+                                            self.rack_view_selected_coordinates.clear();
                                         }
                                     } else if current_entry.is_some() {
-                                        self.rack_view_selected_coordinate = Some(coordinate);
+                                        self.rack_view_selected_coordinates.clear();
+                                        self.rack_view_selected_coordinates
+                                            .insert(coordinate.clone());
                                         self.rack_view_selected_arrangement_ids.clear();
                                     }
                                 }
@@ -8027,6 +8365,29 @@ Error: `{err}`"
                                         egui::StrokeKind::Outside,
                                     );
                                 }
+                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
+                                    if drop_ghost.rack_id == rack.rack_id
+                                        && drop_ghost.changed_coordinates.contains(&coordinate)
+                                    {
+                                        let fade = 1.0
+                                            - (drop_ghost.started_at.elapsed().as_secs_f32() / 0.7)
+                                                .clamp(0.0, 1.0);
+                                        if fade > 0.0 {
+                                            ui.painter().rect_stroke(
+                                                response.rect.expand(1.0),
+                                                6.0,
+                                                egui::Stroke::new(
+                                                    1.2,
+                                                    drag_highlight_color
+                                                        .unwrap_or(ui.visuals().strong_text_color())
+                                                        .gamma_multiply(0.30 + 0.40 * fade),
+                                                ),
+                                                egui::StrokeKind::Outside,
+                                            );
+                                            ui.ctx().request_repaint();
+                                        }
+                                    }
+                                }
                                 if response.clicked() && self.rack_view_drag_state.is_none() {
                                     if !selected_arrangement_ids.is_empty() {
                                         if selected_arrangement_ids.len() == 1 {
@@ -8049,16 +8410,22 @@ Error: `{err}`"
                                             );
                                         }
                                         self.rack_view_selected_arrangement_ids.clear();
-                                    } else if let Some(from_coordinate) =
-                                        self.rack_view_selected_coordinate.clone()
-                                    {
-                                        self.apply_rack_move(
-                                            &rack.rack_id,
-                                            &from_coordinate,
-                                            &coordinate,
-                                            false,
-                                        );
-                                        self.rack_view_selected_coordinate = None;
+                                    } else if !selected_sample_coordinates.is_empty() {
+                                        if selected_sample_coordinates.len() == 1 {
+                                            self.apply_rack_move(
+                                                &rack.rack_id,
+                                                &selected_sample_coordinates[0],
+                                                &coordinate,
+                                                false,
+                                            );
+                                        } else {
+                                            self.apply_rack_move_samples(
+                                                &rack.rack_id,
+                                                &selected_sample_coordinates,
+                                                &coordinate,
+                                            );
+                                        }
+                                        self.rack_view_selected_coordinates.clear();
                                     }
                                 }
                             }
@@ -8092,7 +8459,7 @@ Error: `{err}`"
         self.rack_view_scroll_offset = next_rack_scroll_offset;
         if let Some(drag) = pending_drag_start {
             self.rack_view_drag_state = Some(drag);
-            self.rack_view_selected_coordinate = None;
+            self.rack_view_selected_coordinates.clear();
         }
         if escape_pressed && self.rack_view_drag_state.is_some() {
             self.rack_view_drag_state = None;
@@ -8112,6 +8479,17 @@ Error: `{err}`"
                     } => {
                         if let Some(target) = drop_target_coordinate.as_deref() {
                             self.apply_rack_move(&rack.rack_id, &from_coordinate, target, false);
+                        }
+                    }
+                    RackDragState::Samples {
+                        from_coordinates, ..
+                    } => {
+                        if let Some(target) = drop_target_coordinate.as_deref() {
+                            self.apply_rack_move_samples(
+                                &rack.rack_id,
+                                &from_coordinates,
+                                target,
+                            );
                         }
                     }
                     RackDragState::ArrangementBlock {
@@ -8143,6 +8521,13 @@ Error: `{err}`"
             self.rack_view_hover_target_coordinate = drop_target_coordinate.clone();
         } else {
             self.rack_view_hover_target_coordinate = None;
+        }
+        if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
+            if drop_ghost.rack_id != rack.rack_id
+                || drop_ghost.started_at.elapsed().as_secs_f32() >= 0.7
+            {
+                self.rack_view_recent_drop_ghost = None;
+            }
         }
         ui.separator();
         ui.horizontal(|ui| {
@@ -24563,10 +24948,11 @@ Error: `{err}`"
         self.rack_view_rack_id.clear();
         self.rack_view_status.clear();
         self.rack_view_scroll_offset = Vec2::ZERO;
-        self.rack_view_selected_coordinate = None;
+        self.rack_view_selected_coordinates.clear();
         self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
+        self.rack_view_recent_drop_ghost = None;
         self.place_arrangement_source_id.clear();
         self.place_arrangement_target_rack_id.clear();
         self.place_arrangement_status.clear();
@@ -35342,6 +35728,16 @@ Error: `{err}`"
                 from_coordinate.trim(),
                 to_coordinate.trim()
             ),
+            Operation::MoveRackSamples {
+                rack_id,
+                from_coordinates,
+                to_coordinate,
+            } => format!(
+                "Move rack samples: rack_id={}, from={}, to={}",
+                rack_id.trim(),
+                from_coordinates.join(", "),
+                to_coordinate.trim()
+            ),
             Operation::MoveRackArrangementBlocks {
                 rack_id,
                 arrangement_ids,
@@ -40270,6 +40666,105 @@ mod tests {
     }
 
     #[test]
+    fn rack_selected_coordinates_in_order_preserves_rack_order() {
+        let entries = vec![
+            (
+                0,
+                "A1".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+            (
+                1,
+                "A2".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "lane_2".to_string(),
+                },
+            ),
+            (
+                2,
+                "A3".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+        ];
+        let selected = ["A3".to_string(), "A1".to_string()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            GENtleApp::rack_selected_coordinates_in_order(&entries, &selected),
+            vec!["A1".to_string(), "A3".to_string()]
+        );
+    }
+
+    #[test]
+    fn rack_selected_samples_arrangement_id_requires_one_block() {
+        let entries = vec![
+            (
+                0,
+                "A1".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+            (
+                1,
+                "A2".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "lane_2".to_string(),
+                },
+            ),
+            (
+                2,
+                "A3".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+        ];
+        let same_block = ["A1".to_string(), "A2".to_string()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let mixed = ["A1".to_string(), "A3".to_string()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            GENtleApp::rack_selected_samples_arrangement_id(&entries, &same_block),
+            Some("arr-a".to_string())
+        );
+        assert_eq!(
+            GENtleApp::rack_selected_samples_arrangement_id(&entries, &mixed),
+            None
+        );
+    }
+
+    #[test]
     fn rack_drag_status_text_mentions_drop_target_and_mode() {
         let sample_text = GENtleApp::rack_drag_status_text(
             &RackDragState::Sample {
@@ -40282,6 +40777,22 @@ mod tests {
         assert!(sample_text.contains("A2"));
         assert!(sample_text.contains("B4"));
         assert!(sample_text.contains("insert_1"));
+
+        let multi_sample_text = GENtleApp::rack_drag_status_text(
+            &RackDragState::Samples {
+                arrangement_id: "arr-a".to_string(),
+                from_coordinates: vec![
+                    "A1".to_string(),
+                    "A3".to_string(),
+                    "A5".to_string(),
+                    "A7".to_string(),
+                ],
+            },
+            Some("A2"),
+        );
+        assert!(multi_sample_text.contains("4 samples"));
+        assert!(multi_sample_text.contains("A1, A3, A5 (+1 more)"));
+        assert!(multi_sample_text.contains("A2"));
 
         let block_text = GENtleApp::rack_drag_status_text(
             &RackDragState::ArrangementBlock {
@@ -40531,6 +41042,82 @@ mod tests {
                 .map(|entry| entry.arrangement_id.as_str()),
             Some("arr-b")
         );
+    }
+
+    #[test]
+    fn rack_ghost_preview_moves_multiple_samples_together_within_block() {
+        let rack = crate::engine::Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: crate::engine::RackProfileSnapshot::custom(1, 4),
+            placements: vec![
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a1".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a2".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "lane_2".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a3".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 2,
+                    role_label: "lane_3".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A4".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a4".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 3,
+                    role_label: "lane_4".to_string(),
+                },
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        };
+        let sorted_entries = GENtleApp::rack_sorted_entries(&rack);
+        let preview = GENtleApp::rack_ghost_preview_map(
+            &rack,
+            &sorted_entries,
+            &RackDragState::Samples {
+                arrangement_id: "arr-a".to_string(),
+                from_coordinates: vec!["A1".to_string(), "A3".to_string()],
+            },
+            "A2",
+        )
+        .expect("preview");
+        assert_eq!(preview.len(), 2);
+        assert_eq!(
+            preview
+                .get("A1")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.role_label.as_str()),
+            Some("lane_2")
+        );
+        assert_eq!(
+            preview
+                .get("A2")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.role_label.as_str()),
+            Some("lane_1")
+        );
+        assert!(!preview.contains_key("A3"));
     }
 
     #[test]

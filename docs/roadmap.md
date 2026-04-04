@@ -1142,16 +1142,21 @@ order. Durable architecture constraints and decisions remain in
     - multi-letter A1 row labels beyond `Z`
   - rack-editor interaction baseline now also includes:
     - ghost previews while dragging
+    - animated/pulsing drag ghosts plus short fade-highlight drop ghosts
     - viewport-edge autoscroll during rack drag
+    - Command/Ctrl multi-select of occupied samples within one arrangement
+      block
     - Command/Ctrl multi-select of arrangement chips
+    - multi-sample moves through the same shared engine path
     - multi-block arrangement moves through the same shared engine path
   - follow-up work should focus on richer authoring rather than a second model:
     - broader label-sheet presets and print-oriented layouts beyond the
       current baseline
     - richer drag/drop polish beyond the current baseline
-      (for example drop ghosts/animations, autoscroll tuning, and richer
-      preview refinements; baseline ghost previews, autoscroll, and multi-block
-      selection now ship in the rack editor)
+      (for example autoscroll tuning, animated polish refinements, and richer
+      preview refinements; baseline ghost previews, animated/fading drop
+      feedback, autoscroll, sample multi-select, and multi-block selection now
+      ship in the rack editor)
     - richer custom-profile semantics beyond the current baseline
       (for example broader template catalogs and richer coordinate-scheme
       choices beyond the current A1 baseline)
