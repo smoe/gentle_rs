@@ -12406,6 +12406,150 @@ fn execute_candidates_template_run_command(
     Ok(run)
 }
 
+// Keep the prepared-reference query handlers out of the monolithic shell
+// executor match so small-stack test threads do not need to materialize the
+// full local frame for these catalog inspection paths.
+#[inline(never)]
+fn execute_ui_prepared_genomes_command(
+    helper_mode: bool,
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
+    filter: Option<String>,
+    species: Option<String>,
+    latest: bool,
+) -> Result<ShellRunResult, String> {
+    let catalog_path_effective = effective_catalog_path(&catalog_path, helper_mode);
+    let catalog = GenomeCatalog::from_json_file(&catalog_path_effective)
+        .map_err(|e| format!("Could not open genome catalog '{catalog_path_effective}': {e}"))?;
+    let cache_dir = cache_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+    let filter_lc = filter
+        .as_ref()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty());
+    let species_lc = species
+        .as_ref()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty());
+
+    let mut prepared_rows: Vec<Value> = vec![];
+    for genome_id in catalog.list_genomes() {
+        let prepared = catalog
+            .is_prepared(&genome_id, cache_dir.as_deref())
+            .map_err(|e| format!("Could not inspect preparation state for '{genome_id}': {e}"))?;
+        if !prepared {
+            continue;
+        }
+        let id_lc = genome_id.to_ascii_lowercase();
+        if let Some(filter_lc) = filter_lc.as_ref() {
+            if !id_lc.contains(filter_lc) {
+                continue;
+            }
+        }
+        if let Some(species_lc) = species_lc.as_ref() {
+            if !id_lc.contains(species_lc) {
+                continue;
+            }
+        }
+        let installed_at_unix_ms = catalog
+            .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
+            .ok()
+            .flatten()
+            .map(|inspection| inspection.installed_at_unix_ms);
+        prepared_rows.push(json!({
+            "genome_id": genome_id,
+            "installed_at_unix_ms": installed_at_unix_ms
+        }));
+    }
+
+    prepared_rows.sort_by(|left, right| {
+        let left_id = left
+            .get("genome_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let right_id = right
+            .get("genome_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let left_installed = left
+            .get("installed_at_unix_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let right_installed = right
+            .get("installed_at_unix_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        right_installed
+            .cmp(&left_installed)
+            .then(left_id.cmp(right_id))
+    });
+
+    let latest_row = prepared_rows.first().cloned();
+    let rows = if latest {
+        latest_row.clone().into_iter().collect::<Vec<_>>()
+    } else {
+        prepared_rows.clone()
+    };
+    let selected_genome_id = latest_row
+        .as_ref()
+        .and_then(|v| v.get("genome_id"))
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "schema": "gentle.ui_prepared_genomes.v1",
+            "helper_mode": helper_mode,
+            "catalog_path": catalog_path_effective,
+            "cache_dir": cache_dir,
+            "filter": filter,
+            "species": species,
+            "latest_only": latest,
+            "prepared_count": prepared_rows.len(),
+            "selected_genome_id": selected_genome_id,
+            "genomes": rows
+        }),
+    })
+}
+
+#[inline(never)]
+fn execute_ui_latest_prepared_command(
+    helper_mode: bool,
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
+    species: String,
+) -> Result<ShellRunResult, String> {
+    let prepared = execute_ui_prepared_genomes_command(
+        helper_mode,
+        catalog_path.clone(),
+        cache_dir.clone(),
+        None,
+        Some(species.clone()),
+        true,
+    )?;
+    let selected_genome_id = prepared
+        .output
+        .get("selected_genome_id")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "schema": "gentle.ui_latest_prepared.v1",
+            "helper_mode": helper_mode,
+            "species": species,
+            "catalog_path": prepared.output.get("catalog_path").cloned().unwrap_or(json!(null)),
+            "cache_dir": prepared.output.get("cache_dir").cloned().unwrap_or(json!(null)),
+            "selected_genome_id": selected_genome_id,
+            "prepared_query": prepared.output
+        }),
+    })
+}
+
+#[inline(never)]
 fn execute_ui_intent_command(
     engine: &mut GentleEngine,
     action: UiIntentAction,
@@ -12419,23 +12563,21 @@ fn execute_ui_intent_command(
     latest: bool,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    let _ = engine;
+    let _ = options;
     let mut selected_genome_id = genome_id
         .as_ref()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     let mut prepared_query: Option<Value> = None;
     if matches!(target, UiIntentTarget::PreparedReferences) && selected_genome_id.is_none() {
-        let prepared = execute_shell_command_with_options(
-            engine,
-            &ShellCommand::UiPreparedGenomes {
-                helper_mode,
-                catalog_path: catalog_path.clone(),
-                cache_dir: cache_dir.clone(),
-                filter: filter.clone(),
-                species: species.clone(),
-                latest,
-            },
-            options,
+        let prepared = execute_ui_prepared_genomes_command(
+            helper_mode,
+            catalog_path.clone(),
+            cache_dir.clone(),
+            filter.clone(),
+            species.clone(),
+            latest,
         )?;
         selected_genome_id = prepared
             .output
@@ -14370,62 +14512,19 @@ fn execute_shell_command_with_options_inner(
             species,
             latest,
         } => {
-            let mut selected_genome_id = genome_id
-                .as_ref()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
-            let mut prepared_query: Option<Value> = None;
-            if matches!(target, UiIntentTarget::PreparedReferences) && selected_genome_id.is_none()
-            {
-                let prepared = execute_shell_command_with_options(
-                    engine,
-                    &ShellCommand::UiPreparedGenomes {
-                        helper_mode: *helper_mode,
-                        catalog_path: catalog_path.clone(),
-                        cache_dir: cache_dir.clone(),
-                        filter: filter.clone(),
-                        species: species.clone(),
-                        latest: *latest,
-                    },
-                    options,
-                )?;
-                selected_genome_id = prepared
-                    .output
-                    .get("selected_genome_id")
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string());
-                prepared_query = Some(prepared.output);
-            }
-            let message = if matches!(target, UiIntentTarget::PreparedReferences) {
-                if selected_genome_id.is_some() {
-                    "UI intent recorded; prepared-references selection resolved deterministically."
-                } else {
-                    "UI intent recorded; prepared-references selection found no prepared genome."
-                }
-            } else {
-                "UI intent recorded; requires GUI host integration to apply."
-            };
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.ui_intent.v1",
-                    "ui_intent": {
-                        "action": action.as_str(),
-                        "target": target.as_str(),
-                        "genome_id": genome_id,
-                        "helper_mode": helper_mode,
-                        "catalog_path": catalog_path,
-                        "cache_dir": cache_dir,
-                        "filter": filter,
-                        "species": species,
-                        "latest": latest
-                    },
-                    "selected_genome_id": selected_genome_id,
-                    "prepared_query": prepared_query,
-                    "applied": false,
-                    "message": message
-                }),
-            }
+            return execute_ui_intent_command(
+                engine,
+                *action,
+                *target,
+                genome_id.clone(),
+                *helper_mode,
+                catalog_path.clone(),
+                cache_dir.clone(),
+                filter.clone(),
+                species.clone(),
+                *latest,
+                options,
+            );
         }
         ShellCommand::UiPreparedGenomes {
             helper_mode,
@@ -14435,104 +14534,14 @@ fn execute_shell_command_with_options_inner(
             species,
             latest,
         } => {
-            let catalog_path_effective = effective_catalog_path(catalog_path, *helper_mode);
-            let catalog = GenomeCatalog::from_json_file(&catalog_path_effective).map_err(|e| {
-                format!("Could not open genome catalog '{catalog_path_effective}': {e}")
-            })?;
-            let cache_dir = cache_dir
-                .as_deref()
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_string());
-            let filter_lc = filter
-                .as_ref()
-                .map(|v| v.trim().to_ascii_lowercase())
-                .filter(|v| !v.is_empty());
-            let species_lc = species
-                .as_ref()
-                .map(|v| v.trim().to_ascii_lowercase())
-                .filter(|v| !v.is_empty());
-
-            let mut prepared_rows: Vec<Value> = vec![];
-            for genome_id in catalog.list_genomes() {
-                let prepared = catalog
-                    .is_prepared(&genome_id, cache_dir.as_deref())
-                    .map_err(|e| {
-                        format!("Could not inspect preparation state for '{genome_id}': {e}")
-                    })?;
-                if !prepared {
-                    continue;
-                }
-                let id_lc = genome_id.to_ascii_lowercase();
-                if let Some(filter_lc) = filter_lc.as_ref() {
-                    if !id_lc.contains(filter_lc) {
-                        continue;
-                    }
-                }
-                if let Some(species_lc) = species_lc.as_ref() {
-                    if !id_lc.contains(species_lc) {
-                        continue;
-                    }
-                }
-                let installed_at_unix_ms = catalog
-                    .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
-                    .ok()
-                    .flatten()
-                    .map(|inspection| inspection.installed_at_unix_ms);
-                prepared_rows.push(json!({
-                    "genome_id": genome_id,
-                    "installed_at_unix_ms": installed_at_unix_ms
-                }));
-            }
-
-            prepared_rows.sort_by(|left, right| {
-                let left_id = left
-                    .get("genome_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let right_id = right
-                    .get("genome_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let left_installed = left
-                    .get("installed_at_unix_ms")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let right_installed = right
-                    .get("installed_at_unix_ms")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                right_installed
-                    .cmp(&left_installed)
-                    .then(left_id.cmp(right_id))
-            });
-
-            let latest_row = prepared_rows.first().cloned();
-            let rows = if *latest {
-                latest_row.clone().into_iter().collect::<Vec<_>>()
-            } else {
-                prepared_rows.clone()
-            };
-            let selected_genome_id = latest_row
-                .as_ref()
-                .and_then(|v| v.get("genome_id"))
-                .and_then(|v| v.as_str())
-                .map(|v| v.to_string());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.ui_prepared_genomes.v1",
-                    "helper_mode": helper_mode,
-                    "catalog_path": catalog_path_effective,
-                    "cache_dir": cache_dir,
-                    "filter": filter,
-                    "species": species,
-                    "latest_only": latest,
-                    "prepared_count": prepared_rows.len(),
-                    "selected_genome_id": selected_genome_id,
-                    "genomes": rows
-                }),
-            }
+            return execute_ui_prepared_genomes_command(
+                *helper_mode,
+                catalog_path.clone(),
+                cache_dir.clone(),
+                filter.clone(),
+                species.clone(),
+                *latest,
+            );
         }
         ShellCommand::UiLatestPrepared {
             helper_mode,
@@ -14540,35 +14549,12 @@ fn execute_shell_command_with_options_inner(
             cache_dir,
             species,
         } => {
-            let prepared = execute_shell_command_with_options(
-                engine,
-                &ShellCommand::UiPreparedGenomes {
-                    helper_mode: *helper_mode,
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                    filter: None,
-                    species: Some(species.clone()),
-                    latest: true,
-                },
-                options,
-            )?;
-            let selected_genome_id = prepared
-                .output
-                .get("selected_genome_id")
-                .and_then(|v| v.as_str())
-                .map(|v| v.to_string());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.ui_latest_prepared.v1",
-                    "helper_mode": helper_mode,
-                    "species": species,
-                    "catalog_path": prepared.output.get("catalog_path").cloned().unwrap_or(json!(null)),
-                    "cache_dir": prepared.output.get("cache_dir").cloned().unwrap_or(json!(null)),
-                    "selected_genome_id": selected_genome_id,
-                    "prepared_query": prepared.output
-                }),
-            }
+            return execute_ui_latest_prepared_command(
+                *helper_mode,
+                catalog_path.clone(),
+                cache_dir.clone(),
+                species.clone(),
+            );
         }
         ShellCommand::ReferenceList {
             helper_mode,
