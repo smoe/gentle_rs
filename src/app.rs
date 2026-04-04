@@ -7107,11 +7107,11 @@ Error: `{err}`"
         &[
             (
                 "Samples",
-                "Drag one slot, or Cmd/Ctrl-click same-arrangement samples to move them together.",
+                "Drag one slot, or multi-select same-arrangement samples to move them together.",
             ),
             (
                 "Blocks",
-                "Drag arrangement chips, or Cmd/Ctrl-click chips to move whole experiment blocks.",
+                "Drag arrangement chips, or multi-select chips to move whole experiment blocks.",
             ),
             (
                 "Preview",
@@ -7119,9 +7119,30 @@ Error: `{err}`"
             ),
             (
                 "Keys",
-                "Esc cancels the active drag, and click-select plus click-target still works.",
+                "Cancels the active drag, and click-select plus click-target still works.",
             ),
         ]
+    }
+
+    fn rack_help_strip_keycaps(title: &str) -> &'static [&'static str] {
+        match title {
+            "Samples" | "Blocks" => &["Cmd", "Ctrl"],
+            "Keys" => &["Esc"],
+            _ => &[],
+        }
+    }
+
+    fn render_rack_help_keycap(ui: &mut Ui, label: &str) {
+        egui::Frame::group(ui.style())
+            .fill(ui.visuals().faint_bg_color)
+            .stroke(egui::Stroke::new(
+                1.0,
+                ui.visuals().widgets.noninteractive.bg_stroke.color,
+            ))
+            .inner_margin(egui::Margin::symmetric(5, 2))
+            .show(ui, |ui| {
+                ui.small(egui::RichText::new(label).strong());
+            });
     }
 
     fn rack_help_toggle_label(collapsed: bool) -> &'static str {
@@ -7190,6 +7211,14 @@ Error: `{err}`"
                                 ui.small(egui::RichText::new("■").color(chip_color));
                                 ui.small(egui::RichText::new(*title).strong());
                             });
+                            let keycaps = Self::rack_help_strip_keycaps(title);
+                            if !keycaps.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    for keycap in keycaps {
+                                        Self::render_rack_help_keycap(ui, keycap);
+                                    }
+                                });
+                            }
                             ui.small(*body);
                         });
                     }
@@ -40922,7 +40951,6 @@ mod tests {
         let items = GENtleApp::rack_help_strip_items();
         assert!(items.iter().any(|(title, _)| *title == "Samples"));
         assert!(items.iter().any(|(title, _)| *title == "Blocks"));
-        assert!(items.iter().any(|(_, body)| body.contains("Cmd/Ctrl-click")));
         assert!(items.iter().any(|(_, body)| body.contains("fade")));
     }
 
@@ -40930,6 +40958,14 @@ mod tests {
     fn rack_help_toggle_label_reflects_collapsed_state() {
         assert_eq!(GENtleApp::rack_help_toggle_label(false), "Hide help");
         assert_eq!(GENtleApp::rack_help_toggle_label(true), "Show help");
+    }
+
+    #[test]
+    fn rack_help_strip_keycaps_cover_shortcuts() {
+        assert_eq!(GENtleApp::rack_help_strip_keycaps("Samples"), &["Cmd", "Ctrl"]);
+        assert_eq!(GENtleApp::rack_help_strip_keycaps("Blocks"), &["Cmd", "Ctrl"]);
+        assert_eq!(GENtleApp::rack_help_strip_keycaps("Keys"), &["Esc"]);
+        assert!(GENtleApp::rack_help_strip_keycaps("Preview").is_empty());
     }
 
     #[test]

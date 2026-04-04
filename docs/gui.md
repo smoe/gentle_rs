@@ -2227,6 +2227,8 @@ Rack view is the first physical-placement layer on top of arrangements.
   work.
   - the strip now also shows tiny arrangement-color chips and can be collapsed
     with `Hide help` / `Show help`
+  - shortcut hints are rendered as small keycap-style labels for `Cmd`,
+    `Ctrl`, and `Esc`
 - Built-in profiles:
   - `Small tube rack (4 x 6)`
   - `Plate 96`
