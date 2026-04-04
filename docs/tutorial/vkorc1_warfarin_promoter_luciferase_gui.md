@@ -9,12 +9,14 @@
 This tutorial is a GUI-first walkthrough for planning a `VKORC1`
 promoter-luciferase follow-up from the warfarin-sensitivity SNP `rs9923231`.
 
-It has three goals:
+It has four goals:
 
 1. start from one concrete pharmacogenomic alert rather than an abstract gene,
 2. extract one biologically sensible reporter fragment around the reverse-strand
    `VKORC1` promoter and `rs9923231`, and
-3. map each GUI step to a functionally equivalent CLI/engine route.
+3. end on one clean construct-map export rather than only a transient preview
+   state, and
+4. map each GUI step to a functionally equivalent CLI/engine route.
 
 The intended assay logic is modest and explicit:
 
@@ -39,7 +41,8 @@ This tutorial covers computer-based planning and documentation:
 4. extract one default reporter fragment that keeps the SNP inside the insert,
 5. import one luciferase destination context,
 6. preview one promoter->luciferase assembly candidate, and
-7. design one verification-PCR handoff.
+7. export one readable construct map, and
+8. design one verification-PCR handoff.
 
 Wet-lab execution (cell model choice, transfection, luciferase readout,
 warfarin dosing, statistics) is out of scope for this page.
@@ -232,7 +235,10 @@ Current planning note:
   parity baseline,
 - once this fragment geometry is accepted, the next iteration should move into
   an explicit destination-opening Gibson plan rather than changing the promoter
-  boundaries again.
+  boundaries again,
+- the important improvement for this page is that it should now end with a
+  clean construct map you can actually show, not just with an internal
+  construct id.
 
 GUI:
 
@@ -254,7 +260,43 @@ GUI/CLI mapping:
 | Routine validate-only | `macros template-run ... --validate-only` | `gentle_cli shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=vkorc1_rs9923231_promoter_ref --bind right_seq_id=promega_luciferase_ay738222 --bind overlap_bp=20 --bind assembly_prefix=vkorc1_luc_demo --bind output_id=vkorc1_rs9923231_luc_construct_preview --validate-only'` |
 | Routine apply run | `macros template-run ... --transactional` | same command without `--validate-only` |
 
-## Step 6: Verification PCR
+## Step 6: Inspect and Export a Readable Construct Map
+
+GUI:
+
+1. open `vkorc1_rs9923231_luc_construct_preview`
+2. keep the construct in circular/standard-map view
+3. for a cleaner documentation-style map, keep:
+   - `Features = on`
+   - `Gene = off`
+   - `mRNA = off`
+   - `TFBS = off`
+   - `Restriction enzymes = off`
+   - `GC = off`
+   - `ORFs = off`
+   - `Methylation = off`
+4. if the sequence text panel is open, hide it so the map is the visual focus
+5. use `Export SVG`
+6. save the result as something stable, for example:
+   - `vkorc1_rs9923231_luc_construct_preview.svg`
+
+Why this step matters:
+
+- it gives the tutorial a concrete endpoint artifact,
+- it makes the construct readable enough for review/discussion,
+- it uses the same shared `RenderSequenceSvg` route that the CLI and future
+  ClawBio-facing artifact generation can reuse.
+
+GUI/CLI mapping:
+
+| GUI action | Engine operation | CLI equivalent |
+| --- | --- | --- |
+| Hide sequence panel | `SetDisplayVisibility` | `gentle_cli op '{"SetDisplayVisibility":{"target":"SequencePanel","visible":false}}' --confirm` |
+| Keep map panel visible | `SetDisplayVisibility` | `gentle_cli op '{"SetDisplayVisibility":{"target":"MapPanel","visible":true}}' --confirm` |
+| Hide non-essential construct tracks | repeated `SetDisplayVisibility` | repeat for `GeneFeatures`, `MrnaFeatures`, `Tfbs`, `RestrictionEnzymes`, `GcContents`, `OpenReadingFrames`, `MethylationSites` |
+| Export circular construct SVG | `RenderSequenceSvg` | `gentle_cli op '{"RenderSequenceSvg":{"seq_id":"vkorc1_rs9923231_luc_construct_preview","mode":"Circular","path":"vkorc1_rs9923231_luc_construct_preview.svg"}}' --confirm` |
+
+## Step 7: Verification PCR
 
 GUI:
 
@@ -274,7 +316,7 @@ CLI parity:
 For this tutorial, junction PCR is the default verification step. qPCR remains
 optional and should only be added when your experimental plan really needs it.
 
-## Step 7: Next Iteration After This Tutorial
+## Step 8: Next Iteration After This Tutorial
 
 Once the reference-fragment geometry is accepted, the next rational step is:
 
@@ -302,6 +344,8 @@ Treat this as required project documentation:
    - `vkorc1_rs9923231_promoter_ref`
 5. record the construct preview id:
    - `vkorc1_rs9923231_luc_construct_preview`
+6. record the exported construct map path:
+   - for example `vkorc1_rs9923231_luc_construct_preview.svg`
 
 ## Recommended Success Criteria
 
@@ -314,5 +358,6 @@ following:
 3. The chosen reporter fragment keeps the SNP inside the insert and includes
    only a limited amount of transcribed context.
 4. The luciferase destination context is imported under a stable id.
-5. One construct preview and one junction-PCR planning step are recorded for
-   handoff.
+5. One construct preview is exported as a readable circular map rather than
+   existing only as a transient in-memory state.
+6. One junction-PCR planning step is recorded for handoff.

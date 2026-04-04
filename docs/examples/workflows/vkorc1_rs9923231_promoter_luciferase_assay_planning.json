@@ -2,7 +2,7 @@
   "schema": "gentle.workflow_example.v1",
   "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
   "title": "VKORC1 rs9923231 promoter luciferase assay planning (GUI-first parity skeleton)",
-  "summary": "Plans a VKORC1 / rs9923231 promoter -> luciferase reporter workflow from dbSNP-driven locus retrieval through TSS-centered fragment extraction, vector import, assembly preview, and junction-PCR planning.",
+  "summary": "Plans a VKORC1 / rs9923231 promoter -> luciferase reporter workflow from dbSNP-driven locus retrieval through TSS-centered fragment extraction, vector import, assembly preview, circular construct-map export, and junction-PCR planning.",
   "test_mode": "skip",
   "required_files": [
     "assets/genomes.json"
@@ -70,6 +70,73 @@
         "Branch": {
           "input": "vkorc1_rs9923231_luc_assembly_1",
           "output_id": "vkorc1_rs9923231_luc_construct_preview"
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "SequencePanel",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MapPanel",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Features",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GeneFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MrnaFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Tfbs",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "RestrictionEnzymes",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GcContents",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "OpenReadingFrames",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MethylationSites",
+          "visible": false
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_luc_construct_preview",
+          "mode": "Circular",
+          "path": "docs/figures/vkorc1_rs9923231_tutorial_construct_preview.svg"
         }
       },
       {
