@@ -2518,6 +2518,18 @@ mod tests {
     }
 
     #[test]
+    fn select_current_visible_span_promotes_viewport_to_selection() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_linear_viewport(40, 75);
+
+        area.select_current_visible_span();
+
+        assert_eq!(area.current_selection_range_0based(), Some((40, 115)));
+        assert!(area.op_status.contains("Selected visible span: 40..115"));
+    }
+
+    #[test]
     fn primer_design_async_worker_completes_and_applies_operation() {
         let mut area = make_primer_batch_area();
         let op = Operation::SetParameter {
@@ -9678,11 +9690,37 @@ impl MainAreaDna {
 
         if allow_roi_tools {
             ui.horizontal_wrapped(|ui| {
-                if ui
-                    .button("Extract Sel")
-                    .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
-                    .clicked()
-                {
+                let select_visible_response = ui.add_enabled(
+                    visible_span_roi.is_some(),
+                    egui::Button::new("Select visible"),
+                );
+                let select_visible_response = if visible_span_roi.is_some() {
+                    select_visible_response.on_hover_text(
+                        "Turn the current visible linear map span into the active selection",
+                    )
+                } else {
+                    select_visible_response.on_hover_text(
+                        "Requires a non-empty linear map view; unavailable in circular view",
+                    )
+                };
+                if select_visible_response.clicked() {
+                    self.select_current_visible_span();
+                }
+
+                let extract_selection_response = ui.add_enabled(
+                    selection_roi.is_some(),
+                    egui::Button::new("Extract Sel"),
+                );
+                let extract_selection_response = if selection_roi.is_some() {
+                    extract_selection_response.on_hover_text(
+                        "Extract current map/text selection into a new sequence (with overlapping features)",
+                    )
+                } else {
+                    extract_selection_response.on_hover_text(
+                        "Requires a non-empty map/text selection; use `Apply Sel`, drag-select a region, or click `Select visible` first",
+                    )
+                };
+                if extract_selection_response.clicked() {
                     self.extract_current_selection_as_sequence();
                 }
                 let queue_selection_response = ui.add_enabled(
@@ -13158,6 +13196,25 @@ impl MainAreaDna {
                 Some(self.extract_output_id.trim().to_string())
             },
         });
+    }
+
+    fn select_current_visible_span(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status =
+                "Visible linear span is unavailable; switch to a non-empty linear view".to_string();
+            return;
+        };
+        match self.set_selection_range_0based(start, end_exclusive) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Selected visible span: {}..{} (0-based, end-exclusive)",
+                    start, end_exclusive
+                );
+            }
+            Err(err) => {
+                self.op_status = err;
+            }
+        }
     }
 
     fn set_linear_viewport(&self, start_bp: usize, span_bp: usize) {
