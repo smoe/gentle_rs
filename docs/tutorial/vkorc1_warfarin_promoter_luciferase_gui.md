@@ -49,8 +49,7 @@ warfarin dosing, statistics) is out of scope for this page.
 
 ## Default Biological Decision Used Here
 
-To keep the tutorial reproducible and biologically cleaner than the earlier
-TP73-style placeholder, this page uses one fixed default fragment:
+To keep the tutorial reproducible and biologically cleaner, this page uses one fixed default fragment:
 
 - reference assembly: `GRCh38`
 - SNP: `rs9923231` at `chr16:31096368`
@@ -72,6 +71,16 @@ Why this fragment:
 
 That is a much better starting point for a promoter reporter than "all the way
 to the end of the gene body".
+
+Why keep `~200 bp` past the TSS at all:
+
+- it avoids making the reporter boundary coincide exactly with the annotated
+  TSS,
+- it preserves a little immediate downstream / `5' UTR` context that can matter
+  for promoter-proximal regulation, and
+- it keeps the construct biologically modest: enough local context to make the
+  promoter fragment interpretable, but not so much gene body that the insert
+  stops reading like a promoter-reporter design.
 
 ## Prerequisites
 
@@ -127,7 +136,7 @@ GUI:
 3. note that `VKORC1` is on the reverse strand
 4. note that `rs9923231` sits upstream of the `VKORC1` transcription start in
    biological terms even though the genomic coordinate is larger
-5. zoom the linear map to roughly `2400..3600`
+5. zoom the linear map to roughly `2400..3600` with the +/- symbol, the mouse scrolling wheel or by entering these coordinates followed by pressing the apply button.
 
 Interpretation used by this tutorial:
 
@@ -158,6 +167,14 @@ GUI:
    - the SNP marker
    - additional upstream sequence beyond the SNP
 4. click `Extract Sel`
+   - if the selection is not active yet, click `Select visible` or drag-select
+     first; `Extract Sel` is disabled until a non-empty selection exists
+   - this button lives in the wrapped action row directly below the display
+     chips in the DNA window, beside `Queue PCR selection` and `PCR ROI`
+   - if you do not see it immediately, widen the DNA window a little and make
+     sure the sequence is still in `Mode = Region`
+   - equivalent fallback: use `Engine Ops -> Extract Region` with the same
+     selected bounds
 5. use output id `vkorc1_rs9923231_promoter_ref`
 
 Important coordinate note:
@@ -178,6 +195,9 @@ Optional interpretation note:
 - within the extracted promoter fragment itself, `rs9923231` now sits at local
   position `589`, which is much more appropriate for later reference-vs-variant
   reporter comparison than a border-adjacent SNP.
+- the retained `~200 bp` of transcribed context is intentional and should be
+  read as "do not cut exactly at the annotated TSS", not as "clone deep into
+  the gene body"
 
 ## Step 3b (Optional): Summarize TFBS Around the SNP
 

@@ -1440,12 +1440,20 @@ Controls:
 15. Extract Sel
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
-16. Queue PCR selection
+   - Disabled until a non-empty selection exists.
+   - If the current viewport is the intended span, use `Select visible` first
+     to promote the visible linear map window into the active selection.
+16. Select visible
+   - Copies the current visible linear map span into the active selection.
+   - Intended as a quick bridge between viewport navigation and
+     selection-first actions such as `Extract Sel`, `Queue PCR selection`, and
+     `PCR ROI`.
+17. Queue PCR selection
    - One-click shortcut beside `Extract Sel` that queues the current linear
      selection as one PCR region and opens Engine Ops.
    - When a selection is present, the map area also shows an inline hint with
      the active span and the same PCR queue action.
-17. Selection formula
+18. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Formula must start with `=` and define a range:
      - `=left .. right`
@@ -1463,7 +1471,7 @@ Controls:
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
-18. PCR ROI
+19. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
      - add current map/text selection to PCR region queue
