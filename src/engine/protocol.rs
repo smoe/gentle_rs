@@ -45,7 +45,6 @@ use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
     OpId, Operation, PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
-    SequencingConfirmationReport,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -210,6 +209,457 @@ pub struct TfbsRegionSummary {
     pub min_context_occurrences: usize,
     pub limit: usize,
     pub rows: Vec<TfbsRegionSummaryRow>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationStatus {
+    Confirmed,
+    Contradicted,
+    #[default]
+    InsufficientEvidence,
+}
+
+impl SequencingConfirmationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Contradicted => "contradicted",
+            Self::InsufficientEvidence => "insufficient_evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Orientation chosen for the best alignment of one confirmation read.
+pub enum SequencingReadOrientation {
+    #[default]
+    Forward,
+    ReverseComplement,
+}
+
+impl SequencingReadOrientation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::ReverseComplement => "reverse_complement",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Origin of one sequencing-confirmation evidence row.
+pub enum SequencingConfirmationEvidenceKind {
+    #[default]
+    Sequence,
+    Trace,
+}
+
+impl SequencingConfirmationEvidenceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequence => "sequence",
+            Self::Trace => "trace",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Biology-facing target classes supported by sequencing confirmation v1.
+pub enum SequencingConfirmationTargetKind {
+    #[default]
+    FullSpan,
+    Junction,
+    FeaturePresence,
+    ExpectedEdit,
+    RestrictionSite,
+}
+
+impl SequencingConfirmationTargetKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FullSpan => "full_span",
+            Self::Junction => "junction",
+            Self::FeaturePresence => "feature_presence",
+            Self::ExpectedEdit => "expected_edit",
+            Self::RestrictionSite => "restriction_site",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// One requested construct-confirmation target on the expected sequence.
+///
+/// Coordinates are 0-based half-open on the expected construct. Junction
+/// targets also set `junction_left_end_0based` to mark the break between the
+/// two halves that must both be supported.
+pub struct SequencingConfirmationTargetSpec {
+    pub target_id: String,
+    pub label: String,
+    pub kind: SequencingConfirmationTargetKind,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub junction_left_end_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_bases: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
+    pub required: bool,
+}
+
+impl Default for SequencingConfirmationTargetSpec {
+    fn default() -> Self {
+        Self {
+            target_id: String::new(),
+            label: String::new(),
+            kind: SequencingConfirmationTargetKind::FullSpan,
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            junction_left_end_0based: None,
+            expected_bases: None,
+            baseline_bases: None,
+            required: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Alignment-level discrepancy class recorded for one confirmation read.
+pub enum SequencingConfirmationDiscrepancyKind {
+    #[default]
+    Mismatch,
+    Insertion,
+    Deletion,
+}
+
+impl SequencingConfirmationDiscrepancyKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mismatch => "mismatch",
+            Self::Insertion => "insertion",
+            Self::Deletion => "deletion",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One mismatch/indel segment extracted from the best read alignment.
+pub struct SequencingConfirmationDiscrepancy {
+    pub kind: SequencingConfirmationDiscrepancyKind,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub target_start_0based: usize,
+    pub target_end_0based_exclusive: usize,
+    pub query_bases: String,
+    pub target_bases: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SequencingConfirmationVariantClassification {
+    #[default]
+    ExpectedMatch,
+    IntendedEditConfirmed,
+    ReferenceReversion,
+    UnexpectedDifference,
+    LowConfidenceOrAmbiguous,
+    InsufficientEvidence,
+}
+
+impl SequencingConfirmationVariantClassification {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExpectedMatch => "expected_match",
+            Self::IntendedEditConfirmed => "intended_edit_confirmed",
+            Self::ReferenceReversion => "reference_reversion",
+            Self::UnexpectedDifference => "unexpected_difference",
+            Self::LowConfidenceOrAmbiguous => "low_confidence_or_ambiguous",
+            Self::InsufficientEvidence => "insufficient_evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequencingConfirmationVariantRow {
+    pub variant_id: String,
+    pub label: String,
+    pub target_id: Option<String>,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub expected_bases: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
+    pub observed_bases: String,
+    pub classification: SequencingConfirmationVariantClassification,
+    pub status: SequencingConfirmationStatus,
+    pub evidence_kind: SequencingConfirmationEvidenceKind,
+    pub evidence_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    pub read_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_seq_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_min: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_max: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence_mean: Option<f64>,
+    pub confidence_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_center: Option<u32>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Construct-level verdict for one requested confirmation target.
+pub struct SequencingConfirmationTargetResult {
+    pub target_id: String,
+    pub label: String,
+    pub kind: SequencingConfirmationTargetKind,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub junction_left_end_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_bases: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_bases: Option<String>,
+    pub required: bool,
+    pub status: SequencingConfirmationStatus,
+    pub covered_bp: usize,
+    pub target_length_bp: usize,
+    pub support_read_ids: Vec<String>,
+    pub contradicting_read_ids: Vec<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Best-alignment and discrepancy summary for one input sequencing evidence row.
+pub struct SequencingConfirmationReadResult {
+    pub evidence_kind: SequencingConfirmationEvidenceKind,
+    pub evidence_id: String,
+    pub read_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_seq_id: Option<String>,
+    pub orientation: SequencingReadOrientation,
+    pub usable: bool,
+    pub best_alignment: SequenceAlignmentReport,
+    pub covered_target_ids: Vec<String>,
+    pub confirmed_target_ids: Vec<String>,
+    pub contradicted_target_ids: Vec<String>,
+    pub discrepancies: Vec<SequencingConfirmationDiscrepancy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Stored construct-confirmation report shared by shell, GUI, and exports.
+pub struct SequencingConfirmationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub expected_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_seq_id: Option<String>,
+    pub generated_at_unix_ms: u128,
+    pub overall_status: SequencingConfirmationStatus,
+    pub alignment_mode: PairwiseAlignmentMode,
+    pub match_score: i32,
+    pub mismatch_score: i32,
+    pub gap_open: i32,
+    pub gap_extend: i32,
+    pub min_identity_fraction: f64,
+    pub min_target_coverage_fraction: f64,
+    pub allow_reverse_complement: bool,
+    pub read_seq_ids: Vec<String>,
+    #[serde(default)]
+    pub trace_ids: Vec<String>,
+    pub target_count: usize,
+    pub reads: Vec<SequencingConfirmationReadResult>,
+    pub targets: Vec<SequencingConfirmationTargetResult>,
+    #[serde(default)]
+    pub variants: Vec<SequencingConfirmationVariantRow>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Lightweight listing row for one sequencing-confirmation report.
+pub struct SequencingConfirmationReportSummary {
+    pub report_id: String,
+    pub expected_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub overall_status: SequencingConfirmationStatus,
+    pub read_count: usize,
+    pub target_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct FlexibilityBinScore {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct FlexibilityTrack {
+    pub schema: String,
+    pub track_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub model: FlexibilityModel,
+    pub bin_bp: usize,
+    pub smoothing_bp: Option<usize>,
+    pub min_score: f64,
+    pub max_score: f64,
+    pub bins: Vec<FlexibilityBinScore>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlexibilityTrackSummary {
+    pub track_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub model: FlexibilityModel,
+    pub bin_bp: usize,
+    pub smoothing_bp: Option<usize>,
+    pub bin_count: usize,
+    pub min_score: f64,
+    pub max_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderBandInfo {
+    pub length_bp: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_strength: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loading_hint: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_bp: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_bp: Option<usize>,
+    pub band_count: usize,
+    pub bands: Vec<DnaLadderBandInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderCatalog {
+    pub schema: String,
+    pub ladder_count: usize,
+    pub ladders: Vec<DnaLadderInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderExportReport {
+    pub path: String,
+    pub ladder_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderBandInfo {
+    pub length_nt: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_strength: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loading_hint: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_nt: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_nt: Option<usize>,
+    pub band_count: usize,
+    pub bands: Vec<RnaLadderBandInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderCatalog {
+    pub schema: String,
+    pub ladder_count: usize,
+    pub ladders: Vec<RnaLadderInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderExportReport {
+    pub path: String,
+    pub ladder_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeExtractionProvenance {
+    pub seq_id: SeqId,
+    pub recorded_at_unix_ms: u128,
+    pub operation: String,
+    pub genome_id: String,
+    pub catalog_path: String,
+    pub cache_dir: Option<String>,
+    pub chromosome: Option<String>,
+    pub start_1based: Option<usize>,
+    pub end_1based: Option<usize>,
+    pub gene_query: Option<String>,
+    pub occurrence: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_extract_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_upstream_bp: Option<usize>,
+    pub gene_id: Option<String>,
+    pub gene_name: Option<String>,
+    pub strand: Option<char>,
+    pub anchor_strand: Option<char>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_verified: Option<bool>,
+    pub sequence_source_type: Option<String>,
+    pub annotation_source_type: Option<String>,
+    pub sequence_source: Option<String>,
+    pub annotation_source: Option<String>,
+    pub sequence_sha1: Option<String>,
+    pub annotation_sha1: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceGenomeAnchorSummary {
+    pub seq_id: String,
+    pub genome_id: String,
+    pub chromosome: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: Option<char>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_verified: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceAnchorPreparedGenomeOptionsSummary {
+    pub seq_id: String,
+    pub requested_genome_id: String,
+    pub requested_catalog_key: String,
+    pub requested_family: Option<String>,
+    pub exact_prepared: bool,
+    pub compatible_prepared_options: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

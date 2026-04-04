@@ -59,6 +59,9 @@ order. Durable architecture constraints and decisions remain in
       and the shared instruction strings those views expose
     - the shared DNA/RNA ladder catalog layer now also lives there:
       ladder molecule/catalog records plus the built-in default ladder sets
+    - the portable sequencing-confirmation and flexibility track contracts now
+      also live there, along with genome-extraction provenance/anchor summary
+      records that adapters inspect without needing full engine execution code
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
