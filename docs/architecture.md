@@ -78,6 +78,10 @@ Rack-placement rule (target model):
 - Rack/arrangement label export should stay engine-owned as well:
   - GUI and CLI choose among shared deterministic label-sheet presets
   - sheet geometry must not live only in one frontend adapter
+- Quick rack-authoring templates should also stay engine-owned:
+  - they are convenience overlays on one persisted rack snapshot
+  - they may adjust fill direction and blocked coordinates together
+  - they must not create a second competing placement model
 - Rack editing should remain order-preserving by default:
   moving one sample or one arrangement block shifts neighboring occupied
   positions in fill order rather than encouraging arbitrary free-floating holes.

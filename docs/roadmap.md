@@ -1130,6 +1130,10 @@ order. Durable architecture constraints and decisions remain in
   - custom rack-profile authoring is now available as a shared engine/GUI/CLI
     path on top of the same persisted rack snapshot model
   - rack authoring now also supports:
+    - built-in shared authoring templates:
+      - `bench_rows`
+      - `plate_columns`
+      - `plate_edge_avoidance`
     - row-major and column-major fill directions
     - persisted blocked/reserved coordinates
     - multi-letter A1 row labels beyond `Z`
@@ -1140,8 +1144,8 @@ order. Durable architecture constraints and decisions remain in
       (for example autoscroll, multi-select, and richer preview refinements;
       baseline ghost previews now ship in the rack editor)
     - richer custom-profile semantics beyond the current baseline
-      (for example blocked-slot templates, fill-direction presets, and richer
-      coordinate-scheme choices beyond the current A1 baseline)
+      (for example broader template catalogs and richer coordinate-scheme
+      choices beyond the current A1 baseline)
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows

@@ -895,6 +895,7 @@ pub struct GENtleApp {
     rack_view_rack_id: String,
     rack_view_status: String,
     rack_profile_editor_kind: RackProfileKind,
+    rack_authoring_template_editor: RackAuthoringTemplate,
     rack_fill_direction_editor: RackFillDirection,
     rack_custom_profile_rows: String,
     rack_custom_profile_columns: String,
@@ -2364,6 +2365,7 @@ impl Default for GENtleApp {
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
             rack_profile_editor_kind: RackProfileKind::SmallTube4x6,
+            rack_authoring_template_editor: RackAuthoringTemplate::BenchRows,
             rack_fill_direction_editor: RackFillDirection::RowMajor,
             rack_custom_profile_rows: String::new(),
             rack_custom_profile_columns: String::new(),
@@ -5837,6 +5839,7 @@ Error: `{err}`"
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.rack_view_rack_id.clear();
         self.rack_view_status.clear();
+        self.rack_authoring_template_editor = RackAuthoringTemplate::BenchRows;
         self.rack_fill_direction_editor = RackFillDirection::RowMajor;
         self.rack_blocked_coordinates_text.clear();
         self.rack_view_selected_coordinate = None;
@@ -6713,7 +6716,9 @@ Error: `{err}`"
         match profile.fill_direction {
             RackFillDirection::RowMajor => RackAuthoringTemplate::BenchRows,
             RackFillDirection::ColumnMajor => {
-                if profile.blocked_coordinates.as_slice()
+                if profile
+                    .blocked_coordinates
+                    .as_slice()
                     == Self::rack_edge_avoidance_coordinates(profile)
                         .unwrap_or_default()
                         .as_slice()
@@ -6835,6 +6840,8 @@ Error: `{err}`"
             .cloned()
         {
             self.rack_profile_editor_kind = rack.profile.kind;
+            self.rack_authoring_template_editor =
+                Self::infer_rack_authoring_template(&rack.profile);
             self.rack_fill_direction_editor = rack.profile.fill_direction;
             self.rack_custom_profile_rows = rack.profile.rows.to_string();
             self.rack_custom_profile_columns = rack.profile.columns.to_string();
@@ -7279,6 +7286,8 @@ Error: `{err}`"
                             self.rack_custom_profile_columns =
                                 updated_rack.profile.columns.to_string();
                             self.rack_profile_editor_kind = updated_rack.profile.kind;
+                            self.rack_authoring_template_editor =
+                                Self::infer_rack_authoring_template(&updated_rack.profile);
                             self.rack_fill_direction_editor = updated_rack.profile.fill_direction;
                             self.rack_blocked_coordinates_text =
                                 updated_rack.profile.blocked_coordinates.join(", ");
@@ -7310,6 +7319,8 @@ Error: `{err}`"
                         self.lineage_cache_valid = false;
                         self.refresh_lineage_cache_if_needed();
                         if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_authoring_template_editor =
+                                Self::infer_rack_authoring_template(&updated_rack.profile);
                             self.rack_fill_direction_editor = updated_rack.profile.fill_direction;
                             self.rack_blocked_coordinates_text =
                                 updated_rack.profile.blocked_coordinates.join(", ");
@@ -7324,10 +7335,11 @@ Error: `{err}`"
             }
         });
         ui.horizontal(|ui| {
-            let mut selected_template = Self::infer_rack_authoring_template(&rack.profile);
             ui.label("Template");
             egui::ComboBox::from_id_salt("rack_template_combo")
-                .selected_text(Self::rack_authoring_template_label(selected_template))
+                .selected_text(Self::rack_authoring_template_label(
+                    self.rack_authoring_template_editor,
+                ))
                 .show_ui(ui, |ui| {
                     for template in [
                         RackAuthoringTemplate::BenchRows,
@@ -7335,7 +7347,7 @@ Error: `{err}`"
                         RackAuthoringTemplate::PlateEdgeAvoidance,
                     ] {
                         ui.selectable_value(
-                            &mut selected_template,
+                            &mut self.rack_authoring_template_editor,
                             template,
                             Self::rack_authoring_template_label(template),
                         );
@@ -7344,17 +7356,18 @@ Error: `{err}`"
             if ui
                 .button("Apply Template")
                 .on_hover_text(
-                    "Apply one shared rack-authoring shortcut. Bench rows uses row-major fill; plate columns uses column-major fill; plate edge avoidance uses column-major fill and blocks the outer ring.",
+                    "Apply one shared rack-authoring shortcut. Bench rows clears blocked slots and uses row-major fill; plate columns clears blocked slots and uses column-major fill; plate edge avoidance blocks the outer ring and uses column-major fill.",
                 )
                 .clicked()
             {
+                let template = self.rack_authoring_template_editor;
                 let result = self
                     .engine
                     .write()
                     .unwrap()
                     .apply(Operation::ApplyRackTemplate {
                         rack_id: rack.rack_id.clone(),
-                        template: selected_template,
+                        template,
                     });
                 match result {
                     Ok(op_result) => {
@@ -7365,6 +7378,17 @@ Error: `{err}`"
                             .unwrap_or_else(|| "Applied rack template".to_string());
                         self.lineage_cache_valid = false;
                         self.refresh_lineage_cache_if_needed();
+                        if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_profile_editor_kind = updated_rack.profile.kind;
+                            self.rack_authoring_template_editor =
+                                Self::infer_rack_authoring_template(&updated_rack.profile);
+                            self.rack_fill_direction_editor = updated_rack.profile.fill_direction;
+                            self.rack_custom_profile_rows = updated_rack.profile.rows.to_string();
+                            self.rack_custom_profile_columns =
+                                updated_rack.profile.columns.to_string();
+                            self.rack_blocked_coordinates_text =
+                                updated_rack.profile.blocked_coordinates.join(", ");
+                        }
                     }
                     Err(err) => {
                         self.rack_view_status =
@@ -7372,6 +7396,9 @@ Error: `{err}`"
                     }
                 }
             }
+            ui.small(
+                "Templates are quick shared presets layered on top of the same rack snapshot.",
+            );
         });
         if self.rack_profile_editor_kind == RackProfileKind::Custom {
             ui.horizontal(|ui| {
@@ -7433,6 +7460,10 @@ Error: `{err}`"
                                     self.refresh_lineage_cache_if_needed();
                                     self.rack_profile_editor_kind = RackProfileKind::Custom;
                                     if let Some(updated_rack) = self.current_rack_snapshot() {
+                                        self.rack_authoring_template_editor =
+                                            Self::infer_rack_authoring_template(
+                                                &updated_rack.profile,
+                                            );
                                         self.rack_custom_profile_rows =
                                             updated_rack.profile.rows.to_string();
                                         self.rack_custom_profile_columns =
@@ -7502,6 +7533,8 @@ Error: `{err}`"
                         self.lineage_cache_valid = false;
                         self.refresh_lineage_cache_if_needed();
                         if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_authoring_template_editor =
+                                Self::infer_rack_authoring_template(&updated_rack.profile);
                             self.rack_blocked_coordinates_text =
                                 updated_rack.profile.blocked_coordinates.join(", ");
                         }
@@ -7534,6 +7567,10 @@ Error: `{err}`"
                             .unwrap_or_else(|| "Cleared blocked rack coordinates".to_string());
                         self.lineage_cache_valid = false;
                         self.refresh_lineage_cache_if_needed();
+                        if let Some(updated_rack) = self.current_rack_snapshot() {
+                            self.rack_authoring_template_editor =
+                                Self::infer_rack_authoring_template(&updated_rack.profile);
+                        }
                         self.rack_blocked_coordinates_text.clear();
                     }
                     Err(err) => {
@@ -35635,13 +35672,14 @@ mod tests {
         engine::{
             Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance,
             Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
-            DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
-            GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            Rack, RackFillDirection, RackProfileKind, RackProfileSnapshot,
-            ProjectState, RenderSvgMode, RestrictionEnzymeDisplayMode,
-            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
-            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
+            DotplotMode, Engine, FlexibilityModel,
+            GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
+            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, Rack,
+            RackAuthoringTemplate, RackFillDirection, RackProfileKind, RackProfileSnapshot,
+            PairwiseAlignmentMode, ProjectState, RenderSvgMode,
+            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
+            SequenceOrigin,
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
@@ -39851,10 +39889,56 @@ mod tests {
         assert!(app.show_rack_dialog);
         assert_eq!(app.rack_view_rack_id, "rack-custom");
         assert_eq!(app.rack_profile_editor_kind, RackProfileKind::Custom);
+        assert_eq!(
+            app.rack_authoring_template_editor,
+            RackAuthoringTemplate::PlateColumns
+        );
         assert_eq!(app.rack_fill_direction_editor, RackFillDirection::ColumnMajor);
         assert_eq!(app.rack_custom_profile_rows, "28");
         assert_eq!(app.rack_custom_profile_columns, "10");
         assert_eq!(app.rack_blocked_coordinates_text, "B2, AA3");
+    }
+
+    #[test]
+    fn open_rack_dialog_infers_edge_avoidance_template_from_perimeter_blocking() {
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert(
+            "rack-edge".to_string(),
+            Rack {
+                rack_id: "rack-edge".to_string(),
+                name: "Plate".to_string(),
+                profile: RackProfileSnapshot {
+                    fill_direction: RackFillDirection::ColumnMajor,
+                    blocked_coordinates: vec![
+                        "A1".to_string(),
+                        "B1".to_string(),
+                        "C1".to_string(),
+                        "D1".to_string(),
+                        "A2".to_string(),
+                        "D2".to_string(),
+                        "A3".to_string(),
+                        "D3".to_string(),
+                        "A4".to_string(),
+                        "B4".to_string(),
+                        "C4".to_string(),
+                        "D4".to_string(),
+                    ],
+                    ..RackProfileSnapshot::custom(4, 4)
+                },
+                placements: vec![],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_rack_dialog("rack-edge");
+
+        assert_eq!(
+            app.rack_authoring_template_editor,
+            RackAuthoringTemplate::PlateEdgeAvoidance
+        );
     }
 
     #[test]

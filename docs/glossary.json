@@ -493,6 +493,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ApplyRackTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks apply-template",
+         "summary": "Apply one shared rack-authoring template such as bench rows, plate columns, or plate edge avoidance.",
+         "usage": "racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "SetRackFillDirection"
          ],
          "interfaces": [

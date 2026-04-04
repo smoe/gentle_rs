@@ -839,6 +839,7 @@ Current draft operations:
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
 - `SetRackProfile { rack_id, profile }`
+- `ApplyRackTemplate { rack_id, template }`
 - `SetRackFillDirection { rack_id, fill_direction }`
 - `SetRackProfileCustom { rack_id, rows, columns }`
 - `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
@@ -1884,6 +1885,25 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Existing fill direction is preserved.
 - Existing blocked coordinates are preserved when still in-bounds for the new
   geometry; out-of-bounds blocked coordinates are dropped deterministically.
+
+`ApplyRackTemplate` semantics:
+
+- Applies one engine-owned quick-authoring template on top of an existing rack
+  snapshot.
+- Built-in templates:
+  - `bench_rows`
+    - `fill_direction = row_major`
+    - `blocked_coordinates = []`
+  - `plate_columns`
+    - `fill_direction = column_major`
+    - `blocked_coordinates = []`
+  - `plate_edge_avoidance`
+    - `fill_direction = column_major`
+    - `blocked_coordinates = outer perimeter of the current profile`
+- Existing arrangement order is preserved while occupied coordinates are
+  reflowed onto the resulting available slots.
+- `plate_edge_avoidance` requires at least a `3 x 3` profile so an interior
+  region remains after blocking the perimeter.
 
 `SetRackFillDirection` semantics:
 

@@ -2220,6 +2220,11 @@ Rack view is the first physical-placement layer on top of arrangements.
   - click `Apply Custom`
   - occupied positions are reflowed under the same order-preserving rules
 - Rack snapshots now also carry:
+  - `Template`
+    - `Bench rows`
+    - `Plate columns`
+    - `Plate edge avoidance`
+    - `Apply Template`
   - `Fill`
     - `Row-major`
     - `Column-major`
@@ -2246,6 +2251,10 @@ Interaction model:
   - free-floating holes are not the primary editing model in this baseline
 - Changing `Fill` or `Blocked` reflows occupied positions through the same
   shared order-preserving engine path instead of editing coordinates ad hoc.
+- `Template` is a shared shortcut layered on that same engine path:
+  - `Bench rows` restores row-major fill with no blocked slots
+  - `Plate columns` restores column-major fill with no blocked slots
+  - `Plate edge avoidance` uses column-major fill and blocks the outer ring
 
 Exports:
 

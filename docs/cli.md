@@ -1581,6 +1581,19 @@ Rendering export commands:
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
     preserving arrangement order.
+- `racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance`
+  - Calls engine operation `ApplyRackTemplate`.
+  - Applies one shared authoring shortcut on top of the existing rack snapshot.
+  - Built-in templates:
+    - `bench_rows`
+      - row-major fill
+      - clears blocked coordinates
+    - `plate_columns`
+      - column-major fill
+      - clears blocked coordinates
+    - `plate_edge_avoidance`
+      - column-major fill
+      - blocks the outer perimeter
 - `racks set-fill-direction RACK_ID row_major|column_major`
   - Calls engine operation `SetRackFillDirection`.
   - Reflows occupied positions onto the same rack geometry under a different

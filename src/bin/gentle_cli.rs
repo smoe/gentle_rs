@@ -478,6 +478,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
   gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]\n  \
   gentle_cli [--state PATH|--project PATH] racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384\n  \
+  gentle_cli [--state PATH|--project PATH] racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance\n  \
   gentle_cli [--state PATH|--project PATH] racks set-fill-direction RACK_ID row_major|column_major\n  \
   gentle_cli [--state PATH|--project PATH] racks set-custom-profile RACK_ID ROWS COLUMNS\n\n  \
   gentle_cli [--state PATH|--project PATH] racks set-blocked RACK_ID COORD[,COORD...]...|--clear\n\n  \
