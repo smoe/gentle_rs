@@ -62,6 +62,9 @@ order. Durable architecture constraints and decisions remain in
     - the portable sequencing-confirmation and flexibility track contracts now
       also live there, along with genome-extraction provenance/anchor summary
       records that adapters inspect without needing full engine execution code
+    - the portable process-run bundle and routine-decision-trace export records
+      now also live there so adapters can inspect/export workflow provenance
+      without depending on the monolithic engine implementation file
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates

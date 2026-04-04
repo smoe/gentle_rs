@@ -7299,7 +7299,9 @@ Error: `{err}`"
             GentleEngine::rack_index_from_coordinate(&rack.profile, from_coordinate).ok()?;
         let from_pos = ordered.iter().position(|(index, _)| *index == from_index)?;
         match drag {
-            RackDragState::ArrangementBlocks { arrangement_ids, .. } => {
+            RackDragState::ArrangementBlocks {
+                arrangement_ids, ..
+            } => {
                 let to_index =
                     GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
                 let selected = arrangement_ids.iter().cloned().collect::<HashSet<_>>();
@@ -8091,7 +8093,9 @@ Error: `{err}`"
             | RackDragState::ArrangementBlock { arrangement_id, .. } => {
                 Self::rack_color_for_arrangement(arrangement_id)
             }
-            RackDragState::ArrangementBlocks { arrangement_ids, .. } => arrangement_ids
+            RackDragState::ArrangementBlocks {
+                arrangement_ids, ..
+            } => arrangement_ids
                 .first()
                 .map(|arrangement_id| Self::rack_color_for_arrangement(arrangement_id))
                 .unwrap_or(ui.visuals().strong_text_color()),
@@ -8102,14 +8106,11 @@ Error: `{err}`"
         for (_, coordinate, entry) in &sorted_entries {
             entry_by_coordinate.insert(coordinate.clone(), entry.clone());
         }
-        let ghost_preview = self
-            .rack_view_drag_state
-            .as_ref()
-            .and_then(|drag| {
-                previous_hover_target
-                    .as_deref()
-                    .and_then(|target| Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target))
-            });
+        let ghost_preview = self.rack_view_drag_state.as_ref().and_then(|drag| {
+            previous_hover_target.as_deref().and_then(|target| {
+                Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target)
+            })
+        });
         let selected_arrangement_ids = Self::rack_selected_arrangement_ids_in_order(
             &sorted_entries,
             &self.rack_view_selected_arrangement_ids,
@@ -8600,11 +8601,7 @@ Error: `{err}`"
                         arrangement_ids, ..
                     } => {
                         if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move_blocks(
-                                &rack.rack_id,
-                                &arrangement_ids,
-                                target,
-                            );
+                            self.apply_rack_move_blocks(&rack.rack_id, &arrangement_ids, target);
                         }
                     }
                 }

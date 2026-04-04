@@ -40,6 +40,7 @@ pub use gentle_protocol::{
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 
@@ -1196,4 +1197,152 @@ pub struct EngineStateSummary {
     pub arrangement_count: usize,
     pub arrangements: Vec<EngineArrangementSummary>,
     pub display: DisplaySettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleOperationInputSummary {
+    pub op_id: String,
+    pub run_id: String,
+    pub operation: String,
+    pub record_index: usize,
+    #[serde(default)]
+    pub sequence_ids: Vec<String>,
+    #[serde(default)]
+    pub container_ids: Vec<String>,
+    #[serde(default)]
+    pub arrangement_ids: Vec<String>,
+    #[serde(default)]
+    pub candidate_set_ids: Vec<String>,
+    #[serde(default)]
+    pub guide_set_ids: Vec<String>,
+    #[serde(default)]
+    pub genome_ids: Vec<String>,
+    #[serde(default)]
+    pub file_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProcessRunBundleInputs {
+    pub root_sequence_ids: Vec<String>,
+    pub referenced_sequence_ids: Vec<String>,
+    pub referenced_container_ids: Vec<String>,
+    pub referenced_arrangement_ids: Vec<String>,
+    pub referenced_candidate_set_ids: Vec<String>,
+    pub referenced_guide_set_ids: Vec<String>,
+    pub referenced_genome_ids: Vec<String>,
+    pub file_inputs: Vec<String>,
+    pub operation_inputs: Vec<ProcessRunBundleOperationInputSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleParameterOverride {
+    pub op_id: String,
+    pub run_id: String,
+    pub record_index: usize,
+    pub name: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProcessRunBundleOutputs {
+    pub created_seq_ids: Vec<String>,
+    pub changed_seq_ids: Vec<String>,
+    pub final_sequences: Vec<EngineSequenceSummary>,
+    pub created_container_ids: Vec<String>,
+    pub created_arrangement_ids: Vec<String>,
+    pub exported_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceComparison {
+    pub left_routine_id: String,
+    pub right_routine_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationQuestion {
+    pub question_id: String,
+    pub question_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceDisambiguationAnswer {
+    pub question_id: String,
+    pub answer_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTracePreflightSnapshot {
+    pub can_execute: bool,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub contract_source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceExportEvent {
+    pub run_bundle_path: String,
+    pub exported_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTrace {
+    pub schema: String,
+    pub trace_id: String,
+    pub source: String,
+    pub status: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub goal_text: String,
+    pub query_text: String,
+    pub candidate_routine_ids: Vec<String>,
+    pub selected_routine_id: Option<String>,
+    pub selected_routine_title: Option<String>,
+    pub selected_routine_family: Option<String>,
+    pub alternatives_presented: Vec<String>,
+    pub comparisons: Vec<RoutineDecisionTraceComparison>,
+    pub disambiguation_questions_presented: Vec<RoutineDecisionTraceDisambiguationQuestion>,
+    pub disambiguation_answers: Vec<RoutineDecisionTraceDisambiguationAnswer>,
+    pub bindings_snapshot: BTreeMap<String, String>,
+    pub preflight_history: Vec<RoutineDecisionTracePreflightSnapshot>,
+    pub preflight_snapshot: Option<RoutineDecisionTracePreflightSnapshot>,
+    pub execution_attempted: bool,
+    pub execution_success: Option<bool>,
+    pub transactional: Option<bool>,
+    pub macro_instance_id: Option<String>,
+    pub emitted_operation_ids: Vec<String>,
+    pub execution_error: Option<String>,
+    pub export_events: Vec<RoutineDecisionTraceExportEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RoutineDecisionTraceStore {
+    pub schema: String,
+    pub traces: Vec<RoutineDecisionTrace>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleExport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub run_id_filter: Option<String>,
+    pub selected_record_count: usize,
+    pub inputs: ProcessRunBundleInputs,
+    #[serde(default)]
+    pub parameter_overrides: Vec<ProcessRunBundleParameterOverride>,
+    #[serde(default)]
+    pub decision_traces: Vec<RoutineDecisionTrace>,
+    pub operation_log: Vec<OperationRecord>,
+    pub outputs: ProcessRunBundleOutputs,
+    pub parameter_snapshot: serde_json::Value,
 }
