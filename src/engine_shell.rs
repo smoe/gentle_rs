@@ -42,10 +42,10 @@ use crate::{
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RackProfileKind, RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
         SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
@@ -10913,9 +10913,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
-                        return Err(
-                            "racks apply-template requires a non-empty RACK_ID".to_string(),
-                        );
+                        return Err("racks apply-template requires a non-empty RACK_ID".to_string());
                     }
                     let template = parse_rack_authoring_template(&tokens[3])?;
                     Ok(ShellCommand::RacksApplyTemplate { rack_id, template })
@@ -10930,7 +10928,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
                         return Err(
-                            "racks set-fill-direction requires a non-empty RACK_ID".to_string(),
+                            "racks set-fill-direction requires a non-empty RACK_ID".to_string()
                         );
                     }
                     let fill_direction = parse_rack_fill_direction(&tokens[3])?;
@@ -10942,18 +10940,19 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "set-custom-profile" => {
                     if tokens.len() != 5 {
                         return Err(
-                            "racks set-custom-profile requires RACK_ID ROWS COLUMNS".to_string(),
+                            "racks set-custom-profile requires RACK_ID ROWS COLUMNS".to_string()
                         );
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
                         return Err(
-                            "racks set-custom-profile requires a non-empty RACK_ID".to_string(),
+                            "racks set-custom-profile requires a non-empty RACK_ID".to_string()
                         );
                     }
-                    let rows = tokens[3].trim().parse::<usize>().map_err(|e| {
-                        format!("Could not parse ROWS '{}': {e}", tokens[3].trim())
-                    })?;
+                    let rows = tokens[3]
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|e| format!("Could not parse ROWS '{}': {e}", tokens[3].trim()))?;
                     let columns = tokens[4].trim().parse::<usize>().map_err(|e| {
                         format!("Could not parse COLUMNS '{}': {e}", tokens[4].trim())
                     })?;
@@ -10972,9 +10971,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
-                        return Err(
-                            "racks set-blocked requires a non-empty RACK_ID".to_string(),
-                        );
+                        return Err("racks set-blocked requires a non-empty RACK_ID".to_string());
                     }
                     let blocked_coordinates = if tokens[3] == "--clear" {
                         if tokens.len() != 4 {

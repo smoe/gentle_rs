@@ -1443,6 +1443,10 @@ Controls:
    - Disabled until a non-empty selection exists.
    - If the current viewport is the intended span, use `Select visible` first
      to promote the visible linear map window into the active selection.
+   - When no explicit `output_id` is supplied, the default extracted sequence
+     id now reflects the selected local `1-based` interval; dbSNP auto-fetched
+     parents collapse back to the rsID stem instead of repeating the full
+     fetched-locus coordinates.
 16. Select visible
    - Copies the current visible linear map span into the active selection.
    - Intended as a quick bridge between viewport navigation and

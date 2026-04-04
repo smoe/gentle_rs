@@ -103,6 +103,33 @@ impl GentleEngine {
             .replace('\'', "&apos;")
     }
 
+    fn derive_extract_region_default_base(input: &str, from: usize, to: usize) -> String {
+        let stem =
+            Self::strip_dbsnp_auto_region_id_to_rsid(input).unwrap_or_else(|| input.to_string());
+        let start_1based = from.saturating_add(1);
+        let end_1based = to;
+        format!("{stem}_{start_1based}_{end_1based}_region")
+    }
+
+    fn strip_dbsnp_auto_region_id_to_rsid(input: &str) -> Option<String> {
+        let mut parts = input.split('_').collect::<Vec<_>>();
+        if parts.len() < 4 {
+            return None;
+        }
+        let rs_id = parts.first().copied()?.trim();
+        if !(rs_id.starts_with("rs") && rs_id[2..].chars().all(|ch| ch.is_ascii_digit())) {
+            return None;
+        }
+        let last = parts.pop()?.trim();
+        let penultimate = parts.pop()?.trim();
+        if !last.chars().all(|ch| ch.is_ascii_digit())
+            || !penultimate.chars().all(|ch| ch.is_ascii_digit())
+        {
+            return None;
+        }
+        Some(rs_id.to_string())
+    }
+
     fn extract_genome_region_into_state(
         &mut self,
         result: &mut OpResult,
@@ -8409,7 +8436,8 @@ impl GentleEngine {
                 out.set_circular(false);
                 Self::prepare_sequence(&mut out);
 
-                let base = output_id.unwrap_or_else(|| format!("{input}_region"));
+                let base = output_id
+                    .unwrap_or_else(|| Self::derive_extract_region_default_base(&input, from, to));
                 let seq_id = self.unique_seq_id(&base);
                 self.state.sequences.insert(seq_id.clone(), out);
                 self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));

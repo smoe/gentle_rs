@@ -325,7 +325,11 @@ impl GentleEngine {
                 ),
             });
         }
-        Ok(format!("{}{}", Self::rack_row_label_from_index(row), column + 1))
+        Ok(format!(
+            "{}{}",
+            Self::rack_row_label_from_index(row),
+            column + 1
+        ))
     }
 
     fn rack_fill_ordinal(profile: &RackProfileSnapshot, row: usize, column: usize) -> usize {
@@ -384,7 +388,8 @@ impl GentleEngine {
             RackFillDirection::RowMajor => {
                 for row in 0..profile.rows {
                     for column in 0..profile.columns {
-                        let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
+                        let coordinate =
+                            Self::rack_coordinate_from_row_column(profile, row, column)?;
                         if !blocked.contains(&coordinate) {
                             out.push(coordinate);
                         }
@@ -394,7 +399,8 @@ impl GentleEngine {
             RackFillDirection::ColumnMajor => {
                 for column in 0..profile.columns {
                     for row in 0..profile.rows {
-                        let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
+                        let coordinate =
+                            Self::rack_coordinate_from_row_column(profile, row, column)?;
                         if !blocked.contains(&coordinate) {
                             out.push(coordinate);
                         }
@@ -419,8 +425,7 @@ impl GentleEngine {
                 ),
             });
         }
-        let coordinate =
-            Self::rack_coordinate_from_row_column(profile, row, column)?;
+        let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
         let available = Self::rack_available_coordinates_in_fill_order(profile)?;
         available
             .iter()
@@ -489,7 +494,8 @@ impl GentleEngine {
             .into_iter()
             .map(|(_, entry)| entry)
             .collect::<Vec<_>>();
-        let available_capacity = Self::rack_available_coordinates_in_fill_order(&new_profile)?.len();
+        let available_capacity =
+            Self::rack_available_coordinates_in_fill_order(&new_profile)?.len();
         if placements.len() > available_capacity {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -800,7 +806,8 @@ impl GentleEngine {
             });
         }
         let start_index = rack.placements.len();
-        let available_capacity = Self::rack_available_coordinates_in_fill_order(&rack.profile)?.len();
+        let available_capacity =
+            Self::rack_available_coordinates_in_fill_order(&rack.profile)?.len();
         if start_index + payload.len() > available_capacity {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -968,8 +975,8 @@ impl GentleEngine {
         if profile == RackProfileKind::Custom {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message:
-                    "Use SetRackProfileCustom for custom row/column rack dimensions".to_string(),
+                message: "Use SetRackProfileCustom for custom row/column rack dimensions"
+                    .to_string(),
             });
         }
         let existing_rack = self

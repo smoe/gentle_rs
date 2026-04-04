@@ -881,6 +881,46 @@ fn test_extract_region() {
 }
 
 #[test]
+fn test_extract_region_default_output_id_uses_visible_1based_bounds() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("x".to_string(), seq(&"ATGC".repeat(100)));
+    let mut engine = GentleEngine::from_state(state);
+    let res = engine
+        .apply(Operation::ExtractRegion {
+            input: "x".to_string(),
+            from: 2,
+            to: 7,
+            output_id: None,
+        })
+        .unwrap();
+    assert_eq!(res.created_seq_ids, vec!["x_3_7_region".to_string()]);
+}
+
+#[test]
+fn test_extract_region_default_output_id_collapses_dbsnp_auto_parent_to_rsid() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "rs9923231_16_31093368_31099368".to_string(),
+        seq(&"ATGC".repeat(1000)),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let res = engine
+        .apply(Operation::ExtractRegion {
+            input: "rs9923231_16_31093368_31099368".to_string(),
+            from: 2413,
+            to: 3501,
+            output_id: None,
+        })
+        .unwrap();
+    assert_eq!(
+        res.created_seq_ids,
+        vec!["rs9923231_2414_3501_region".to_string()]
+    );
+}
+
+#[test]
 fn test_extract_region_preserves_overlapping_features() {
     let mut state = ProjectState::default();
     let mut dna = seq("ATGCATGCATGC");

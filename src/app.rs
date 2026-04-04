@@ -69,10 +69,10 @@ use crate::{
         GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState, Rack,
-        RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackProfileKind, ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RenderSvgMode,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackFillDirection,
+        RackLabelSheetPreset, RackOccupant, RackProfileKind, RenderSvgMode,
         RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
@@ -6716,9 +6716,7 @@ Error: `{err}`"
         match profile.fill_direction {
             RackFillDirection::RowMajor => RackAuthoringTemplate::BenchRows,
             RackFillDirection::ColumnMajor => {
-                if profile
-                    .blocked_coordinates
-                    .as_slice()
+                if profile.blocked_coordinates.as_slice()
                     == Self::rack_edge_avoidance_coordinates(profile)
                         .unwrap_or_default()
                         .as_slice()
@@ -6969,9 +6967,7 @@ Error: `{err}`"
         }
     }
 
-    fn rack_available_coordinates(
-        profile: &crate::engine::RackProfileSnapshot,
-    ) -> Vec<String> {
+    fn rack_available_coordinates(profile: &crate::engine::RackProfileSnapshot) -> Vec<String> {
         let blocked = profile
             .blocked_coordinates
             .iter()
@@ -7022,7 +7018,8 @@ Error: `{err}`"
                 from_coordinate, ..
             } => from_coordinate.as_str(),
         };
-        let from_index = GentleEngine::rack_index_from_coordinate(&rack.profile, from_coordinate).ok()?;
+        let from_index =
+            GentleEngine::rack_index_from_coordinate(&rack.profile, from_coordinate).ok()?;
         let to_index = GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
         let from_pos = ordered.iter().position(|(index, _)| *index == from_index)?;
         match drag {
@@ -7241,10 +7238,9 @@ Error: `{err}`"
                     self.rack_fill_direction_editor,
                 ))
                 .show_ui(ui, |ui| {
-                    for fill_direction in [
-                        RackFillDirection::RowMajor,
-                        RackFillDirection::ColumnMajor,
-                    ] {
+                    for fill_direction in
+                        [RackFillDirection::RowMajor, RackFillDirection::ColumnMajor]
+                    {
                         ui.selectable_value(
                             &mut self.rack_fill_direction_editor,
                             fill_direction,
@@ -7604,14 +7600,11 @@ Error: `{err}`"
         for (_, coordinate, entry) in &sorted_entries {
             entry_by_coordinate.insert(coordinate.clone(), entry.clone());
         }
-        let ghost_preview = self
-            .rack_view_drag_state
-            .as_ref()
-            .and_then(|drag| {
-                previous_hover_target
-                    .as_deref()
-                    .and_then(|target| Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target))
-            });
+        let ghost_preview = self.rack_view_drag_state.as_ref().and_then(|drag| {
+            previous_hover_target.as_deref().and_then(|target| {
+                Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target)
+            })
+        });
         let arrangement_ids = sorted_entries
             .iter()
             .map(|(_, _, entry)| entry.arrangement_id.clone())
@@ -35672,14 +35665,13 @@ mod tests {
         engine::{
             Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance,
             Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
-            DotplotMode, Engine, FlexibilityModel,
-            GenomeAnnotationProjectionTelemetry, GenomeGeneExtractMode, GentleEngine, LineageEdge,
-            LineageNode, LinearSequenceLetterLayoutMode, OpResult, Operation, Rack,
-            RackAuthoringTemplate, RackFillDirection, RackProfileKind, RackProfileSnapshot,
-            PairwiseAlignmentMode, ProjectState, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            SequenceOrigin,
+            DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
+            GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+            ProjectState, Rack, RackAuthoringTemplate, RackFillDirection, RackProfileKind,
+            RackProfileSnapshot, RenderSvgMode, RestrictionEnzymeDisplayMode,
+            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
         },
         genomes::{
             PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
@@ -39893,7 +39885,10 @@ mod tests {
             app.rack_authoring_template_editor,
             RackAuthoringTemplate::PlateColumns
         );
-        assert_eq!(app.rack_fill_direction_editor, RackFillDirection::ColumnMajor);
+        assert_eq!(
+            app.rack_fill_direction_editor,
+            RackFillDirection::ColumnMajor
+        );
         assert_eq!(app.rack_custom_profile_rows, "28");
         assert_eq!(app.rack_custom_profile_columns, "10");
         assert_eq!(app.rack_blocked_coordinates_text, "B2, AA3");

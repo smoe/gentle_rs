@@ -1281,8 +1281,7 @@ fn parse_racks_move_command() {
 
 #[test]
 fn parse_racks_set_custom_profile_command() {
-    let cmd = parse_shell_line("racks set-custom-profile rack-1 3 10")
-        .expect("parse command");
+    let cmd = parse_shell_line("racks set-custom-profile rack-1 3 10").expect("parse command");
     match cmd {
         ShellCommand::RacksSetCustomProfile {
             rack_id,
@@ -1299,8 +1298,8 @@ fn parse_racks_set_custom_profile_command() {
 
 #[test]
 fn parse_racks_set_fill_direction_command() {
-    let cmd = parse_shell_line("racks set-fill-direction rack-1 column_major")
-        .expect("parse command");
+    let cmd =
+        parse_shell_line("racks set-fill-direction rack-1 column_major").expect("parse command");
     match cmd {
         ShellCommand::RacksSetFillDirection {
             rack_id,
@@ -1328,8 +1327,7 @@ fn parse_racks_apply_template_command() {
 
 #[test]
 fn parse_racks_set_blocked_command() {
-    let cmd = parse_shell_line("racks set-blocked rack-1 A1 B2,AA3")
-        .expect("parse command");
+    let cmd = parse_shell_line("racks set-blocked rack-1 A1 B2,AA3").expect("parse command");
     match cmd {
         ShellCommand::RacksSetBlocked {
             rack_id,

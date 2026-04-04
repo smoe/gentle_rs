@@ -1247,6 +1247,9 @@ order. Durable architecture constraints and decisions remain in
   `rs9923231`, starts fetches asynchronously instead of blocking the dialog,
   and streams staged footer status text for contact/wait/parse/placement/
   extraction progress so user bug reports can quote the exact retrieval phase.
+- Region extracts taken from dbSNP auto-fetched loci now default to ids based
+  on the rsID plus the selected local `1-based` interval, instead of repeating
+  the full fetched-locus coordinate block in every derived subregion name.
 - `File -> Open Sequence...` now supports multi-file selection and imports the
   chosen files sequentially through the same per-file `LoadFile` path, opening
   one sequence window per successful import.
