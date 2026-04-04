@@ -10655,6 +10655,28 @@ fn parse_rna_reads_commands() {
                 && output_path.as_deref() == Some("tp53_support.json")
     ));
 
+    let inspect_gene_support = parse_shell_line(
+        "rna-reads inspect-gene-support tp73_reads --gene TP73 --gene TP53 --record-indices 6,8 --complete-rule exact --cohort rejected --output tp53_support_rows.json",
+    )
+    .expect("parse rna-reads inspect-gene-support");
+    assert!(matches!(
+        inspect_gene_support,
+        ShellCommand::RnaReadsInspectGeneSupport {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            cohort_filter,
+            output_path,
+        }
+            if report_id == "tp73_reads"
+                && gene_ids == vec!["TP73".to_string(), "TP53".to_string()]
+                && selected_record_indices == vec![6, 8]
+                && complete_rule == RnaReadGeneSupportCompleteRule::Exact
+                && cohort_filter == RnaReadGeneSupportAuditCohortFilter::Rejected
+                && output_path.as_deref() == Some("tp53_support_rows.json")
+    ));
+
     let inspect = parse_shell_line(
         "rna-reads inspect-alignments tp73_reads --selection aligned --limit 25 --effect-filter disagreement_only --sort score --search tp53 --record-indices 2,7,9 --score-bin-variant composite_seed_gate --score-bin-index 39 --score-bin-count 40",
     )
@@ -11557,6 +11579,134 @@ fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file
     let written = fs::read_to_string(&output_path).expect("read written summary");
     let written_json: serde_json::Value =
         serde_json::from_str(&written).expect("written summary json");
+    assert_eq!(written_json, output.output);
+}
+
+#[test]
+fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let read_sequence =
+        String::from_utf8(dna.forward_bytes()[98..560].to_vec()).expect("TP53 transcript slice");
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("tp53_gene_support_reads.fa");
+    fs::write(&input_path, format!(">tp53_full\n{read_sequence}\n")).expect("write input fasta");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.kmer_len = 3;
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.max_median_transcript_gap = 10_000.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInterpret {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            input_path: input_path.display().to_string(),
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("tp53_gene_support".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        },
+    )
+    .expect("interpret TP53 RNA reads");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsAlignReport {
+            report_id: "tp53_gene_support".to_string(),
+            selection: RnaReadHitSelection::SeedPassed,
+            align_config_override: Some(RnaReadAlignConfig {
+                band_width_bp: 24,
+                min_identity_fraction: 0.60,
+                max_secondary_mappings: 0,
+            }),
+            selected_record_indices: vec![],
+        },
+    )
+    .expect("align TP53 RNA-read report");
+
+    let output_path = td.path().join("tp53_gene_support_audit.json");
+    let output = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInspectGeneSupport {
+            report_id: "tp53_gene_support".to_string(),
+            gene_ids: vec!["TP53".to_string(), "TP73".to_string()],
+            selected_record_indices: vec![0],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            cohort_filter: RnaReadGeneSupportAuditCohortFilter::All,
+            output_path: Some(output_path.display().to_string()),
+        },
+    )
+    .expect("execute gene-support audit");
+    assert!(!output.state_changed);
+    assert_eq!(
+        output.output["schema"].as_str(),
+        Some("gentle.rna_read_gene_support_audit.v1")
+    );
+    assert_eq!(
+        output.output["report_id"].as_str(),
+        Some("tp53_gene_support")
+    );
+    assert_eq!(
+        output.output["requested_gene_ids"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(2)
+    );
+    assert_eq!(output.output["matched_gene_ids"][0].as_str(), Some("TP53"));
+    assert_eq!(output.output["missing_gene_ids"][0].as_str(), Some("TP73"));
+    assert_eq!(
+        output.output["selected_record_indices"][0].as_u64(),
+        Some(0)
+    );
+    assert_eq!(output.output["complete_rule"].as_str(), Some("near"));
+    assert_eq!(output.output["cohort_filter"].as_str(), Some("all"));
+    assert_eq!(output.output["evaluated_row_count"].as_u64(), Some(1));
+    assert_eq!(output.output["row_count"].as_u64(), Some(1));
+    assert_eq!(
+        output.output["accepted_target_record_indices"][0].as_u64(),
+        Some(0)
+    );
+    assert_eq!(output.output["complete_record_indices"][0].as_u64(), Some(0));
+    assert_eq!(output.output["rows"][0]["status"].as_str(), Some("accepted_complete"));
+    assert_eq!(
+        output.output["rows"][0]["status_reason"].as_str(),
+        Some("requested_gene_meets_complete_rule")
+    );
+    assert!(output_path.exists());
+    let written = fs::read_to_string(&output_path).expect("read written audit");
+    let written_json: serde_json::Value =
+        serde_json::from_str(&written).expect("written audit json");
     assert_eq!(written_json, output.output);
 }
 

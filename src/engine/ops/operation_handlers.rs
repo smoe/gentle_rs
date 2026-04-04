@@ -2776,6 +2776,7 @@ impl GentleEngine {
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
             rna_read_gene_support_summary: None,
+            rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
         };
 
@@ -8074,6 +8075,38 @@ impl GentleEngine {
                     summary.complete_rule.as_str()
                 ));
                 result.rna_read_gene_support_summary = Some(summary);
+            }
+            Operation::InspectRnaReadGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                cohort_filter,
+                path,
+            } => {
+                let audit = self.inspect_rna_read_gene_support(
+                    &report_id,
+                    &gene_ids,
+                    &selected_record_indices,
+                    complete_rule,
+                    cohort_filter,
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_rna_read_gene_support_audit_json(&audit, path)?;
+                    result.messages.push(format!(
+                        "Wrote RNA-read gene-support audit '{}' to '{}'",
+                        audit.report_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "RNA-read gene-support audit for '{}' matched {} gene(s), missing {}, rows={}, cohort={}",
+                    audit.report_id,
+                    audit.matched_gene_ids.len(),
+                    audit.missing_gene_ids.len(),
+                    audit.row_count,
+                    audit.cohort_filter.as_str()
+                ));
+                result.rna_read_gene_support_audit = Some(audit);
             }
             Operation::SummarizeTfbsRegion {
                 seq_id,

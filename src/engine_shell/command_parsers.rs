@@ -2102,6 +2102,21 @@ pub(super) fn parse_rna_read_gene_support_complete_rule(
     }
 }
 
+pub(super) fn parse_rna_read_gene_support_audit_cohort_filter(
+    raw: &str,
+) -> Result<RnaReadGeneSupportAuditCohortFilter, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all" => Ok(RnaReadGeneSupportAuditCohortFilter::All),
+        "accepted" => Ok(RnaReadGeneSupportAuditCohortFilter::Accepted),
+        "fragment" => Ok(RnaReadGeneSupportAuditCohortFilter::Fragment),
+        "complete" => Ok(RnaReadGeneSupportAuditCohortFilter::Complete),
+        "rejected" => Ok(RnaReadGeneSupportAuditCohortFilter::Rejected),
+        other => Err(format!(
+            "Unsupported RNA-read gene-support cohort filter '{other}', expected all|accepted|fragment|complete|rejected"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_read_alignment_effect_filter(
     raw: &str,
 ) -> Result<RnaReadAlignmentInspectionEffectFilter, String> {
@@ -3848,6 +3863,94 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 gene_ids,
                 selected_record_indices,
                 complete_rule,
+                output_path,
+            })
+        }
+        "inspect-gene-support" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads inspect-gene-support requires REPORT_ID --gene GENE [--gene GENE ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err(
+                    "rna-reads inspect-gene-support REPORT_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_ids = Vec::<String>::new();
+            let mut selected_record_indices = Vec::<usize>::new();
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut cohort_filter = RnaReadGeneSupportAuditCohortFilter::All;
+            let mut output_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads inspect-gene-support",
+                        )?;
+                        gene_ids.push(raw);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads inspect-gene-support",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads inspect-gene-support",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                    }
+                    "--cohort" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cohort",
+                            "rna-reads inspect-gene-support",
+                        )?;
+                        cohort_filter = parse_rna_read_gene_support_audit_cohort_filter(&raw)?;
+                    }
+                    "--output" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "rna-reads inspect-gene-support",
+                        )?;
+                        output_path = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads inspect-gene-support"
+                        ));
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                return Err(
+                    "rna-reads inspect-gene-support requires at least one --gene GENE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsInspectGeneSupport {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                cohort_filter,
                 output_path,
             })
         }

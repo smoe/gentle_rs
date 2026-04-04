@@ -66,6 +66,50 @@ impl RnaReadGeneSupportCompleteRule {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadGeneSupportAuditStatus {
+    #[default]
+    Unaligned,
+    AlignedOtherGene,
+    AcceptedFragment,
+    AcceptedComplete,
+}
+
+impl RnaReadGeneSupportAuditStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unaligned => "unaligned",
+            Self::AlignedOtherGene => "aligned_other_gene",
+            Self::AcceptedFragment => "accepted_fragment",
+            Self::AcceptedComplete => "accepted_complete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadGeneSupportAuditCohortFilter {
+    #[default]
+    All,
+    Accepted,
+    Fragment,
+    Complete,
+    Rejected,
+}
+
+impl RnaReadGeneSupportAuditCohortFilter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Accepted => "accepted",
+            Self::Fragment => "fragment",
+            Self::Complete => "complete",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadGeneExonSupportRow {
@@ -121,6 +165,81 @@ pub struct RnaReadGeneSupportSummary {
     pub all_target: RnaReadGeneSupportCohortSummary,
     pub fragments: RnaReadGeneSupportCohortSummary,
     pub complete: RnaReadGeneSupportCohortSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneSupportAuditPair {
+    pub from_exon_ordinal: usize,
+    pub from_start_1based: usize,
+    pub from_end_1based: usize,
+    pub to_exon_ordinal: usize,
+    pub to_start_1based: usize,
+    pub to_end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneSupportAuditRow {
+    pub record_index: usize,
+    pub header_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default)]
+    pub status: RnaReadGeneSupportAuditStatus,
+    pub status_reason: String,
+    #[serde(default)]
+    pub full_length_exact: bool,
+    #[serde(default)]
+    pub full_length_near: bool,
+    #[serde(default)]
+    pub full_length_strict: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_length_class: Option<String>,
+    #[serde(default)]
+    pub mapped_exon_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub exon_pairs: Vec<RnaReadGeneSupportAuditPair>,
+    #[serde(default)]
+    pub direct_transition_pairs: Vec<RnaReadGeneSupportAuditPair>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<isize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_coverage_fraction: Option<f64>,
+    #[serde(default)]
+    pub passed_seed_filter: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadGeneSupportAudit {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub requested_gene_ids: Vec<String>,
+    pub matched_gene_ids: Vec<String>,
+    pub missing_gene_ids: Vec<String>,
+    pub selected_record_indices: Vec<usize>,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    #[serde(default)]
+    pub cohort_filter: RnaReadGeneSupportAuditCohortFilter,
+    pub evaluated_row_count: usize,
+    pub row_count: usize,
+    pub accepted_target_record_indices: Vec<usize>,
+    pub fragment_record_indices: Vec<usize>,
+    pub complete_record_indices: Vec<usize>,
+    pub complete_strict_record_indices: Vec<usize>,
+    pub complete_exact_record_indices: Vec<usize>,
+    pub rows: Vec<RnaReadGeneSupportAuditRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -949,6 +1068,8 @@ pub struct OpResult {
     pub sequencing_primer_overlay_report: Option<SequencingPrimerOverlayReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
 }

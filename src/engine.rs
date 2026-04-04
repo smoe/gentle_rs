@@ -175,6 +175,7 @@ const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
+const RNA_READ_GENE_SUPPORT_AUDIT_SCHEMA: &str = "gentle.rna_read_gene_support_audit.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
@@ -4138,6 +4139,18 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    InspectRnaReadGeneSupport {
+        report_id: String,
+        gene_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default)]
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        #[serde(default)]
+        cohort_filter: RnaReadGeneSupportAuditCohortFilter,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     SummarizeTfbsRegion {
         seq_id: String,
         focus_start_0based: usize,
@@ -5467,6 +5480,7 @@ impl GentleEngine {
                 "ListRnaReadReports".to_string(),
                 "ShowRnaReadReport".to_string(),
                 "SummarizeRnaReadGeneSupport".to_string(),
+                "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
@@ -6731,6 +6745,7 @@ impl GentleEngine {
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
+                | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }

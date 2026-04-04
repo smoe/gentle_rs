@@ -583,6 +583,15 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                     }),
                     ..RnaReadInterpretationHit::default()
                 },
+                RnaReadInterpretationHit {
+                    record_index: 4,
+                    header_id: "unaligned".to_string(),
+                    sequence: "A".repeat(gene1_tx_full_len / 2),
+                    read_length_bp: gene1_tx_full_len / 2,
+                    passed_seed_filter: false,
+                    best_mapping: None,
+                    ..RnaReadInterpretationHit::default()
+                },
             ],
             ..RnaReadInterpretationReport::default()
         })
@@ -609,6 +618,23 @@ fn find_gene_support_pair_row<'a>(
         row.gene_id.eq_ignore_ascii_case(gene_id)
             && row.from_exon_ordinal == from_exon_ordinal
             && row.to_exon_ordinal == to_exon_ordinal
+    })
+}
+
+fn find_gene_support_audit_row(
+    rows: &[RnaReadGeneSupportAuditRow],
+    record_index: usize,
+) -> Option<&RnaReadGeneSupportAuditRow> {
+    rows.iter().find(|row| row.record_index == record_index)
+}
+
+fn find_gene_support_audit_pair(
+    pairs: &[RnaReadGeneSupportAuditPair],
+    from_exon_ordinal: usize,
+    to_exon_ordinal: usize,
+) -> Option<&RnaReadGeneSupportAuditPair> {
+    pairs.iter().find(|pair| {
+        pair.from_exon_ordinal == from_exon_ordinal && pair.to_exon_ordinal == to_exon_ordinal
     })
 }
 
@@ -14762,6 +14788,192 @@ fn test_summarize_rna_read_gene_support_honors_selected_record_indices_before_ge
             .exon_support
             .iter()
             .all(|row| row.gene_id == "GENE1")
+    );
+}
+
+#[test]
+fn test_inspect_rna_read_gene_support_classifies_rows_and_groups_record_indices() {
+    let mut engine = build_rna_read_gene_support_test_engine();
+    let result = engine
+        .apply(Operation::InspectRnaReadGeneSupport {
+            report_id: "rna_reads_gene_support".to_string(),
+            gene_ids: vec!["GENE1".to_string()],
+            selected_record_indices: vec![],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            cohort_filter: RnaReadGeneSupportAuditCohortFilter::All,
+            path: None,
+        })
+        .expect("inspect RNA-read gene support");
+    let audit = result
+        .rna_read_gene_support_audit
+        .expect("gene-support audit payload");
+
+    assert_eq!(audit.schema, "gentle.rna_read_gene_support_audit.v1");
+    assert_eq!(audit.report_id, "rna_reads_gene_support");
+    assert_eq!(audit.seq_id, "seq_a");
+    assert_eq!(audit.requested_gene_ids, vec!["GENE1".to_string()]);
+    assert_eq!(audit.matched_gene_ids, vec!["GENE1".to_string()]);
+    assert!(audit.missing_gene_ids.is_empty());
+    assert_eq!(audit.evaluated_row_count, 5);
+    assert_eq!(audit.row_count, 5);
+    assert_eq!(audit.accepted_target_record_indices, vec![0, 1, 2]);
+    assert_eq!(audit.fragment_record_indices, vec![1]);
+    assert_eq!(audit.complete_record_indices, vec![0, 2]);
+    assert_eq!(audit.complete_strict_record_indices, vec![0]);
+    assert_eq!(audit.complete_exact_record_indices, vec![0, 2]);
+
+    let accepted_complete = find_gene_support_audit_row(&audit.rows, 0).expect("row 0");
+    assert_eq!(
+        accepted_complete.status,
+        RnaReadGeneSupportAuditStatus::AcceptedComplete
+    );
+    assert_eq!(
+        accepted_complete.status_reason,
+        "requested_gene_meets_complete_rule"
+    );
+    assert_eq!(accepted_complete.gene_id.as_deref(), Some("GENE1"));
+
+    let fragment = find_gene_support_audit_row(&audit.rows, 1).expect("row 1");
+    assert_eq!(
+        fragment.status,
+        RnaReadGeneSupportAuditStatus::AcceptedFragment
+    );
+    assert_eq!(
+        fragment.status_reason,
+        "requested_gene_below_complete_rule"
+    );
+
+    let other_gene = find_gene_support_audit_row(&audit.rows, 3).expect("row 3");
+    assert_eq!(
+        other_gene.status,
+        RnaReadGeneSupportAuditStatus::AlignedOtherGene
+    );
+    assert_eq!(other_gene.status_reason, "best_mapping_gene_not_requested");
+    assert_eq!(other_gene.gene_id.as_deref(), Some("GENE2"));
+
+    let unaligned = find_gene_support_audit_row(&audit.rows, 4).expect("row 4");
+    assert_eq!(unaligned.status, RnaReadGeneSupportAuditStatus::Unaligned);
+    assert_eq!(unaligned.status_reason, "no_best_mapping");
+    assert!(unaligned.gene_id.is_none());
+    assert!(!unaligned.passed_seed_filter);
+}
+
+#[test]
+fn test_inspect_rna_read_gene_support_rejected_cohort_returns_only_nonaccepted_rows() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+            RnaReadGeneSupportAuditCohortFilter::Rejected,
+        )
+        .expect("inspect rejected cohort");
+
+    assert_eq!(audit.evaluated_row_count, 5);
+    assert_eq!(audit.row_count, 2);
+    assert_eq!(
+        audit.rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
+        vec![3, 4]
+    );
+    assert_eq!(
+        audit.rows
+            .iter()
+            .map(|row| row.status)
+            .collect::<Vec<_>>(),
+        vec![
+            RnaReadGeneSupportAuditStatus::AlignedOtherGene,
+            RnaReadGeneSupportAuditStatus::Unaligned
+        ]
+    );
+}
+
+#[test]
+fn test_inspect_rna_read_gene_support_complete_rule_reclassifies_complete_and_fragment_rows() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let strict_audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Strict,
+            RnaReadGeneSupportAuditCohortFilter::All,
+        )
+        .expect("inspect strict cohort");
+    let exact_audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Exact,
+            RnaReadGeneSupportAuditCohortFilter::All,
+        )
+        .expect("inspect exact cohort");
+
+    assert_eq!(strict_audit.complete_record_indices, vec![0]);
+    assert_eq!(strict_audit.fragment_record_indices, vec![1, 2]);
+    assert_eq!(exact_audit.complete_record_indices, vec![0, 2]);
+    assert_eq!(exact_audit.fragment_record_indices, vec![1]);
+    assert_eq!(
+        find_gene_support_audit_row(&strict_audit.rows, 2)
+            .expect("strict row 2")
+            .status,
+        RnaReadGeneSupportAuditStatus::AcceptedFragment
+    );
+    assert_eq!(
+        find_gene_support_audit_row(&exact_audit.rows, 2)
+            .expect("exact row 2")
+            .status,
+        RnaReadGeneSupportAuditStatus::AcceptedComplete
+    );
+}
+
+#[test]
+fn test_inspect_rna_read_gene_support_rows_preserve_exon_pairs_and_direct_transitions() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[0, 2],
+            RnaReadGeneSupportCompleteRule::Near,
+            RnaReadGeneSupportAuditCohortFilter::All,
+        )
+        .expect("inspect selected rows");
+
+    let adjacent = find_gene_support_audit_row(&audit.rows, 0).expect("adjacent row");
+    assert_eq!(adjacent.mapped_exon_ordinals, vec![1, 2]);
+    assert!(find_gene_support_audit_pair(&adjacent.exon_pairs, 1, 2).is_some());
+    assert!(find_gene_support_audit_pair(&adjacent.direct_transition_pairs, 1, 2).is_some());
+
+    let skipped = find_gene_support_audit_row(&audit.rows, 2).expect("skipped row");
+    assert_eq!(skipped.mapped_exon_ordinals, vec![1, 3]);
+    assert!(find_gene_support_audit_pair(&skipped.exon_pairs, 1, 3).is_some());
+    assert!(skipped.direct_transition_pairs.is_empty());
+}
+
+#[test]
+fn test_inspect_rna_read_gene_support_honors_selected_record_indices_before_cohorting() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE1")],
+            &[3, 2, 2],
+            RnaReadGeneSupportCompleteRule::Near,
+            RnaReadGeneSupportAuditCohortFilter::All,
+        )
+        .expect("inspect selected cohort");
+
+    assert_eq!(audit.selected_record_indices, vec![2, 3]);
+    assert_eq!(audit.evaluated_row_count, 2);
+    assert_eq!(audit.row_count, 2);
+    assert_eq!(audit.accepted_target_record_indices, vec![2]);
+    assert_eq!(audit.complete_record_indices, vec![2]);
+    assert_eq!(
+        audit.rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
+        vec![2, 3]
     );
 }
 

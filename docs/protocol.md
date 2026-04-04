@@ -2718,6 +2718,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
   - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
+  - `InspectRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, cohort_filter?, path? }`
   - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`,
     `misc_RNA`, `exon`, `gene`, or `CDS` feature; transcript-template
     admission then follows the selected splicing-scope rules around that seed.
@@ -2907,6 +2908,45 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         genomic coordinates for auditability
     - when `path` / shell `--output` is provided, the exact same JSON payload
       returned to the caller is also written to disk
+  - target-gene cohort audit behavior:
+    - `InspectRnaReadGeneSupport` is non-mutating and shares the same
+      requested-gene matching, selected-record restriction, accepted-target
+      logic, and `complete_rule` classification used by
+      `SummarizeRnaReadGeneSupport`
+    - output schema:
+      - `gentle.rna_read_gene_support_audit.v1`
+    - evaluation universe:
+      - all selected saved-report rows after `selected_record_indices[]`
+        filtering, including unaligned retained rows
+    - grouped top-level subset handles:
+      - `accepted_target_record_indices[]`
+      - `fragment_record_indices[]`
+      - `complete_record_indices[]`
+      - `complete_strict_record_indices[]`
+      - `complete_exact_record_indices[]`
+    - row status values:
+      - `unaligned`
+      - `aligned_other_gene`
+      - `accepted_fragment`
+      - `accepted_complete`
+    - row payload includes:
+      - `record_index`, `header_id`
+      - resolved `gene_id` when available
+      - aligned transcript identity (`transcript_feature_id`,
+        `transcript_id`, `transcript_label`)
+      - machine-readable `status_reason`
+      - `full_length_exact`, `full_length_near`, `full_length_strict`, and
+        derived `full_length_class`
+      - `mapped_exon_ordinals[]`
+      - ordered `exon_pairs[]`
+      - ordered `direct_transition_pairs[]`
+      - phase-2 `score`, `identity_fraction`, `query_coverage_fraction`
+      - `passed_seed_filter` as provenance only
+    - `cohort_filter = all|accepted|fragment|complete|rejected` limits the
+      returned `rows[]` set without changing the grouped top-level subset
+      arrays
+    - when `path` / shell `--output` is provided, the exact same JSON payload
+      returned to the caller is also written to disk
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -3001,6 +3041,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
+  - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -3020,6 +3061,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `gentle.rna_read_gene_support_summary.v1` payload directly, including
       `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
       selected-record echo fields, and per-cohort support tables
+    - `rna-reads inspect-gene-support` returns the full
+      `gentle.rna_read_gene_support_audit.v1` payload directly, including
+      grouped cohort record-index arrays plus row-level `status`,
+      `status_reason`, full-length fields, and mapped exon/junction audit data
     - `rna-reads inspect-alignments` returns aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics), plus a
       structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,

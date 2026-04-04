@@ -1,5 +1,5 @@
 {
-   "command_count": 280,
+   "command_count": 281,
    "commands": [
       {
          "aliases": [
@@ -2049,6 +2049,20 @@
          "path": "rna-reads summarize-gene-support",
          "summary": "Summarize aligned RNA-read support for one or more target genes from a saved report.",
          "usage": "rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectRnaReadGeneSupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-gene-support",
+         "summary": "Inspect the exact accepted and rejected target-gene RNA-read cohorts from a saved report.",
+         "usage": "rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]"
       },
       {
          "aliases": [],

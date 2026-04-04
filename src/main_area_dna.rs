@@ -1477,6 +1477,7 @@ mod tests {
             sequencing_trace_summaries: None,
             sequencing_primer_overlay_report: None,
             rna_read_gene_support_summary: None,
+            rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
         });
 
@@ -2602,6 +2603,7 @@ mod tests {
                 sequencing_trace_record: None,
                 sequencing_trace_summaries: None,
                 rna_read_gene_support_summary: None,
+                rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
             },
             Instant::now(),

@@ -2020,6 +2020,17 @@ Status:
       support, and neighboring direct-transition support
     - skipped exon pairs like `1->3` are now separated from direct neighboring
       transitions like `1->2`
+  - New non-mutating target-gene cohort audits are now available from saved
+    aligned RNA-read reports via `InspectRnaReadGeneSupport` /
+    `rna-reads inspect-gene-support`:
+    - the audit shares the exact same cohort logic as the compact summary path
+    - rows now explain per-read inclusion vs rejection with deterministic
+      `status` / `status_reason` values
+    - grouped top-level record-index arrays expose the exact accepted,
+      fragment, and complete subsets for reuse with existing export commands
+    - row payloads now carry mapped exon ordinals, ordered exon pairs, direct
+      neighboring transitions, full-length flags/class, and phase-2
+      score/identity/coverage metadata
   - `rna-reads inspect-alignments` rows and alignment TSV export now include
     full-length flags and class label columns for downstream filtering.
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`

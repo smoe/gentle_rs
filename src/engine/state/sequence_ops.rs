@@ -868,6 +868,12 @@ impl GentleEngine {
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
+        if let Operation::InspectRnaReadGeneSupport {
+            path: Some(path), ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         summary
     }
 
@@ -904,6 +910,9 @@ impl GentleEngine {
                 push(path);
             }
             Operation::SummarizeRnaReadGeneSupport {
+                path: Some(path), ..
+            } => push(path),
+            Operation::InspectRnaReadGeneSupport {
                 path: Some(path), ..
             } => push(path),
             _ => {}

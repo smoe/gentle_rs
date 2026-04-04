@@ -206,6 +206,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads list-reports`
   - `rna-reads show-report`
   - `rna-reads summarize-gene-support`
+  - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
@@ -217,7 +218,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
   `ListRnaReadReports`, `ShowRnaReadReport`,
-  `SummarizeRnaReadGeneSupport`, `ExportRnaReadReport`,
+  `SummarizeRnaReadGeneSupport`, `InspectRnaReadGeneSupport`,
+  `ExportRnaReadReport`,
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
@@ -251,6 +253,22 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       - per-cohort exon support
       - ordered exon-pair support (including skipped pairs like `1->3`)
       - neighboring direct-transition support only (for example `1->2`)
+  - `inspect-gene-support`: non-mutating row-level audit of the same
+    target-gene cohort logic used by `summarize-gene-support`.
+    - `--gene GENE` is required and repeatable, with the same
+      case-insensitive group-label matching.
+    - optional `--record-indices i,j,k` restricts the evaluation universe
+      before cohort classification.
+    - `--complete-rule near|strict|exact` controls whether accepted rows land
+      in `accepted_fragment` vs `accepted_complete`.
+    - `--cohort all|accepted|fragment|complete|rejected` filters the returned
+      row list without changing the grouped top-level record-index arrays.
+    - output is JSON on stdout by default; `--output PATH` writes the exact
+      same payload to disk.
+    - rows include resolved gene/transcript identity when available, status +
+      machine-readable `status_reason`, full-length flags/class, mapped exon
+      ordinals, ordered exon pairs, neighboring direct transitions, phase-2
+      score/identity/coverage, and `passed_seed_filter`.
   - `inspect-alignments`: non-mutating ranked alignment inspection
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
@@ -1178,6 +1196,7 @@ Shared shell command:
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
+    - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
@@ -1211,6 +1230,16 @@ Shared shell command:
       - `exon_pair_support` includes skipped ordered pairs like `1->3`
       - `direct_transition_support` includes neighboring exon steps only
       - `--output PATH` writes the same JSON returned on stdout
+    - `rna-reads inspect-gene-support` returns a row-level
+      `gentle.rna_read_gene_support_audit.v1` payload for the same saved-report
+      target-gene evaluation:
+      - `status` is one of `unaligned`, `aligned_other_gene`,
+        `accepted_fragment`, or `accepted_complete`
+      - grouped top-level arrays echo the exact accepted/fragment/complete
+        record indices regardless of the chosen row `--cohort` filter
+      - rows carry machine-readable `status_reason`, full-length flags/class,
+        mapped exon ordinals, exon pairs, direct transitions, and phase-2
+        alignment score/identity/coverage fields
     - `rna-reads export-alignments-tsv` writes the same ranked alignment rows
       in TSV form for downstream filtering/sorting; `--record-indices`
       exports an exact saved-report subset and overrides coarse `--selection`;
