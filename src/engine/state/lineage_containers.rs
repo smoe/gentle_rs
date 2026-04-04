@@ -877,41 +877,7 @@ impl GentleEngine {
             })?;
         if move_block {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
-            let block_positions = ordered
-                .iter()
-                .enumerate()
-                .filter_map(|(pos, (_, entry))| {
-                    if entry.arrangement_id == arrangement_id {
-                        Some(pos)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            let block_start = *block_positions.first().unwrap_or(&from_pos);
-            let block_len = block_positions.len();
-            let block_entries = ordered
-                .iter()
-                .filter(|(_, entry)| entry.arrangement_id == arrangement_id)
-                .map(|(_, entry)| entry.clone())
-                .collect::<Vec<_>>();
-            ordered.retain(|(_, entry)| entry.arrangement_id != arrangement_id);
-            let insertion_index = to_index.min(ordered.len());
-            let available_capacity =
-                Self::rack_available_coordinates_in_fill_order(&rack.profile)?.len();
-            if ordered.len() + block_len > available_capacity {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Rack '{}' profile '{}' cannot fit moved arrangement block",
-                        rack_id,
-                        rack.profile.kind.as_str()
-                    ),
-                });
-            }
-            for (offset, entry) in block_entries.into_iter().enumerate() {
-                ordered.insert(insertion_index + offset, (block_start + offset, entry));
-            }
+            return self.move_rack_arrangement_blocks(rack_id, &[arrangement_id], to_coordinate);
         } else {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
             let block_positions = ordered
@@ -952,6 +918,124 @@ impl GentleEngine {
             .into_iter()
             .map(|(_, entry)| entry)
             .collect::<Vec<_>>();
+        let mut order_by_arrangement: HashMap<String, usize> = HashMap::new();
+        for entry in &mut reflowed {
+            let next = order_by_arrangement
+                .entry(entry.arrangement_id.clone())
+                .and_modify(|idx| *idx += 1)
+                .or_insert(0usize);
+            entry.order_index = *next;
+        }
+        Self::reflow_rack_placements(&rack.profile, &mut reflowed)?;
+        if let Some(target_rack) = self.state.container_state.racks.get_mut(rack_id) {
+            target_rack.placements = reflowed;
+        }
+        Ok(())
+    }
+
+    fn rack_selected_arrangement_ids_in_order(
+        ordered: &[(usize, RackPlacementEntry)],
+        requested_arrangement_ids: &[String],
+    ) -> Vec<String> {
+        let requested = requested_arrangement_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<HashSet<_>>();
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for (_, entry) in ordered {
+            if requested.contains(entry.arrangement_id.as_str())
+                && seen.insert(entry.arrangement_id.clone())
+            {
+                out.push(entry.arrangement_id.clone());
+            }
+        }
+        out
+    }
+
+    fn rack_block_insertion_index(
+        remaining: &[(usize, RackPlacementEntry)],
+        target_index: usize,
+    ) -> usize {
+        let mut idx = 0usize;
+        while idx < remaining.len() {
+            let block_start_index = remaining[idx].0;
+            if target_index <= block_start_index {
+                return idx;
+            }
+            let arrangement_id = remaining[idx].1.arrangement_id.clone();
+            while idx < remaining.len() && remaining[idx].1.arrangement_id == arrangement_id {
+                idx += 1;
+            }
+        }
+        remaining.len()
+    }
+
+    pub(super) fn move_rack_arrangement_blocks(
+        &mut self,
+        rack_id: &str,
+        arrangement_ids: &[String],
+        to_coordinate: &str,
+    ) -> Result<(), EngineError> {
+        let rack_id = rack_id.trim();
+        let to_coordinate = to_coordinate.trim();
+        if arrangement_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Rack block move requires at least one arrangement id".to_string(),
+            });
+        }
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
+        let ordered = self.sorted_rack_placements(&rack)?;
+        let selected_arrangement_ids =
+            Self::rack_selected_arrangement_ids_in_order(&ordered, arrangement_ids);
+        if selected_arrangement_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Rack '{}' does not contain any of the requested arrangement blocks",
+                    rack_id
+                ),
+            });
+        }
+        let selected_id_set = selected_arrangement_ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let selected_entries = ordered
+            .iter()
+            .filter(|(_, entry)| selected_id_set.contains(&entry.arrangement_id))
+            .map(|(_, entry)| entry.clone())
+            .collect::<Vec<_>>();
+        let remaining = ordered
+            .iter()
+            .filter(|(_, entry)| !selected_id_set.contains(&entry.arrangement_id))
+            .map(|(idx, entry)| (*idx, entry.clone()))
+            .collect::<Vec<_>>();
+        let insertion_index = Self::rack_block_insertion_index(&remaining, to_index);
+        let mut reflowed = Vec::with_capacity(selected_entries.len() + remaining.len());
+        reflowed.extend(
+            remaining[..insertion_index]
+                .iter()
+                .map(|(_, entry)| entry.clone()),
+        );
+        reflowed.extend(selected_entries);
+        reflowed.extend(
+            remaining[insertion_index..]
+                .iter()
+                .map(|(_, entry)| entry.clone()),
+        );
         let mut order_by_arrangement: HashMap<String, usize> = HashMap::new();
         for entry in &mut reflowed {
             let next = order_by_arrangement

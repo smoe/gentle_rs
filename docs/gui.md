@@ -2254,10 +2254,14 @@ Interaction model:
   within its arrangement block.
 - Drag one arrangement chip onto a target slot to move the whole arrangement
   block.
+- `Command`/`Ctrl`-click arrangement chips to build a multi-selection, then
+  drag one selected chip to move those selected arrangement blocks together.
 - Click-select plus click-target still exists as a fallback, but drag/drop is
   now the primary interaction.
 - While dragging, the rack grid now paints a ghost preview of the reordered
   sample/block positions before you release the mouse.
+- While dragging near the rack viewport edge, the rack view now autoscrolls so
+  larger racks remain editable without dropping and restarting the move.
 - All rack moves use shift-neighbor semantics:
   - later occupied positions move to keep the rack block contiguous
   - free-floating holes are not the primary editing model in this baseline

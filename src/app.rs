@@ -901,8 +901,9 @@ pub struct GENtleApp {
     rack_custom_profile_columns: String,
     rack_blocked_coordinates_text: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
+    rack_view_scroll_offset: Vec2,
     rack_view_selected_coordinate: Option<String>,
-    rack_view_selected_arrangement_id: Option<String>,
+    rack_view_selected_arrangement_ids: BTreeSet<String>,
     rack_view_drag_state: Option<RackDragState>,
     rack_view_hover_target_coordinate: Option<String>,
     place_arrangement_source_id: String,
@@ -1882,6 +1883,10 @@ enum RackDragState {
         arrangement_id: String,
         from_coordinate: String,
     },
+    ArrangementBlocks {
+        arrangement_ids: Vec<String>,
+        from_coordinate: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2371,8 +2376,9 @@ impl Default for GENtleApp {
             rack_custom_profile_columns: String::new(),
             rack_blocked_coordinates_text: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
+            rack_view_scroll_offset: Vec2::ZERO,
             rack_view_selected_coordinate: None,
-            rack_view_selected_arrangement_id: None,
+            rack_view_selected_arrangement_ids: BTreeSet::new(),
             rack_view_drag_state: None,
             rack_view_hover_target_coordinate: None,
             place_arrangement_source_id: String::new(),
@@ -5839,11 +5845,12 @@ Error: `{err}`"
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.rack_view_rack_id.clear();
         self.rack_view_status.clear();
+        self.rack_view_scroll_offset = Vec2::ZERO;
         self.rack_authoring_template_editor = RackAuthoringTemplate::BenchRows;
         self.rack_fill_direction_editor = RackFillDirection::RowMajor;
         self.rack_blocked_coordinates_text.clear();
         self.rack_view_selected_coordinate = None;
-        self.rack_view_selected_arrangement_id = None;
+        self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
         self.place_arrangement_source_id.clear();
@@ -6823,8 +6830,9 @@ Error: `{err}`"
         }
         self.rack_view_rack_id = rack_id.to_string();
         self.rack_view_status.clear();
+        self.rack_view_scroll_offset = Vec2::ZERO;
         self.rack_view_selected_coordinate = None;
-        self.rack_view_selected_arrangement_id = None;
+        self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
         if let Some(rack) = self
@@ -6935,6 +6943,22 @@ Error: `{err}`"
             .map(|(_, coordinate, _)| coordinate.clone())
     }
 
+    fn rack_selected_arrangement_ids_in_order(
+        sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
+        selected_arrangement_ids: &BTreeSet<String>,
+    ) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for (_, _, entry) in sorted_entries {
+            if selected_arrangement_ids.contains(&entry.arrangement_id)
+                && seen.insert(entry.arrangement_id.clone())
+            {
+                out.push(entry.arrangement_id.clone());
+            }
+        }
+        out
+    }
+
     fn rack_drag_status_text(drag: &RackDragState, drop_target: Option<&str>) -> String {
         match drag {
             RackDragState::Sample {
@@ -6964,6 +6988,35 @@ Error: `{err}`"
                     arrangement_id, from_coordinate
                 ),
             },
+            RackDragState::ArrangementBlocks {
+                arrangement_ids,
+                from_coordinate,
+            } => {
+                let label = if arrangement_ids.len() <= 3 {
+                    arrangement_ids.join(", ")
+                } else {
+                    format!(
+                        "{} (+{} more)",
+                        arrangement_ids[..3].join(", "),
+                        arrangement_ids.len() - 3
+                    )
+                };
+                match drop_target {
+                    Some(target) => format!(
+                        "Dragging {} arrangement blocks [{}] from {} to {}. Release to move the selected blocks together and shift later occupied slots.",
+                        arrangement_ids.len(),
+                        label,
+                        from_coordinate,
+                        target
+                    ),
+                    None => format!(
+                        "Dragging {} arrangement blocks [{}] from {}. Hover a rack slot and release to move the selected blocks together.",
+                        arrangement_ids.len(),
+                        label,
+                        from_coordinate
+                    ),
+                }
+            }
         }
     }
 
@@ -6999,6 +7052,24 @@ Error: `{err}`"
         coordinates
     }
 
+    fn rack_block_insertion_index(
+        ordered: &[(usize, crate::engine::RackPlacementEntry)],
+        target_index: usize,
+    ) -> usize {
+        let mut idx = 0usize;
+        while idx < ordered.len() {
+            let block_start_index = ordered[idx].0;
+            if target_index <= block_start_index {
+                return idx;
+            }
+            let arrangement_id = ordered[idx].1.arrangement_id.clone();
+            while idx < ordered.len() && ordered[idx].1.arrangement_id == arrangement_id {
+                idx += 1;
+            }
+        }
+        ordered.len()
+    }
+
     fn rack_preview_entries_for_drop(
         rack: &Rack,
         sorted_entries: &[(usize, String, crate::engine::RackPlacementEntry)],
@@ -7016,6 +7087,9 @@ Error: `{err}`"
             }
             | RackDragState::ArrangementBlock {
                 from_coordinate, ..
+            }
+            | RackDragState::ArrangementBlocks {
+                from_coordinate, ..
             } => from_coordinate.as_str(),
         };
         let from_index =
@@ -7023,32 +7097,35 @@ Error: `{err}`"
         let to_index = GentleEngine::rack_index_from_coordinate(&rack.profile, drop_target).ok()?;
         let from_pos = ordered.iter().position(|(index, _)| *index == from_index)?;
         match drag {
-            RackDragState::ArrangementBlock { arrangement_id, .. } => {
-                let block_positions = ordered
+            RackDragState::ArrangementBlocks { arrangement_ids, .. } => {
+                let selected = arrangement_ids.iter().cloned().collect::<HashSet<_>>();
+                let selected_entries = ordered
                     .iter()
-                    .enumerate()
-                    .filter_map(|(pos, (_, entry))| {
-                        if entry.arrangement_id == *arrangement_id {
-                            Some(pos)
-                        } else {
-                            None
-                        }
-                    })
+                    .filter(|(_, entry)| selected.contains(&entry.arrangement_id))
+                    .map(|(_, entry)| entry.clone())
                     .collect::<Vec<_>>();
-                let block_start = *block_positions.first().unwrap_or(&from_pos);
+                ordered.retain(|(_, entry)| !selected.contains(&entry.arrangement_id));
+                if ordered.len() + selected_entries.len() > available_coordinates.len() {
+                    return None;
+                }
+                let insertion_index = Self::rack_block_insertion_index(&ordered, to_index);
+                for (offset, entry) in selected_entries.into_iter().enumerate() {
+                    ordered.insert(insertion_index + offset, (insertion_index + offset, entry));
+                }
+            }
+            RackDragState::ArrangementBlock { arrangement_id, .. } => {
                 let block_entries = ordered
                     .iter()
                     .filter(|(_, entry)| entry.arrangement_id == *arrangement_id)
                     .map(|(_, entry)| entry.clone())
                     .collect::<Vec<_>>();
-                let block_len = block_entries.len();
                 ordered.retain(|(_, entry)| entry.arrangement_id != *arrangement_id);
-                if ordered.len() + block_len > available_coordinates.len() {
+                if ordered.len() + block_entries.len() > available_coordinates.len() {
                     return None;
                 }
-                let insertion_index = to_index.min(ordered.len());
+                let insertion_index = Self::rack_block_insertion_index(&ordered, to_index);
                 for (offset, entry) in block_entries.into_iter().enumerate() {
-                    ordered.insert(insertion_index + offset, (block_start + offset, entry));
+                    ordered.insert(insertion_index + offset, (insertion_index + offset, entry));
                 }
             }
             RackDragState::Sample { arrangement_id, .. } => {
@@ -7098,6 +7175,37 @@ Error: `{err}`"
             entry.order_index = *next;
         }
         Some(reflowed)
+    }
+
+    fn rack_autoscroll_offset_for_pointer(
+        current_offset: Vec2,
+        pointer: Pos2,
+        viewport_rect: egui::Rect,
+        max_scroll_x: f32,
+        max_scroll_y: f32,
+    ) -> Vec2 {
+        const THRESHOLD_PX: f32 = 36.0;
+        const MAX_STEP_PX: f32 = 24.0;
+        let mut next = current_offset;
+        let left_zone = viewport_rect.left() + THRESHOLD_PX;
+        let right_zone = viewport_rect.right() - THRESHOLD_PX;
+        let top_zone = viewport_rect.top() + THRESHOLD_PX;
+        let bottom_zone = viewport_rect.bottom() - THRESHOLD_PX;
+        if pointer.x < left_zone {
+            let factor = ((left_zone - pointer.x) / THRESHOLD_PX).clamp(0.0, 1.0);
+            next.x = (next.x - factor * MAX_STEP_PX).max(0.0);
+        } else if pointer.x > right_zone {
+            let factor = ((pointer.x - right_zone) / THRESHOLD_PX).clamp(0.0, 1.0);
+            next.x = (next.x + factor * MAX_STEP_PX).min(max_scroll_x);
+        }
+        if pointer.y < top_zone {
+            let factor = ((top_zone - pointer.y) / THRESHOLD_PX).clamp(0.0, 1.0);
+            next.y = (next.y - factor * MAX_STEP_PX).max(0.0);
+        } else if pointer.y > bottom_zone {
+            let factor = ((pointer.y - bottom_zone) / THRESHOLD_PX).clamp(0.0, 1.0);
+            next.y = (next.y + factor * MAX_STEP_PX).min(max_scroll_y);
+        }
+        next
     }
 
     fn rack_ghost_preview_map(
@@ -7199,6 +7307,42 @@ Error: `{err}`"
         }
     }
 
+    fn apply_rack_move_blocks(
+        &mut self,
+        rack_id: &str,
+        arrangement_ids: &[String],
+        to_coordinate: &str,
+    ) {
+        if arrangement_ids.is_empty() || to_coordinate.trim().is_empty() {
+            self.rack_view_status =
+                "Rack block move requires selected arrangement blocks and a target coordinate."
+                    .to_string();
+            return;
+        }
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::MoveRackArrangementBlocks {
+                rack_id: rack_id.trim().to_string(),
+                arrangement_ids: arrangement_ids.to_vec(),
+                to_coordinate: to_coordinate.trim().to_string(),
+            });
+        match result {
+            Ok(op_result) => {
+                self.rack_view_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    format!("Moved {} arrangement blocks on rack", arrangement_ids.len())
+                });
+                self.lineage_cache_valid = false;
+                self.refresh_lineage_cache_if_needed();
+            }
+            Err(err) => {
+                self.rack_view_status =
+                    format!("Could not move arrangement blocks: {}", err.message);
+            }
+        }
+    }
+
     fn render_rack_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Rack");
@@ -7209,7 +7353,7 @@ Error: `{err}`"
             ui.small("No rack is currently selected.");
             return close_requested;
         };
-        ui.label("Physical rack/plate placement linked to one or more arrangements. Drag one occupied sample slot to another slot to shift neighbors within that arrangement block, or drag an arrangement chip to move the whole block. Click-select and click-target still works as a fallback.");
+        ui.label("Physical rack/plate placement linked to one or more arrangements. Drag one occupied sample slot to another slot to shift neighbors within that arrangement block, or drag an arrangement chip to move the whole block. Command/Ctrl-click arrangement chips to select multiple blocks, then drag one selected chip or click a target slot. Click-select and click-target still works as a fallback.");
         ui.horizontal(|ui| {
             ui.label("Rack");
             ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
@@ -7593,6 +7737,10 @@ Error: `{err}`"
             | RackDragState::ArrangementBlock { arrangement_id, .. } => {
                 Self::rack_color_for_arrangement(arrangement_id)
             }
+            RackDragState::ArrangementBlocks { arrangement_ids, .. } => arrangement_ids
+                .first()
+                .map(|arrangement_id| Self::rack_color_for_arrangement(arrangement_id))
+                .unwrap_or(ui.visuals().strong_text_color()),
         });
         let previous_hover_target = self.rack_view_hover_target_coordinate.clone();
         let mut entry_by_coordinate: HashMap<String, crate::engine::RackPlacementEntry> =
@@ -7600,11 +7748,18 @@ Error: `{err}`"
         for (_, coordinate, entry) in &sorted_entries {
             entry_by_coordinate.insert(coordinate.clone(), entry.clone());
         }
-        let ghost_preview = self.rack_view_drag_state.as_ref().and_then(|drag| {
-            previous_hover_target.as_deref().and_then(|target| {
-                Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target)
-            })
-        });
+        let ghost_preview = self
+            .rack_view_drag_state
+            .as_ref()
+            .and_then(|drag| {
+                previous_hover_target
+                    .as_deref()
+                    .and_then(|target| Self::rack_ghost_preview_map(&rack, &sorted_entries, drag, target))
+            });
+        let selected_arrangement_ids = Self::rack_selected_arrangement_ids_in_order(
+            &sorted_entries,
+            &self.rack_view_selected_arrangement_ids,
+        );
         let arrangement_ids = sorted_entries
             .iter()
             .map(|(_, _, entry)| entry.arrangement_id.clone())
@@ -7615,10 +7770,8 @@ Error: `{err}`"
             ui.label("Arrangement blocks");
             for arrangement_id in &arrangement_ids {
                 let selected = self
-                    .rack_view_selected_arrangement_id
-                    .as_deref()
-                    .map(|value| value == arrangement_id)
-                    .unwrap_or(false);
+                    .rack_view_selected_arrangement_ids
+                    .contains(arrangement_id);
                 let color = Self::rack_color_for_arrangement(arrangement_id);
                 let button = egui::Button::new(
                     egui::RichText::new(arrangement_id.clone()).color(color).strong(),
@@ -7627,9 +7780,21 @@ Error: `{err}`"
                 .sense(egui::Sense::click_and_drag());
                 let response = ui
                     .add(button)
-                    .on_hover_text("Drag this arrangement block onto another rack slot, or click once to select it for a later target click");
+                    .on_hover_text("Drag this arrangement block onto another rack slot, or click once to select it for a later target click. Command/Ctrl-click toggles multi-selection.");
                 if response.drag_started() {
-                    if let Some(from_coordinate) =
+                    if selected && selected_arrangement_ids.len() > 1 {
+                        if let Some(first_selected) = selected_arrangement_ids.first() {
+                            if let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
+                                &sorted_entries,
+                                first_selected,
+                            ) {
+                                pending_drag_start = Some(RackDragState::ArrangementBlocks {
+                                    arrangement_ids: selected_arrangement_ids.clone(),
+                                    from_coordinate,
+                                });
+                            }
+                        }
+                    } else if let Some(from_coordinate) =
                         Self::rack_first_coordinate_for_arrangement(&sorted_entries, arrangement_id)
                     {
                         pending_drag_start = Some(RackDragState::ArrangementBlock {
@@ -7638,12 +7803,24 @@ Error: `{err}`"
                         });
                     }
                 } else if response.clicked() {
-                    if selected {
-                        self.rack_view_selected_arrangement_id = None;
+                    let additive = ui.ctx().input(|i| i.modifiers.command || i.modifiers.ctrl);
+                    if additive {
+                        if selected {
+                            self.rack_view_selected_arrangement_ids.remove(arrangement_id);
+                        } else {
+                            self.rack_view_selected_arrangement_ids
+                                .insert(arrangement_id.clone());
+                        }
                     } else {
-                        self.rack_view_selected_arrangement_id = Some(arrangement_id.clone());
-                        self.rack_view_selected_coordinate = None;
+                        if selected && self.rack_view_selected_arrangement_ids.len() == 1 {
+                            self.rack_view_selected_arrangement_ids.clear();
+                        } else {
+                            self.rack_view_selected_arrangement_ids.clear();
+                            self.rack_view_selected_arrangement_ids
+                                .insert(arrangement_id.clone());
+                        }
                     }
+                    self.rack_view_selected_coordinate = None;
                 }
             }
             if ui
@@ -7652,7 +7829,7 @@ Error: `{err}`"
                 .clicked()
             {
                 self.rack_view_selected_coordinate = None;
-                self.rack_view_selected_arrangement_id = None;
+                self.rack_view_selected_arrangement_ids.clear();
                 self.rack_view_drag_state = None;
             }
         });
@@ -7661,7 +7838,11 @@ Error: `{err}`"
             ui.small(self.rack_view_status.clone());
         }
         ui.separator();
-        egui::ScrollArea::both().show(ui, |ui| {
+        let rack_scroll_output = egui::ScrollArea::both()
+            .id_salt("rack_grid_scroll")
+            .auto_shrink([false, false])
+            .scroll_offset(self.rack_view_scroll_offset)
+            .show(ui, |ui| {
             egui::Grid::new("rack_grid")
                 .spacing(egui::vec2(6.0, 6.0))
                 .show(ui, |ui| {
@@ -7764,22 +7945,27 @@ Error: `{err}`"
                                             .unwrap_or_else(|| entry.role_label.clone()),
                                     });
                                 } else if response.clicked() && self.rack_view_drag_state.is_none() {
-                                    if let Some(arrangement_id) =
-                                        self.rack_view_selected_arrangement_id.clone()
-                                    {
-                                        let first_coordinate = Self::rack_first_coordinate_for_arrangement(
-                                            &sorted_entries,
-                                            &arrangement_id,
-                                        );
-                                        if let Some(from_coordinate) = first_coordinate {
-                                            self.apply_rack_move(
+                                    if !selected_arrangement_ids.is_empty() {
+                                        if selected_arrangement_ids.len() == 1 {
+                                            if let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
+                                                &sorted_entries,
+                                                &selected_arrangement_ids[0],
+                                            ) {
+                                                self.apply_rack_move(
+                                                    &rack.rack_id,
+                                                    &from_coordinate,
+                                                    &coordinate,
+                                                    true,
+                                                );
+                                            }
+                                        } else {
+                                            self.apply_rack_move_blocks(
                                                 &rack.rack_id,
-                                                &from_coordinate,
+                                                &selected_arrangement_ids,
                                                 &coordinate,
-                                                true,
                                             );
                                         }
-                                        self.rack_view_selected_arrangement_id = None;
+                                        self.rack_view_selected_arrangement_ids.clear();
                                     } else if let Some(from_coordinate) =
                                         self.rack_view_selected_coordinate.clone()
                                     {
@@ -7796,7 +7982,7 @@ Error: `{err}`"
                                         }
                                     } else if current_entry.is_some() {
                                         self.rack_view_selected_coordinate = Some(coordinate);
-                                        self.rack_view_selected_arrangement_id = None;
+                                        self.rack_view_selected_arrangement_ids.clear();
                                     }
                                 }
                             } else {
@@ -7842,22 +8028,27 @@ Error: `{err}`"
                                     );
                                 }
                                 if response.clicked() && self.rack_view_drag_state.is_none() {
-                                    if let Some(arrangement_id) =
-                                        self.rack_view_selected_arrangement_id.clone()
-                                    {
-                                        let first_coordinate = Self::rack_first_coordinate_for_arrangement(
-                                            &sorted_entries,
-                                            &arrangement_id,
-                                        );
-                                        if let Some(from_coordinate) = first_coordinate {
-                                            self.apply_rack_move(
+                                    if !selected_arrangement_ids.is_empty() {
+                                        if selected_arrangement_ids.len() == 1 {
+                                            if let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
+                                                &sorted_entries,
+                                                &selected_arrangement_ids[0],
+                                            ) {
+                                                self.apply_rack_move(
+                                                    &rack.rack_id,
+                                                    &from_coordinate,
+                                                    &coordinate,
+                                                    true,
+                                                );
+                                            }
+                                        } else {
+                                            self.apply_rack_move_blocks(
                                                 &rack.rack_id,
-                                                &from_coordinate,
+                                                &selected_arrangement_ids,
                                                 &coordinate,
-                                                true,
                                             );
                                         }
-                                        self.rack_view_selected_arrangement_id = None;
+                                        self.rack_view_selected_arrangement_ids.clear();
                                     } else if let Some(from_coordinate) =
                                         self.rack_view_selected_coordinate.clone()
                                     {
@@ -7876,10 +8067,32 @@ Error: `{err}`"
                     }
                 });
         });
+        let max_scroll_x =
+            (rack_scroll_output.content_size.x - rack_scroll_output.inner_rect.width()).max(0.0);
+        let max_scroll_y =
+            (rack_scroll_output.content_size.y - rack_scroll_output.inner_rect.height()).max(0.0);
+        let mut next_rack_scroll_offset = rack_scroll_output.state.offset;
+        next_rack_scroll_offset.x = next_rack_scroll_offset.x.clamp(0.0, max_scroll_x);
+        next_rack_scroll_offset.y = next_rack_scroll_offset.y.clamp(0.0, max_scroll_y);
+        if self.rack_view_drag_state.is_some() {
+            if let Some(pointer) = pointer_pos {
+                let autoscrolled = Self::rack_autoscroll_offset_for_pointer(
+                    next_rack_scroll_offset,
+                    pointer,
+                    rack_scroll_output.inner_rect,
+                    max_scroll_x,
+                    max_scroll_y,
+                );
+                if (autoscrolled - next_rack_scroll_offset).length_sq() > 0.01 {
+                    next_rack_scroll_offset = autoscrolled;
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+        self.rack_view_scroll_offset = next_rack_scroll_offset;
         if let Some(drag) = pending_drag_start {
             self.rack_view_drag_state = Some(drag);
             self.rack_view_selected_coordinate = None;
-            self.rack_view_selected_arrangement_id = None;
         }
         if escape_pressed && self.rack_view_drag_state.is_some() {
             self.rack_view_drag_state = None;
@@ -7906,6 +8119,17 @@ Error: `{err}`"
                     } => {
                         if let Some(target) = drop_target_coordinate.as_deref() {
                             self.apply_rack_move(&rack.rack_id, &from_coordinate, target, true);
+                        }
+                    }
+                    RackDragState::ArrangementBlocks {
+                        arrangement_ids, ..
+                    } => {
+                        if let Some(target) = drop_target_coordinate.as_deref() {
+                            self.apply_rack_move_blocks(
+                                &rack.rack_id,
+                                &arrangement_ids,
+                                target,
+                            );
                         }
                     }
                 }
@@ -24337,8 +24561,9 @@ Error: `{err}`"
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.rack_view_rack_id.clear();
         self.rack_view_status.clear();
+        self.rack_view_scroll_offset = Vec2::ZERO;
         self.rack_view_selected_coordinate = None;
-        self.rack_view_selected_arrangement_id = None;
+        self.rack_view_selected_arrangement_ids.clear();
         self.rack_view_drag_state = None;
         self.rack_view_hover_target_coordinate = None;
         self.place_arrangement_source_id.clear();
@@ -35116,6 +35341,16 @@ Error: `{err}`"
                 from_coordinate.trim(),
                 to_coordinate.trim()
             ),
+            Operation::MoveRackArrangementBlocks {
+                rack_id,
+                arrangement_ids,
+                to_coordinate,
+            } => format!(
+                "Move rack blocks: rack_id={}, arrangements={}, to={}",
+                rack_id.trim(),
+                arrangement_ids.join(", "),
+                to_coordinate.trim()
+            ),
             Operation::SetRackProfile { rack_id, profile } => format!(
                 "Set rack profile: rack_id={}, profile={}",
                 rack_id.trim(),
@@ -39988,6 +40223,52 @@ mod tests {
     }
 
     #[test]
+    fn rack_selected_arrangement_ids_in_order_preserves_rack_order() {
+        let entries = vec![
+            (
+                0,
+                "A1".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+            (
+                1,
+                "A2".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+            (
+                2,
+                "A3".to_string(),
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: None,
+                    arrangement_id: "arr-c".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ),
+        ];
+        let selected = ["arr-c".to_string(), "arr-a".to_string()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            GENtleApp::rack_selected_arrangement_ids_in_order(&entries, &selected),
+            vec!["arr-a".to_string(), "arr-c".to_string()]
+        );
+    }
+
+    #[test]
     fn rack_drag_status_text_mentions_drop_target_and_mode() {
         let sample_text = GENtleApp::rack_drag_status_text(
             &RackDragState::Sample {
@@ -40012,6 +40293,22 @@ mod tests {
         assert!(block_text.contains("C1"));
         assert!(block_text.contains("D6"));
         assert!(block_text.contains("whole block"));
+
+        let multi_block_text = GENtleApp::rack_drag_status_text(
+            &RackDragState::ArrangementBlocks {
+                arrangement_ids: vec![
+                    "arr-a".to_string(),
+                    "arr-b".to_string(),
+                    "arr-c".to_string(),
+                    "arr-d".to_string(),
+                ],
+                from_coordinate: "A1".to_string(),
+            },
+            Some("B2"),
+        );
+        assert!(multi_block_text.contains("4 arrangement blocks"));
+        assert!(multi_block_text.contains("arr-a, arr-b, arr-c (+1 more)"));
+        assert!(multi_block_text.contains("B2"));
     }
 
     #[test]
@@ -40158,6 +40455,105 @@ mod tests {
                 .map(|entry| entry.arrangement_id.as_str()),
             Some("arr-a")
         );
+    }
+
+    #[test]
+    fn rack_ghost_preview_moves_multiple_blocks_together() {
+        let rack = crate::engine::Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: crate::engine::RackProfileSnapshot::custom(1, 4),
+            placements: vec![
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a1".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-a2".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "lane_2".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-b1".to_string(),
+                    }),
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+                crate::engine::RackPlacementEntry {
+                    coordinate: "A4".to_string(),
+                    occupant: Some(crate::engine::RackOccupant::Container {
+                        container_id: "container-c1".to_string(),
+                    }),
+                    arrangement_id: "arr-c".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        };
+        let sorted_entries = GENtleApp::rack_sorted_entries(&rack);
+        let preview = GENtleApp::rack_ghost_preview_map(
+            &rack,
+            &sorted_entries,
+            &RackDragState::ArrangementBlocks {
+                arrangement_ids: vec!["arr-c".to_string(), "arr-a".to_string()],
+                from_coordinate: "A1".to_string(),
+            },
+            "A3",
+        )
+        .expect("preview");
+        assert_eq!(preview.len(), 2);
+        assert_eq!(
+            preview
+                .get("A3")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.arrangement_id.as_str()),
+            Some("arr-c")
+        );
+        assert_eq!(
+            preview
+                .get("A4")
+                .and_then(|cell| cell.predicted_entry.as_ref())
+                .map(|entry| entry.arrangement_id.as_str()),
+            Some("arr-b")
+        );
+    }
+
+    #[test]
+    fn rack_autoscroll_offset_for_pointer_moves_toward_edges_and_clamps() {
+        let viewport = egui::Rect::from_min_max(egui::pos2(100.0, 100.0), egui::pos2(300.0, 260.0));
+        let scrolled = GENtleApp::rack_autoscroll_offset_for_pointer(
+            egui::vec2(40.0, 50.0),
+            egui::pos2(296.0, 256.0),
+            viewport,
+            120.0,
+            140.0,
+        );
+        assert!(scrolled.x > 40.0);
+        assert!(scrolled.y > 50.0);
+
+        let clamped = GENtleApp::rack_autoscroll_offset_for_pointer(
+            egui::vec2(2.0, 3.0),
+            egui::pos2(90.0, 90.0),
+            viewport,
+            120.0,
+            140.0,
+        );
+        assert_eq!(clamped.x, 0.0);
+        assert_eq!(clamped.y, 0.0);
     }
 
     #[test]

@@ -1280,6 +1280,29 @@ fn parse_racks_move_command() {
 }
 
 #[test]
+fn parse_racks_move_blocks_command() {
+    let cmd = parse_shell_line(
+        "racks move-blocks rack-1 --arrangement arr-a --arrangement arr-b --to B2",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksMoveBlocks {
+            rack_id,
+            arrangement_ids,
+            to_coordinate,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(
+                arrangement_ids,
+                vec!["arr-a".to_string(), "arr-b".to_string()]
+            );
+            assert_eq!(to_coordinate, "B2".to_string());
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_racks_set_custom_profile_command() {
     let cmd = parse_shell_line("racks set-custom-profile rack-1 3 10").expect("parse command");
     match cmd {
@@ -1433,6 +1456,144 @@ fn execute_racks_set_fill_direction_updates_snapshot() {
         .get("rack-1")
         .expect("rack");
     assert_eq!(rack.profile.fill_direction, RackFillDirection::ColumnMajor);
+}
+
+#[test]
+fn execute_racks_move_blocks_updates_snapshot() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["seq_a", "seq_b", "seq_c", "seq_d"].iter().enumerate() {
+        state.sequences.insert(
+            (*seq_id).to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Lane {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-a".to_string(),
+        Arrangement {
+            arrangement_id: "arr-a".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("A".to_string()),
+            lane_container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["lane_1".to_string(), "lane_2".to_string()],
+            default_rack_id: Some("rack-1".to_string()),
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-b".to_string(),
+        Arrangement {
+            arrangement_id: "arr-b".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("B".to_string()),
+            lane_container_ids: vec!["container-3".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["lane_1".to_string()],
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-c".to_string(),
+        Arrangement {
+            arrangement_id: "arr-c".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("C".to_string()),
+            lane_container_ids: vec!["container-4".to_string()],
+            ladders: vec![],
+            lane_role_labels: vec!["lane_1".to_string()],
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.racks.insert(
+        "rack-1".to_string(),
+        Rack {
+            rack_id: "rack-1".to_string(),
+            name: "Bench".to_string(),
+            profile: RackProfileSnapshot::custom(1, 4),
+            placements: vec![
+                RackPlacementEntry {
+                    coordinate: "A1".to_string(),
+                    occupant: Some(RackOccupant::Container {
+                        container_id: "container-1".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+                RackPlacementEntry {
+                    coordinate: "A2".to_string(),
+                    occupant: Some(RackOccupant::Container {
+                        container_id: "container-2".to_string(),
+                    }),
+                    arrangement_id: "arr-a".to_string(),
+                    order_index: 1,
+                    role_label: "lane_2".to_string(),
+                },
+                RackPlacementEntry {
+                    coordinate: "A3".to_string(),
+                    occupant: Some(RackOccupant::Container {
+                        container_id: "container-3".to_string(),
+                    }),
+                    arrangement_id: "arr-b".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+                RackPlacementEntry {
+                    coordinate: "A4".to_string(),
+                    occupant: Some(RackOccupant::Container {
+                        container_id: "container-4".to_string(),
+                    }),
+                    arrangement_id: "arr-c".to_string(),
+                    order_index: 0,
+                    role_label: "lane_1".to_string(),
+                },
+            ],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksMoveBlocks {
+            rack_id: "rack-1".to_string(),
+            arrangement_ids: vec!["arr-c".to_string(), "arr-a".to_string()],
+            to_coordinate: "A3".to_string(),
+        },
+    )
+    .expect("move blocks");
+
+    assert!(out.state_changed);
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get("rack-1")
+        .expect("rack");
+    assert_eq!(
+        rack.placements
+            .iter()
+            .map(|entry| entry.arrangement_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["arr-a", "arr-a", "arr-c", "arr-b"]
+    );
 }
 
 #[test]

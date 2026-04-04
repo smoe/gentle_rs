@@ -1,5 +1,5 @@
 {
-   "command_count": 275,
+   "command_count": 280,
    "commands": [
       {
          "aliases": [
@@ -449,6 +449,20 @@
          "path": "racks move",
          "summary": "Move one rack sample or one whole arrangement block using shift-neighbor semantics.",
          "usage": "racks move RACK_ID --from A1 --to B1 [--block]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MoveRackArrangementBlocks"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move-blocks",
+         "summary": "Move multiple selected arrangement blocks together using the shared shift-neighbor rack semantics.",
+         "usage": "racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1"
       },
       {
          "aliases": [],

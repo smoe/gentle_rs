@@ -927,6 +927,7 @@ cargo run --bin gentle_cli -- racks create-from-arrangement arrangement-2 --rack
 cargo run --bin gentle_cli -- racks place-arrangement arrangement-3 --rack rack-1
 cargo run --bin gentle_cli -- racks move rack-1 --from A2 --to A4
 cargo run --bin gentle_cli -- racks move rack-1 --from A1 --to B1 --block
+cargo run --bin gentle_cli -- racks move-blocks rack-1 --arrangement arrangement-2 --arrangement arrangement-3 --to B2
 cargo run --bin gentle_cli -- racks show rack-1
 cargo run --bin gentle_cli -- racks labels-svg rack-1 arrangement-2.labels.svg --arrangement arrangement-2
 cargo run --bin gentle_cli -- racks set-profile rack-1 plate_96
@@ -1067,6 +1068,7 @@ Shared shell command:
     - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
     - `racks place-arrangement ARR_ID --rack RACK_ID`
     - `racks move RACK_ID --from A1 --to B1 [--block]`
+    - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
@@ -1566,6 +1568,11 @@ Rendering export commands:
     shift-neighbor semantics.
   - With `--block`, moves the whole arrangement block and shifts later
     occupied positions in fill order.
+- `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
+  - Calls engine operation `MoveRackArrangementBlocks`.
+  - Moves the selected arrangement blocks together as one contiguous group.
+  - Shared engine preserves the selected blocks in current rack order even if
+    the CLI request lists them in another order.
 - `racks show RACK_ID`
   - Returns `gentle.rack_state.v1` JSON with the saved rack record and resolved
     occupied positions.
@@ -1843,6 +1850,9 @@ Helper convenience commands:
   - Same shared rack-append path used by GUI `Place on Existing Rack...`.
 - `racks move RACK_ID --from A1 --to B1 [--block]`
   - Same shared rack move/reorder contract used by the rack editor.
+- `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
+  - Same shared multi-block rack move contract used by rack-editor
+    Command/Ctrl-selected arrangement chips.
 - `racks show RACK_ID`
   - Emits structured rack placement JSON (`gentle.rack_state.v1`).
   - Rack profile payload includes current `fill_direction` and

@@ -838,6 +838,7 @@ Current draft operations:
 - `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
+- `MoveRackArrangementBlocks { rack_id, arrangement_ids[], to_coordinate }`
 - `SetRackProfile { rack_id, profile }`
 - `ApplyRackTemplate { rack_id, template }`
 - `SetRackFillDirection { rack_id, fill_direction }`
@@ -1876,6 +1877,16 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   occupied blocks in fill order.
 - The operation is order-preserving by design; it does not treat arbitrary
   holes as the primary editing model.
+
+`MoveRackArrangementBlocks` semantics:
+
+- Moves two or more selected arrangement blocks together within one saved rack.
+- `arrangement_ids` are normalized against the rack's current occupied order;
+  the shared engine preserves the rack-ordering of selected blocks even if the
+  request lists them in another order.
+- The selected blocks move as one contiguous combined group.
+- Later occupied blocks shift in fill order to keep the rack contiguous.
+- This is the shared engine contract behind rack-editor multi-select moves.
 
 `SetRackProfile` semantics:
 

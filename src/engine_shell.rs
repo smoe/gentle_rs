@@ -711,6 +711,11 @@ pub enum ShellCommand {
         to_coordinate: String,
         move_block: bool,
     },
+    RacksMoveBlocks {
+        rack_id: String,
+        arrangement_ids: Vec<String>,
+        to_coordinate: String,
+    },
     RacksShow {
         rack_id: String,
     },
@@ -4739,6 +4744,16 @@ impl ShellCommand {
                 },
                 rack_id.trim(),
                 from_coordinate.trim(),
+                to_coordinate.trim()
+            ),
+            Self::RacksMoveBlocks {
+                rack_id,
+                arrangement_ids,
+                to_coordinate,
+            } => format!(
+                "move {} arrangement block(s) on rack '{}' to '{}'",
+                arrangement_ids.len(),
+                rack_id.trim(),
                 to_coordinate.trim()
             ),
             Self::RacksShow { rack_id } => {
@@ -10680,7 +10695,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-blocks, show, labels-svg, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -10830,6 +10845,56 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         from_coordinate,
                         to_coordinate,
                         move_block,
+                    })
+                }
+                "move-blocks" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "racks move-blocks requires RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1".to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks move-blocks requires a non-empty RACK_ID".to_string());
+                    }
+                    let mut arrangement_ids = Vec::new();
+                    let mut to_coordinate = String::new();
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--arrangement" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --arrangement".to_string());
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if !value.is_empty() {
+                                    arrangement_ids.push(value.to_string());
+                                }
+                                idx += 2;
+                            }
+                            "--to" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --to".to_string());
+                                }
+                                to_coordinate = tokens[idx + 1].trim().to_string();
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks move-blocks"
+                                ));
+                            }
+                        }
+                    }
+                    if arrangement_ids.is_empty() || to_coordinate.is_empty() {
+                        return Err(
+                            "racks move-blocks requires at least one --arrangement ARR_ID and --to COORD".to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::RacksMoveBlocks {
+                        rack_id,
+                        arrangement_ids,
+                        to_coordinate,
                     })
                 }
                 "show" => {
@@ -11005,7 +11070,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, show, labels-svg, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
+                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, move-blocks, show, labels-svg, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
                 )),
             }
         }
@@ -13553,6 +13618,23 @@ fn execute_shell_command_with_options_inner(
                     from_coordinate: from_coordinate.clone(),
                     to_coordinate: to_coordinate.clone(),
                     move_block: *move_block,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksMoveBlocks {
+            rack_id,
+            arrangement_ids,
+            to_coordinate,
+        } => {
+            let op_result = engine
+                .apply(Operation::MoveRackArrangementBlocks {
+                    rack_id: rack_id.clone(),
+                    arrangement_ids: arrangement_ids.clone(),
+                    to_coordinate: to_coordinate.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

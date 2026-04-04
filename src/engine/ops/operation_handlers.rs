@@ -3377,6 +3377,19 @@ impl GentleEngine {
                     )
                 });
             }
+            Operation::MoveRackArrangementBlocks {
+                rack_id,
+                arrangement_ids,
+                to_coordinate,
+            } => {
+                self.move_rack_arrangement_blocks(&rack_id, &arrangement_ids, &to_coordinate)?;
+                result.messages.push(format!(
+                    "Moved {} arrangement block(s) on rack '{}' to '{}'",
+                    arrangement_ids.len(),
+                    rack_id.trim(),
+                    to_coordinate.trim()
+                ));
+            }
             Operation::SetRackProfile { rack_id, profile } => {
                 self.set_rack_profile(&rack_id, profile)?;
                 result.messages.push(format!(

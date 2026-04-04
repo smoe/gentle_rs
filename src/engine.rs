@@ -3934,6 +3934,11 @@ pub enum Operation {
         #[serde(default)]
         move_block: bool,
     },
+    MoveRackArrangementBlocks {
+        rack_id: String,
+        arrangement_ids: Vec<String>,
+        to_coordinate: String,
+    },
     SetRackProfile {
         rack_id: String,
         profile: RackProfileKind,
@@ -5860,6 +5865,7 @@ impl GentleEngine {
                 "CreateRackFromArrangement".to_string(),
                 "PlaceArrangementOnRack".to_string(),
                 "MoveRackPlacement".to_string(),
+                "MoveRackArrangementBlocks".to_string(),
                 "SetRackProfile".to_string(),
                 "ApplyRackTemplate".to_string(),
                 "SetRackFillDirection".to_string(),

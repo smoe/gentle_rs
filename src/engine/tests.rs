@@ -6519,6 +6519,112 @@ fn move_rack_sample_within_same_block_shifts_neighbors() {
 }
 
 #[test]
+fn move_rack_arrangement_blocks_preserves_block_order_and_shifts_neighbors() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(50 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+            arrangement_id: Some("arr-a".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr a");
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-3".to_string()],
+            arrangement_id: Some("arr-b".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr b");
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-4".to_string()],
+            arrangement_id: Some("arr-c".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr c");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-a")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::PlaceArrangementOnRack {
+            arrangement_id: "arr-b".to_string(),
+            rack_id: rack_id.clone(),
+        })
+        .expect("place arr b");
+    engine
+        .apply(Operation::PlaceArrangementOnRack {
+            arrangement_id: "arr-c".to_string(),
+            rack_id: rack_id.clone(),
+        })
+        .expect("place arr c");
+    engine
+        .apply(Operation::MoveRackArrangementBlocks {
+            rack_id: rack_id.clone(),
+            arrangement_ids: vec!["arr-c".to_string(), "arr-a".to_string()],
+            to_coordinate: "A3".to_string(),
+        })
+        .expect("move blocks");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    let arrangement_order = rack
+        .placements
+        .iter()
+        .map(|entry| entry.arrangement_id.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        arrangement_order,
+        vec![
+            "arr-a".to_string(),
+            "arr-a".to_string(),
+            "arr-c".to_string(),
+            "arr-b".to_string()
+        ]
+    );
+    let roles = rack
+        .placements
+        .iter()
+        .map(|entry| entry.role_label.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        roles,
+        vec![
+            "lane_1".to_string(),
+            "lane_2".to_string(),
+            "lane_1".to_string(),
+            "lane_1".to_string()
+        ]
+    );
+}
+
+#[test]
 fn set_custom_rack_profile_reflows_placements_and_marks_snapshot_custom() {
     let mut state = ProjectState::default();
     for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {
