@@ -8194,17 +8194,25 @@ impl GentleEngine {
                 path,
                 seq_id,
                 report_ids,
+                gene_ids,
+                complete_rule,
                 append,
             } => {
                 let export = self.export_rna_read_sample_sheet(
                     &path,
                     seq_id.as_deref(),
                     &report_ids,
+                    &gene_ids,
+                    complete_rule,
                     append,
                 )?;
                 result.messages.push(format!(
-                    "Exported RNA-read sample sheet '{}' with {} report row(s) (append={})",
-                    export.path, export.report_count, export.appended
+                    "Exported RNA-read sample sheet '{}' with {} report row(s) (genes={}, complete_rule={}, append={})",
+                    export.path,
+                    export.report_count,
+                    export.gene_ids.len(),
+                    export.complete_rule.as_str(),
+                    export.appended
                 ));
             }
             Operation::ExportRnaReadExonPathsTsv {

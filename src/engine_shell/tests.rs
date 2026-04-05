@@ -10862,15 +10862,17 @@ fn parse_rna_reads_commands() {
     ));
 
     let export_sheet = parse_shell_line(
-        "rna-reads export-sample-sheet samples.tsv --seq-id seq_a --report-id tp73_reads --append",
+        "rna-reads export-sample-sheet samples.tsv --seq-id seq_a --report-id tp73_reads --gene TP53 --complete-rule strict --append",
     )
     .expect("parse rna-reads export-sample-sheet");
     assert!(matches!(
         export_sheet,
-        ShellCommand::RnaReadsExportSampleSheet { path, seq_id, report_ids, append }
+        ShellCommand::RnaReadsExportSampleSheet { path, seq_id, report_ids, gene_ids, complete_rule, append }
             if path == "samples.tsv"
                 && seq_id.as_deref() == Some("seq_a")
                 && report_ids == vec!["tp73_reads".to_string()]
+                && gene_ids == vec!["TP53".to_string()]
+                && complete_rule == RnaReadGeneSupportCompleteRule::Strict
                 && append
     ));
 
@@ -11465,13 +11467,20 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             path: exported_sheet.display().to_string(),
             seq_id: Some("seq_a".to_string()),
             report_ids: vec![],
+            gene_ids: vec![],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
             append: false,
         },
     )
     .expect("export rna-read sample sheet");
     assert_eq!(export_sheet_result.output["report_count"].as_u64(), Some(1));
+    assert_eq!(
+        export_sheet_result.output["complete_rule"].as_str(),
+        Some("near")
+    );
     let sheet_text = fs::read_to_string(exported_sheet).expect("read sample sheet");
     assert!(sheet_text.contains("sample_id"));
+    assert!(sheet_text.contains("mean_read_length_bp"));
     assert!(sheet_text.contains("exon_support_frequencies_json"));
     assert!(sheet_text.contains("origin_mode"));
     assert!(sheet_text.contains("target_gene_ids_json"));
@@ -11607,6 +11616,91 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         fs::read_to_string(exported_alignment_dotplot_svg).expect("read alignment dotplot svg");
     assert!(alignment_dotplot_text.contains("<svg"));
     assert!(alignment_dotplot_text.contains("alignment dotplot"));
+}
+
+#[test]
+fn execute_rna_reads_export_sample_sheet_supports_target_gene_columns() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let fasta_dir = tempdir().expect("tempdir");
+    let input_path = fasta_dir.path().join("reads.fa");
+    fs::write(
+        &input_path,
+        ">read_1\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTAATGGGCCCGGATTCCTTTTCTCTGTGAACCTTCCCGATGATGATGGAGGTGGAATGGAGGAGCCGCAGTCA\n",
+    )
+    .expect("write input fasta");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.kmer_len = 3;
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.max_median_transcript_gap = 10_000.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInterpret {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            input_path: input_path.display().to_string(),
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some("rna_reads_gene_sheet".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        },
+    )
+    .expect("interpret RNA reads");
+    let exported_sheet = fasta_dir.path().join("gene_samples.tsv");
+    let export_sheet_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportSampleSheet {
+            path: exported_sheet.display().to_string(),
+            seq_id: Some("seq_a".to_string()),
+            report_ids: vec!["rna_reads_gene_sheet".to_string()],
+            gene_ids: vec!["TP53".to_string()],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            append: false,
+        },
+    )
+    .expect("export target-gene RNA-read sample sheet");
+    assert_eq!(export_sheet_result.output["report_count"].as_u64(), Some(1));
+    assert_eq!(
+        export_sheet_result.output["gene_ids"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
+    assert_eq!(
+        export_sheet_result.output["complete_rule"].as_str(),
+        Some("near")
+    );
+    let sheet_text = fs::read_to_string(exported_sheet).expect("read sample sheet");
+    assert!(sheet_text.contains("gene_support_accepted_target_count"));
+    assert!(sheet_text.contains("gene_support_exon_pair_support_json"));
+    assert!(sheet_text.contains("gene_support_mean_assigned_read_length_bp"));
+    assert!(sheet_text.contains("[\"TP53\"]"));
 }
 
 #[test]

@@ -2130,7 +2130,7 @@
          ],
          "path": "rna-reads export-sample-sheet",
          "summary": "Export RNA-read report cohort summaries to TSV sample sheet.",
-         "usage": "rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]"
+         "usage": "rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]"
       },
       {
          "aliases": [],

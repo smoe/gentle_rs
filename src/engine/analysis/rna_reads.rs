@@ -1203,19 +1203,10 @@ impl GentleEngine {
         })
     }
 
-    pub fn summarize_rna_read_gene_support(
-        &self,
-        report_id: &str,
-        gene_ids: &[String],
-        selected_record_indices: &[usize],
+    fn build_rna_read_gene_support_summary_from_evaluation(
+        evaluation: &RnaReadGeneSupportEvaluation,
         complete_rule: RnaReadGeneSupportCompleteRule,
-    ) -> Result<RnaReadGeneSupportSummary, EngineError> {
-        let evaluation = self.evaluate_rna_read_gene_support(
-            report_id,
-            gene_ids,
-            selected_record_indices,
-            complete_rule,
-        )?;
+    ) -> RnaReadGeneSupportSummary {
         let mut all_target = RnaReadGeneSupportAccumulator::default();
         let mut fragments = RnaReadGeneSupportAccumulator::default();
         let mut complete = RnaReadGeneSupportAccumulator::default();
@@ -1259,7 +1250,7 @@ impl GentleEngine {
             }
         }
 
-        Ok(RnaReadGeneSupportSummary {
+        RnaReadGeneSupportSummary {
             schema: RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA.to_string(),
             report_id: evaluation.prepared.report.report_id.clone(),
             seq_id: evaluation.prepared.report.seq_id.clone(),
@@ -1286,7 +1277,26 @@ impl GentleEngine {
                 &complete,
                 &evaluation.prepared.contexts,
             ),
-        })
+        }
+    }
+
+    pub fn summarize_rna_read_gene_support(
+        &self,
+        report_id: &str,
+        gene_ids: &[String],
+        selected_record_indices: &[usize],
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> Result<RnaReadGeneSupportSummary, EngineError> {
+        let evaluation = self.evaluate_rna_read_gene_support(
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+        )?;
+        Ok(Self::build_rna_read_gene_support_summary_from_evaluation(
+            &evaluation,
+            complete_rule,
+        ))
     }
 
     pub fn export_rna_read_hits_fasta(
@@ -3206,6 +3216,8 @@ impl GentleEngine {
         path: &str,
         seq_id_filter: Option<&str>,
         report_ids: &[String],
+        gene_ids: &[String],
+        complete_rule: RnaReadGeneSupportCompleteRule,
         append: bool,
     ) -> Result<RnaReadSampleSheetExport, EngineError> {
         let path = path.trim();
@@ -3276,7 +3288,7 @@ impl GentleEngine {
         if !existing_nonempty {
             writeln!(
                 writer,
-                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
+                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\tgene_support_requested_gene_ids_json\tgene_support_matched_gene_ids_json\tgene_support_missing_gene_ids_json\tgene_support_complete_rule\tgene_support_aligned_base_count\tgene_support_accepted_target_count\tgene_support_accepted_target_fraction_total\tgene_support_accepted_target_fraction_aligned\tgene_support_fragment_count\tgene_support_complete_count\tgene_support_complete_strict_count\tgene_support_complete_exact_count\tgene_support_mean_assigned_read_length_bp\tgene_support_exon_support_json\tgene_support_exon_pair_support_json\tgene_support_direct_transition_support_json\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -3305,6 +3317,148 @@ impl GentleEngine {
                 0.0
             } else {
                 report.read_count_aligned as f64 / report.read_count_total as f64
+            };
+            let mean_read_length_bp = if report.read_count_total == 0 {
+                0.0
+            } else {
+                Self::sum_read_length_bases(&report.read_length_counts_all) as f64
+                    / report.read_count_total as f64
+            };
+            let (
+                gene_support_requested_gene_ids_json,
+                gene_support_matched_gene_ids_json,
+                gene_support_missing_gene_ids_json,
+                gene_support_complete_rule,
+                gene_support_aligned_base_count,
+                gene_support_accepted_target_count,
+                gene_support_accepted_target_fraction_total,
+                gene_support_accepted_target_fraction_aligned,
+                gene_support_fragment_count,
+                gene_support_complete_count,
+                gene_support_complete_strict_count,
+                gene_support_complete_exact_count,
+                gene_support_mean_assigned_read_length_bp,
+                gene_support_exon_support_json,
+                gene_support_exon_pair_support_json,
+                gene_support_direct_transition_support_json,
+            ) = if gene_ids.is_empty() {
+                (
+                    "[]".to_string(),
+                    "[]".to_string(),
+                    "[]".to_string(),
+                    String::new(),
+                    0usize,
+                    0usize,
+                    0.0,
+                    0.0,
+                    0usize,
+                    0usize,
+                    0usize,
+                    0usize,
+                    0.0,
+                    "[]".to_string(),
+                    "[]".to_string(),
+                    "[]".to_string(),
+                )
+            } else {
+                let evaluation = self.evaluate_rna_read_gene_support(
+                    &report.report_id,
+                    gene_ids,
+                    &[],
+                    complete_rule,
+                )?;
+                let summary =
+                    Self::build_rna_read_gene_support_summary_from_evaluation(&evaluation, complete_rule);
+                let hit_lengths_by_record_index = evaluation
+                    .prepared
+                    .report
+                    .hits
+                    .iter()
+                    .map(|hit| (hit.record_index, hit.read_length_bp))
+                    .collect::<HashMap<_, _>>();
+                let accepted_bases = evaluation
+                    .accepted_target_record_indices
+                    .iter()
+                    .filter_map(|record_index| {
+                        hit_lengths_by_record_index
+                            .get(record_index)
+                            .copied()
+                            .map(|length_bp| length_bp as u64)
+                    })
+                    .sum::<u64>();
+                let mean_assigned_length = if summary.accepted_target_count == 0 {
+                    0.0
+                } else {
+                    accepted_bases as f64 / summary.accepted_target_count as f64
+                };
+                (
+                    serde_json::to_string(&summary.requested_gene_ids).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not serialize gene-support requested_gene_ids for report '{}': {e}",
+                            report.report_id
+                        ),
+                    })?,
+                    serde_json::to_string(&summary.matched_gene_ids).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not serialize gene-support matched_gene_ids for report '{}': {e}",
+                            report.report_id
+                        ),
+                    })?,
+                    serde_json::to_string(&summary.missing_gene_ids).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not serialize gene-support missing_gene_ids for report '{}': {e}",
+                            report.report_id
+                        ),
+                    })?,
+                    summary.complete_rule.as_str().to_string(),
+                    summary.aligned_base_count,
+                    summary.accepted_target_count,
+                    if report.read_count_total == 0 {
+                        0.0
+                    } else {
+                        summary.accepted_target_count as f64 / report.read_count_total as f64
+                    },
+                    if summary.aligned_base_count == 0 {
+                        0.0
+                    } else {
+                        summary.accepted_target_count as f64 / summary.aligned_base_count as f64
+                    },
+                    summary.fragment_count,
+                    summary.complete_count,
+                    summary.complete_strict_count,
+                    summary.complete_exact_count,
+                    mean_assigned_length,
+                    serde_json::to_string(&summary.all_target.exon_support).map_err(|e| {
+                        EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not serialize gene-support exon rows for report '{}': {e}",
+                                report.report_id
+                            ),
+                        }
+                    })?,
+                    serde_json::to_string(&summary.all_target.exon_pair_support).map_err(
+                        |e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not serialize gene-support exon-pair rows for report '{}': {e}",
+                                report.report_id
+                            ),
+                        },
+                    )?,
+                    serde_json::to_string(&summary.all_target.direct_transition_support).map_err(
+                        |e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not serialize gene-support direct-transition rows for report '{}': {e}",
+                                report.report_id
+                            ),
+                        },
+                    )?,
+                )
             };
             let exon_json =
                 serde_json::to_string(&report.exon_support_frequencies).map_err(|e| {
@@ -3342,7 +3496,7 @@ impl GentleEngine {
                 })?;
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&sample_name),
                 Self::sanitize_tsv_cell(&sample_description),
@@ -3363,6 +3517,23 @@ impl GentleEngine {
                 report.read_count_aligned,
                 seed_pass_fraction,
                 aligned_fraction,
+                mean_read_length_bp,
+                Self::sanitize_tsv_cell(&gene_support_requested_gene_ids_json),
+                Self::sanitize_tsv_cell(&gene_support_matched_gene_ids_json),
+                Self::sanitize_tsv_cell(&gene_support_missing_gene_ids_json),
+                Self::sanitize_tsv_cell(&gene_support_complete_rule),
+                gene_support_aligned_base_count,
+                gene_support_accepted_target_count,
+                gene_support_accepted_target_fraction_total,
+                gene_support_accepted_target_fraction_aligned,
+                gene_support_fragment_count,
+                gene_support_complete_count,
+                gene_support_complete_strict_count,
+                gene_support_complete_exact_count,
+                gene_support_mean_assigned_read_length_bp,
+                Self::sanitize_tsv_cell(&gene_support_exon_support_json),
+                Self::sanitize_tsv_cell(&gene_support_exon_pair_support_json),
+                Self::sanitize_tsv_cell(&gene_support_direct_transition_support_json),
                 Self::sanitize_tsv_cell(&exon_json),
                 Self::sanitize_tsv_cell(&junction_json),
                 Self::sanitize_tsv_cell(&origin_class_counts_json),
@@ -3384,6 +3555,18 @@ impl GentleEngine {
             path: path.to_string(),
             report_count: selected.len(),
             appended: append,
+            gene_ids: gene_ids.to_vec(),
+            complete_rule: match complete_rule {
+                RnaReadGeneSupportCompleteRule::Near => {
+                    gentle_protocol::RnaReadGeneSupportCompleteRule::Near
+                }
+                RnaReadGeneSupportCompleteRule::Strict => {
+                    gentle_protocol::RnaReadGeneSupportCompleteRule::Strict
+                }
+                RnaReadGeneSupportCompleteRule::Exact => {
+                    gentle_protocol::RnaReadGeneSupportCompleteRule::Exact
+                }
+            },
         })
     }
 
@@ -4164,6 +4347,15 @@ impl GentleEngine {
             .iter()
             .copied()
             .fold(0usize, |acc, count| acc.saturating_add(count as usize))
+    }
+
+    pub(super) fn sum_read_length_bases(length_counts: &[u64]) -> u64 {
+        length_counts
+            .iter()
+            .enumerate()
+            .fold(0u64, |acc, (length_bp, count)| {
+                acc.saturating_add((length_bp as u64).saturating_mul(*count))
+            })
     }
 
     fn classify_rna_read_full_length(

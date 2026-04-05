@@ -3322,7 +3322,7 @@ pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -4158,13 +4158,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "export-sample-sheet" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads export-sample-sheet requires OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]"
+                    "rna-reads export-sample-sheet requires OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]"
                         .to_string(),
                 );
             }
             let path = tokens[2].clone();
             let mut seq_id: Option<String> = None;
             let mut report_ids: Vec<String> = vec![];
+            let mut gene_ids: Vec<String> = vec![];
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
             let mut append = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -4187,6 +4189,24 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         report_ids.push(raw);
                     }
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads export-sample-sheet",
+                        )?;
+                        gene_ids.push(raw);
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads export-sample-sheet",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                    }
                     "--append" => {
                         append = true;
                         idx += 1;
@@ -4202,6 +4222,8 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 path,
                 seq_id,
                 report_ids,
+                gene_ids,
+                complete_rule,
                 append,
             })
         }
@@ -4488,7 +4510,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

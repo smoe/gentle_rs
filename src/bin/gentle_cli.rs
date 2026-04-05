@@ -3673,6 +3673,45 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_rna_reads_export_sample_sheet() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "rna-reads".to_string(),
+            "export-sample-sheet".to_string(),
+            "samples.tsv".to_string(),
+            "--seq-id".to_string(),
+            "seq_a".to_string(),
+            "--report-id".to_string(),
+            "tp53_reads".to_string(),
+            "--gene".to_string(),
+            "TP53".to_string(),
+            "--gene".to_string(),
+            "TP73".to_string(),
+            "--complete-rule".to_string(),
+            "strict".to_string(),
+            "--append".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::RnaReadsExportSampleSheet {
+                path,
+                seq_id,
+                report_ids,
+                gene_ids,
+                complete_rule,
+                append,
+            })
+                if path == "samples.tsv"
+                    && seq_id.as_deref() == Some("seq_a")
+                    && report_ids == vec!["tp53_reads".to_string()]
+                    && gene_ids == vec!["TP53".to_string(), "TP73".to_string()]
+                    && complete_rule == gentle::engine::RnaReadGeneSupportCompleteRule::Strict
+                    && append
+        ));
+    }
+
+    #[test]
     fn test_forwarded_resources_sync_rebase_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_rebase_withrefm(td.path());

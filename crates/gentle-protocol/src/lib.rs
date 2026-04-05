@@ -1760,6 +1760,10 @@ pub struct RnaReadSampleSheetExport {
     pub path: String,
     pub report_count: usize,
     pub appended: bool,
+    #[serde(default)]
+    pub gene_ids: Vec<String>,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

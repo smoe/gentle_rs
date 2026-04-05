@@ -4193,6 +4193,10 @@ pub enum Operation {
         seq_id: Option<SeqId>,
         #[serde(default)]
         report_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        gene_ids: Vec<String>,
+        #[serde(default)]
+        complete_rule: RnaReadGeneSupportCompleteRule,
         #[serde(default)]
         append: bool,
     },

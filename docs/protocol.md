@@ -878,7 +878,7 @@ Current draft operations:
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
 - `ExportRnaReadHitsFasta { report_id, path, selection, selected_record_indices?, subset_spec? }`
-- `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
+- `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
 - `ExportRnaReadExonPathsTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale, variant }`
@@ -3044,13 +3044,19 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         `selected_record_indices[]`, `score_density_variant`,
         `score_bin_index`, `score_bin_count`)
 - Sample-sheet export:
-  - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
+  - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
   - output: TSV with run/read metrics, sparse-origin request provenance
     (`report_mode`, `origin_mode`, `target_gene_count`,
     `target_gene_ids_json`, `roi_seed_capture_enabled`), JSON-serialized
     exon/junction frequency columns, and `origin_class_counts_json` for
     cohort-level downstream analysis.
+  - additional per-report columns include `mean_read_length_bp`; when one or
+    more `gene_ids[]` are requested the same row also carries
+    accepted-target counts/fractions, fragment vs complete counts,
+    `gene_support_mean_assigned_read_length_bp`, and JSON-serialized
+    exon / exon-pair / direct-transition support tables for the requested gene
+    cohort.
 - Shared-shell command family:
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
@@ -3061,7 +3067,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
-  - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
+  - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`

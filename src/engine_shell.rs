@@ -1471,6 +1471,8 @@ pub enum ShellCommand {
         path: String,
         seq_id: Option<String>,
         report_ids: Vec<String>,
+        gene_ids: Vec<String>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
         append: bool,
     },
     RnaReadsExportExonPathsTsv {
@@ -6687,9 +6689,11 @@ impl ShellCommand {
                 path,
                 seq_id,
                 report_ids,
+                gene_ids,
+                complete_rule,
                 append,
             } => format!(
-                "export RNA-read sample sheet to '{}' (seq_id='{}', report_ids={}, append={})",
+                "export RNA-read sample sheet to '{}' (seq_id='{}', report_ids={}, genes={}, complete_rule={}, append={})",
                 path,
                 seq_id.as_deref().unwrap_or("*"),
                 if report_ids.is_empty() {
@@ -6697,6 +6701,12 @@ impl ShellCommand {
                 } else {
                     report_ids.join(",")
                 },
+                if gene_ids.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    gene_ids.join(",")
+                },
+                complete_rule.as_str(),
                 append
             ),
             Self::RnaReadsExportExonPathsTsv {
@@ -17906,10 +17916,19 @@ fn execute_shell_command_with_options_inner(
             path,
             seq_id,
             report_ids,
+            gene_ids,
+            complete_rule,
             append,
         } => {
             let export = engine
-                .export_rna_read_sample_sheet(path, seq_id.as_deref(), report_ids, *append)
+                .export_rna_read_sample_sheet(
+                    path,
+                    seq_id.as_deref(),
+                    report_ids,
+                    gene_ids,
+                    *complete_rule,
+                    *append,
+                )
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
@@ -17920,6 +17939,8 @@ fn execute_shell_command_with_options_inner(
                     "append": export.appended,
                     "seq_id": seq_id,
                     "report_ids": report_ids,
+                    "gene_ids": export.gene_ids,
+                    "complete_rule": export.complete_rule.as_str(),
                 }),
             }
         }

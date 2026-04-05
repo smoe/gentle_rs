@@ -1201,7 +1201,7 @@ Shared shell command:
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
-    - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
+    - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
@@ -1308,8 +1308,16 @@ Shared shell command:
       `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
       (`report_mode`, `origin_mode`, `target_gene_count`,
-      `target_gene_ids_json`, `roi_seed_capture_enabled`) and
-      `origin_class_counts_json` alongside exon/junction frequency JSON fields
+      `target_gene_ids_json`, `roi_seed_capture_enabled`),
+      `mean_read_length_bp`, and `origin_class_counts_json` alongside
+      exon/junction frequency JSON fields
+    - when `rna-reads export-sample-sheet` is given one or more `--gene`
+      arguments, each report row also carries target-gene cohort metrics:
+      - accepted-target counts/fractions
+      - fragment vs complete counts (`near|strict|exact`)
+      - `gene_support_mean_assigned_read_length_bp`
+      - JSON-serialized exon support, ordered exon-pair co-presence, and
+        neighboring direct-transition support
     - report compaction and checkpoint options:
       - `--report-mode full` (default): persist retained top hits as ranked
       - `--report-mode seed_passed_only`: persist only retained hits that

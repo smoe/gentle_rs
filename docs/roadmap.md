@@ -2004,6 +2004,11 @@ Status:
   - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV
     cohort summaries with per-report frequency JSON columns for downstream
     annotation workflows.
+  - `rna-reads export-sample-sheet` now also reports per-sample mean read
+    length and optional target-gene cohort metrics (`--gene ...`) including
+    accepted-target abundance, mean assigned-read length, and JSON-serialized
+    exon / exon-pair / direct-transition support for batch comparison across
+    many saved reports.
   - RNA-read report listing/sample-sheet exports now carry sparse-origin
     request provenance (`origin_mode`, target-gene counts/IDs, ROI-capture
     flag) so multi-gene scaffold runs remain auditable in cohort-level tables.

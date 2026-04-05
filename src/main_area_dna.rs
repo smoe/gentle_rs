@@ -63,8 +63,9 @@ use crate::{
         RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
         RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretProgress, RnaReadInterpretationHit,
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
@@ -16388,6 +16389,8 @@ impl MainAreaDna {
                             path: path.display().to_string(),
                             seq_id: Some(view.seq_id.clone()),
                             report_ids: vec![],
+                            gene_ids: vec![],
+                            complete_rule: RnaReadGeneSupportCompleteRule::Near,
                             append: false,
                         });
                     }
