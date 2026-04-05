@@ -12,6 +12,8 @@
 //! - state-summary structs that should remain slower-changing than
 //!   `src/engine.rs`
 
+use std::collections::HashMap;
+
 pub use gentle_protocol::{
     Capabilities, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayQuerySpec,
     DotplotQuerySeries, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
@@ -1334,6 +1336,640 @@ pub struct GenomeTrackSyncReport {
     pub failed_imports: usize,
     pub warnings_count: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LigationProtocol {
+    Sticky,
+    Blunt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExportFormat {
+    GenBank,
+    Fasta,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RenderSvgMode {
+    Linear,
+    Circular,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PrimerLibraryMode {
+    Enumerate,
+    Sample,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PrimerDesignBackend {
+    #[default]
+    Auto,
+    Internal,
+    Primer3,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PcrPrimerSpec {
+    pub sequence: String,
+    pub anneal_len: Option<usize>,
+    pub max_mismatches: Option<usize>,
+    pub require_3prime_exact_bases: Option<usize>,
+    pub library_mode: Option<PrimerLibraryMode>,
+    pub max_variants: Option<usize>,
+    pub sample_seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnpMutationSpec {
+    pub zero_based_position: usize,
+    pub reference: String,
+    pub alternate: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerDesignBaseLock {
+    pub offset_0based: usize,
+    pub base: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerDesignPairConstraint {
+    pub require_roi_flanking: bool,
+    #[serde(default)]
+    pub required_amplicon_motifs: Vec<String>,
+    #[serde(default)]
+    pub forbidden_amplicon_motifs: Vec<String>,
+    pub fixed_amplicon_start_0based: Option<usize>,
+    pub fixed_amplicon_end_0based_exclusive: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PrimerDesignSideConstraint {
+    pub min_length: usize,
+    pub max_length: usize,
+    pub location_0based: Option<usize>,
+    pub start_0based: Option<usize>,
+    pub end_0based: Option<usize>,
+    pub min_tm_c: f64,
+    pub max_tm_c: f64,
+    pub min_gc_fraction: f64,
+    pub max_gc_fraction: f64,
+    pub max_anneal_hits: usize,
+    pub non_annealing_5prime_tail: Option<String>,
+    pub fixed_5prime: Option<String>,
+    pub fixed_3prime: Option<String>,
+    #[serde(default)]
+    pub required_motifs: Vec<String>,
+    #[serde(default)]
+    pub forbidden_motifs: Vec<String>,
+    #[serde(default)]
+    pub locked_positions: Vec<PrimerDesignBaseLock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPrimerRecord {
+    pub sequence: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub anneal_length_bp: usize,
+    pub non_annealing_5prime_tail_bp: usize,
+    pub tm_c: f64,
+    pub gc_fraction: f64,
+    pub anneal_hits: usize,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPairRuleFlags {
+    pub roi_covered: bool,
+    pub amplicon_size_in_range: bool,
+    pub tm_delta_in_range: bool,
+    pub forward_secondary_structure_ok: bool,
+    pub reverse_secondary_structure_ok: bool,
+    pub primer_pair_dimer_risk_low: bool,
+    pub forward_three_prime_gc_clamp: bool,
+    pub reverse_three_prime_gc_clamp: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPairRecord {
+    pub rank: usize,
+    pub score: f64,
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub tm_delta_c: f64,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
+    pub rule_flags: PrimerDesignPairRuleFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerInsertionIntent {
+    pub requested_forward_3prime_end_0based_exclusive: usize,
+    pub requested_reverse_3prime_start_0based: usize,
+    pub forward_extension_5prime: String,
+    pub reverse_extension_5prime: String,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub max_anchor_shift_bp: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerInsertionPairCompensation {
+    pub rank: usize,
+    pub forward_anchor_shift_bp: isize,
+    pub reverse_anchor_shift_bp: isize,
+    pub within_shift_budget: bool,
+    pub compensable: bool,
+    pub forward_compensation_5prime: String,
+    pub reverse_compensation_5prime: String,
+    pub compensated_forward_5prime_tail: String,
+    pub compensated_reverse_5prime_tail: String,
+    pub compensated_forward_sequence: String,
+    pub compensated_reverse_sequence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerInsertionContextReport {
+    pub requested_forward_3prime_end_0based_exclusive: usize,
+    pub requested_reverse_3prime_start_0based: usize,
+    pub forward_extension_5prime: String,
+    pub reverse_extension_5prime: String,
+    pub forward_window_start_0based: usize,
+    pub forward_window_end_0based_exclusive: usize,
+    pub reverse_window_start_0based: usize,
+    pub reverse_window_end_0based_exclusive: usize,
+    pub max_anchor_shift_bp: usize,
+    pub uncompensable_pair_count: usize,
+    pub out_of_shift_budget_pair_count: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerInsertionPairCompensation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OverlapExtensionMutagenesisConstraints {
+    pub overlap_bp: usize,
+    pub outer_forward: PrimerDesignSideConstraint,
+    pub outer_reverse: PrimerDesignSideConstraint,
+    pub inner_forward: PrimerDesignSideConstraint,
+    pub inner_reverse: PrimerDesignSideConstraint,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignRejectionSummary {
+    pub out_of_window: usize,
+    pub gc_or_tm_out_of_bounds: usize,
+    pub non_unique_anneal: usize,
+    pub amplicon_or_roi_failure: usize,
+    pub primer_constraint_failure: usize,
+    pub pair_constraint_failure: usize,
+    pub pair_evaluation_limit_skipped: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub forward: PrimerDesignSideConstraint,
+    pub reverse: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_tm_delta_c: f64,
+    pub max_pairs: usize,
+    pub pair_count: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerDesignPairRecord>,
+    #[serde(default)]
+    pub rejection_summary: PrimerDesignRejectionSummary,
+    #[serde(default)]
+    pub backend: PrimerDesignBackendInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insertion_context: Option<PrimerInsertionContextReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignBackendInfo {
+    pub requested: String,
+    pub used: String,
+    pub fallback_reason: Option<String>,
+    pub primer3_executable: Option<String>,
+    pub primer3_version: Option<String>,
+    pub primer3_explain: Option<String>,
+    pub primer3_request_boulder_io: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Primer3PreflightReport {
+    pub backend: String,
+    pub executable: String,
+    pub reachable: bool,
+    pub version_probe_ok: bool,
+    pub status_code: Option<i32>,
+    pub version: Option<String>,
+    pub detail: Option<String>,
+    pub error: Option<String>,
+    pub probe_time_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignReportSummary {
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub pair_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrAssayRuleFlags {
+    pub roi_covered: bool,
+    pub amplicon_size_in_range: bool,
+    pub primer_tm_delta_in_range: bool,
+    pub probe_inside_amplicon: bool,
+    pub probe_tm_delta_in_range: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrAssayRecord {
+    pub rank: usize,
+    pub score: f64,
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub probe: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub primer_tm_delta_c: f64,
+    pub probe_tm_delta_c: f64,
+    pub rule_flags: QpcrAssayRuleFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignRejectionSummary {
+    pub primer_pair: PrimerDesignRejectionSummary,
+    pub probe_out_of_window: usize,
+    pub probe_gc_or_tm_out_of_bounds: usize,
+    pub probe_non_unique_anneal: usize,
+    pub probe_or_assay_failure: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub forward: PrimerDesignSideConstraint,
+    pub reverse: PrimerDesignSideConstraint,
+    pub probe: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_tm_delta_c: f64,
+    pub max_probe_tm_delta_c: f64,
+    pub max_assays: usize,
+    pub assay_count: usize,
+    #[serde(default)]
+    pub assays: Vec<QpcrAssayRecord>,
+    #[serde(default)]
+    pub rejection_summary: QpcrDesignRejectionSummary,
+    #[serde(default)]
+    pub backend: PrimerDesignBackendInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignReportSummary {
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub assay_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideU6TerminatorWindow {
+    SpacerOnly,
+    #[default]
+    SpacerPlusTail,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideOligoExportFormat {
+    CsvTable,
+    PlateCsv,
+    Fasta,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideOligoPlateFormat {
+    #[default]
+    Plate96,
+    Plate384,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideSet {
+    pub guide_set_id: String,
+    pub guides: Vec<GuideCandidate>,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideCandidate {
+    pub guide_id: String,
+    pub seq_id: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: String,
+    pub protospacer: String,
+    pub pam: String,
+    pub nuclease: String,
+    pub cut_offset_from_protospacer_start: usize,
+    pub rank: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuideSetSummary {
+    pub guide_set_id: String,
+    pub guide_count: usize,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuidePracticalFilterConfig {
+    pub gc_min: Option<f64>,
+    pub gc_max: Option<f64>,
+    pub max_homopolymer_run: Option<usize>,
+    #[serde(default)]
+    pub max_homopolymer_run_per_base: HashMap<String, usize>,
+    pub reject_ambiguous_bases: bool,
+    pub avoid_u6_terminator_tttt: bool,
+    pub u6_terminator_window: GuideU6TerminatorWindow,
+    pub max_dinucleotide_repeat_units: Option<usize>,
+    #[serde(default)]
+    pub forbidden_motifs: Vec<String>,
+    pub required_5prime_base: Option<String>,
+    pub allow_5prime_g_extension: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideFilterReason {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuidePracticalFilterResult {
+    pub guide_id: String,
+    pub passed: bool,
+    #[serde(default)]
+    pub reasons: Vec<GuideFilterReason>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub metrics: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuidePracticalFilterReport {
+    pub guide_set_id: String,
+    pub generated_at_unix_ms: u128,
+    pub config: GuidePracticalFilterConfig,
+    pub passed_count: usize,
+    pub rejected_count: usize,
+    #[serde(default)]
+    pub results: Vec<GuidePracticalFilterResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoTemplateSpec {
+    pub template_id: String,
+    pub description: String,
+    pub forward_prefix: String,
+    pub forward_suffix: String,
+    pub reverse_prefix: String,
+    pub reverse_suffix: String,
+    pub reverse_uses_reverse_complement_of_spacer: bool,
+    pub uppercase_output: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoRecord {
+    pub guide_id: String,
+    pub rank: Option<usize>,
+    pub forward_oligo: String,
+    pub reverse_oligo: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoSet {
+    pub oligo_set_id: String,
+    pub guide_set_id: String,
+    pub generated_at_unix_ms: u128,
+    pub template: GuideOligoTemplateSpec,
+    pub apply_5prime_g_extension: bool,
+    #[serde(default)]
+    pub records: Vec<GuideOligoRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoExportReport {
+    pub guide_set_id: String,
+    pub oligo_set_id: String,
+    pub format: String,
+    pub path: String,
+    pub exported_records: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideProtocolExportReport {
+    pub guide_set_id: String,
+    pub oligo_set_id: String,
+    pub path: String,
+    pub guide_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelDomainSpec {
+    pub name: String,
+    pub start_aa: usize,
+    pub end_aa: usize,
+    #[serde(default)]
+    pub color_hex: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IsoformTranscriptGeometryMode {
+    #[default]
+    Exon,
+    Cds,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelIsoformSpec {
+    pub isoform_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transactivation_class: Option<String>,
+    #[serde(default)]
+    pub expected_length_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_start_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_end_aa: Option<usize>,
+    #[serde(default)]
+    pub domains: Vec<IsoformPanelDomainSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelResource {
+    pub schema: String,
+    pub panel_id: String,
+    pub gene_symbol: String,
+    #[serde(default)]
+    pub transcript_geometry_mode: IsoformTranscriptGeometryMode,
+    #[serde(default)]
+    pub assembly: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub isoforms: Vec<IsoformPanelIsoformSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationIssue {
+    pub severity: String,
+    pub code: String,
+    pub message: String,
+    pub isoform_id: Option<String>,
+    pub transcript_probe: Option<String>,
+    pub domain_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationIsoformSummary {
+    pub isoform_id: String,
+    pub label: String,
+    pub transcript_probe_count: usize,
+    pub domain_count: usize,
+    pub expected_length_aa: Option<usize>,
+    pub max_domain_end_aa: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationReport {
+    pub schema: String,
+    pub path: String,
+    pub panel_id: String,
+    pub gene_symbol: String,
+    pub assembly: Option<String>,
+    pub isoform_count: usize,
+    pub transcript_probe_count: usize,
+    pub unique_transcript_probe_count: usize,
+    pub domain_count: usize,
+    pub issue_count: usize,
+    pub status: String,
+    pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,
+    pub issues: Vec<IsoformPanelValidationIssue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AnchorBoundary {
+    Start,
+    End,
+    Middle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnchorDirection {
+    Upstream,
+    Downstream,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SequenceAnchor {
+    Position {
+        zero_based: usize,
+    },
+    FeatureBoundary {
+        feature_kind: Option<String>,
+        feature_label: Option<String>,
+        boundary: AnchorBoundary,
+        occurrence: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
