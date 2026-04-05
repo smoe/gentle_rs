@@ -87,6 +87,13 @@ order. Durable architecture constraints and decisions remain in
     - the portable isoform-panel resource and validation report structs now
       also live there so curated panel import, validation, and renderer-facing
       adapters share one slower-changing schema surface
+    - the portable planning profile/objective/estimate/suggestion contracts now
+      also live there so GUI/CLI/agent-facing planning surfaces share one
+      durable schema layer while merge/normalization behavior remains in
+      `src/engine.rs`
+    - the portable workflow/candidate macro template records now also live
+      there so template authoring, listing, and shell/MCP helper surfaces share
+      one stable schema layer while template execution stays in `src/engine.rs`
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
