@@ -7040,6 +7040,48 @@ Error: `{err}`"
         }
     }
 
+    fn prompt_export_rack_isometric_svg(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack isometric export requires a non-empty rack id".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(rack_id, "rack_isometric");
+        let default_file_name = format!("{stem}.isometric.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack isometric SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackIsometricSvg {
+                rack_id: rack_id.to_string(),
+                path: path_text.clone(),
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote rack isometric SVG to '{path_text}'"));
+                self.rack_view_status = self.app_status.clone();
+            }
+            Err(err) => {
+                self.app_status = format!("Could not export rack isometric SVG: {}", err.message);
+                self.rack_view_status = self.app_status.clone();
+            }
+        }
+    }
+
     fn prompt_export_rack_openscad(&mut self, rack_id: &str) {
         let rack_id = rack_id.trim();
         if rack_id.is_empty() {
@@ -9041,6 +9083,13 @@ Error: `{err}`"
                 .clicked()
             {
                 self.prompt_export_rack_fabrication_svg(&rack.rack_id);
+            }
+            if ui
+                .button("Isometric SVG...")
+                .on_hover_text("Export a presentation-grade pseudo-3D rack SVG for the current rack using the selected physical carrier template")
+                .clicked()
+            {
+                self.prompt_export_rack_isometric_svg(&rack.rack_id);
             }
             if ui
                 .button("OpenSCAD...")
@@ -36367,6 +36416,16 @@ Error: `{err}`"
                 template,
             } => format!(
                 "Export rack fabrication SVG: rack_id={}, template={}, path={}",
+                rack_id.trim(),
+                template.as_str(),
+                path
+            ),
+            Operation::ExportRackIsometricSvg {
+                rack_id,
+                path,
+                template,
+            } => format!(
+                "Export rack isometric SVG: rack_id={}, template={}, path={}",
                 rack_id.trim(),
                 template.as_str(),
                 path

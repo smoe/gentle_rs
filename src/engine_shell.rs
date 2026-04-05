@@ -736,6 +736,11 @@ pub enum ShellCommand {
         output: String,
         template: RackPhysicalTemplateKind,
     },
+    RacksIsometricSvg {
+        rack_id: String,
+        output: String,
+        template: RackPhysicalTemplateKind,
+    },
     RacksOpenScad {
         rack_id: String,
         output: String,
@@ -4825,6 +4830,16 @@ impl ShellCommand {
                 template,
             } => format!(
                 "export rack fabrication SVG for '{}' to '{}' (template={})",
+                rack_id.trim(),
+                output,
+                template.as_str()
+            ),
+            Self::RacksIsometricSvg {
+                rack_id,
+                output,
+                template,
+            } => format!(
+                "export rack isometric SVG for '{}' to '{}' (template={})",
                 rack_id.trim(),
                 output,
                 template.as_str()
@@ -11201,6 +11216,49 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         template,
                     })
                 }
+                "isometric-svg" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks isometric-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks isometric-svg requires a non-empty RACK_ID".to_string()
+                        );
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks isometric-svg requires a non-empty OUTPUT.svg".to_string()
+                        );
+                    }
+                    let mut template = RackPhysicalTemplateKind::default();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks isometric-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksIsometricSvg {
+                        rack_id,
+                        output,
+                        template,
+                    })
+                }
                 "openscad" => {
                     if tokens.len() < 4 {
                         return Err(
@@ -14122,6 +14180,23 @@ fn execute_shell_command_with_options_inner(
         } => {
             let op_result = engine
                 .apply(Operation::ExportRackFabricationSvg {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    template: *template,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksIsometricSvg {
+            rack_id,
+            output,
+            template,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackIsometricSvg {
                     rack_id: rack_id.clone(),
                     path: output.clone(),
                     template: *template,

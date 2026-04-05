@@ -7228,7 +7228,7 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
 }
 
 #[test]
-fn export_rack_fabrication_svg_and_openscad_include_template_markers() {
+fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers() {
     let mut state = ProjectState::default();
     state
         .sequences
@@ -7273,6 +7273,19 @@ fn export_rack_fabrication_svg_and_openscad_include_template_markers() {
     assert!(fabrication_svg.contains("data-rack-physical-template=\"storage_pcr_tube_rack\""));
     assert!(fabrication_svg.contains("GENtle rack fabrication sketch"));
     assert!(fabrication_svg.contains("front label strip"));
+
+    let isometric_path = temp.path().join("rack.isometric.svg");
+    engine
+        .apply(Operation::ExportRackIsometricSvg {
+            rack_id: rack_id.clone(),
+            path: isometric_path.display().to_string(),
+            template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        })
+        .expect("isometric export");
+    let isometric_svg = fs::read_to_string(&isometric_path).expect("read isometric svg");
+    assert!(isometric_svg.contains("data-rack-isometric-template=\"pipetting_pcr_tube_rack\""));
+    assert!(isometric_svg.contains("GENtle rack isometric sketch"));
+    assert!(isometric_svg.contains("Occupancy"));
 
     let scad_path = temp.path().join("rack.scad");
     engine

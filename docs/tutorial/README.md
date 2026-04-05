@@ -55,6 +55,21 @@ reusable gel lane set from it:
   continues into `Containers`, `Arrangements`, graph inspection, and
   arrangement-level gel export
 
+If you want to continue from that arrangement into a physical carrier and one
+README-ready rack figure:
+
+- Use the Gibson physical rack tutorial:
+  [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md)
+- fastest setup path:
+  start from the same arrangement-ready tutorial project as above:
+  `File -> Open Tutorial Project...` -> `Gibson Arrangements Starter Project (offline)`
+- this continues into:
+  - linked physical rack inspection
+  - pseudo-3D/isometric SVG export
+  - carrier labels
+  - fabrication SVG
+  - OpenSCAD
+
 If you want a sequence-analysis example with screenshots:
 
 - Use the TP73 cDNA-vs-genomic dotplot walkthrough:
@@ -121,6 +136,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first pharmacogenomic reporter planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable workflow material. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
+| [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Physical rack export, README-grade isometric figure generation, carrier-label/OpenSCAD handoff | Hand-written walkthrough for taking the arrangement-ready Gibson starter into the linked rack layer and exporting one pseudo-3D/isometric hero SVG plus the other physical carrier projections. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
@@ -176,6 +192,15 @@ Use the labels above as trust/maintenance signals:
 4. Export one arrangement-level gel with ladders flanking the sample lanes
 5. Use the Gibson specialist tutorial separately if you also want to replay the
    cloning step itself
+
+### Path J: Gibson physical rack and README figure export
+
+1. Read [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md)
+2. Start from the arrangement-ready Gibson tutorial project
+3. Open the linked rack draft from the arrangement row
+4. Export the pseudo-3D/isometric rack SVG intended for README reuse
+5. Optionally export fabrication SVG, carrier labels, and OpenSCAD from the
+   same rack state
 
 ### Path E: Sequence-analysis and visualization
 

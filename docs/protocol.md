@@ -847,6 +847,7 @@ Current draft operations:
 - `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `ExportRackFabricationSvg { rack_id, path, template }`
+- `ExportRackIsometricSvg { rack_id, path, template }`
 - `ExportRackOpenScad { rack_id, path, template }`
 - `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template, preset }`
 - `ExportRackSimulationJson { rack_id, path, template }`
@@ -1998,6 +1999,20 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - fabrication sketching
   - bench planning
   - future simulation adapters
+
+`ExportRackIsometricSvg` semantics:
+
+- Writes one deterministic pseudo-3D/isometric SVG for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg` and `ExportRackOpenScad`.
+- Consumes the same linked rack snapshot:
+  - rows / columns / blocked coordinates
+  - occupied placements
+  - arrangement ids and colors
+- Intended downstream uses:
+  - README / documentation hero figures
+  - bench-facing communication assets
+  - presentation-ready rack review without leaving the shared engine path
 
 `ExportRackOpenScad` semantics:
 

@@ -2977,6 +2977,12 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackIsometricSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportRackOpenScad {
         rack_id: String,
         path: String,
@@ -4653,6 +4659,7 @@ impl GentleEngine {
                 "SetRackBlockedCoordinates".to_string(),
                 "ExportRackLabelsSvg".to_string(),
                 "ExportRackFabricationSvg".to_string(),
+                "ExportRackIsometricSvg".to_string(),
                 "ExportRackOpenScad".to_string(),
                 "ExportRackCarrierLabelsSvg".to_string(),
                 "ExportRackSimulationJson".to_string(),
@@ -5966,6 +5973,7 @@ impl GentleEngine {
                 | Operation::ExportProtocolCartoonTemplateJson { .. }
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
+                | Operation::ExportRackIsometricSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }

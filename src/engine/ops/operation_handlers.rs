@@ -3494,6 +3494,21 @@ impl GentleEngine {
                     spec.overall_depth_mm
                 ));
             }
+            Operation::ExportRackIsometricSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_isometric_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack isometric SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
             Operation::ExportRackOpenScad {
                 rack_id,
                 path,

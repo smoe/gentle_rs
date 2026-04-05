@@ -1171,6 +1171,7 @@ order. Durable architecture constraints and decisions remain in
       - `storage_pcr_tube_rack`
       - `pipetting_pcr_tube_rack`
     - top-view rack/fabrication SVG export
+    - pseudo-3D/isometric rack SVG export for presentation/README use
     - parameterized OpenSCAD export
     - rack-window selectors/actions plus shared shell/CLI parity
   - rack-editor interaction baseline now also includes:
@@ -2601,6 +2602,7 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       - physical rack fabrication/export now ships on the same linked
         arrangement/rack model:
         - deterministic fabrication/planning SVG
+        - deterministic pseudo-3D/isometric rack SVG
         - parameterized OpenSCAD export
         - carrier-matched front-strip/module-label SVG export
         - first simulator-facing JSON export on the same template geometry

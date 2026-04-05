@@ -1,5 +1,5 @@
 {
-   "command_count": 286,
+   "command_count": 287,
    "commands": [
       {
          "aliases": [
@@ -517,6 +517,20 @@
          "path": "racks fabrication-svg",
          "summary": "Export one deterministic top-view fabrication/planning SVG for a saved rack.",
          "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackIsometricSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks isometric-svg",
+         "summary": "Export one deterministic pseudo-3D/isometric SVG for a saved rack.",
+         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
       },
       {
          "aliases": [],
