@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v2",
   "id": "vkorc1_warfarin_promoter_luciferase_gui",
-  "title": "VKORC1 / rs9923231 Warfarin-Response Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+  "title": "VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
   "catalog": {
     "order": 2,
     "path": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
@@ -13,6 +13,6 @@
       "cloning_planning",
       "pharmacogenomics"
     ],
-    "notes": "Hand-written GUI-first tutorial for VKORC1/rs9923231 promoter reporter planning with explicit engine and CLI mapping."
+    "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping."
   }
 }

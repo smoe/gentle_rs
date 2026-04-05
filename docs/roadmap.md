@@ -752,10 +752,25 @@ order. Durable architecture constraints and decisions remain in
         (generated from a synthetic illustrative construct record so the
         communication figure can use real GENtle circular-map styling before
         the end-to-end luciferase workflow is fully wired)
-      - the GUI-first VKORC1 / warfarin reporter tutorial and its workflow
-        skeleton now also end with a shared-engine circular construct SVG
-        export, so the walkthrough produces a readable endpoint artifact
-        instead of stopping at a preview sequence id
+      - the GUI-first VKORC1 tutorial has now been tightened around the
+        intended ClawBio handoff: one pharmacogenomic alert becomes one
+        mammalian promoter-reporter planning workflow rather than a broad
+        "warfarin response" claim
+      - that tutorial and its workflow skeleton now also end with a
+        shared-engine circular construct SVG export, so the walkthrough
+        produces a readable endpoint artifact instead of stopping at a preview
+        sequence id
+      - the tutorial now also carries a small reproducibility bundle under
+        `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/`
+        (`report.md`, `result.json`, `commands.sh`) so the handoff can be
+        shown, replayed, and discussed without re-reading the full page
+      - a second, separate ClawBio-motivated tutorial is now reserved as a
+        follow-on planning track:
+        `docs/tutorial/vkorc1_warfarin_factorx_followup_planning.md`
+      - that companion deliberately stays out of the first tutorial because it
+        changes the question from promoter-fragment transfer into a mammalian
+        reporter backbone to a more downstream warfarin/Factor X mechanism
+        design
       - shared circular SVG export now contributes directly to that figure:
         transparent canvas, explicit radial SNP markers for `variation`
         features, and transcription-start direction markers for

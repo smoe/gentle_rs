@@ -1,8 +1,8 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
-  "title": "VKORC1 rs9923231 promoter luciferase assay planning (GUI-first parity skeleton)",
-  "summary": "Plans a VKORC1 / rs9923231 promoter -> luciferase reporter workflow from dbSNP-driven locus retrieval through TSS-centered fragment extraction, vector import, assembly preview, circular construct-map export, and junction-PCR planning.",
+  "title": "VKORC1 rs9923231 PGx-alert-to-mammalian-luciferase reporter planning (GUI-first parity skeleton)",
+  "summary": "Plans a VKORC1 / rs9923231 pharmacogenomic handoff from dbSNP-driven locus retrieval through TSS-centered promoter-fragment extraction, mammalian luciferase backbone import, construct preview, circular construct-map export, and junction-PCR planning.",
   "test_mode": "skip",
   "required_files": [
     "assets/genomes.json"

@@ -29,9 +29,9 @@ If you want the big-picture map first:
 - Use the tutorial landscape overview:
   [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
 
-If you are GUI-first and want one concrete cloning workflow:
+If you are GUI-first and want one concrete pharmacogenomic handoff into cloning:
 
-- Use the VKORC1 / warfarin-response promoter/luciferase walkthrough:
+- Use the VKORC1 / rs9923231 PGx-alert-to-mammalian-reporter walkthrough:
   [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md)
 
 If you want to test the destination-first Gibson specialist end-to-end:
