@@ -1626,6 +1626,391 @@ impl GentleEngine {
         Ok(rows.len())
     }
 
+    fn rack_physical_template_spec(
+        template: RackPhysicalTemplateKind,
+        profile: &RackProfileSnapshot,
+    ) -> RackPhysicalTemplateSpec {
+        let (
+            family,
+            pitch_x_mm,
+            pitch_y_mm,
+            opening_diameter_mm,
+            inner_wall_mm,
+            outer_wall_mm,
+            floor_thickness_mm,
+            rack_height_mm,
+            edge_margin_mm,
+            corner_radius_mm,
+            front_label_strip_depth_mm,
+            front_label_strip_recess_mm,
+        ) = match template {
+            RackPhysicalTemplateKind::StoragePcrTubeRack => (
+                RackPhysicalTemplateFamily::Storage,
+                10.0,
+                10.0,
+                9.2,
+                0.8,
+                1.2,
+                1.2,
+                12.0,
+                1.8,
+                1.4,
+                6.0,
+                0.8,
+            ),
+            RackPhysicalTemplateKind::PipettingPcrTubeRack => (
+                RackPhysicalTemplateFamily::Pipetting,
+                14.0,
+                14.0,
+                9.2,
+                4.8,
+                2.4,
+                2.0,
+                18.0,
+                4.0,
+                2.4,
+                8.0,
+                1.2,
+            ),
+        };
+        let overall_width_mm = if profile.columns == 0 {
+            0.0
+        } else {
+            edge_margin_mm * 2.0
+                + opening_diameter_mm
+                + profile.columns.saturating_sub(1) as f32 * pitch_x_mm
+        };
+        let overall_depth_mm = if profile.rows == 0 {
+            front_label_strip_depth_mm
+        } else {
+            front_label_strip_depth_mm
+                + edge_margin_mm * 2.0
+                + opening_diameter_mm
+                + profile.rows.saturating_sub(1) as f32 * pitch_y_mm
+        };
+        RackPhysicalTemplateSpec {
+            kind: template,
+            family,
+            container_format: "pcr_tube_0_2ml".to_string(),
+            rows: profile.rows,
+            columns: profile.columns,
+            pitch_x_mm,
+            pitch_y_mm,
+            opening_diameter_mm,
+            inner_wall_mm,
+            outer_wall_mm,
+            floor_thickness_mm,
+            rack_height_mm,
+            edge_margin_mm,
+            corner_radius_mm,
+            front_label_strip_depth_mm,
+            front_label_strip_recess_mm,
+            overall_width_mm,
+            overall_depth_mm,
+        }
+    }
+
+    fn rack_arrangement_color(arrangement_id: &str) -> &'static str {
+        const PALETTE: [&str; 8] = [
+            "#0f766e", "#2563eb", "#9333ea", "#ca8a04", "#c2410c", "#be123c", "#0369a1",
+            "#4d7c0f",
+        ];
+        let mut hasher = DefaultHasher::new();
+        arrangement_id.hash(&mut hasher);
+        let idx = (hasher.finish() as usize) % PALETTE.len();
+        PALETTE[idx]
+    }
+
+    fn rack_physical_hole_center_mm(
+        spec: &RackPhysicalTemplateSpec,
+        row: usize,
+        column: usize,
+    ) -> (f32, f32) {
+        (
+            spec.edge_margin_mm
+                + spec.opening_diameter_mm * 0.5
+                + column as f32 * spec.pitch_x_mm,
+            spec.front_label_strip_depth_mm
+                + spec.edge_margin_mm
+                + spec.opening_diameter_mm * 0.5
+                + row as f32 * spec.pitch_y_mm,
+        )
+    }
+
+    fn export_rack_physical_svg_string(
+        &self,
+        rack: &Rack,
+        spec: &RackPhysicalTemplateSpec,
+    ) -> Result<String, EngineError> {
+        let placements = self.sorted_rack_placements(rack)?;
+        let mut placements_by_coordinate = HashMap::new();
+        for (_, entry) in &placements {
+            placements_by_coordinate.insert(entry.coordinate.clone(), entry.clone());
+        }
+        let blocked = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut arrangement_legend = Vec::new();
+        let mut seen_arrangements = HashSet::new();
+        for (_, entry) in &placements {
+            if seen_arrangements.insert(entry.arrangement_id.clone()) {
+                let label = self
+                    .state
+                    .container_state
+                    .arrangements
+                    .get(&entry.arrangement_id)
+                    .and_then(|arrangement| arrangement.name.clone())
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| entry.arrangement_id.clone());
+                arrangement_legend.push((
+                    entry.arrangement_id.clone(),
+                    label,
+                    Self::rack_arrangement_color(&entry.arrangement_id).to_string(),
+                ));
+            }
+        }
+        let legend_height = if arrangement_legend.is_empty() {
+            0.0
+        } else {
+            5.0 + arrangement_legend.len() as f32 * 4.5
+        };
+        let header_height = 16.0 + legend_height;
+        let footer_height = 8.0;
+        let rack_x = 2.0;
+        let rack_y = header_height;
+        let svg_width = spec.overall_width_mm + 4.0;
+        let svg_height = header_height + spec.overall_depth_mm + footer_height;
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-physical-template=\"{}\" data-rack-id=\"{}\">",
+            svg_width,
+            svg_height,
+            svg_width,
+            svg_height,
+            spec.kind.as_str(),
+            Self::xml_escape(&rack.rack_id)
+        );
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+        svg.push_str(&format!(
+            "<text x=\"2\" y=\"6\" font-family=\"monospace\" font-size=\"4.2\" font-weight=\"700\" fill=\"#0f172a\">GENtle rack fabrication sketch</text><text x=\"2\" y=\"10.5\" font-family=\"monospace\" font-size=\"3.2\" fill=\"#334155\">rack={} | template={} | family={} | format={} | profile={}x{}</text>",
+            Self::xml_escape(&rack.rack_id),
+            spec.kind.as_str(),
+            spec.family.as_str(),
+            Self::xml_escape(&spec.container_format),
+            spec.rows,
+            spec.columns
+        ));
+        let mut legend_y = 15.0;
+        if !arrangement_legend.is_empty() {
+            for (_, label, color) in &arrangement_legend {
+                svg.push_str(&format!(
+                    "<rect x=\"2\" y=\"{:.1}\" width=\"3.2\" height=\"3.2\" rx=\"0.8\" ry=\"0.8\" fill=\"{}\"/><text x=\"6.4\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.8\" fill=\"#334155\">{}</text>",
+                    legend_y - 2.6,
+                    color,
+                    legend_y,
+                    Self::xml_escape(label)
+                ));
+                legend_y += 4.5;
+            }
+            if !blocked.is_empty() {
+                svg.push_str(&format!(
+                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"3.2\" height=\"3.2\" rx=\"0.8\" ry=\"0.8\" fill=\"#cbd5e1\" stroke=\"#64748b\" stroke-width=\"0.35\"/><text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.8\" fill=\"#334155\">blocked / reserved</text>",
+                    svg_width - 56.0,
+                    12.4,
+                    svg_width - 51.0,
+                    15.0,
+                ));
+            }
+        }
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"{:.1}\" ry=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#0f172a\" stroke-width=\"0.6\"/>",
+            rack_x,
+            rack_y,
+            spec.overall_width_mm,
+            spec.overall_depth_mm,
+            spec.corner_radius_mm,
+            spec.corner_radius_mm
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#e2e8f0\" stroke=\"#94a3b8\" stroke-width=\"0.3\"/><text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"2.7\" fill=\"#334155\">front label strip</text>",
+            rack_x + 0.6,
+            rack_y + 0.6,
+            spec.overall_width_mm - 1.2,
+            spec.front_label_strip_depth_mm - 1.2,
+            rack_x + spec.overall_width_mm * 0.5,
+            rack_y + spec.front_label_strip_depth_mm * 0.65
+        ));
+        for column in 0..spec.columns {
+            let (cx, _) = Self::rack_physical_hole_center_mm(spec, 0, column);
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"2.6\" fill=\"#475569\">{}</text>",
+                rack_x + cx,
+                rack_y + spec.front_label_strip_depth_mm + spec.edge_margin_mm - 0.8,
+                column + 1
+            ));
+        }
+        for row in 0..spec.rows {
+            let (_, cy) = Self::rack_physical_hole_center_mm(spec, row, 0);
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"2.6\" fill=\"#475569\">{}</text>",
+                rack_x + spec.edge_margin_mm - 0.6,
+                rack_y + cy,
+                Self::rack_row_label_from_index(row)
+            ));
+            for column in 0..spec.columns {
+                let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;
+                let (cx, cy) = Self::rack_physical_hole_center_mm(spec, row, column);
+                let x = rack_x + cx;
+                let y = rack_y + cy;
+                if blocked.contains(&coordinate) {
+                    svg.push_str(&format!(
+                        "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#e2e8f0\" stroke=\"#64748b\" stroke-width=\"0.35\"/><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#64748b\" stroke-width=\"0.35\"/><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#64748b\" stroke-width=\"0.35\"/>",
+                        x,
+                        y,
+                        spec.opening_diameter_mm * 0.5,
+                        x - 2.2,
+                        y - 2.2,
+                        x + 2.2,
+                        y + 2.2,
+                        x - 2.2,
+                        y + 2.2,
+                        x + 2.2,
+                        y - 2.2
+                    ));
+                    continue;
+                }
+                svg.push_str(&format!(
+                    "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#ffffff\" stroke=\"#334155\" stroke-width=\"0.35\"/>",
+                    x,
+                    y,
+                    spec.opening_diameter_mm * 0.5
+                ));
+                if let Some(entry) = placements_by_coordinate.get(&coordinate) {
+                    match entry.occupant.as_ref() {
+                        Some(RackOccupant::LadderReference { .. }) => {
+                            svg.push_str(&format!(
+                                "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#d97706\" fill-opacity=\"0.85\"/>",
+                                x,
+                                y,
+                                spec.opening_diameter_mm * 0.18
+                            ));
+                        }
+                        Some(RackOccupant::Container { .. }) => {
+                            let fill = Self::rack_arrangement_color(&entry.arrangement_id);
+                            svg.push_str(&format!(
+                                "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.28\" stroke=\"{}\" stroke-width=\"0.25\"/>",
+                                x,
+                                y,
+                                spec.opening_diameter_mm * 0.33,
+                                fill,
+                                fill
+                            ));
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"2.6\" fill=\"#64748b\">GENtle fabrication SVG</text>",
+            svg_width - 1.4,
+            svg_height - 1.6
+        ));
+        svg.push_str("</svg>");
+        Ok(svg)
+    }
+
+    pub(super) fn export_rack_fabrication_svg(
+        &self,
+        rack_id: &str,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let svg = self.export_rack_physical_svg_string(rack, &spec)?;
+        fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack fabrication SVG '{}': {e}", path),
+        })?;
+        Ok(spec)
+    }
+
+    pub(super) fn export_rack_openscad(
+        &self,
+        rack_id: &str,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let blocked = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut scad = format!(
+            "// GENtle rack OpenSCAD export\n// rack_id={}\n// template={}\n// family={}\n// format={}\n$fn = 56;\n\nouter_width = {:.3};\nouter_depth = {:.3};\nrack_height = {:.3};\nopening_diameter = {:.3};\nfloor_thickness = {:.3};\nfront_label_strip_depth = {:.3};\nfront_label_strip_recess = {:.3};\ncorner_radius = {:.3};\n\nmodule gentle_rack() {{\n    difference() {{\n        cube([outer_width, outer_depth, rack_height], false);\n",
+            rack.rack_id,
+            spec.kind.as_str(),
+            spec.family.as_str(),
+            spec.container_format,
+            spec.overall_width_mm,
+            spec.overall_depth_mm,
+            spec.rack_height_mm,
+            spec.opening_diameter_mm,
+            spec.floor_thickness_mm,
+            spec.front_label_strip_depth_mm,
+            spec.front_label_strip_recess_mm,
+            spec.corner_radius_mm
+        );
+        for row in 0..spec.rows {
+            for column in 0..spec.columns {
+                let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;
+                if blocked.contains(&coordinate) {
+                    continue;
+                }
+                let (cx, cy) = Self::rack_physical_hole_center_mm(&spec, row, column);
+                scad.push_str(&format!(
+                    "        translate([{:.3}, {:.3}, -0.05]) cylinder(h=rack_height - floor_thickness + 0.10, d=opening_diameter);\n",
+                    cx, cy
+                ));
+            }
+        }
+        scad.push_str(&format!(
+            "        translate([{:.3}, {:.3}, rack_height - front_label_strip_recess]) cube([{:.3}, {:.3}, front_label_strip_recess + 0.05], false);\n",
+            spec.outer_wall_mm * 0.5,
+            0.8,
+            (spec.overall_width_mm - spec.outer_wall_mm).max(0.0),
+            (spec.front_label_strip_depth_mm - 1.6).max(0.0)
+        ));
+        scad.push_str("    }\n}\n\ngentle_rack();\n");
+        fs::write(path, scad).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack OpenSCAD '{}': {e}", path),
+        })?;
+        Ok(spec)
+    }
+
     pub(super) fn set_arrangement_ladders(
         &mut self,
         arrangement_id: &str,

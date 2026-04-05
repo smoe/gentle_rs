@@ -879,6 +879,90 @@ impl RackLabelSheetPreset {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Built-in printable physical carrier families layered on top of rack placement.
+pub enum RackPhysicalTemplateKind {
+    #[default]
+    StoragePcrTubeRack,
+    PipettingPcrTubeRack,
+}
+
+impl RackPhysicalTemplateKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StoragePcrTubeRack => "storage_pcr_tube_rack",
+            Self::PipettingPcrTubeRack => "pipetting_pcr_tube_rack",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Physical handling intent for printable carrier exports.
+pub enum RackPhysicalTemplateFamily {
+    Storage,
+    Pipetting,
+}
+
+impl RackPhysicalTemplateFamily {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Storage => "storage",
+            Self::Pipetting => "pipetting",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Deterministic printable/fabrication geometry derived from one rack snapshot.
+pub struct RackPhysicalTemplateSpec {
+    pub kind: RackPhysicalTemplateKind,
+    pub family: RackPhysicalTemplateFamily,
+    pub container_format: String,
+    pub rows: usize,
+    pub columns: usize,
+    pub pitch_x_mm: f32,
+    pub pitch_y_mm: f32,
+    pub opening_diameter_mm: f32,
+    pub inner_wall_mm: f32,
+    pub outer_wall_mm: f32,
+    pub floor_thickness_mm: f32,
+    pub rack_height_mm: f32,
+    pub edge_margin_mm: f32,
+    pub corner_radius_mm: f32,
+    pub front_label_strip_depth_mm: f32,
+    pub front_label_strip_recess_mm: f32,
+    pub overall_width_mm: f32,
+    pub overall_depth_mm: f32,
+}
+
+impl Default for RackPhysicalTemplateSpec {
+    fn default() -> Self {
+        Self {
+            kind: RackPhysicalTemplateKind::StoragePcrTubeRack,
+            family: RackPhysicalTemplateFamily::Storage,
+            container_format: "pcr_tube_0_2ml".to_string(),
+            rows: 0,
+            columns: 0,
+            pitch_x_mm: 0.0,
+            pitch_y_mm: 0.0,
+            opening_diameter_mm: 0.0,
+            inner_wall_mm: 0.0,
+            outer_wall_mm: 0.0,
+            floor_thickness_mm: 0.0,
+            rack_height_mm: 0.0,
+            edge_margin_mm: 0.0,
+            corner_radius_mm: 0.0,
+            front_label_strip_depth_mm: 0.0,
+            front_label_strip_recess_mm: 0.0,
+            overall_width_mm: 0.0,
+            overall_depth_mm: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Engine-owned quick authoring templates for common rack/plate setup styles.
 pub enum RackAuthoringTemplate {
     #[default]
@@ -2867,6 +2951,18 @@ pub enum Operation {
         #[serde(default)]
         preset: RackLabelSheetPreset,
     },
+    ExportRackFabricationSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
+    ExportRackOpenScad {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportDnaLadders {
         path: String,
         #[serde(default)]
@@ -4520,6 +4616,8 @@ impl GentleEngine {
                 "SetRackProfileCustom".to_string(),
                 "SetRackBlockedCoordinates".to_string(),
                 "ExportRackLabelsSvg".to_string(),
+                "ExportRackFabricationSvg".to_string(),
+                "ExportRackOpenScad".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
@@ -5829,6 +5927,8 @@ impl GentleEngine {
                 | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { .. }
                 | Operation::ExportProtocolCartoonTemplateJson { .. }
                 | Operation::ExportRackLabelsSvg { .. }
+                | Operation::ExportRackFabricationSvg { .. }
+                | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }

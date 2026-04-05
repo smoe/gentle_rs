@@ -42,11 +42,11 @@ use crate::{
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackProfileKind, RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile,
-        RnaReadOriginMode, RnaReadReportMode,
+        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
         SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
@@ -730,6 +730,16 @@ pub enum ShellCommand {
         output: String,
         arrangement_id: Option<String>,
         preset: RackLabelSheetPreset,
+    },
+    RacksFabricationSvg {
+        rack_id: String,
+        output: String,
+        template: RackPhysicalTemplateKind,
+    },
+    RacksOpenScad {
+        rack_id: String,
+        output: String,
+        template: RackPhysicalTemplateKind,
     },
     RacksSetProfile {
         rack_id: String,
@@ -4797,6 +4807,26 @@ impl ShellCommand {
                 arrangement_id.as_deref().unwrap_or("all"),
                 preset.as_str()
             ),
+            Self::RacksFabricationSvg {
+                rack_id,
+                output,
+                template,
+            } => format!(
+                "export rack fabrication SVG for '{}' to '{}' (template={})",
+                rack_id.trim(),
+                output,
+                template.as_str()
+            ),
+            Self::RacksOpenScad {
+                rack_id,
+                output,
+                template,
+            } => format!(
+                "export rack OpenSCAD for '{}' to '{}' (template={})",
+                rack_id.trim(),
+                output,
+                template.as_str()
+            ),
             Self::RacksSetProfile { rack_id, profile } => format!(
                 "set rack '{}' profile to '{}'",
                 rack_id.trim(),
@@ -7931,6 +7961,21 @@ fn parse_rack_label_sheet_preset(value: &str) -> Result<RackLabelSheetPreset, St
     }
 }
 
+fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplateKind, String> {
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "storage_pcr_tube_rack" | "storage" | "storage_tube" | "storage_pcr" => {
+            Ok(RackPhysicalTemplateKind::StoragePcrTubeRack)
+        }
+        "pipetting_pcr_tube_rack" | "pipetting" | "pipetting_tube" | "pipetting_pcr" => {
+            Ok(RackPhysicalTemplateKind::PipettingPcrTubeRack)
+        }
+        other => Err(format!(
+            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack)"
+        )),
+    }
+}
+
 fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(PrimerDesignBackend::Auto),
@@ -10749,7 +10794,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -11064,6 +11109,92 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                         arrangement_id,
                         preset,
+                    })
+                }
+                "fabrication-svg" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks fabrication-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks fabrication-svg requires a non-empty RACK_ID".to_string()
+                        );
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks fabrication-svg requires a non-empty OUTPUT.svg".to_string()
+                        );
+                    }
+                    let mut template = RackPhysicalTemplateKind::default();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template =
+                                    parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks fabrication-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksFabricationSvg {
+                        rack_id,
+                        output,
+                        template,
+                    })
+                }
+                "openscad" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks openscad requires RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks openscad requires a non-empty RACK_ID".to_string());
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks openscad requires a non-empty OUTPUT.scad".to_string()
+                        );
+                    }
+                    let mut template = RackPhysicalTemplateKind::default();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template =
+                                    parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks openscad"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksOpenScad {
+                        rack_id,
+                        output,
+                        template,
                     })
                 }
                 "set-profile" => {
@@ -13827,6 +13958,40 @@ fn execute_shell_command_with_options_inner(
                     path: output.clone(),
                     arrangement_id: arrangement_id.clone(),
                     preset: *preset,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksFabricationSvg {
+            rack_id,
+            output,
+            template,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackFabricationSvg {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    template: *template,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksOpenScad {
+            rack_id,
+            output,
+            template,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackOpenScad {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    template: *template,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

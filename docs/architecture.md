@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-03
+Last updated: 2026-04-05
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -78,6 +78,14 @@ Rack-placement rule (target model):
 - Rack/arrangement label export should stay engine-owned as well:
   - GUI and CLI choose among shared deterministic label-sheet presets
   - sheet geometry must not live only in one frontend adapter
+- Physical rack fabrication/export should stay engine-owned too:
+  - printable carrier templates are downstream projections of the same rack
+    snapshot, not a second physical-placement model
+  - the same linked arrangement/rack-placement records should be consumable by:
+    - planning/fabrication SVG
+    - label/front-strip export
+    - parameterized 3D/OpenSCAD export
+    - future simulation adapters
 - Quick rack-authoring templates should also stay engine-owned:
   - they are convenience overlays on one persisted rack snapshot
   - they may adjust fill direction and blocked coordinates together

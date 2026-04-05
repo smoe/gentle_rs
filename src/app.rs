@@ -72,8 +72,9 @@ use crate::{
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackFillDirection,
-        RackLabelSheetPreset, RackOccupant, RackProfileKind, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, RoutineDecisionTrace, RoutineDecisionTraceComparison,
+        RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
+        RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
+        RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
@@ -903,6 +904,7 @@ pub struct GENtleApp {
     rack_custom_profile_columns: String,
     rack_blocked_coordinates_text: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
+    rack_physical_template_kind: RackPhysicalTemplateKind,
     rack_view_scroll_offset: Vec2,
     rack_view_selected_coordinates: BTreeSet<String>,
     rack_view_selected_arrangement_ids: BTreeSet<String>,
@@ -2403,6 +2405,7 @@ impl Default for GENtleApp {
             rack_custom_profile_columns: String::new(),
             rack_blocked_coordinates_text: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
+            rack_physical_template_kind: RackPhysicalTemplateKind::default(),
             rack_view_scroll_offset: Vec2::ZERO,
             rack_view_selected_coordinates: BTreeSet::new(),
             rack_view_selected_arrangement_ids: BTreeSet::new(),
@@ -6699,6 +6702,13 @@ Error: `{err}`"
         }
     }
 
+    fn rack_physical_template_label(template: RackPhysicalTemplateKind) -> &'static str {
+        match template {
+            RackPhysicalTemplateKind::StoragePcrTubeRack => "Storage PCR tube rack",
+            RackPhysicalTemplateKind::PipettingPcrTubeRack => "Pipetting PCR tube rack",
+        }
+    }
+
     fn rack_coordinate_for_slot(
         profile: &crate::engine::RackProfileSnapshot,
         row: usize,
@@ -6934,6 +6944,88 @@ Error: `{err}`"
             }
             Err(err) => {
                 self.app_status = format!("Could not export rack labels SVG: {}", err.message);
+            }
+        }
+    }
+
+    fn prompt_export_rack_fabrication_svg(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack fabrication export requires a non-empty rack id".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(rack_id, "rack_fabrication");
+        let default_file_name = format!("{stem}.fabrication.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack fabrication SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackFabricationSvg {
+                rack_id: rack_id.to_string(),
+                path: path_text.clone(),
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    format!("Wrote rack fabrication SVG to '{path_text}'")
+                });
+                self.rack_view_status = self.app_status.clone();
+            }
+            Err(err) => {
+                self.app_status = format!("Could not export rack fabrication SVG: {}", err.message);
+                self.rack_view_status = self.app_status.clone();
+            }
+        }
+    }
+
+    fn prompt_export_rack_openscad(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack OpenSCAD export requires a non-empty rack id".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(rack_id, "rack");
+        let default_file_name = format!("{stem}.scad");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("OpenSCAD", &["scad"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack OpenSCAD export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: rack_id.to_string(),
+                path: path_text.clone(),
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote rack OpenSCAD to '{path_text}'"));
+                self.rack_view_status = self.app_status.clone();
+            }
+            Err(err) => {
+                self.app_status = format!("Could not export rack OpenSCAD: {}", err.message);
+                self.rack_view_status = self.app_status.clone();
             }
         }
     }
@@ -8778,6 +8870,38 @@ Error: `{err}`"
                         }
                     }
                 }
+            }
+            ui.separator();
+            ui.label("Physical template");
+            egui::ComboBox::from_id_salt("rack_physical_template_combo")
+                .selected_text(Self::rack_physical_template_label(
+                    self.rack_physical_template_kind,
+                ))
+                .show_ui(ui, |ui| {
+                    for template in [
+                        RackPhysicalTemplateKind::StoragePcrTubeRack,
+                        RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rack_physical_template_kind,
+                            template,
+                            Self::rack_physical_template_label(template),
+                        );
+                    }
+                });
+            if ui
+                .button("Fabrication SVG...")
+                .on_hover_text("Export a top-view fabrication/planning SVG for the current rack using the selected physical carrier template")
+                .clicked()
+            {
+                self.prompt_export_rack_fabrication_svg(&rack.rack_id);
+            }
+            if ui
+                .button("OpenSCAD...")
+                .on_hover_text("Export one parameterized OpenSCAD file for the current rack using the selected physical carrier template")
+                .clicked()
+            {
+                self.prompt_export_rack_openscad(&rack.rack_id);
             }
         });
         close_requested
@@ -36041,6 +36165,26 @@ Error: `{err}`"
                 rack_id.trim(),
                 arrangement_id.as_deref().unwrap_or("all"),
                 preset.as_str(),
+                path
+            ),
+            Operation::ExportRackFabricationSvg {
+                rack_id,
+                path,
+                template,
+            } => format!(
+                "Export rack fabrication SVG: rack_id={}, template={}, path={}",
+                rack_id.trim(),
+                template.as_str(),
+                path
+            ),
+            Operation::ExportRackOpenScad {
+                rack_id,
+                path,
+                template,
+            } => format!(
+                "Export rack OpenSCAD: rack_id={}, template={}, path={}",
+                rack_id.trim(),
+                template.as_str(),
                 path
             ),
             Operation::ExportDnaLadders { path, name_filter } => format!(

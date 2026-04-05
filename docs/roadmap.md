@@ -1165,6 +1165,14 @@ order. Durable architecture constraints and decisions remain in
     - row-major and column-major fill directions
     - persisted blocked/reserved coordinates
     - multi-letter A1 row labels beyond `Z`
+  - first physical-rack fabrication/export baseline is now available on top of
+    the same linked arrangement/rack model:
+    - built-in printable physical templates:
+      - `storage_pcr_tube_rack`
+      - `pipetting_pcr_tube_rack`
+    - top-view rack/fabrication SVG export
+    - parameterized OpenSCAD export
+    - rack-window selectors/actions plus shared shell/CLI parity
   - rack-editor interaction baseline now also includes:
     - ghost previews while dragging
     - animated/pulsing drag ghosts plus short fade-highlight drop ghosts
@@ -1179,10 +1187,9 @@ order. Durable architecture constraints and decisions remain in
       current baseline
     - physical-rack fabrication/export projections on top of the same linked
       arrangement/rack model:
-      - 2D rack/fabrication SVG
-      - label-sheet/front-strip layouts matched to physical carriers
-      - parameterized OpenSCAD export for printable storage and pipetting
-        rack families
+      - broader physical template catalog beyond the initial PCR-tube storage
+        and pipetting families
+      - richer carrier-matched label-sheet/front-strip layouts
       - simulations as a first-class downstream consumer of the same
         arrangement/rack-placement/physical-template records
     - richer drag/drop polish beyond the current baseline

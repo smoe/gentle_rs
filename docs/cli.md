@@ -949,6 +949,8 @@ cargo run --bin gentle_cli -- racks move-samples rack-1 --from A1 --from A3 --to
 cargo run --bin gentle_cli -- racks move-blocks rack-1 --arrangement arrangement-2 --arrangement arrangement-3 --to B2
 cargo run --bin gentle_cli -- racks show rack-1
 cargo run --bin gentle_cli -- racks labels-svg rack-1 arrangement-2.labels.svg --arrangement arrangement-2
+cargo run --bin gentle_cli -- racks fabrication-svg rack-1 rack.fabrication.svg --template storage_pcr_tube_rack
+cargo run --bin gentle_cli -- racks openscad rack-1 rack.scad --template pipetting_pcr_tube_rack
 cargo run --bin gentle_cli -- racks set-profile rack-1 plate_96
 cargo run --bin gentle_cli -- ladders list
 cargo run --bin gentle_cli -- ladders list --filter NEB
@@ -1090,6 +1092,8 @@ Shared shell command:
     - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
+    - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+    - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
     - `racks set-custom-profile RACK_ID ROWS COLUMNS`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
@@ -1630,6 +1634,15 @@ Rendering export commands:
     - `compact_cards` (current compact two-column cards)
     - `print_a4` (denser print-oriented A4 sheet)
     - `wide_cards` (single-column wider cards)
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Calls engine operation `ExportRackFabricationSvg`.
+  - Writes one top-view fabrication/planning SVG for the full saved rack.
+  - Current built-in physical templates:
+    - `storage_pcr_tube_rack`
+    - `pipetting_pcr_tube_rack`
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Calls engine operation `ExportRackOpenScad`.
+  - Writes one parameterized OpenSCAD source file for the full saved rack.
 - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while
@@ -1909,6 +1922,12 @@ Helper convenience commands:
 - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Exports deterministic rack or arrangement-scoped label SVG through the
     same engine path as GUI `Labels SVG`.
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Exports one deterministic top-view fabrication/planning SVG through the
+    same engine path as GUI `Fabrication SVG...`.
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Exports one deterministic parameterized OpenSCAD file through the same
+    engine path as GUI `OpenSCAD...`.
 - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
   - Reflows one saved rack onto another built-in profile.
 - `racks set-custom-profile RACK_ID ROWS COLUMNS`

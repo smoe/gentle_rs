@@ -1,5 +1,5 @@
 {
-   "command_count": 281,
+   "command_count": 284,
    "commands": [
       {
          "aliases": [
@@ -503,6 +503,34 @@
          "path": "racks labels-svg",
          "summary": "Export a deterministic rack or arrangement-scoped label sheet as SVG.",
          "usage": "racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackFabricationSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks fabrication-svg",
+         "summary": "Export one deterministic top-view fabrication/planning SVG for a saved rack.",
+         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackOpenScad"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks openscad",
+         "summary": "Export one deterministic parameterized OpenSCAD source file for a saved rack.",
+         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
       },
       {
          "aliases": [],

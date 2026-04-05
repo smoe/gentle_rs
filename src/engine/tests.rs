@@ -7228,6 +7228,67 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
 }
 
 #[test]
+fn export_rack_fabrication_svg_and_openscad_include_template_markers() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), seq(&"ACGT".repeat(10)));
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Vector".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string()],
+            arrangement_id: Some("arr-rack".to_string()),
+            name: Some("Rack demo".to_string()),
+            ladders: Some(vec!["1 kb Ladder".to_string()]),
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-rack")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    let temp = tempdir().expect("tempdir");
+    let fabrication_path = temp.path().join("rack.fabrication.svg");
+    engine
+        .apply(Operation::ExportRackFabricationSvg {
+            rack_id: rack_id.clone(),
+            path: fabrication_path.display().to_string(),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+        })
+        .expect("fabrication export");
+    let fabrication_svg = fs::read_to_string(&fabrication_path).expect("read fabrication svg");
+    assert!(fabrication_svg.contains("data-rack-physical-template=\"storage_pcr_tube_rack\""));
+    assert!(fabrication_svg.contains("GENtle rack fabrication sketch"));
+    assert!(fabrication_svg.contains("front label strip"));
+
+    let scad_path = temp.path().join("rack.scad");
+    engine
+        .apply(Operation::ExportRackOpenScad {
+            rack_id,
+            path: scad_path.display().to_string(),
+            template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        })
+        .expect("openscad export");
+    let scad = fs::read_to_string(&scad_path).expect("read scad");
+    assert!(scad.contains("template=pipetting_pcr_tube_rack"));
+    assert!(scad.contains("module gentle_rack()"));
+    assert!(scad.contains("opening_diameter"));
+}
+
+#[test]
 fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
     let mut state = ProjectState::default();
     state

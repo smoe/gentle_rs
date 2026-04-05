@@ -3479,6 +3479,36 @@ impl GentleEngine {
                     preset.as_str()
                 ));
             }
+            Operation::ExportRackFabricationSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_fabrication_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack fabrication SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackOpenScad {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_openscad(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack OpenSCAD for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
             Operation::RenderPoolGelSvg {
                 inputs,
                 path,

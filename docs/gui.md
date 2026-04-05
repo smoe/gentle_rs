@@ -2320,6 +2320,14 @@ Exports:
   sheet using the selected label-sheet preset.
 - `Labels SVG` from the arrangement table exports the same label style but
   filtered to the selected arrangement only.
+- `Physical template` in the rack window selects the first printable carrier
+  family layered on top of the same rack snapshot:
+  - `Storage PCR tube rack`
+  - `Pipetting PCR tube rack`
+- `Fabrication SVG...` exports a top-view planning/fabrication sketch for the
+  currently shown rack using the selected physical template.
+- `OpenSCAD...` exports one parameterized 3D-printable OpenSCAD source file
+  for the currently shown rack using that same physical template.
 - Built-in label-sheet presets:
   - `Compact cards`
   - `Print A4`
@@ -2327,6 +2335,9 @@ Exports:
 - The `Label preset` selector above `Arrangements` and in the rack window is
   shared, so arrangement-scoped and rack-wide exports use the same engine-owned
   preset choice.
+- Physical-rack exports intentionally remain rack-wide in this first baseline;
+  arrangement-scoped occupancy labels/front strips still flow through the
+  shared label-sheet export path instead of being baked into the 3D geometry.
 
 ## Engine Settings (Engine Ops)
 

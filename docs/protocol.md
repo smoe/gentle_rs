@@ -846,6 +846,8 @@ Current draft operations:
 - `SetRackProfileCustom { rack_id, rows, columns }`
 - `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
+- `ExportRackFabricationSvg { rack_id, path, template }`
+- `ExportRackOpenScad { rack_id, path, template }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ValidateProtocolCartoonTemplate { template_path }`
@@ -1978,6 +1980,34 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - container/ladder display name
   - sequence id when sequence-backed
   - bp length/topology when sequence-backed
+
+`ExportRackFabricationSvg` semantics:
+
+- Writes one deterministic top-view fabrication/planning SVG for a saved rack.
+- Uses one engine-owned physical carrier template layered on the current saved
+  rack snapshot rather than inventing a second placement model.
+- Current built-in physical templates:
+  - `storage_pcr_tube_rack`
+  - `pipetting_pcr_tube_rack`
+- The export consumes:
+  - rack geometry (`rows`, `columns`, blocked coordinates)
+  - saved rack occupancy and arrangement ids for visual planning markers
+- Intended downstream uses:
+  - fabrication sketching
+  - bench planning
+  - future simulation adapters
+
+`ExportRackOpenScad` semantics:
+
+- Writes one deterministic parameterized OpenSCAD source file for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg`.
+- Current OpenSCAD export intentionally favors geometry over embedded text:
+  - tube openings
+  - outer carrier body
+  - front label-strip recess
+- Printable labels/front strips remain separate shared exports rather than
+  being baked permanently into the 3D geometry in this first baseline.
 
 `RenderDotplotSvg` semantics:
 

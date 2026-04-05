@@ -13,8 +13,8 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackAuthoringTemplate,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
 };
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
@@ -1410,6 +1410,45 @@ fn parse_racks_labels_svg_command_with_preset() {
 }
 
 #[test]
+fn parse_racks_fabrication_svg_command() {
+    let cmd = parse_shell_line(
+        "racks fabrication-svg rack-1 rack.svg --template pipetting_pcr_tube_rack",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksFabricationSvg {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "rack.svg".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::PipettingPcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_openscad_command() {
+    let cmd =
+        parse_shell_line("racks openscad rack-1 rack.scad --template storage_pcr_tube_rack")
+            .expect("parse command");
+    match cmd {
+        ShellCommand::RacksOpenScad {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "rack.scad".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::StoragePcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_racks_move_samples_updates_snapshot() {
     let mut state = ProjectState::default();
     for (idx, seq_id) in ["seq_a", "seq_b", "seq_c", "seq_d"].iter().enumerate() {
@@ -2109,6 +2148,108 @@ fn parse_render_rna_svg() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn execute_racks_physical_exports_write_markers() {
+    std::thread::Builder::new()
+        .name("rack-physical-export-shell-test".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+            );
+            state.container_state.containers.insert(
+                "container-1".to_string(),
+                Container {
+                    container_id: "container-1".to_string(),
+                    kind: ContainerKind::Singleton,
+                    name: Some("Vector".to_string()),
+                    members: vec!["seq_a".to_string()],
+                    created_by_op: None,
+                    created_at_unix_ms: 0,
+                },
+            );
+            state.container_state.arrangements.insert(
+                "arr-x".to_string(),
+                Arrangement {
+                    arrangement_id: "arr-x".to_string(),
+                    mode: ArrangementMode::Serial,
+                    name: Some("Demo".to_string()),
+                    lane_container_ids: vec!["container-1".to_string()],
+                    ladders: vec!["1 kb Ladder".to_string()],
+                    lane_role_labels: vec!["vector".to_string()],
+                    default_rack_id: Some("rack-1".to_string()),
+                    created_by_op: None,
+                    created_at_unix_ms: 0,
+                },
+            );
+            state.container_state.racks.insert(
+                "rack-1".to_string(),
+                Rack {
+                    rack_id: "rack-1".to_string(),
+                    name: "Bench".to_string(),
+                    profile: RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6),
+                    placements: vec![
+                        RackPlacementEntry {
+                            coordinate: "A1".to_string(),
+                            occupant: Some(RackOccupant::LadderReference {
+                                ladder_name: "1 kb Ladder".to_string(),
+                            }),
+                            arrangement_id: "arr-x".to_string(),
+                            order_index: 0,
+                            role_label: "ladder_left".to_string(),
+                        },
+                        RackPlacementEntry {
+                            coordinate: "A2".to_string(),
+                            occupant: Some(RackOccupant::Container {
+                                container_id: "container-1".to_string(),
+                            }),
+                            arrangement_id: "arr-x".to_string(),
+                            order_index: 1,
+                            role_label: "vector".to_string(),
+                        },
+                    ],
+                    created_by_op: None,
+                    created_at_unix_ms: 0,
+                },
+            );
+            let mut engine = GentleEngine::from_state(state);
+            let temp = tempdir().expect("tempdir");
+            let svg_path = temp.path().join("rack.fabrication.svg");
+            let scad_path = temp.path().join("rack.scad");
+
+            let svg_result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RacksFabricationSvg {
+                    rack_id: "rack-1".to_string(),
+                    output: svg_path.display().to_string(),
+                    template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+                },
+            )
+            .expect("fabrication export");
+            assert!(!svg_result.state_changed);
+            let svg = fs::read_to_string(&svg_path).expect("fabrication svg");
+            assert!(svg.contains("data-rack-physical-template=\"storage_pcr_tube_rack\""));
+
+            let scad_result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RacksOpenScad {
+                    rack_id: "rack-1".to_string(),
+                    output: scad_path.display().to_string(),
+                    template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                },
+            )
+            .expect("openscad export");
+            assert!(!scad_result.state_changed);
+            let scad = fs::read_to_string(&scad_path).expect("rack scad");
+            assert!(scad.contains("template=pipetting_pcr_tube_rack"));
+        })
+        .expect("spawn shell test thread")
+        .join()
+        .expect("join shell test thread");
 }
 
 #[test]
