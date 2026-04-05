@@ -543,8 +543,8 @@
             "cli-direct"
          ],
          "path": "racks carrier-labels-svg",
-         "summary": "Export one carrier-matched front-strip plus module-label SVG sheet for a saved rack.",
-         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "summary": "Export one carrier-matched front-strip/module-label SVG sheet for a saved rack using shared carrier-label presets.",
+         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
       },
       {
          "aliases": [],

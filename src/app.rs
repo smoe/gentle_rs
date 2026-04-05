@@ -71,9 +71,9 @@ use crate::{
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackFillDirection,
-        RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
-        RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
         RoutineDecisionTraceComparison, RoutineDecisionTraceDisambiguationAnswer,
         RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTraceExportEvent,
         RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
@@ -904,6 +904,7 @@ pub struct GENtleApp {
     rack_custom_profile_columns: String,
     rack_blocked_coordinates_text: String,
     rack_label_sheet_preset: RackLabelSheetPreset,
+    rack_carrier_label_preset: RackCarrierLabelPreset,
     rack_physical_template_kind: RackPhysicalTemplateKind,
     rack_view_scroll_offset: Vec2,
     rack_view_selected_coordinates: BTreeSet<String>,
@@ -2405,6 +2406,7 @@ impl Default for GENtleApp {
             rack_custom_profile_columns: String::new(),
             rack_blocked_coordinates_text: String::new(),
             rack_label_sheet_preset: RackLabelSheetPreset::default(),
+            rack_carrier_label_preset: RackCarrierLabelPreset::default(),
             rack_physical_template_kind: RackPhysicalTemplateKind::default(),
             rack_view_scroll_offset: Vec2::ZERO,
             rack_view_selected_coordinates: BTreeSet::new(),
@@ -6709,6 +6711,14 @@ Error: `{err}`"
         }
     }
 
+    fn rack_carrier_label_preset_label(preset: RackCarrierLabelPreset) -> &'static str {
+        match preset {
+            RackCarrierLabelPreset::FrontStripAndCards => "Front strip + cards",
+            RackCarrierLabelPreset::FrontStripOnly => "Front strip only",
+            RackCarrierLabelPreset::ModuleCardsOnly => "Module cards only",
+        }
+    }
+
     fn rack_coordinate_for_slot(
         profile: &crate::engine::RackProfileSnapshot,
         row: usize,
@@ -6972,6 +6982,7 @@ Error: `{err}`"
                 path: path_text.clone(),
                 arrangement_id: Some(arrangement_id.trim().to_string()),
                 template: self.rack_physical_template_kind,
+                preset: self.rack_carrier_label_preset,
             });
         match result {
             Ok(op_result) => {
@@ -7097,6 +7108,7 @@ Error: `{err}`"
                 path: path_text.clone(),
                 arrangement_id: None,
                 template: self.rack_physical_template_kind,
+                preset: self.rack_carrier_label_preset,
             });
         match result {
             Ok(op_result) => {
@@ -9002,6 +9014,24 @@ Error: `{err}`"
                             &mut self.rack_physical_template_kind,
                             template,
                             Self::rack_physical_template_label(template),
+                        );
+                    }
+                });
+            ui.label("Carrier preset");
+            egui::ComboBox::from_id_salt("rack_carrier_label_preset_combo")
+                .selected_text(Self::rack_carrier_label_preset_label(
+                    self.rack_carrier_label_preset,
+                ))
+                .show_ui(ui, |ui| {
+                    for preset in [
+                        RackCarrierLabelPreset::FrontStripAndCards,
+                        RackCarrierLabelPreset::FrontStripOnly,
+                        RackCarrierLabelPreset::ModuleCardsOnly,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rack_carrier_label_preset,
+                            preset,
+                            Self::rack_carrier_label_preset_label(preset),
                         );
                     }
                 });
@@ -32466,6 +32496,29 @@ Error: `{err}`"
                         "Used by arrangement-scoped and rack-wide label SVG export.",
                     );
                 });
+                ui.horizontal(|ui| {
+                    ui.label("Carrier preset");
+                    egui::ComboBox::from_id_salt("arrangement_carrier_label_preset_combo")
+                        .selected_text(Self::rack_carrier_label_preset_label(
+                            self.rack_carrier_label_preset,
+                        ))
+                        .show_ui(ui, |ui| {
+                            for preset in [
+                                RackCarrierLabelPreset::FrontStripAndCards,
+                                RackCarrierLabelPreset::FrontStripOnly,
+                                RackCarrierLabelPreset::ModuleCardsOnly,
+                            ] {
+                                ui.selectable_value(
+                                    &mut self.rack_carrier_label_preset,
+                                    preset,
+                                    Self::rack_carrier_label_preset_label(preset),
+                                );
+                            }
+                        });
+                    ui.small(
+                        "Used by arrangement-scoped carrier/front-strip SVG export.",
+                    );
+                });
                 egui::ScrollArea::both()
                     .id_salt("lineage_arrangement_grid_scroll")
                     .auto_shrink([false, false])
@@ -36333,11 +36386,13 @@ Error: `{err}`"
                 path,
                 arrangement_id,
                 template,
+                preset,
             } => format!(
-                "Export rack carrier labels SVG: rack_id={}, arrangement_id={}, template={}, path={}",
+                "Export rack carrier labels SVG: rack_id={}, arrangement_id={}, template={}, preset={}, path={}",
                 rack_id.trim(),
                 arrangement_id.as_deref().unwrap_or("all"),
                 template.as_str(),
+                preset.as_str(),
                 path
             ),
             Operation::ExportRackSimulationJson {

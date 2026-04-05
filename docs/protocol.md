@@ -848,7 +848,7 @@ Current draft operations:
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `ExportRackFabricationSvg { rack_id, path, template }`
 - `ExportRackOpenScad { rack_id, path, template }`
-- `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template }`
+- `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template, preset }`
 - `ExportRackSimulationJson { rack_id, path, template }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
@@ -2019,7 +2019,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Supports optional arrangement scoping:
   - whole-rack export when `arrangement_id` is omitted
   - one arrangement/module export when `arrangement_id` is provided
-- Current baseline emits:
+- Built-in presets:
+  - `front_strip_and_cards`
+  - `front_strip_only`
+  - `module_cards_only`
+- Current baseline can emit:
   - one front-strip label sized from the selected physical template
   - one module card per arrangement in scope
 

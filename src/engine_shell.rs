@@ -41,8 +41,8 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        RackAuthoringTemplate, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -746,6 +746,7 @@ pub enum ShellCommand {
         output: String,
         arrangement_id: Option<String>,
         template: RackPhysicalTemplateKind,
+        preset: RackCarrierLabelPreset,
     },
     RacksSimulationJson {
         rack_id: String,
@@ -4843,12 +4844,14 @@ impl ShellCommand {
                 output,
                 arrangement_id,
                 template,
+                preset,
             } => format!(
-                "export rack carrier labels SVG for '{}' to '{}' (arrangement={}, template={})",
+                "export rack carrier labels SVG for '{}' to '{}' (arrangement={}, template={}, preset={})",
                 rack_id.trim(),
                 output,
                 arrangement_id.as_deref().unwrap_or("all"),
-                template.as_str()
+                template.as_str(),
+                preset.as_str()
             ),
             Self::RacksSimulationJson {
                 rack_id,
@@ -7990,6 +7993,19 @@ fn parse_rack_label_sheet_preset(value: &str) -> Result<RackLabelSheetPreset, St
         "wide_cards" | "wide" => Ok(RackLabelSheetPreset::WideCards),
         other => Err(format!(
             "Unsupported rack label preset '{other}' (expected compact_cards|print_a4|wide_cards)"
+        )),
+    }
+}
+
+fn parse_rack_carrier_label_preset(value: &str) -> Result<RackCarrierLabelPreset, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "front_strip_and_cards" | "combined" | "default" => {
+            Ok(RackCarrierLabelPreset::FrontStripAndCards)
+        }
+        "front_strip_only" | "strip_only" | "strip" => Ok(RackCarrierLabelPreset::FrontStripOnly),
+        "module_cards_only" | "cards_only" | "cards" => Ok(RackCarrierLabelPreset::ModuleCardsOnly),
+        other => Err(format!(
+            "Unsupported rack carrier-label preset '{other}' (expected front_strip_and_cards|front_strip_only|module_cards_only)"
         )),
     }
 }
@@ -11227,7 +11243,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "carrier-labels-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
                                 .to_string(),
                         );
                     }
@@ -11245,6 +11261,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let mut arrangement_id: Option<String> = None;
                     let mut template = RackPhysicalTemplateKind::default();
+                    let mut preset = RackCarrierLabelPreset::default();
                     let mut idx = 4usize;
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
@@ -11265,6 +11282,13 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
                                 idx += 2;
                             }
+                            "--preset" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --preset".to_string());
+                                }
+                                preset = parse_rack_carrier_label_preset(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
                             other => {
                                 return Err(format!(
                                     "Unknown argument '{other}' for racks carrier-labels-svg"
@@ -11277,6 +11301,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                         arrangement_id,
                         template,
+                        preset,
                     })
                 }
                 "simulation-json" => {
@@ -14129,6 +14154,7 @@ fn execute_shell_command_with_options_inner(
             output,
             arrangement_id,
             template,
+            preset,
         } => {
             let op_result = engine
                 .apply(Operation::ExportRackCarrierLabelsSvg {
@@ -14136,6 +14162,7 @@ fn execute_shell_command_with_options_inner(
                     path: output.clone(),
                     arrangement_id: arrangement_id.clone(),
                     template: *template,
+                    preset: *preset,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

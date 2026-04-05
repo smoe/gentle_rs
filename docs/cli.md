@@ -1643,10 +1643,14 @@ Rendering export commands:
 - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
   - Calls engine operation `ExportRackOpenScad`.
   - Writes one parameterized OpenSCAD source file for the full saved rack.
-- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]`
   - Calls engine operation `ExportRackCarrierLabelsSvg`.
   - Writes one carrier-matched front-strip plus module-label SVG sheet for the
     full rack or one selected arrangement block on that rack.
+  - Built-in carrier-label presets:
+    - `front_strip_and_cards`
+    - `front_strip_only`
+    - `module_cards_only`
 - `racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
   - Calls engine operation `ExportRackSimulationJson`.
   - Writes one machine-readable rack geometry/placement JSON export for

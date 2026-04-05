@@ -7329,10 +7329,12 @@ fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangeme
             path: carrier_path.display().to_string(),
             arrangement_id: Some("arr-rack".to_string()),
             template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+            preset: RackCarrierLabelPreset::FrontStripAndCards,
         })
         .expect("carrier labels export");
     let carrier_svg = fs::read_to_string(&carrier_path).expect("read carrier svg");
     assert!(carrier_svg.contains("data-rack-carrier-template=\"pipetting_pcr_tube_rack\""));
+    assert!(carrier_svg.contains("data-rack-carrier-preset=\"front_strip_and_cards\""));
     assert!(carrier_svg.contains("GENtle carrier labels"));
     assert!(carrier_svg.contains("Rack demo"));
 
@@ -7365,6 +7367,70 @@ fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangeme
             .map(|v| v > 0.0),
         Some(true)
     );
+}
+
+#[test]
+fn export_rack_carrier_label_presets_change_visible_sections() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), seq(&"ACGT".repeat(8)));
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Vector".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string()],
+            arrangement_id: Some("arr-rack".to_string()),
+            name: Some("Preset demo".to_string()),
+            ladders: Some(vec!["1 kb Ladder".to_string()]),
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-rack")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    let temp = tempdir().expect("tempdir");
+
+    let strip_only_path = temp.path().join("rack.strip-only.svg");
+    engine
+        .apply(Operation::ExportRackCarrierLabelsSvg {
+            rack_id: rack_id.clone(),
+            path: strip_only_path.display().to_string(),
+            arrangement_id: Some("arr-rack".to_string()),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+            preset: RackCarrierLabelPreset::FrontStripOnly,
+        })
+        .expect("strip-only export");
+    let strip_only_svg = fs::read_to_string(&strip_only_path).expect("read strip-only svg");
+    assert!(strip_only_svg.contains("data-rack-carrier-preset=\"front_strip_only\""));
+    assert!(!strip_only_svg.contains("roles:"));
+
+    let cards_only_path = temp.path().join("rack.cards-only.svg");
+    engine
+        .apply(Operation::ExportRackCarrierLabelsSvg {
+            rack_id,
+            path: cards_only_path.display().to_string(),
+            arrangement_id: Some("arr-rack".to_string()),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+            preset: RackCarrierLabelPreset::ModuleCardsOnly,
+        })
+        .expect("cards-only export");
+    let cards_only_svg = fs::read_to_string(&cards_only_path).expect("read cards-only svg");
+    assert!(cards_only_svg.contains("data-rack-carrier-preset=\"module_cards_only\""));
+    assert!(cards_only_svg.contains("roles:"));
 }
 
 #[test]
