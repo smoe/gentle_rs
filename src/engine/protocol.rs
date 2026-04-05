@@ -1200,6 +1200,143 @@ pub struct EngineStateSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// BLAST hit reduced to the fields needed for feature import/overlay pipelines.
+pub struct BlastHitFeatureInput {
+    pub subject_id: String,
+    pub query_start_1based: usize,
+    pub query_end_1based: usize,
+    pub subject_start_1based: usize,
+    pub subject_end_1based: usize,
+    pub identity_percent: f64,
+    pub bit_score: f64,
+    pub evalue: f64,
+    pub query_coverage_percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Provenance bundle describing exactly how a BLAST search was invoked.
+///
+/// This is the record to inspect when reproducing a search or explaining which
+/// executable/options/catalog paths produced a report.
+pub struct BlastInvocationProvenance {
+    pub genome_id: String,
+    pub query_label: String,
+    pub query_length: usize,
+    pub max_hits: usize,
+    pub task: String,
+    pub blastn_executable: String,
+    pub blast_db_prefix: String,
+    pub command: Vec<String>,
+    pub command_line: String,
+    pub catalog_path: Option<String>,
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub options_override_json: Option<serde_json::Value>,
+    #[serde(default)]
+    pub effective_options_json: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Optional threshold overrides for genome BLAST post-filtering.
+pub struct BlastThresholdOptions {
+    pub max_evalue: Option<f64>,
+    pub min_identity_percent: Option<f64>,
+    pub min_query_coverage_percent: Option<f64>,
+    pub min_alignment_length_bp: Option<usize>,
+    pub min_bit_score: Option<f64>,
+    pub unique_best_hit: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Request-time BLAST execution options before defaults/project overrides merge.
+pub struct BlastRunOptions {
+    pub task: Option<String>,
+    pub max_hits: Option<usize>,
+    #[serde(default)]
+    pub thresholds: BlastThresholdOptions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Resolved BLAST options after defaults/project/request layering.
+pub struct BlastResolvedOptions {
+    pub task: String,
+    pub max_hits: usize,
+    #[serde(default)]
+    pub thresholds: BlastThresholdOptions,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Prepared-genome fallback policy when an anchor references a non-prepared id.
+pub enum GenomeAnchorPreparedFallbackPolicy {
+    Off,
+    SingleCompatible,
+    AlwaysExplicit,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Strand-contextual anchor extension side.
+///
+/// Interpretation is biological 5'/3' relative to anchor strand, not absolute
+/// genomic coordinate direction.
+pub enum GenomeAnchorSide {
+    FivePrime,
+    ThreePrime,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Annotation projection policy for `ExtractGenomeRegion`.
+pub enum GenomeAnnotationScope {
+    None,
+    Core,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Interval policy for `ExtractGenomeGene`.
+pub enum GenomeGeneExtractMode {
+    #[default]
+    Gene,
+    CodingWithPromoter,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GenomeTrackSource {
+    #[default]
+    Bed,
+    BigWig,
+    Vcf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GenomeTrackSubscription {
+    pub source: GenomeTrackSource,
+    pub path: String,
+    pub track_name: Option<String>,
+    pub min_score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub clear_existing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenomeTrackSyncReport {
+    pub subscriptions_considered: usize,
+    pub target_sequences: usize,
+    pub applied_imports: usize,
+    pub failed_imports: usize,
+    pub warnings_count: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessRunBundleOperationInputSummary {
     pub op_id: String,
     pub run_id: String,

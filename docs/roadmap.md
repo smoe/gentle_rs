@@ -65,6 +65,12 @@ order. Durable architecture constraints and decisions remain in
     - the portable process-run bundle and routine-decision-trace export records
       now also live there so adapters can inspect/export workflow provenance
       without depending on the monolithic engine implementation file
+    - the portable BLAST provenance/option records and genome extraction/anchor
+      policy enums now also live there so GUI/CLI/shell adapters can share the
+      same request/report vocabulary without reaching into engine internals
+    - the portable genome-track subscription/source/sync records now also live
+      there so track import forms and shell/CLI status surfaces share one
+      serialization-friendly contract layer
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
