@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-04
+Last updated: 2026-04-05
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1161,6 +1161,14 @@ order. Durable architecture constraints and decisions remain in
   - follow-up work should focus on richer authoring rather than a second model:
     - broader label-sheet presets and print-oriented layouts beyond the
       current baseline
+    - physical-rack fabrication/export projections on top of the same linked
+      arrangement/rack model:
+      - 2D rack/fabrication SVG
+      - label-sheet/front-strip layouts matched to physical carriers
+      - parameterized OpenSCAD export for printable storage and pipetting
+        rack families
+      - simulations as a first-class downstream consumer of the same
+        arrangement/rack-placement/physical-template records
     - richer drag/drop polish beyond the current baseline
       (for example autoscroll tuning, animated polish refinements, and richer
       preview refinements; baseline ghost previews, animated/fading drop
@@ -3524,3 +3532,23 @@ Current parking-lot ideas:
     - this is intentionally a parking-lot idea, not a scheduled roadmap item
       yet; if adopted, it should preserve the single-engine / machine-readable
       contract described in `docs/architecture.md`.
+- Vendor-protocol and deeper wet-lab process modeling:
+  - extend GENtle beyond high-level cloning operations so workflows such as
+    DNA extraction, Gibson assembly, and related vendor-style bench protocols
+    can be modeled with deeper operational insight instead of appearing only
+    as one opaque operation node.
+  - this would likely require new low-level process operations and state
+    transitions that are currently outside the active cloning-focused scope,
+    for example centrifugation, wash/incubation/mix steps, and other
+    bench-handling primitives that automation/simulation layers could inspect.
+  - intended benefit:
+    - keep GENtle tied to real-world laboratory handling even as it abstracts
+      toward higher-level processes,
+    - support future simulator/automation/export layers with richer process
+      semantics,
+    - make vendor-protocol modeling explicit instead of burying it inside one
+      monolithic "operation" concept.
+  - note:
+    - this is intentionally a parking-lot idea for now because it extends
+      beyond the current arrangement/rack/label track and would need a larger
+      operation vocabulary and protocol model.
