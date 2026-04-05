@@ -50,6 +50,14 @@ const CIRCULAR_TSS_ARROW_HALF_WIDTH: f32 = 4.0;
 const CIRCULAR_TITLE_FONT_SIZE: usize = 18;
 const CIRCULAR_SUBTITLE_FONT_SIZE: usize = 14;
 const CIRCULAR_FEATURE_LABEL_FONT_SIZE: usize = 12;
+const CIRCULAR_RESTRICTION_LABEL_FONT_SIZE: f32 = 9.0;
+const CIRCULAR_FEATURE_LABEL_SHIFT_STEP: f32 = 14.0;
+const CIRCULAR_FEATURE_LABEL_SHIFT_ATTEMPTS: usize = 4;
+const SVG_MONOSPACE_CHAR_WIDTH_FACTOR: f32 = 0.61;
+const SVG_LABEL_COLLISION_PADDING: f32 = 6.0;
+const CIRCULAR_FEATURE_LABEL_SIDE_GAP: f32 = 10.0;
+const CIRCULAR_FUNCTIONAL_ANNOTATION_HOST_GAP: f32 = 10.0;
+const CIRCULAR_FUNCTIONAL_ANNOTATION_LABEL_GAP: f32 = 18.0;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -57,6 +65,7 @@ struct FeatureVm {
     to: usize,
     label: String,
     color: &'static str,
+    kind_role: FeatureKindRole,
     is_gene: bool,
     is_promoter: bool,
     is_reverse: bool,
@@ -65,6 +74,16 @@ struct FeatureVm {
     is_variation: bool,
     has_transcription_direction: bool,
     is_fallback_label: bool,
+    prefers_functional_host_anchor: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum FeatureKindRole {
+    Other,
+    Regulatory,
+    Cds,
+    Mrna,
+    Gene,
 }
 
 #[derive(Clone, Debug)]
@@ -86,19 +105,117 @@ struct LinearExportViewport {
     span_bp: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SvgRect {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+impl SvgRect {
+    fn intersects(&self, other: &Self) -> bool {
+        self.left < other.right
+            && self.right > other.left
+            && self.top < other.bottom
+            && self.bottom > other.top
+    }
+
+    fn expand(self, padding: f32) -> Self {
+        Self {
+            left: self.left - padding,
+            top: self.top - padding,
+            right: self.right + padding,
+            bottom: self.bottom + padding,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CircularTextPlacement {
+    x: f32,
+    y: f32,
+    text_anchor: &'static str,
+    occupied_rect: SvgRect,
+}
+
+#[derive(Clone, Debug)]
+struct CircularRestrictionLabelPlacement {
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    x3: f32,
+    y3: f32,
+    x4: f32,
+    y4: f32,
+    text_anchor: &'static str,
+    label: String,
+    font_color: &'static str,
+    occupied_rect: SvgRect,
+}
+
+impl FeatureKindRole {
+    fn dedupe_priority(self) -> u8 {
+        match self {
+            Self::Gene => 4,
+            Self::Mrna => 3,
+            Self::Cds => 2,
+            Self::Regulatory => 1,
+            Self::Other => 0,
+        }
+    }
+
+    fn functional_host_priority(self) -> u8 {
+        match self {
+            Self::Cds => 3,
+            Self::Mrna => 2,
+            Self::Gene => 1,
+            Self::Regulatory | Self::Other => 0,
+        }
+    }
+}
+
+fn feature_kind_role(feature: &Feature) -> FeatureKindRole {
+    match feature.kind.to_string().to_ascii_uppercase().as_str() {
+        "GENE" => FeatureKindRole::Gene,
+        "MRNA" => FeatureKindRole::Mrna,
+        "CDS" => FeatureKindRole::Cds,
+        "PROMOTER" | "REGULATORY" => FeatureKindRole::Regulatory,
+        _ => FeatureKindRole::Other,
+    }
+}
+
+fn feature_prefers_functional_host_anchor(feature: &Feature) -> bool {
+    if feature.kind.to_string().to_ascii_uppercase() != "MISC_FEATURE" {
+        return false;
+    }
+    let Some(note) = feature_qualifier_text(feature, "note") else {
+        return false;
+    };
+    let normalized = note.to_ascii_lowercase();
+    (normalized.contains("factor xa") || normalized.contains("protease"))
+        && (normalized.contains("recognition site") || normalized.contains("cleavage site"))
+}
+
 fn feature_name(feature: &Feature) -> (String, bool) {
     let kind = feature.kind.to_string().to_ascii_uppercase();
     if is_regulatory_feature(feature) {
         if let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class") {
-            let note = feature_qualifier_text(feature, "note");
-            return (
-                if let Some(note) = note {
-                    format!("{reg_class}: {note}")
-                } else {
-                    reg_class
-                },
-                false,
-            );
+            let reg_class = reg_class.to_ascii_lowercase();
+            if let Some(named_context) = first_nonempty_qualifier_text(
+                feature,
+                &["standard_name", "gene", "gene_name", "name", "label"],
+            ) {
+                if named_context.to_ascii_lowercase().contains(&reg_class) {
+                    return (named_context, false);
+                }
+                return (format!("{named_context} {reg_class}"), false);
+            }
+            if let Some(note) = feature_qualifier_text(feature, "note") {
+                return (format!("{reg_class}: {note}"), false);
+            }
+            return (reg_class, false);
         }
     }
     if is_tfbs_feature(feature) {
@@ -114,6 +231,18 @@ fn feature_name(feature: &Feature) -> (String, bool) {
                 return (value, false);
             }
         }
+        if kind == "CDS" {
+            if let Some(product) = feature_qualifier_text(feature, "product") {
+                return (compact_product_label(&product), false);
+            }
+        }
+    }
+    if kind == "MISC_FEATURE" {
+        if let Some(note) = feature_qualifier_text(feature, "note") {
+            if let Some(compact) = compact_misc_feature_label_from_note(&note) {
+                return (compact, false);
+            }
+        }
     }
     for k in [
         "label",
@@ -121,8 +250,8 @@ fn feature_name(feature: &Feature) -> (String, bool) {
         "standard_name",
         "gene",
         "gene_name",
-        "protein_id",
         "product",
+        "protein_id",
         "region_name",
         "bound_moiety",
     ] {
@@ -145,6 +274,29 @@ fn feature_name(feature: &Feature) -> (String, bool) {
         },
         true,
     )
+}
+
+fn compact_product_label(product: &str) -> String {
+    let compact = product.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = compact.trim();
+    let lower = compact.to_ascii_lowercase();
+    if lower.contains("glutathione s-transferase") {
+        return "GST".to_string();
+    }
+    compact.to_string()
+}
+
+fn compact_misc_feature_label_from_note(note: &str) -> Option<String> {
+    let compact = note.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = compact.trim();
+    let lower = compact.to_ascii_lowercase();
+    if lower.contains("multiple cloning site") || lower.contains("(mcs)") {
+        return Some("MCS".to_string());
+    }
+    if lower.contains("factor xa") {
+        return Some("factor Xa".to_string());
+    }
+    None
 }
 
 fn feature_has_visible_export_label(feature: &FeatureVm) -> bool {
@@ -176,6 +328,79 @@ fn looks_like_accession_label(label: &str) -> bool {
     .any(|prefix| upper.starts_with(prefix))
 }
 
+fn looks_like_compact_accession_or_locus(label: &str) -> bool {
+    let trimmed = label.trim();
+    if trimmed.is_empty() || trimmed.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    if looks_like_accession_label(trimmed) {
+        return true;
+    }
+    if trimmed.len() < 5 || trimmed.len() > 16 {
+        return false;
+    }
+    let has_digit = trimmed.chars().any(|c| c.is_ascii_digit());
+    let has_alpha = trimmed.chars().any(|c| c.is_ascii_alphabetic());
+    let alnumish = trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_');
+    let uppercase_alpha = trimmed
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .all(|c| c.is_ascii_uppercase());
+    alnumish && has_digit && has_alpha && uppercase_alpha
+}
+
+fn compact_definition_title(definition: &str) -> Option<String> {
+    let mut title = definition
+        .split(['.', ';', ','])
+        .next()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    for suffix in [
+        " cloning vector",
+        " expression vector",
+        " vector",
+        " plasmid",
+        " complete sequence",
+        " complete cds",
+    ] {
+        if title.to_ascii_lowercase().ends_with(suffix) {
+            let new_len = title.len().saturating_sub(suffix.len());
+            title.truncate(new_len);
+            title = title.trim().to_string();
+        }
+    }
+    (!title.is_empty()).then_some(title)
+}
+
+fn circular_title_text(dna: &DNAsequence) -> String {
+    let name = dna.name().clone().unwrap_or_default();
+    let accession = dna
+        .version()
+        .or_else(|| dna.accession())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let definition_title = dna.definition().and_then(compact_definition_title);
+
+    let bench_name = if !name.trim().is_empty() && !looks_like_compact_accession_or_locus(&name) {
+        Some(name.trim().to_string())
+    } else {
+        definition_title.or_else(|| (!name.trim().is_empty()).then_some(name.trim().to_string()))
+    };
+
+    match (bench_name, accession) {
+        (Some(name), Some(accession)) if !name.contains(&accession) => {
+            format!("{name} ({accession})")
+        }
+        (Some(name), _) => name,
+        (None, Some(accession)) => accession,
+        (None, None) => "<no name>".to_string(),
+    }
+}
+
 fn feature_color(feature: &Feature) -> &'static str {
     if is_vcf_track_feature(feature) {
         let class = vcf_variant_class(feature)
@@ -201,7 +426,7 @@ fn feature_color(feature: &Feature) -> &'static str {
         }
     }
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
-        "CDS" => "#cc1f1f",
+        "CDS" => "#1f4fcc",
         "GENE" => "#1f4fcc",
         "MRNA" => "#b4640a",
         "PROMOTER" => "#43aaa1",
@@ -316,6 +541,15 @@ fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
         .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
         .map(|value| value.trim().to_string())
         .find(|value| !value.is_empty())
+}
+
+fn first_nonempty_qualifier_text(feature: &Feature, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = feature_qualifier_text(feature, key) {
+            return Some(value);
+        }
+    }
+    None
 }
 
 fn vcf_variant_class(feature: &Feature) -> Option<String> {
@@ -622,6 +856,7 @@ fn collect_features(
             to,
             label,
             color: feature_color(feature),
+            kind_role: feature_kind_role(feature),
             is_gene: kind == "GENE",
             is_promoter: is_promoter_feature(feature),
             is_reverse: feature_is_reverse(feature),
@@ -631,6 +866,7 @@ fn collect_features(
             has_transcription_direction: has_transcription_direction(feature)
                 && !suppress_transcription_direction_marker(feature),
             is_fallback_label,
+            prefers_functional_host_anchor: feature_prefers_functional_host_anchor(feature),
         });
     }
     ret.sort_by(|a, b| {
@@ -638,8 +874,74 @@ fn collect_features(
             .cmp(&b.from)
             .then(a.to.cmp(&b.to))
             .then(a.label.cmp(&b.label))
+            .then(
+                b.kind_role
+                    .dedupe_priority()
+                    .cmp(&a.kind_role.dedupe_priority()),
+            )
     });
-    ret
+    dedupe_equivalent_features(ret)
+}
+
+fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> FeatureVm {
+    FeatureVm {
+        from: preferred.from,
+        to: preferred.to,
+        label: preferred.label,
+        color: preferred.color,
+        kind_role: preferred.kind_role,
+        is_gene: preferred.is_gene || other.is_gene,
+        is_promoter: preferred.is_promoter || other.is_promoter,
+        is_reverse: preferred.is_reverse,
+        is_pointy: preferred.is_pointy || other.is_pointy,
+        is_regulatory: preferred.is_regulatory || other.is_regulatory,
+        is_variation: preferred.is_variation || other.is_variation,
+        has_transcription_direction: preferred.has_transcription_direction
+            || other.has_transcription_direction,
+        is_fallback_label: preferred.is_fallback_label && other.is_fallback_label,
+        prefers_functional_host_anchor: preferred.prefers_functional_host_anchor
+            || other.prefers_functional_host_anchor,
+    }
+}
+
+fn dedupe_equivalent_features(features: Vec<FeatureVm>) -> Vec<FeatureVm> {
+    let mut deduped: Vec<FeatureVm> = Vec::with_capacity(features.len());
+    for feature in features {
+        if let Some(existing) = deduped.last_mut() {
+            let same_label = existing.label == feature.label && existing.is_reverse == feature.is_reverse;
+            let exact_match = existing.from == feature.from && existing.to == feature.to;
+            let gene_cds_pair = same_label
+                && matches!(
+                    (existing.kind_role, feature.kind_role),
+                    (FeatureKindRole::Gene, FeatureKindRole::Cds)
+                        | (FeatureKindRole::Cds, FeatureKindRole::Gene)
+                );
+            let gene_contains_cds = gene_cds_pair
+                && ((existing.from <= feature.from && existing.to >= feature.to)
+                    || (feature.from <= existing.from && feature.to >= existing.to));
+            if (exact_match && same_label) || gene_contains_cds {
+                let keep_new = if gene_cds_pair {
+                    feature.kind_role == FeatureKindRole::Cds
+                } else {
+                    feature.kind_role.dedupe_priority() > existing.kind_role.dedupe_priority()
+                };
+                let preferred = if keep_new {
+                    feature.clone()
+                } else {
+                    existing.clone()
+                };
+                let other = if keep_new {
+                    existing.clone()
+                } else {
+                    feature.clone()
+                };
+                *existing = merge_equivalent_features(preferred, &other);
+                continue;
+            }
+        }
+        deduped.push(feature);
+    }
+    deduped
 }
 
 fn bp_to_x(bp: usize, len: usize, left: f32, right: f32) -> f32 {
@@ -1494,6 +1796,69 @@ fn circular_feature_band_radius(base_radius: f32, feature: &FeatureVm, seq_len: 
     base_radius * band
 }
 
+fn circular_hosted_functional_band_radius(
+    base_radius: f32,
+    host: &FeatureVm,
+    seq_len: usize,
+) -> f32 {
+    let host_radius = circular_feature_band_radius(base_radius, host, seq_len);
+    if host.is_reverse {
+        (host_radius - CIRCULAR_FUNCTIONAL_ANNOTATION_HOST_GAP).max(0.0)
+    } else {
+        host_radius + CIRCULAR_FUNCTIONAL_ANNOTATION_HOST_GAP
+    }
+}
+
+fn circular_feature_label_radius(band_radius: f32, is_reverse: bool) -> f32 {
+    if is_reverse {
+        band_radius - CIRCULAR_FUNCTIONAL_ANNOTATION_LABEL_GAP
+    } else {
+        band_radius + CIRCULAR_FUNCTIONAL_ANNOTATION_LABEL_GAP
+    }
+}
+
+fn containing_functional_host<'a>(
+    features: &'a [FeatureVm],
+    feature: &FeatureVm,
+) -> Option<&'a FeatureVm> {
+    features
+        .iter()
+        .filter(|candidate| {
+            candidate.has_transcription_direction
+                && candidate.kind_role.functional_host_priority() > 0
+                && candidate.from <= feature.from
+                && candidate.to >= feature.to
+                && (candidate.from != feature.from
+                    || candidate.to != feature.to
+                    || candidate.label != feature.label)
+        })
+        .min_by(|a, b| {
+            let a_span = a.to.saturating_sub(a.from);
+            let b_span = b.to.saturating_sub(b.from);
+            a_span
+                .cmp(&b_span)
+                .then(
+                    b.kind_role
+                        .functional_host_priority()
+                        .cmp(&a.kind_role.functional_host_priority()),
+                )
+        })
+}
+
+fn circular_feature_tss_pos(feature: &FeatureVm, len: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let pos = if feature.is_promoter {
+        if feature.is_reverse { feature.from } else { feature.to }
+    } else if feature.is_reverse {
+        feature.to
+    } else {
+        feature.from
+    };
+    pos.min(len.saturating_sub(1))
+}
+
 fn circular_tangent_unit_vector(
     pos: usize,
     is_reverse: bool,
@@ -1572,6 +1937,275 @@ fn circular_arc_path(
     ))
 }
 
+fn estimate_svg_monospace_text_width(text: &str, font_size: f32) -> f32 {
+    text.chars().count() as f32 * font_size * SVG_MONOSPACE_CHAR_WIDTH_FACTOR
+}
+
+fn svg_text_rect(
+    x: f32,
+    y: f32,
+    text_anchor: &str,
+    text: &str,
+    font_size: f32,
+    dominant_baseline_middle: bool,
+) -> SvgRect {
+    let width = estimate_svg_monospace_text_width(text, font_size);
+    let (left, right) = match text_anchor {
+        "start" => (x, x + width),
+        "end" => (x - width, x),
+        _ => (x - width * 0.5, x + width * 0.5),
+    };
+    let (top, bottom) = if dominant_baseline_middle {
+        let half_height = font_size * 0.6;
+        (y - half_height, y + half_height)
+    } else {
+        (y - font_size * 0.82, y + font_size * 0.28)
+    };
+    SvgRect {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+fn circular_text_anchor_for_position(x: f32, cx: f32) -> &'static str {
+    if x > cx + 6.0 {
+        "start"
+    } else if x < cx - 6.0 {
+        "end"
+    } else {
+        "middle"
+    }
+}
+
+fn circular_feature_label_x_with_side_gap(x: f32, text_anchor: &str) -> f32 {
+    match text_anchor {
+        "start" => x + CIRCULAR_FEATURE_LABEL_SIDE_GAP,
+        "end" => x - CIRCULAR_FEATURE_LABEL_SIDE_GAP,
+        _ => x,
+    }
+}
+
+fn circular_restriction_label_layout(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+    len: usize,
+    cx: f32,
+    cy: f32,
+    r: f32,
+) -> Vec<CircularRestrictionLabelPlacement> {
+    let mut keys: Vec<RestrictionEnzymeKey> = dna
+        .restriction_enzyme_groups()
+        .iter()
+        .filter_map(|(key, names)| {
+            DnaDisplay::restriction_group_matches_mode(
+                display.restriction_enzyme_display_mode,
+                &display.preferred_restriction_enzymes,
+                key,
+                names,
+            )
+            .then_some(key.clone())
+        })
+        .collect();
+    keys.sort();
+
+    let mut placements = Vec::with_capacity(keys.len());
+    let mut last_right_y = -1e9f32;
+    let mut last_left_y = 1e9f32;
+
+    for key in &keys {
+        let pos = key.pos().max(0) as usize;
+        let font_color = re_color(key);
+        let raw_label = match dna.restriction_enzyme_groups().get(key) {
+            Some(names) => names.join(", "),
+            None => continue,
+        };
+        let right_side = pos < len / 2;
+        let label = if right_side {
+            format!("{pos} {raw_label}")
+        } else {
+            format!("{raw_label} {pos}")
+        };
+
+        let (x1, y1) = pos2xy(pos, len, cx, cy, r);
+        let (x2, y2) = pos2xy(pos, len, cx, cy, r * 1.15);
+        let (mut x3, _) = pos2xy(pos, len, cx, cy, r * 1.25);
+        let mut y3 = y2;
+        if right_side {
+            y3 = y3.max(last_right_y + 11.0).min(H - 10.0);
+            last_right_y = y3;
+        } else {
+            y3 = y3.min(last_left_y - 11.0).max(10.0);
+            last_left_y = y3;
+        }
+        let (mut x4, _) = pos2xy(pos, len, cx, cy, r * 1.28);
+        x3 = x3.max(0.0).min(W);
+        y3 = y3.max(0.0).min(H);
+        x4 = x4.max(0.0).min(W);
+        let y4 = y3;
+        let text_anchor = if right_side { "start" } else { "end" };
+        let occupied_rect = svg_text_rect(
+            x4,
+            y4,
+            text_anchor,
+            &label,
+            CIRCULAR_RESTRICTION_LABEL_FONT_SIZE,
+            true,
+        )
+        .expand(SVG_LABEL_COLLISION_PADDING);
+
+        placements.push(CircularRestrictionLabelPlacement {
+            x1,
+            y1,
+            x2,
+            y2,
+            x3,
+            y3,
+            x4,
+            y4,
+            text_anchor,
+            label,
+            font_color,
+            occupied_rect,
+        });
+    }
+
+    placements
+}
+
+fn circular_feature_label_candidate_radii(base_radius: f32, is_reverse: bool) -> Vec<f32> {
+    let direction = if is_reverse { -1.0 } else { 1.0 };
+    let mut radii = vec![base_radius.max(0.0)];
+    for step in 1..=CIRCULAR_FEATURE_LABEL_SHIFT_ATTEMPTS {
+        radii.push((base_radius + direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0));
+    }
+    for step in 1..=2 {
+        radii.push((base_radius - direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0));
+    }
+    radii
+}
+
+fn circular_feature_label_placement(
+    pos: usize,
+    len: usize,
+    cx: f32,
+    cy: f32,
+    base_radius: f32,
+    is_reverse: bool,
+    label: &str,
+    occupied_rects: &[SvgRect],
+) -> CircularTextPlacement {
+    let mut fallback: Option<CircularTextPlacement> = None;
+
+    for radius in circular_feature_label_candidate_radii(base_radius, is_reverse) {
+        let (raw_x, y) = pos2xy(pos, len, cx, cy, radius);
+        let text_anchor = circular_text_anchor_for_position(raw_x, cx);
+        let x = circular_feature_label_x_with_side_gap(raw_x, text_anchor);
+        let occupied_rect = svg_text_rect(
+            x,
+            y,
+            text_anchor,
+            label,
+            CIRCULAR_FEATURE_LABEL_FONT_SIZE as f32,
+            false,
+        )
+        .expand(SVG_LABEL_COLLISION_PADDING);
+        let in_bounds = occupied_rect.left >= 4.0
+            && occupied_rect.right <= W - 4.0
+            && occupied_rect.top >= 4.0
+            && occupied_rect.bottom <= H - 4.0;
+        let collides = occupied_rects
+            .iter()
+            .any(|occupied| occupied.intersects(&occupied_rect));
+        let placement = CircularTextPlacement {
+            x,
+            y,
+            text_anchor,
+            occupied_rect,
+        };
+        if fallback.is_none() {
+            fallback = Some(placement.clone());
+        }
+        if in_bounds && !collides {
+            return placement;
+        }
+    }
+
+    let placement = fallback.unwrap_or_else(|| {
+        let (raw_x, y) = pos2xy(pos, len, cx, cy, base_radius.max(0.0));
+        let text_anchor = circular_text_anchor_for_position(raw_x, cx);
+        let x = circular_feature_label_x_with_side_gap(raw_x, text_anchor);
+        CircularTextPlacement {
+            x,
+            y,
+            text_anchor,
+            occupied_rect: svg_text_rect(
+                x,
+                y,
+                text_anchor,
+                label,
+                CIRCULAR_FEATURE_LABEL_FONT_SIZE as f32,
+                false,
+            )
+            .expand(SVG_LABEL_COLLISION_PADDING),
+        }
+    });
+
+    circular_side_shifted_label_placement(placement, label, occupied_rects)
+}
+
+fn circular_side_shifted_label_placement(
+    mut placement: CircularTextPlacement,
+    label: &str,
+    occupied_rects: &[SvgRect],
+) -> CircularTextPlacement {
+    if placement.text_anchor == "middle" {
+        return placement;
+    }
+    for _ in 0..4 {
+        let colliding: Vec<_> = occupied_rects
+            .iter()
+            .filter(|occupied| occupied.intersects(&placement.occupied_rect))
+            .copied()
+            .collect();
+        if colliding.is_empty() {
+            break;
+        }
+        let target_x = match placement.text_anchor {
+            "start" => colliding
+                .iter()
+                .map(|occupied| occupied.right)
+                .fold(placement.x, f32::max)
+                + SVG_LABEL_COLLISION_PADDING,
+            "end" => colliding
+                .iter()
+                .map(|occupied| occupied.left)
+                .fold(placement.x, f32::min)
+                - SVG_LABEL_COLLISION_PADDING,
+            _ => placement.x,
+        };
+        if (target_x - placement.x).abs() <= 0.5 {
+            break;
+        }
+        let candidate_rect = svg_text_rect(
+            target_x,
+            placement.y,
+            placement.text_anchor,
+            label,
+            CIRCULAR_FEATURE_LABEL_FONT_SIZE as f32,
+            false,
+        )
+        .expand(SVG_LABEL_COLLISION_PADDING);
+        if candidate_rect.left < 4.0 || candidate_rect.right > W - 4.0 {
+            break;
+        }
+        placement.x = target_x;
+        placement.occupied_rect = candidate_rect;
+    }
+    placement
+}
+
 pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> String {
     let len = dna.len();
     let cx = W * 0.56;
@@ -1584,11 +2218,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
         .set("height", H);
 
     doc = doc.add(
-        Text::new(
-            dna.name()
-                .clone()
-                .unwrap_or_else(|| "<no name>".to_string()),
-        )
+        Text::new(circular_title_text(dna))
         .set("x", 20)
         .set("y", 34)
         .set("font-family", "monospace")
@@ -1613,6 +2243,16 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
             .set("stroke", "#000000")
             .set("stroke-width", 2),
     );
+
+    let restriction_label_layout = if display.show_restriction_enzymes {
+        circular_restriction_label_layout(dna, display, len, cx, cy, r)
+    } else {
+        Vec::new()
+    };
+    let mut occupied_feature_label_rects: Vec<SvgRect> = restriction_label_layout
+        .iter()
+        .map(|placement| placement.occupied_rect)
+        .collect();
 
     if display.show_gc_contents {
         let gc_contents = GcContents::new_from_sequence_with_bin_size(
@@ -1654,13 +2294,24 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_features {
-        for f in collect_features(
+        let features = collect_features(
             dna,
             display,
             len,
             normalize_linear_export_viewport(dna, display),
-        ) {
-            let band_radius = circular_feature_band_radius(r, &f, len);
+        );
+        for f in &features {
+            let functional_host = if f.prefers_functional_host_anchor {
+                containing_functional_host(&features, f)
+            } else {
+                None
+            };
+            let anchor_is_reverse = functional_host
+                .map(|host| host.is_reverse)
+                .unwrap_or(f.is_reverse);
+            let band_radius = functional_host
+                .map(|host| circular_hosted_functional_band_radius(r, host, len))
+                .unwrap_or_else(|| circular_feature_band_radius(r, f, len));
             let mid = (f.from + f.to) / 2;
             if f.is_variation {
                 let marker_pos = mid.min(len.saturating_sub(1));
@@ -1695,7 +2346,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 );
                 if feature_has_visible_export_label(&f) {
                     doc = doc.add(
-                        Text::new(f.label)
+                        Text::new(f.label.clone())
                             .set("x", label_x)
                             .set("y", label_y)
                             .set("text-anchor", "middle")
@@ -1716,14 +2367,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 );
             }
             if f.has_transcription_direction {
-                let tss_pos = if f.is_promoter {
-                    if f.is_reverse { f.from } else { f.to }
-                } else if f.is_reverse {
-                    f.to
-                } else {
-                    f.from
-                }
-                .min(len.saturating_sub(1));
+                let tss_pos = circular_feature_tss_pos(f, len);
                 let (tick_dx, tick_dy) = circular_radial_unit_vector(tss_pos, len, cx, cy, r);
                 let (tick_x, tick_y) = pos2xy(tss_pos, len, cx, cy, band_radius);
                 let (dir_x, dir_y) =
@@ -1769,18 +2413,44 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("data-gentle-role", "transcription-start-arrow"),
                 );
             }
-            let label_radius = if f.is_reverse {
-                band_radius - 22.0
-            } else {
-                band_radius + 22.0
-            };
+            let label_radius = circular_feature_label_radius(band_radius, anchor_is_reverse);
             if feature_has_visible_export_label(&f) {
-                let (lx, ly) = pos2xy(mid, len, cx, cy, label_radius.max(0.0));
+                if functional_host.is_some() {
+                    let (leader_start_x, leader_start_y) = pos2xy(mid, len, cx, cy, band_radius);
+                    let leader_end_radius = if anchor_is_reverse {
+                        label_radius + 2.0
+                    } else {
+                        (label_radius - 2.0).max(0.0)
+                    };
+                    let (leader_end_x, leader_end_y) =
+                        pos2xy(mid, len, cx, cy, leader_end_radius);
+                    doc = doc.add(
+                        Line::new()
+                            .set("x1", leader_start_x)
+                            .set("y1", leader_start_y)
+                            .set("x2", leader_end_x)
+                            .set("y2", leader_end_y)
+                            .set("stroke", f.color)
+                            .set("stroke-width", 2)
+                            .set("data-gentle-role", "functional-annotation-leader"),
+                    );
+                }
+                let placement = circular_feature_label_placement(
+                    mid,
+                    len,
+                    cx,
+                    cy,
+                    label_radius.max(0.0),
+                    anchor_is_reverse,
+                    &f.label,
+                    &occupied_feature_label_rects,
+                );
+                occupied_feature_label_rects.push(placement.occupied_rect);
                 doc = doc.add(
-                    Text::new(f.label)
-                        .set("x", lx)
-                        .set("y", ly)
-                        .set("text-anchor", "middle")
+                    Text::new(f.label.clone())
+                        .set("x", placement.x)
+                        .set("y", placement.y)
+                        .set("text-anchor", placement.text_anchor)
                         .set("font-family", "monospace")
                         .set("font-size", CIRCULAR_FEATURE_LABEL_FONT_SIZE)
                         .set("fill", "#111111"),
@@ -1821,80 +2491,34 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_restriction_enzymes {
-        let mut keys: Vec<RestrictionEnzymeKey> = dna
-            .restriction_enzyme_groups()
-            .iter()
-            .filter_map(|(key, names)| {
-                DnaDisplay::restriction_group_matches_mode(
-                    display.restriction_enzyme_display_mode,
-                    &display.preferred_restriction_enzymes,
-                    key,
-                    names,
-                )
-                .then_some(key.clone())
-            })
-            .collect();
-        keys.sort();
-        let mut last_right_y = -1e9f32;
-        let mut last_left_y = 1e9f32;
-        for key in &keys {
-            let pos = key.pos().max(0) as usize;
-            let font_color = re_color(key);
-            let raw_label = match dna.restriction_enzyme_groups().get(key) {
-                Some(names) => names.join(", "),
-                None => continue,
-            };
-            let right_side = pos < len / 2;
-            let label = if right_side {
-                format!("{pos} {raw_label}")
-            } else {
-                format!("{raw_label} {pos}")
-            };
-
-            let (x1, y1) = pos2xy(pos, len, cx, cy, r);
-            let (x2, y2) = pos2xy(pos, len, cx, cy, r * 1.15);
-            let (mut x3, _) = pos2xy(pos, len, cx, cy, r * 1.25);
-            let mut y3 = y2;
-            if right_side {
-                y3 = y3.max(last_right_y + 11.0).min(H - 10.0);
-                last_right_y = y3;
-            } else {
-                y3 = y3.min(last_left_y - 11.0).max(10.0);
-                last_left_y = y3;
-            }
-            let (mut x4, _) = pos2xy(pos, len, cx, cy, r * 1.28);
-            x3 = x3.max(0.0).min(W);
-            y3 = y3.max(0.0).min(H);
-            x4 = x4.max(0.0).min(W);
-            let y4 = y3;
-
+        for placement in &restriction_label_layout {
             doc = doc.add(
                 Line::new()
-                    .set("x1", x1)
-                    .set("y1", y1)
-                    .set("x2", x2)
-                    .set("y2", y2)
+                    .set("x1", placement.x1)
+                    .set("y1", placement.y1)
+                    .set("x2", placement.x2)
+                    .set("y2", placement.y2)
                     .set("stroke", "#808080")
                     .set("stroke-width", 1),
             );
             doc = doc.add(
                 Line::new()
-                    .set("x1", x2)
-                    .set("y1", y2)
-                    .set("x2", x3)
-                    .set("y2", y3)
+                    .set("x1", placement.x2)
+                    .set("y1", placement.y2)
+                    .set("x2", placement.x3)
+                    .set("y2", placement.y3)
                     .set("stroke", "#808080")
                     .set("stroke-width", 1),
             );
             doc = doc.add(
-                Text::new(label)
-                    .set("x", x4)
-                    .set("y", y4)
-                    .set("text-anchor", if right_side { "start" } else { "end" })
+                Text::new(placement.label.clone())
+                    .set("x", placement.x4)
+                    .set("y", placement.y4)
+                    .set("text-anchor", placement.text_anchor)
                     .set("dominant-baseline", "middle")
                     .set("font-family", "monospace")
                     .set("font-size", 9)
-                    .set("fill", font_color),
+                    .set("fill", placement.font_color),
             );
         }
     }
@@ -2309,6 +2933,209 @@ mod tests {
                 .count()
                 >= 2
         );
+    }
+
+    fn svg_text_element_for_label<'a>(svg: &'a str, label: &str) -> &'a str {
+        let needle = format!(">\n{label}\n</text>");
+        let text_end = svg.find(&needle).expect("label text present");
+        let text_start = svg[..text_end].rfind("<text ").expect("text element start");
+        let element_end = svg[text_end..]
+            .find("</text>")
+            .map(|idx| text_end + idx + "</text>".len())
+            .expect("text element end");
+        &svg[text_start..element_end]
+    }
+
+    #[test]
+    fn regulatory_feature_name_prefers_standard_name_or_gene_context() {
+        let tac = gb_io::seq::Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(20, 40),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("promoter".to_string())),
+                ("standard_name".into(), Some("tac".to_string())),
+                (
+                    "note".into(),
+                    Some("tac promoter for inducible expression".to_string()),
+                ),
+            ],
+        };
+        let bla = gb_io::seq::Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(100, 120),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("promoter".to_string())),
+                ("gene".into(), Some("bla".to_string())),
+            ],
+        };
+
+        assert_eq!(feature_name(&tac).0, "tac promoter");
+        assert_eq!(feature_name(&bla).0, "bla promoter");
+    }
+
+    #[test]
+    fn feature_name_prefers_compact_product_and_misc_feature_note_labels() {
+        let gst = gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 60),
+            qualifiers: vec![
+                ("protein_id".into(), Some("AAA57095.1".to_string())),
+                ("product".into(), Some("glutathione S-transferase".to_string())),
+            ],
+        };
+        let factor_xa = gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: Location::simple_range(61, 72),
+            qualifiers: vec![(
+                "note".into(),
+                Some("encodes factor Xa recognition site".to_string()),
+            )],
+        };
+        let mcs = gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: Location::simple_range(73, 90),
+            qualifiers: vec![(
+                "note".into(),
+                Some("Multiple Cloning Site (MCS); contains BamHI, SmaI and EcoRI".to_string()),
+            )],
+        };
+
+        assert_eq!(feature_name(&gst).0, "GST");
+        assert_eq!(feature_name(&factor_xa).0, "factor Xa");
+        assert_eq!(feature_name(&mcs).0, "MCS");
+    }
+
+    #[test]
+    fn circular_title_prefers_definition_and_accession_for_cryptic_names() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(40)).expect("sequence");
+        dna.set_name("XXU13852");
+        let mut seq_value = serde_json::to_value(&dna).expect("serialize dna");
+        seq_value["seq"]["definition"] = serde_json::json!("pGEX-3X cloning vector, complete sequence.");
+        seq_value["seq"]["accession"] = serde_json::json!("U13852");
+        seq_value["seq"]["version"] = serde_json::json!("U13852.1");
+        let dna: DNAsequence = serde_json::from_value(seq_value).expect("deserialize dna");
+
+        assert_eq!(circular_title_text(&dna), "pGEX-3X (U13852.1)");
+    }
+
+    #[test]
+    fn collect_features_prefers_gene_over_equivalent_cds() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(120)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "gene".into(),
+            location: Location::simple_range(40, 120),
+            qualifiers: vec![("gene".into(), Some("lacIq".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(40, 120),
+            qualifiers: vec![("gene".into(), Some("lacIq".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "gene".into(),
+            location: Location::simple_range(180, 300),
+            qualifiers: vec![("gene".into(), Some("bla".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(200, 300),
+            qualifiers: vec![("gene".into(), Some("bla".to_string()))],
+        });
+
+        let display = DisplaySettings::default();
+        let features = collect_features(
+            &dna,
+            &display,
+            dna.len(),
+            normalize_linear_export_viewport(&dna, &display),
+        );
+        let laciq: Vec<_> = features.iter().filter(|feature| feature.label == "lacIq").collect();
+
+        assert_eq!(laciq.len(), 1);
+        assert_eq!(laciq[0].kind_role, FeatureKindRole::Cds);
+        assert_eq!(laciq[0].color, "#1f4fcc");
+        assert_eq!(laciq[0].from, 40);
+        assert_eq!(laciq[0].to, 120);
+
+        let bla: Vec<_> = features.iter().filter(|feature| feature.label == "bla").collect();
+        assert_eq!(bla.len(), 1);
+        assert_eq!(bla[0].kind_role, FeatureKindRole::Cds);
+        assert_eq!(bla[0].from, 200);
+        assert_eq!(bla[0].to, 300);
+    }
+
+    #[test]
+    fn circular_svg_functional_misc_feature_uses_host_anchor_leader() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 120),
+            qualifiers: vec![("product".into(), Some("glutathione S-transferase".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: Location::simple_range(92, 104),
+            qualifiers: vec![(
+                "note".into(),
+                Some("encodes factor Xa recognition site".to_string()),
+            )],
+        });
+        dna.set_circular(true);
+
+        let svg = export_circular_svg(&dna, &DisplaySettings::default());
+        assert!(svg.contains("factor Xa"));
+        assert!(svg.contains("data-gentle-role=\"functional-annotation-leader\""));
+    }
+
+    #[test]
+    fn circular_feature_label_placement_nudges_away_from_occupied_rects() {
+        let len = 1000;
+        let cx = W * 0.56;
+        let cy = H * 0.52;
+        let pos = 700;
+        let base_radius = H.min(W) * 0.33 * 1.1;
+        let label = "lacIq";
+
+        let base = circular_feature_label_placement(pos, len, cx, cy, base_radius, false, label, &[]);
+        let nudged = circular_feature_label_placement(
+            pos,
+            len,
+            cx,
+            cy,
+            base_radius,
+            false,
+            label,
+            &[base.occupied_rect],
+        );
+
+        assert!(!nudged.occupied_rect.intersects(&base.occupied_rect));
+        assert!(
+            (nudged.x - base.x).abs() > 0.5 || (nudged.y - base.y).abs() > 0.5,
+            "expected nudged placement to move away from occupied rect"
+        );
+    }
+
+    #[test]
+    fn circular_svg_feature_labels_anchor_outward_by_side() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![("gene".into(), Some("right_gene".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(520, 580),
+            qualifiers: vec![("gene".into(), Some("left_gene".to_string()))],
+        });
+        dna.set_circular(true);
+
+        let svg = export_circular_svg(&dna, &DisplaySettings::default());
+        let right_element = svg_text_element_for_label(&svg, "right_gene");
+        let left_element = svg_text_element_for_label(&svg, "left_gene");
+
+        assert!(right_element.contains("text-anchor=\"start\""));
+        assert!(left_element.contains("text-anchor=\"end\""));
     }
 
     #[test]

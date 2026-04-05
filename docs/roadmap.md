@@ -3432,6 +3432,15 @@ Post-baseline follow-ups:
   - snapshot-style stress coverage for condensed readability constraints
   - manual screenshot contribution for curated visual baselines where required
     (agent screenshot capture remains policy-disabled)
+- Add contextual interpretation-link surfaces for rendered biology views so
+  bench users can quickly answer "what am I looking at?" without leaving the
+  workflow cold:
+  - curated outbound references such as Wikipedia pages, vendor protocols, or
+    assay/reference manuals for features, vector parts, enzymes, and view types
+  - links should be advisory/help-oriented and clearly separated from
+    deterministic engine results
+  - link targets and short rationale text should remain portable/shared enough
+    that GUI/help/agent surfaces can expose the same interpretation aids
 - Continue alternative-splicing follow-ups:
   - dense-fixture regression tests for boundary visibility and label safety
   - coordinate-true geometry invariants

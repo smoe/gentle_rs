@@ -648,6 +648,18 @@ impl DNAsequence {
         &self.seq.comments
     }
 
+    pub fn definition(&self) -> Option<&str> {
+        self.seq.definition.as_deref()
+    }
+
+    pub fn accession(&self) -> Option<&str> {
+        self.seq.accession.as_deref()
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.seq.version.as_deref()
+    }
+
     pub fn get_forward_string(&self) -> String {
         String::from_utf8_lossy(self.forward()).into_owned()
     }

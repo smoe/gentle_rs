@@ -1511,6 +1511,28 @@ Controls:
      `gene`/`mRNA`/`CDS`/`promoter` features with a short arrow shaft plus
      direction arrowhead. Circular figure exports also use a slightly larger
      ring and larger label fonts for readability.
+   - Circular feature labels now anchor outward by circle side (`start` on the
+     right, `end` on the left when possible) and nudge away from occupied
+     restriction-label space rather than always sitting centered over the same
+     radius.
+   - When a `gene` and `CDS` describe the same named plasmid element, circular
+     export collapses them into one bench-facing construct part; if the `CDS`
+     is a contained coding subrange, export keeps the CDS-aligned geometry so
+     promoter-plus-coding cassettes stay readable.
+   - Circular cloning-map exports also use the same blue construct-part palette
+     for `gene` and `CDS` tracks so plasmid parts read as one family unless a
+     separate regulatory/variation color is needed.
+   - Regulatory labels prefer interpretable named context (`standard_name` or
+     `gene` plus regulatory class, for example `tac promoter` or
+     `bla promoter`) when the annotation provides it.
+   - When imported sequence metadata provides a clearer title than the raw
+     locus-like name, circular export prefers a bench-facing display title
+     derived from `definition` plus accession/version when available.
+   - `misc_feature` note text can also supply compact circular labels for
+     common annotated vector landmarks such as `MCS` or `factor Xa`.
+   - Protein-facing `misc_feature` annotations such as a `factor Xa`
+     recognition site now use a host-feature leader so the label reads as part
+     of the expressed construct rather than as an unlabeled DNA-side tick.
 21. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).

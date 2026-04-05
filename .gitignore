@@ -1,6 +1,7 @@
 .DS_Store
 assets/data/
 docs/examples/generated/
+slides/
 target/
 *.gz
 assets/cache/
